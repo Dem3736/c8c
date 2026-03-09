@@ -1,0 +1,429 @@
+{
+  "version": 1,
+  "workflowPath": "/Users/vlad/Code/projects/chain-runner/.chain-runner/new-workflow.chain",
+  "messages": [
+    {
+      "id": "msg-1773281797336-user",
+      "role": "user",
+      "content": "собери воркфлоу вокруг этого \n\nвыдели основные компоненты и пройди по ним глазами тестировщика электрон приложений, собери список багов (визуальных и логических)",
+      "timestamp": 1773281797336
+    },
+    {
+      "id": "msg-1773281858167-tc-s1",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858167,
+      "toolName": "search_skills",
+      "toolInput": {
+        "query": "code review bug finding analysis"
+      },
+      "toolCallId": "s1"
+    },
+    {
+      "id": "msg-1773281858168-tr-s1",
+      "role": "tool_result",
+      "content": "Found 1 skills matching \"code review bug finding analysis\":\n- skill-validator/skill-validator: Use when reviewing, auditing, or validating a Skill before deployment - checks folder structure, YAML frontmatter safety, trigger quality, and instruction actionability against official Anthropic guidelines (score: 3)",
+      "timestamp": 1773281858168,
+      "toolName": "search_skills",
+      "toolCallId": "s1",
+      "toolOutput": "Found 1 skills matching \"code review bug finding analysis\":\n- skill-validator/skill-validator: Use when reviewing, auditing, or validating a Skill before deployment - checks folder structure, YAML frontmatter safety, trigger quality, and instruction actionability against official Anthropic guidelines (score: 3)"
+    },
+    {
+      "id": "msg-1773281858168-tc-s2",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "search_skills",
+      "toolInput": {
+        "query": "component extraction breakdown"
+      },
+      "toolCallId": "s2"
+    },
+    {
+      "id": "msg-1773281858168-tr-s2",
+      "role": "tool_result",
+      "content": "No skills found matching \"component extraction breakdown\"",
+      "timestamp": 1773281858168,
+      "toolName": "search_skills",
+      "toolCallId": "s2",
+      "toolOutput": "No skills found matching \"component extraction breakdown\""
+    },
+    {
+      "id": "msg-1773281858168-tc-s3",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "search_skills",
+      "toolInput": {
+        "query": "electron testing QA"
+      },
+      "toolCallId": "s3"
+    },
+    {
+      "id": "msg-1773281858168-tr-s3",
+      "role": "tool_result",
+      "content": "No skills found matching \"electron testing QA\"",
+      "timestamp": 1773281858168,
+      "toolName": "search_skills",
+      "toolCallId": "s3",
+      "toolOutput": "No skills found matching \"electron testing QA\""
+    },
+    {
+      "id": "msg-1773281858168-tc-n1",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolInput": {
+        "node": {
+          "type": "splitter",
+          "config": {
+            "strategy": "Identify the main UI/logical components from the provided Electron app code or description. Each component (e.g. sidebar, toolbar, canvas node, modal, IPC handler, state atom) becomes a separate subtask. Preserve all relevant code context for that component in each subtask.",
+            "maxBranches": 8
+          }
+        },
+        "after_node_id": "input-1"
+      },
+      "toolCallId": "n1"
+    },
+    {
+      "id": "msg-1773281858168-tr-n1",
+      "role": "tool_result",
+      "content": "Added node \"splitter-2\" (splitter) after \"input-1\"",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolCallId": "n1",
+      "toolOutput": "Added node \"splitter-2\" (splitter) after \"input-1\""
+    },
+    {
+      "id": "msg-1773281858168-tc-n2",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolInput": {
+        "node": {
+          "type": "skill",
+          "config": {
+            "skillRef": null,
+            "prompt": "You are a senior QA engineer specialising in Electron desktop applications.\n\nYou receive ONE component from a Chain Runner (Electron + React + Jotai) app.\n\nYour task:\n1. Read the component carefully.\n2. List ALL bugs you find — both VISUAL and LOGICAL.\n\nFor each bug output:\n- **[VISUAL|LOGICAL]** Short title\n- Severity: critical / major / minor / cosmetic\n- Description: what's wrong\n- Steps to reproduce (if applicable)\n- Suggested fix (1 sentence)\n\nFocus areas for Electron apps:\n- IPC message handling (missing error handling, unsubscribed listeners)\n- State sync between main/renderer processes\n- Window lifecycle edge cases\n- Jotai atom consistency and stale state\n- React Flow / canvas rendering glitches\n- Tailwind token misuse or missing dark-mode tokens\n- Keyboard accessibility and focus traps\n- Memory leaks (event listeners not cleaned up)\n- Missing loading/error states\n\nBe thorough but signal-to-noise focused. Only report real issues.",
+            "model": "sonnet",
+            "maxTurns": 3
+          }
+        },
+        "after_node_id": "splitter-1"
+      },
+      "toolCallId": "n2"
+    },
+    {
+      "id": "msg-1773281858168-tr-n2",
+      "role": "tool_result",
+      "content": "Added node \"skill-3\" (skill) after \"splitter-1\"",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolCallId": "n2",
+      "toolOutput": "Added node \"skill-3\" (skill) after \"splitter-1\""
+    },
+    {
+      "id": "msg-1773281858168-tc-n3",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolInput": {
+        "node": {
+          "type": "merger",
+          "config": {
+            "strategy": "concatenate"
+          }
+        },
+        "after_node_id": "skill-1"
+      },
+      "toolCallId": "n3"
+    },
+    {
+      "id": "msg-1773281858168-tr-n3",
+      "role": "tool_result",
+      "content": "Added node \"merger-4\" (merger) after \"skill-1\"",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolCallId": "n3",
+      "toolOutput": "Added node \"merger-4\" (merger) after \"skill-1\""
+    },
+    {
+      "id": "msg-1773281858168-tc-n4",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolInput": {
+        "node": {
+          "type": "skill",
+          "config": {
+            "skillRef": null,
+            "prompt": "You receive raw bug reports from multiple components of an Electron app.\n\nYour task: produce a clean, prioritised Bug Report.\n\n1. **Deduplicate** — merge identical/duplicate issues across components.\n2. **Prioritise** — sort by severity: critical → major → minor → cosmetic.\n3. **Group** — by area: IPC/Process, State Management, Canvas/UI, Accessibility, Performance, Other.\n4. **Format** each bug as:\n   `[SEVERITY] [TYPE] Component — Title`\n   Brief description + suggested fix.\n5. At the top add a **Summary** section:\n   - Total bugs found\n   - Count by severity\n   - Top 3 most critical issues to fix first\n\nOutput clean Markdown.",
+            "model": "sonnet",
+            "maxTurns": 2
+          }
+        },
+        "after_node_id": "merger-1"
+      },
+      "toolCallId": "n4"
+    },
+    {
+      "id": "msg-1773281858168-tr-n4",
+      "role": "tool_result",
+      "content": "Added node \"skill-5\" (skill) after \"merger-1\"",
+      "timestamp": 1773281858168,
+      "toolName": "add_node",
+      "toolCallId": "n4",
+      "toolOutput": "Added node \"skill-5\" (skill) after \"merger-1\""
+    },
+    {
+      "id": "msg-1773281858168-tc-e1",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "add_edge",
+      "toolInput": {
+        "source": "skill-2",
+        "target": "output-1"
+      },
+      "toolCallId": "e1"
+    },
+    {
+      "id": "msg-1773281858168-tr-e1",
+      "role": "tool_result",
+      "content": "Error: source node \"skill-2\" not found",
+      "timestamp": 1773281858168,
+      "toolName": "add_edge",
+      "toolCallId": "e1",
+      "toolOutput": "Error: source node \"skill-2\" not found"
+    },
+    {
+      "id": "msg-1773281858168-tc-re1",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "remove_edge",
+      "toolInput": {
+        "edge_id": "e-input-output"
+      },
+      "toolCallId": "re1"
+    },
+    {
+      "id": "msg-1773281858168-tr-re1",
+      "role": "tool_result",
+      "content": "Removed edge \"e-input-output\"",
+      "timestamp": 1773281858168,
+      "toolName": "remove_edge",
+      "toolCallId": "re1",
+      "toolOutput": "Removed edge \"e-input-output\""
+    },
+    {
+      "id": "msg-1773281858168-tc-uw1",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858168,
+      "toolName": "update_workflow",
+      "toolInput": {
+        "workflow": {
+          "version": 1,
+          "name": "electron-bug-hunter",
+          "description": "Разбивает Electron-приложение на компоненты, прогоняет каждый через QA-анализ и выдаёт приоритизированный список багов",
+          "defaults": {
+            "model": "sonnet",
+            "maxTurns": 60,
+            "timeout_minutes": 30,
+            "maxParallel": 8
+          },
+          "nodes": [
+            {
+              "id": "input-1",
+              "type": "input",
+              "position": {
+                "x": 0,
+                "y": 200
+              },
+              "config": {
+                "inputType": "auto",
+                "required": true
+              }
+            },
+            {
+              "id": "splitter-1",
+              "type": "splitter",
+              "position": {
+                "x": 150,
+                "y": 200
+              },
+              "config": {
+                "strategy": "Identify the main UI/logical components from the provided Electron app code or description. Each component (e.g. sidebar, toolbar, canvas node, modal, IPC handler, state atom) becomes a separate subtask. Preserve all relevant code context for that component in each subtask.",
+                "maxBranches": 8
+              }
+            },
+            {
+              "id": "skill-1",
+              "type": "skill",
+              "position": {
+                "x": 300,
+                "y": 200
+              },
+              "config": {
+                "skillRef": null,
+                "prompt": "You are a senior QA engineer specialising in Electron desktop applications.\n\nYou receive ONE component from a Chain Runner (Electron + React + Jotai) app.\n\nYour task:\n1. Read the component carefully.\n2. List ALL bugs you find — both VISUAL and LOGICAL.\n\nFor each bug output:\n- **[VISUAL|LOGICAL]** Short title\n- Severity: critical / major / minor / cosmetic\n- Description: what's wrong\n- Steps to reproduce (if applicable)\n- Suggested fix (1 sentence)\n\nFocus areas for Electron apps:\n- IPC message handling (missing error handling, unsubscribed listeners)\n- State sync between main/renderer processes\n- Window lifecycle edge cases\n- Jotai atom consistency and stale state\n- React Flow / canvas rendering glitches\n- Tailwind token misuse or missing dark-mode tokens\n- Keyboard accessibility and focus traps\n- Memory leaks (event listeners not cleaned up)\n- Missing loading/error states\n\nBe thorough but signal-to-noise focused. Only report real issues.",
+                "model": "sonnet",
+                "maxTurns": 3
+              }
+            },
+            {
+              "id": "merger-1",
+              "type": "merger",
+              "position": {
+                "x": 450,
+                "y": 200
+              },
+              "config": {
+                "strategy": "concatenate"
+              }
+            },
+            {
+              "id": "skill-2",
+              "type": "skill",
+              "position": {
+                "x": 600,
+                "y": 200
+              },
+              "config": {
+                "skillRef": null,
+                "prompt": "You receive raw bug reports from multiple components of an Electron app.\n\nYour task: produce a clean, prioritised Bug Report.\n\n1. **Deduplicate** — merge identical/duplicate issues across components.\n2. **Prioritise** — sort by severity: critical → major → minor → cosmetic.\n3. **Group** — by area: IPC/Process, State Management, Canvas/UI, Accessibility, Performance, Other.\n4. **Format** each bug as:\n   `[SEVERITY] [TYPE] Component — Title`\n   Brief description + suggested fix.\n5. At the top add a **Summary** section:\n   - Total bugs found\n   - Count by severity\n   - Top 3 most critical issues to fix first\n\nOutput clean Markdown.",
+                "model": "sonnet",
+                "maxTurns": 2
+              }
+            },
+            {
+              "id": "output-1",
+              "type": "output",
+              "position": {
+                "x": 750,
+                "y": 200
+              },
+              "config": {
+                "format": "markdown"
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "e-input-1-splitter-1",
+              "source": "input-1",
+              "target": "splitter-1",
+              "type": "default"
+            },
+            {
+              "id": "e-splitter-1-skill-1",
+              "source": "splitter-1",
+              "target": "skill-1",
+              "type": "default"
+            },
+            {
+              "id": "e-skill-1-merger-1",
+              "source": "skill-1",
+              "target": "merger-1",
+              "type": "default"
+            },
+            {
+              "id": "e-merger-1-skill-2",
+              "source": "merger-1",
+              "target": "skill-2",
+              "type": "default"
+            },
+            {
+              "id": "e-skill-2-output-1",
+              "source": "skill-2",
+              "target": "output-1",
+              "type": "default"
+            }
+          ]
+        }
+      },
+      "toolCallId": "uw1"
+    },
+    {
+      "id": "msg-1773281858168-tr-uw1",
+      "role": "tool_result",
+      "content": "Workflow updated: 6 nodes, 5 edges",
+      "timestamp": 1773281858168,
+      "toolName": "update_workflow",
+      "toolCallId": "uw1",
+      "toolOutput": "Workflow updated: 6 nodes, 5 edges"
+    },
+    {
+      "id": "msg-1773281858169-tc-v1",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773281858169,
+      "toolName": "validate_workflow",
+      "toolInput": {},
+      "toolCallId": "v1"
+    },
+    {
+      "id": "msg-1773281858169-tr-v1",
+      "role": "tool_result",
+      "content": "✓ Workflow is valid\n\nSummary: 6 nodes, 5 edges",
+      "timestamp": 1773281858169,
+      "toolName": "validate_workflow",
+      "toolCallId": "v1",
+      "toolOutput": "✓ Workflow is valid\n\nSummary: 6 nodes, 5 edges"
+    },
+    {
+      "id": "msg-1773281870165-assistant",
+      "role": "assistant",
+      "content": "Воркфлоу **electron-bug-hunter** собран и валиден ✅\n\n## Что получилось\n\n```\ninput → splitter → [skill × N] → merger → skill → output\n```\n\n**5 нод, 5 рёбер:**\n\n1. **Input** — принимает код/описание компонентов приложения\n2. **Splitter** — разбивает на отдельные компоненты (sidebar, canvas, IPC, state atoms и т.д.), до 8 веток параллельно\n3. **QA Skill** (×N, параллельно) — senior QA engineer по каждому компоненту ищет визуальные и логические баги: IPC утечки, Jotai stale state, React Flow глитчи, a11y, memory leaks\n4. **Merger** — собирает все отчёты вместе\n5. **Summariser Skill** — дедублицирует, приоритизирует (critical→cosmetic), группирует по зонам (IPC/State/Canvas/A11y/Perf), выдаёт Markdown-отчёт с Summary сверху\n6. **Output** — финальный Markdown с bug report\n\n## Как запустить\n\nПодай на вход либо конкретный код файлов, либо описание с путями — сплиттер сам выделит компоненты и раздаст задачи параллельным агентам.",
+      "timestamp": 1773281870165
+    },
+    {
+      "id": "msg-1773281927311-user",
+      "role": "user",
+      "content": "перед fan out / splitter нужно добавить скилл, который считает в систему, сплиттер уже только со списком готовым работает и разбивает его",
+      "timestamp": 1773281927311
+    },
+    {
+      "id": "msg-1773282047336-tc-add-analyzer",
+      "role": "tool_call",
+      "content": "",
+      "timestamp": 1773282047336,
+      "toolName": "add_node",
+      "toolInput": {
+        "node": {
+          "type": "skill",
+          "config": {
+            "skillRef": null,
+            "prompt": "You are a senior Electron app architect.\n\nYou receive code or a description of a Chain Runner (Electron + React + Jotai) application.\n\nYour task: identify and list ALL meaningful components that should be reviewed for bugs.\n\nInclude:\n- React UI components (sidebar, toolbar, modals, canvas nodes, panels)\n- IPC handlers (main process handlers, preload bridge methods)\n- Jotai state atoms and derived atoms\n- Electron window/lifecycle managers\n- Utility modules and helpers\n\nOutput a numbered Markdown list. Each item must include:\n1. **Component name** — file path or module name\n2. One-sentence description of what it does\n3. Key risk areas (e.g. IPC, state sync, memory, rendering)\n\nExample format:\n1. **CanvasNode** (`src/renderer/canvas/CanvasNode.tsx`) — Renders a typed workflow node with status visualization. Risk: rendering glitches, missing states.\n2. **runChain IPC handler** (`src/main/ipc/runChain.ts`) — Spawns Claude CLI subprocess. Risk: process leak, missing error handling.\n\nBe exhaustive — cover every component worth reviewing.",
+            "model": "sonnet",
+            "maxTurns": 2
+          }
+        },
+        "after_node_id": "input-1"
+      },
+      "toolCallId": "add-analyzer"
+    },
+    {
+      "id": "msg-1773282047336-tr-add-analyzer",
+      "role": "tool_result",
+      "content": "Added node \"skill-6\" (skill) after \"input-1\"",
+      "timestamp": 1773282047336,
+      "toolName": "add_node",
+      "toolCallId": "add-analyzer",
+      "toolOutput": "Added node \"skill-6\" (skill) after \"input-1\""
+    },
+    {
+      "id": "msg-1773282057324-assistant",
+      "role": "assistant",
+      "content": "Готово ✅ Нода **skill-6** добавлена и автоматически вставлена между `input` и `splitter`.\n\n## Обновлённая схема\n\n```\ninput → [Architect Skill] → splitter → [QA Skill × N] → merger → [Summariser] → output\n```\n\n**Новая нода — «Architect Skill»:**\n- Получает сырой код или описание приложения\n- Составляет исчерпывающий пронумерованный список компонентов с путями, описанием и зонами риска\n- Передаёт готовый список в сплиттер\n\n**Сплиттер теперь** работает с чистым структурированным списком — не угадывает компоненты сам, а берёт уже готовые и раздаёт по одному на каждый параллельный QA-агент.",
+      "timestamp": 1773282057324
+    }
+  ],
+  "createdAt": 1773281797336,
+  "updatedAt": 1773282057324
+}

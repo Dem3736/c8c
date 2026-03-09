@@ -1,0 +1,176 @@
+import { useAtom } from "jotai"
+import { currentWorkflowAtom } from "@/lib/store"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  if (Number.isNaN(parsed)) return undefined
+  return Math.max(0, parsed)
+}
+
+function parseOptionalPositiveInt(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  if (Number.isNaN(parsed)) return undefined
+  return Math.max(1, Math.floor(parsed))
+}
+
+export function WorkflowSettingsPanel() {
+  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const defaults = workflow.defaults || {}
+  const updateDefaults = (patch: Partial<typeof defaults>) => {
+    setWorkflow((prev) => ({
+      ...prev,
+      defaults: {
+        ...(prev.defaults || {}),
+        ...patch,
+      },
+    }))
+  }
+
+  return (
+    <section aria-label="Workflow settings" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
+      <p className="section-kicker">Workflow Settings</p>
+
+      <div className="w-full max-w-[620px] rounded-lg border border-hairline bg-surface-2/70 p-3 space-y-2">
+        <p className="section-kicker">Execution Defaults</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="workflow-default-model" className="ui-meta-text text-muted-foreground">
+              Default model
+            </Label>
+            <Select
+              value={defaults.model || "sonnet"}
+              onValueChange={(value) => updateDefaults({ model: value })}
+            >
+              <SelectTrigger id="workflow-default-model" className="h-control-sm text-body-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sonnet">Sonnet</SelectItem>
+                <SelectItem value="opus">Opus</SelectItem>
+                <SelectItem value="haiku">Haiku</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="workflow-default-max-turns" className="ui-meta-text text-muted-foreground">
+              Max turns per step
+            </Label>
+            <Input
+              id="workflow-default-max-turns"
+              type="number"
+              min={1}
+              max={200}
+              step="1"
+              value={defaults.maxTurns ?? ""}
+              placeholder="e.g. 60"
+              className="h-control-sm text-body-sm"
+              onChange={(event) => {
+                const maxTurns = parseOptionalPositiveInt(event.target.value)
+                updateDefaults({ maxTurns })
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="workflow-default-max-parallel" className="ui-meta-text text-muted-foreground">
+              Max parallel steps
+            </Label>
+            <Input
+              id="workflow-default-max-parallel"
+              type="number"
+              min={1}
+              max={32}
+              step="1"
+              value={defaults.maxParallel ?? ""}
+              placeholder="e.g. 8"
+              className="h-control-sm text-body-sm"
+              onChange={(event) => {
+                const maxParallel = parseOptionalPositiveInt(event.target.value)
+                updateDefaults({ maxParallel })
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="workflow-default-timeout-minutes" className="ui-meta-text text-muted-foreground">
+              Step timeout (minutes)
+            </Label>
+            <Input
+              id="workflow-default-timeout-minutes"
+              type="number"
+              min={1}
+              max={240}
+              step="1"
+              value={defaults.timeout_minutes ?? ""}
+              placeholder="e.g. 30"
+              className="h-control-sm text-body-sm"
+              onChange={(event) => {
+                const timeoutMinutes = parseOptionalPositiveInt(event.target.value)
+                updateDefaults({ timeout_minutes: timeoutMinutes })
+              }}
+            />
+          </div>
+        </div>
+        <p className="ui-meta-text text-muted-foreground">
+          Used as fallback for steps that do not override model, turns, or timeout.
+        </p>
+      </div>
+
+      <div className="w-full max-w-[620px] rounded-lg border border-hairline bg-surface-2/70 p-3 space-y-2">
+        <p className="section-kicker">Budget & Limits</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="workflow-budget-cost" className="ui-meta-text text-muted-foreground">
+              Cost limit (USD)
+            </Label>
+            <Input
+              id="workflow-budget-cost"
+              type="number"
+              min={0}
+              step="0.001"
+              value={defaults.budget_cost_usd ?? ""}
+              placeholder="e.g. 0.10"
+              className="h-control-sm text-body-sm"
+              onChange={(event) => {
+                const budgetCostUsd = parseOptionalNumber(event.target.value)
+                updateDefaults({ budget_cost_usd: budgetCostUsd })
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="workflow-budget-tokens" className="ui-meta-text text-muted-foreground">
+              Token limit
+            </Label>
+            <Input
+              id="workflow-budget-tokens"
+              type="number"
+              min={0}
+              step="1"
+              value={defaults.budget_tokens ?? ""}
+              placeholder="e.g. 120000"
+              className="h-control-sm text-body-sm"
+              onChange={(event) => {
+                const budgetTokens = parseOptionalNumber(event.target.value)
+                updateDefaults({ budget_tokens: budgetTokens })
+              }}
+            />
+          </div>
+        </div>
+        <p className="ui-meta-text text-muted-foreground">
+          Limits are optional. When set, execution stops as soon as a limit is exceeded.
+        </p>
+      </div>
+    </section>
+  )
+}

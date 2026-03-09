@@ -1,0 +1,27 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+.worktrees/
+.c8c/
+.chain-runner/
+docs/
+.env*
+!.env.example
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/.DS_Store
+
+# Playwright
+.playwright-cli/
+
+# Temp/scratch files
+*.chat.json
+ajdtd.json.chain
+new-workflow.chat.json
+
+# OS
+Thumbs.db

@@ -1,0 +1,13 @@
+{
+  "name": "shared-claude-tools",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @claude-tools/mcp-search-proxy && npm run build -w @claude-tools/runner",
+    "clean": "rm -rf packages/*/dist",
+    "test": "npm run test -w @claude-tools/runner"
+  }
+}

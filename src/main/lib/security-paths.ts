@@ -1,0 +1,55 @@
+import { ensureLibrariesDir } from "./libraries"
+import { loadProjectsConfig } from "./projects-config"
+import { ensureChainsDir } from "./yaml-io"
+import { join, relative, resolve } from "node:path"
+
+function dedupeResolved(paths: string[]): string[] {
+  return [...new Set(paths.map((value) => resolve(value)))]
+}
+
+export function isWithinRoot(candidatePath: string, rootPath: string): boolean {
+  const candidate = resolve(candidatePath)
+  const root = resolve(rootPath)
+  const rel = relative(root, candidate)
+  return rel === "" || (!rel.startsWith("..") && !rel.includes("..\\"))
+}
+
+export function assertWithinRoots(
+  candidatePath: string,
+  allowedRoots: string[],
+  label: string,
+): string {
+  const resolvedPath = resolve(candidatePath)
+  if (!allowedRoots.some((root) => isWithinRoot(resolvedPath, root))) {
+    throw new Error(`${label} is outside allowed directories`)
+  }
+  return resolvedPath
+}
+
+export async function allowedProjectRoots(): Promise<string[]> {
+  const config = await loadProjectsConfig()
+  return dedupeResolved(config.projects)
+}
+
+export async function allowedWorkflowRoots(): Promise<string[]> {
+  const globalChainsDir = await ensureChainsDir()
+  const projectRoots = await allowedProjectRoots()
+  const perProjectWorkflowRoots = projectRoots.flatMap((projectRoot) => [
+    join(projectRoot, ".c8c"),
+    join(projectRoot, ".claude", "workflows"),
+  ])
+  return dedupeResolved([globalChainsDir, ...perProjectWorkflowRoots])
+}
+
+export async function allowedReportRoots(): Promise<string[]> {
+  const projectRoots = await allowedProjectRoots()
+  return dedupeResolved(projectRoots.map((projectRoot) => join(projectRoot, ".c8c", "runs")))
+}
+
+export async function allowedOpenPathRoots(): Promise<string[]> {
+  const projectRoots = await allowedProjectRoots()
+  const globalChainsDir = await ensureChainsDir()
+  const librariesDir = await ensureLibrariesDir()
+  return dedupeResolved([globalChainsDir, librariesDir, ...projectRoots])
+}
+

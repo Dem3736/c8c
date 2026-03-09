@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "name": "Generated Workflow",
+  "defaults": {
+    "model": "sonnet",
+    "maxTurns": 60,
+    "timeout_minutes": 30,
+    "maxParallel": 4
+  },
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "label": "Project Input",
+      "description": "URL, скриншоты или описание проекта",
+      "position": {
+        "x": 0,
+        "y": 200
+      },
+      "config": {}
+    },
+    {
+      "id": "jtbd-mapper",
+      "type": "skill",
+      "label": "JTBD Scenario Mapper",
+      "skill": "ajbtd-landing-validator/ajbtd-landing-validator",
+      "prompt": "Проанализируй проект и составь карту пользовательских сценариев по методологии Jobs-To-Be-Done. Для каждого сценария определи: функциональный job, эмоциональный job, социальный job, боли пользователя и критерии успеха. Выведи структурированный список сценариев с описанием контекста использования.",
+      "position": {
+        "x": 300,
+        "y": 200
+      },
+      "config": {
+        "skillRef": "ajbtd-landing-validator/ajbtd-landing-validator",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "splitter",
+      "type": "splitter",
+      "label": "Разделитель по потокам",
+      "description": "Параллельный аудит UX/UI и копирайтинга по каждому сценарию",
+      "position": {
+        "x": 600,
+        "y": 200
+      },
+      "config": {
+        "strategy": "chunk",
+        "maxBranches": 5
+      }
+    },
+    {
+      "id": "ux-audit",
+      "type": "skill",
+      "label": "UX/UI Аудит",
+      "skill": "design/UX Researcher",
+      "prompt": "Для каждого JTBD-сценария проведи аудит UI/UX: навигация и пользовательские потоки, информационная архитектура, точки трения, accessibility, паттерны взаимодействия. Зафиксируй конкретные элементы интерфейса, которые не соответствуют job пользователя. Оцени насколько дизайн помогает пользователю выполнить свою задачу.",
+      "position": {
+        "x": 900,
+        "y": 200
+      },
+      "config": {
+        "skillRef": "design/UX Researcher",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "copy-audit",
+      "type": "skill",
+      "label": "Аудит копирайтинга",
+      "skill": "marketing/Content Creator",
+      "prompt": "Для каждого JTBD-сценария проведи аудит всех текстов: заголовки, CTA, микрокопи, сообщения об ошибках, онбординг-тексты. Оцени ясность, эмоциональный резонанс, соответствие jobs-to-be-done и убедительность. Выяви места, где текст не говорит на языке пользователя и не помогает ему выполнить его job.",
+      "position": {
+        "x": 1200,
+        "y": 200
+      },
+      "config": {
+        "skillRef": "marketing/Content Creator",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "merger",
+      "type": "merger",
+      "label": "Объединение результатов",
+      "description": "Консолидация UX/UI и копирайтинговых находок в единый отчёт",
+      "position": {
+        "x": 1500,
+        "y": 200
+      },
+      "config": {
+        "strategy": "concatenate"
+      }
+    },
+    {
+      "id": "recommendations",
+      "type": "skill",
+      "label": "Синтез рекомендаций",
+      "skill": "support/Executive Summary Generator",
+      "prompt": "Синтезируй находки UX/UI и копирайтинг аудита в приоритизированные рекомендации по улучшению. Структурируй по: (1) Критические исправления, (2) Высокоприоритетные улучшения, (3) Желательные улучшения. Для каждой рекомендации укажи: затронутый JTBD-сценарий, текущее состояние, предлагаемое изменение, ожидаемый эффект. Пиши конкретно, с примерами формулировок.",
+      "position": {
+        "x": 1800,
+        "y": 200
+      },
+      "config": {
+        "skillRef": "support/Executive Summary Generator",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "evaluator",
+      "type": "evaluator",
+      "label": "Оценка качества отчёта",
+      "prompt": "Оцени отчёт с рекомендациями по критериям: все ли JTBD-сценарии охвачены? Конкретны и действенны ли рекомендации? Есть ли в каждой рекомендации UX и копирайтинговый аспект? Обоснованы ли приоритеты? PASS если: все сценарии покрыты, минимум 3 конкретные рекомендации на сценарий, каждая рекомендация actionable с чётким обоснованием. FAIL если рекомендации расплывчаты, неполны или не связаны с JTBD.",
+      "position": {
+        "x": 2100,
+        "y": 200
+      },
+      "config": {
+        "criteria": "",
+        "threshold": 7,
+        "maxRetries": 3
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "JTBD Improvement Report",
+      "position": {
+        "x": 2400,
+        "y": 200
+      },
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-jtbd-mapper",
+      "source": "input",
+      "target": "jtbd-mapper",
+      "type": "default"
+    },
+    {
+      "id": "e-jtbd-mapper-splitter",
+      "source": "jtbd-mapper",
+      "target": "splitter",
+      "type": "default"
+    },
+    {
+      "id": "e-splitter-ux-audit",
+      "source": "splitter",
+      "target": "ux-audit",
+      "type": "default"
+    },
+    {
+      "id": "e-splitter-copy-audit",
+      "source": "splitter",
+      "target": "copy-audit",
+      "type": "default"
+    },
+    {
+      "id": "e-ux-audit-merger",
+      "source": "ux-audit",
+      "target": "merger",
+      "type": "default"
+    },
+    {
+      "id": "e-copy-audit-merger",
+      "source": "copy-audit",
+      "target": "merger",
+      "type": "default"
+    },
+    {
+      "id": "e-merger-recommendations",
+      "source": "merger",
+      "target": "recommendations",
+      "type": "default"
+    },
+    {
+      "id": "e-recommendations-evaluator",
+      "source": "recommendations",
+      "target": "evaluator",
+      "type": "default"
+    },
+    {
+      "id": "e-evaluator-output",
+      "source": "evaluator",
+      "target": "output",
+      "type": "pass"
+    },
+    {
+      "id": "e-evaluator-recommendations",
+      "source": "evaluator",
+      "target": "recommendations",
+      "type": "fail"
+    }
+  ]
+}

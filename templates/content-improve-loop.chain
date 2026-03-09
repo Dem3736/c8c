@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "name": "Content Improve Loop",
+  "description": "Iteratively improves content until quality threshold. Skill writes/rewrites, evaluator scores against criteria, retries until passing.",
+  "defaults": {
+    "model": "sonnet",
+    "maxTurns": 60,
+    "maxParallel": 1,
+    "timeout_minutes": 30
+  },
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": { "x": 0, "y": 200 },
+      "config": {}
+    },
+    {
+      "id": "content-improver",
+      "type": "skill",
+      "position": { "x": 300, "y": 200 },
+      "config": {
+        "skillRef": "content-improver",
+        "prompt": "Read the content file in the workspace. Analyze it for clarity, engagement, and effectiveness. Rewrite it to be significantly better. Write the improved version back to content.md.",
+        "model": "sonnet",
+        "maxTurns": 30
+      }
+    },
+    {
+      "id": "quality-check",
+      "type": "evaluator",
+      "position": { "x": 600, "y": 200 },
+      "config": {
+        "criteria": "Score 1-10 on: clarity (is the message immediately clear?), engagement (does it hook the reader?), CTA strength (is the call-to-action compelling and specific?), specificity (does it avoid vague claims?)",
+        "threshold": 8,
+        "maxRetries": 3,
+        "retryFrom": "content-improver"
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": { "x": 900, "y": 200 },
+      "config": {}
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "input-1", "target": "content-improver", "type": "default" },
+    { "id": "e2", "source": "content-improver", "target": "quality-check", "type": "default" },
+    { "id": "e3", "source": "quality-check", "target": "output-1", "type": "pass" },
+    { "id": "e4", "source": "quality-check", "target": "content-improver", "type": "fail" }
+  ]
+}

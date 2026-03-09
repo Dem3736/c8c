@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine channel
+        id: channel
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == *"-beta"* || "$TAG" == *"-alpha"* || "$TAG" == *"-rc"* ]]; then
+            echo "channel=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release
+        env:
+          C8C_BUILD_FLAVOR: release
+          C8C_RELEASE_CHANNEL: ${{ steps.channel.outputs.channel }}
+          C8C_TELEMETRY_PROVIDER: posthog
+          C8C_POSTHOG_HOST: ${{ secrets.C8C_POSTHOG_HOST }}
+          C8C_POSTHOG_KEY: ${{ secrets.C8C_POSTHOG_KEY }}
+        run: |
+          npm run build:shared
+          npm run build
+
+      - name: Package & publish (macOS arm64, unsigned)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --mac --arm64 --publish always
+
+      - name: Generate checksums
+        run: |
+          cd release
+          shasum -a 256 *.dmg *.zip 2>/dev/null > SHA256SUMS || true
+
+      - name: Upload checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/SHA256SUMS
+
+  release-oss:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build OSS
+        env:
+          C8C_BUILD_FLAVOR: oss
+          C8C_TELEMETRY_PROVIDER: noop
+        run: |
+          npm run build:shared
+          npm run build
+
+      - name: Verify no PostHog in OSS build
+        run: |
+          if grep -r "posthog" out/main/index.js 2>/dev/null | grep -v "__TELEMETRY_PROVIDER__" | grep -q "app.posthog.com\|phc_"; then
+            echo "ERROR: PostHog credentials found in OSS build"
+            exit 1
+          fi
+          echo "OK: No PostHog credentials in OSS build"

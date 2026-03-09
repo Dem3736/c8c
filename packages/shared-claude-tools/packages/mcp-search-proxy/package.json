@@ -1,0 +1,45 @@
+{
+  "name": "@claude-tools/mcp-search-proxy",
+  "version": "1.0.0",
+  "description": "Local MCP proxies for Exa + Serper with centralized keyring + failover",
+  "type": "module",
+  "main": "dist/exa.js",
+  "types": "dist/exa.d.ts",
+  "bin": {
+    "exa-mcp-proxy": "./dist/exa.js",
+    "serper-mcp-proxy": "./dist/serper.js"
+  },
+  "exports": {
+    "./keyring": {
+      "types": "./dist/keyring.d.ts",
+      "import": "./dist/keyring.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./exa": {
+      "types": "./dist/exa.d.ts",
+      "import": "./dist/exa.js"
+    },
+    "./serper": {
+      "types": "./dist/serper.d.ts",
+      "import": "./dist/serper.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0"
+  },
+  "peerDependencies": {
+    "zod": ">=3.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "zod": "^3.23.0"
+  }
+}

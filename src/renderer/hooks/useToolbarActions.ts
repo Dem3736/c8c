@@ -1,0 +1,180 @@
+import { useCallback } from "react"
+import type { Workflow, WorkflowFile, DiscoveredSkill } from "@shared/types"
+import { toast } from "sonner"
+import {
+  normalizeWorkflowTitle,
+  toWorkflowFileStem,
+} from "@shared/workflow-name"
+import { createEmptyWorkflow } from "@/lib/default-workflow"
+import { workflowSnapshot } from "@/lib/workflow-snapshot"
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error
+  }
+  return fallback
+}
+
+interface UseToolbarActionsArgs {
+  workflow: Workflow
+  workflowPath: string | null
+  selectedProject: string | null
+  setWorkflows: (next: WorkflowFile[]) => void
+  setSkills: (next: DiscoveredSkill[]) => void
+  setCurrentWorkflow: (next: Workflow | ((prev: Workflow) => Workflow)) => void
+  setSelectedWorkflowPath: (next: string | null) => void
+  setWorkflowSavedSnapshot: (next: string) => void
+}
+
+export function useToolbarActions({
+  workflow,
+  workflowPath,
+  selectedProject,
+  setWorkflows,
+  setSkills,
+  setCurrentWorkflow,
+  setSelectedWorkflowPath,
+  setWorkflowSavedSnapshot,
+}: UseToolbarActionsArgs) {
+  const refreshProjectData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!selectedProject) return
+    try {
+      const [nextWorkflows, nextSkills] = await Promise.all([
+        window.api.listProjectWorkflows(selectedProject),
+        window.api.scanSkills(selectedProject),
+      ])
+      setWorkflows(nextWorkflows)
+      setSkills(nextSkills)
+      if (!silent) {
+        toast.success("Refreshed")
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to refresh project data"))
+    }
+  }, [selectedProject, setSkills, setWorkflows])
+
+  const deriveTitleFromPath = useCallback((path: string) =>
+    path
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.(chain|yaml|yml)$/i, "")
+      ?.trim() || "workflow", [])
+
+  const ensureWorkflowNameSync = useCallback(async (path: string): Promise<string> => {
+    const normalizedName = normalizeWorkflowTitle(workflow.name || "")
+    if (!normalizedName) return path
+
+    const currentStem = path
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.(chain|yaml|yml)$/i, "")
+      ?.toLowerCase()
+    const desiredStem = toWorkflowFileStem(normalizedName).toLowerCase()
+    if (!currentStem || currentStem === desiredStem) return path
+
+    const renamedPath = await window.api.renameWorkflow(path, normalizedName)
+    setSelectedWorkflowPath(renamedPath)
+    if (selectedProject) {
+      const wfs = await window.api.listProjectWorkflows(selectedProject)
+      setWorkflows(wfs)
+    }
+    return renamedPath
+  }, [selectedProject, setSelectedWorkflowPath, setWorkflows, workflow.name])
+
+  const save = useCallback(async () => {
+    if (!workflowPath) return
+    const workflowTitle = normalizeWorkflowTitle(workflow.name || "") || deriveTitleFromPath(workflowPath)
+    try {
+      const targetPath = await ensureWorkflowNameSync(workflowPath)
+      await window.api.saveWorkflow(targetPath, workflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(workflow))
+      toast.success(`Workflow saved: ${workflowTitle}`)
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save workflow"))
+    }
+  }, [deriveTitleFromPath, ensureWorkflowNameSync, setWorkflowSavedSnapshot, workflow, workflowPath])
+
+  const saveAs = useCallback(async () => {
+    try {
+      const filePath = await window.api.saveWorkflowAs(workflow, selectedProject || undefined)
+      if (!filePath) return
+      const workflowTitle = normalizeWorkflowTitle(workflow.name || "") || deriveTitleFromPath(filePath)
+      setSelectedWorkflowPath(filePath)
+      setWorkflowSavedSnapshot(workflowSnapshot(workflow))
+      if (selectedProject) {
+        const wfs = await window.api.listProjectWorkflows(selectedProject)
+        setWorkflows(wfs)
+      }
+      toast.success(`Workflow saved as: ${workflowTitle}`)
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save workflow"))
+    }
+  }, [deriveTitleFromPath, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow])
+
+  const openFile = useCallback(async () => {
+    try {
+      const result = await window.api.openWorkflowFile()
+      if (!result) return
+      setCurrentWorkflow(result.chain)
+      setSelectedWorkflowPath(result.filePath)
+      setWorkflowSavedSnapshot(workflowSnapshot(result.chain))
+      if (selectedProject) {
+        const wfs = await window.api.listProjectWorkflows(selectedProject)
+        setWorkflows(wfs)
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to import workflow"))
+    }
+  }, [selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
+
+  const renameWorkflow = useCallback(async (nextName: string) => {
+    if (!workflowPath) return false
+    const trimmed = nextName.trim()
+    const currentName = (workflow.name || "").trim() || deriveTitleFromPath(workflowPath)
+    if (!trimmed || trimmed === currentName) return false
+
+    try {
+      const renamedPath = await window.api.renameWorkflow(workflowPath, trimmed)
+      setSelectedWorkflowPath(renamedPath)
+      const renamedWorkflow = { ...workflow, name: trimmed }
+      setCurrentWorkflow(renamedWorkflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(renamedWorkflow))
+      await refreshProjectData({ silent: true })
+      toast.success(`Workflow renamed: ${trimmed}`)
+      return true
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to rename workflow"))
+      return false
+    }
+  }, [deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
+
+  const deleteWorkflow = useCallback(async () => {
+    if (!workflowPath) return false
+    const workflowTitle = (workflow.name || "").trim() || deriveTitleFromPath(workflowPath)
+    try {
+      await window.api.deleteWorkflow(workflowPath)
+      setSelectedWorkflowPath(null)
+      setCurrentWorkflow(createEmptyWorkflow())
+      setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
+      await refreshProjectData({ silent: true })
+      toast.success(`Workflow deleted: ${workflowTitle}`)
+      return true
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to delete workflow"))
+      return false
+    }
+  }, [deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
+
+  return {
+    refreshProjectData,
+    deriveTitleFromPath,
+    save,
+    saveAs,
+    openFile,
+    renameWorkflow,
+    deleteWorkflow,
+  }
+}

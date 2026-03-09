@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "name": "UI/UX Design Audit",
+  "description": "Проходит по всем компонентам проекта, оценивает каждый как UI/UX дизайнер и собирает отчёт",
+  "defaults": {
+    "model": "sonnet",
+    "maxTurns": 80,
+    "timeout_minutes": 60,
+    "maxParallel": 4
+  },
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 0,
+        "y": 200
+      },
+      "config": {}
+    },
+    {
+      "id": "skill-2",
+      "type": "skill",
+      "position": {
+        "x": 300,
+        "y": 200
+      },
+      "config": {
+        "skillRef": "uncategorized/component-scanner",
+        "label": "Component Scanner",
+        "prompt": "You are a senior frontend developer. Explore the project directory recursively and produce a structured list of all UI components. For each component output:\n- file path\n- component name\n- brief description of its purpose\n\nFormat as JSON array: [{\"name\": \"...\", \"path\": \"...\", \"description\": \"...\"}]"
+      }
+    },
+    {
+      "id": "splitter-3",
+      "type": "splitter",
+      "position": {
+        "x": 600,
+        "y": 200
+      },
+      "config": {
+        "strategy": "Each item in the input list is a UI component to review independently. Create one subtask per component preserving all its details.",
+        "maxBranches": 20,
+        "label": "Split per Component"
+      }
+    },
+    {
+      "id": "skill-4",
+      "type": "skill",
+      "position": {
+        "x": 900,
+        "y": 200
+      },
+      "config": {
+        "label": "UI/UX Reviewer",
+        "skillRef": "uncategorized/ui-ux-reviewer",
+        "prompt": "You are an expert UI/UX designer and design systems engineer. Review the provided component carefully by reading its source code.\n\nEvaluate on these dimensions (score 1–5):\n1. **Design System Consistency** — tokens, spacing, typography, colors match the system\n2. **Visual Neatness** — alignment, whitespace, proportions\n3. **Accessibility** — aria labels, keyboard nav, contrast\n4. **Reusability** — is it composable, are props clean\n5. **Responsiveness** — handles different screen sizes\n\nOutput a JSON object:\n{\n  \"component\": \"ComponentName\",\n  \"path\": \"...\",\n  \"scores\": {\"designSystem\": N, \"neatness\": N, \"accessibility\": N, \"reusability\": N, \"responsiveness\": N},\n  \"totalScore\": N,\n  \"issues\": [\"...\"],\n  \"recommendations\": [\"...\"]\n}"
+      }
+    },
+    {
+      "id": "skill-7",
+      "type": "skill",
+      "position": {
+        "x": 1050,
+        "y": 200
+      },
+      "config": {
+        "label": "UI/UX Fixer",
+        "skillRef": "uncategorized/ui-ux-fixer",
+        "prompt": "You are a senior frontend developer and UI/UX specialist. You have received a UI/UX review of a component with scores and specific issues.\n\nYour task:\n1. Read the component source code at the path mentioned in the review\n2. Apply the recommended fixes — focus on issues scored ≤ 3\n3. Prioritize: accessibility > design system consistency > visual neatness\n4. Make minimal, targeted changes — don't rewrite the component\n\nOutput a summary of changes made:\n- File path\n- What was changed and why\n- Which issues from the review were addressed"
+      }
+    },
+    {
+      "id": "merger-5",
+      "type": "merger",
+      "position": {
+        "x": 1500,
+        "y": 200
+      },
+      "config": {
+        "strategy": "json_array",
+        "label": "Collect Reviews"
+      }
+    },
+    {
+      "id": "skill-6",
+      "type": "skill",
+      "position": {
+        "x": 1800,
+        "y": 200
+      },
+      "config": {
+        "label": "Report Writer",
+        "skillRef": "uncategorized/report-writer",
+        "prompt": "You are a design systems lead. You have received individual UI/UX reviews for all components in the project.\n\nWrite a comprehensive design audit report in Markdown:\n\n# UI/UX Design Audit Report\n\n## Executive Summary\n- Total components reviewed\n- Average score across all dimensions\n- Top 3 critical issues\n\n## Component Scores Table\n| Component | Design System | Neatness | A11y | Reusability | Responsiveness | Total |\n|-----------|...|...|...|...|...|---|\n\n## Critical Issues (score ≤ 2)\nList components with severe problems with specific code references and fix recommendations.\n\n## Quick Wins (easy improvements)\n\n## Recommended Priorities\nOrdered action plan for the team.\n\n## Per-Component Details\nFor each component: summary, scores, issues, recommendations."
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 2100,
+        "y": 200
+      },
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-1",
+      "source": "input-1",
+      "target": "skill-2",
+      "type": "default"
+    },
+    {
+      "id": "e-2",
+      "source": "skill-2",
+      "target": "splitter-3",
+      "type": "default"
+    },
+    {
+      "id": "e-3",
+      "source": "splitter-3",
+      "target": "skill-4",
+      "type": "default"
+    },
+    {
+      "id": "e-4",
+      "source": "skill-4",
+      "target": "skill-7",
+      "type": "default"
+    },
+    {
+      "id": "e-7",
+      "source": "skill-7",
+      "target": "merger-5",
+      "type": "default"
+    },
+    {
+      "id": "e-5",
+      "source": "merger-5",
+      "target": "skill-6",
+      "type": "default"
+    },
+    {
+      "id": "e-6",
+      "source": "skill-6",
+      "target": "output-1",
+      "type": "default"
+    }
+  ]
+}

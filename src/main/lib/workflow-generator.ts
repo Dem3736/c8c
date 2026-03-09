@@ -1,0 +1,172 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import type { Workflow, WorkflowNode, WorkflowEdge, EdgeType, NodeType } from "@shared/types"
+import { validateWorkflow } from "./graph-engine"
+
+interface SkillInfo {
+  name: string
+  category: string
+  description: string
+}
+
+// Read the skill file at module load time
+let skillContent: string
+try {
+  skillContent = readFileSync(
+    join(__dirname, "../skills/workflow-generator.md"),
+    "utf-8",
+  )
+} catch {
+  // Fallback for dev/test — use a minimal prompt
+  skillContent = ""
+}
+
+export function buildGeneratorPrompt(
+  userDescription: string,
+  availableSkills: SkillInfo[],
+): string {
+  const skillList = availableSkills
+    .map((s) => `  - ${s.category}/${s.name}: ${s.description}`)
+    .join("\n")
+
+  const parts: string[] = []
+
+  if (skillContent) {
+    // Use the skill file as the system context
+    parts.push(skillContent)
+  } else {
+    // Fallback minimal prompt
+    parts.push(
+      "You are a workflow generator for c8c.",
+      "Generate a valid JSON workflow with nodes (input, skill, evaluator, splitter, merger, output) and edges (default, pass, fail).",
+      "Always start with input, end with output. Use evaluator for quality loops, splitter+merger for parallel processing.",
+      "If a workflow uses splitter, add a pre-split analysis skill before splitter to produce a structured split-ready list/document; splitter only decomposes that prepared artifact.",
+      "For text/landing generation workflows, prefer evaluator rewrite loops ('check slop or not -> rewrite') and set evaluator skillRefs to ['infostyle','slop-check'].",
+    )
+  }
+
+  parts.push(
+    "",
+    "## Available Skills",
+    "",
+    availableSkills.length > 0
+      ? skillList
+      : "  (No skills discovered — use descriptive skillRef names)",
+    "",
+    "## User Request",
+    "",
+    userDescription,
+  )
+
+  return parts.join("\n")
+}
+
+const VALID_EDGE_TYPES = new Set<string>(["default", "pass", "fail"])
+const VALID_NODE_TYPES = new Set<string>(["input", "skill", "evaluator", "splitter", "merger", "output"])
+
+function normalizeConfig(n: any): any {
+  const type: string = VALID_NODE_TYPES.has(n.type) ? n.type : "skill"
+  const existing = n.config && typeof n.config === "object" ? n.config : {}
+
+  switch (type) {
+    case "skill":
+      return {
+        ...existing,
+        skillRef: existing.skillRef || n.agent || n.skill || n.name || "",
+        prompt: existing.prompt || n.description || n.instruction || "",
+      }
+    case "evaluator":
+      return {
+        criteria: existing.criteria || "",
+        threshold: existing.threshold ?? 7,
+        maxRetries: existing.maxRetries ?? 3,
+        ...existing,
+      }
+    case "splitter":
+      return {
+        strategy: existing.strategy || "chunk",
+        maxBranches: existing.maxBranches ?? 5,
+        ...existing,
+      }
+    case "merger":
+      return {
+        strategy: existing.strategy || "concatenate",
+        ...existing,
+      }
+    case "input":
+    case "output":
+      return existing
+    default:
+      return existing
+  }
+}
+
+export function normalizeEdges(edges: any[]): WorkflowEdge[] {
+  return edges.map((e, i) => ({
+    id: e.id || `e-${e.source || e.from || i}-${e.target || e.to || i}`,
+    source: e.source || e.from || e.sourceId || "",
+    target: e.target || e.to || e.targetId || "",
+    type: (VALID_EDGE_TYPES.has(e.type) ? e.type : "default") as EdgeType,
+  }))
+}
+
+export function normalizeNodes(nodes: any[]): WorkflowNode[] {
+  return nodes.map((n, i) => ({
+    ...n,
+    id: n.id || `node-${i}`,
+    type: (VALID_NODE_TYPES.has(n.type) ? n.type : "skill") as NodeType,
+    position: n.position && typeof n.position.x === "number" ? n.position : { x: i * 300, y: 200 },
+    config: normalizeConfig(n),
+  }))
+}
+
+export function parseGeneratedWorkflow(output: string): Workflow {
+  // Extract JSON from code block if present
+  const codeBlockMatch = output.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
+  const jsonStr = codeBlockMatch ? codeBlockMatch[1].trim() : output.trim()
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(jsonStr)
+  } catch {
+    const objMatch = output.match(/\{[\s\S]*\}/)
+    if (objMatch) {
+      try {
+        parsed = JSON.parse(objMatch[0])
+      } catch {
+        throw new Error("Could not parse workflow JSON from AI output")
+      }
+    } else {
+      throw new Error("No JSON found in AI output")
+    }
+  }
+
+  const w = parsed as any
+  if (!w || typeof w !== "object") {
+    throw new Error("AI output is not a JSON object")
+  }
+  if (!Array.isArray(w.nodes) || !Array.isArray(w.edges)) {
+    throw new Error("Workflow must have nodes and edges arrays")
+  }
+
+  const workflow: Workflow = {
+    version: w.version || 1,
+    name: w.name || "Generated Workflow",
+    description: w.description,
+    defaults: w.defaults || {
+      model: "sonnet",
+      maxTurns: 60,
+      timeout_minutes: 30,
+      maxParallel: 8,
+    },
+    nodes: normalizeNodes(w.nodes),
+    edges: normalizeEdges(w.edges),
+  }
+
+  const errors = validateWorkflow(workflow)
+  if (errors.length > 0) {
+    throw new Error(`Generated workflow is invalid: ${errors.join("; ")}`)
+  }
+
+  return workflow
+}
