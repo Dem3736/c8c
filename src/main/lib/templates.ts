@@ -1547,6 +1547,90 @@ const landingPageGenerator: WorkflowTemplate = {
   },
 }
 
+// ── Template 16: CTO Product Spec ─────────────────────────
+// Pattern: input → architect → splitter(parts) → part-spec-writer [parallel] → merger → output
+
+const ctoProductSpec: WorkflowTemplate = {
+  id: "cto-product-spec",
+  name: "CTO Product Spec",
+  description:
+    "Pick a pragmatic stack, map the product at a high level, write detailed specs per product part, and merge everything into one master document.",
+  category: "code",
+  tags: ["cto", "stack", "architecture", "product-spec", "fan-out"],
+  workflow: {
+    version: 1,
+    name: "CTO Product Spec",
+    description:
+      "Generate a CTO-grade product specification from idea to modular implementation details",
+    defaults: {
+      model: "sonnet",
+      maxTurns: 60,
+      timeout_minutes: 45,
+    },
+    nodes: [
+      {
+        id: "input-1",
+        type: "input",
+        position: { x: 0, y: 200 },
+        config: {},
+      },
+      {
+        id: "architect-1",
+        type: "skill",
+        position: { x: 300, y: 200 },
+        config: {
+          skillRef: "cto/product-architect",
+          prompt:
+            "Act as a pragmatic CTO. From this product brief, build a foundation document with:\n1) **Stack recommendation** (frontend, backend, data, infra, observability, auth, integrations) with trade-offs and rationale.\n2) **Big product picture** (users, core journeys, major capabilities, system boundaries, service interactions, and non-functional priorities).\n3) **Product parts catalog** of 5-10 parts/modules. For each part include: part_id, purpose, owned responsibilities, key interfaces, dependencies, and expected outcomes.\nUse explicit section headers and keep assumptions visible.",
+        },
+      },
+      {
+        id: "splitter-1",
+        type: "splitter",
+        position: { x: 600, y: 200 },
+        config: {
+          strategy:
+            "Split the foundation document into one task per item in the Product Parts Catalog. Each task must include the chosen stack context and big-picture architecture context, then request a detailed spec for that single part.",
+          maxBranches: 8,
+        },
+      },
+      {
+        id: "part-spec-1",
+        type: "skill",
+        position: { x: 900, y: 200 },
+        config: {
+          skillRef: "cto/part-spec-writer",
+          prompt:
+            "Write a detailed technical spec for this product part. Include: objective, user stories, scope/non-scope, architecture role, APIs/events/contracts, data model, state/flow logic, security/privacy controls, performance/SLO expectations, telemetry/monitoring, test strategy, rollout/migration plan, risks, and open questions. Keep language implementation-ready.",
+        },
+      },
+      {
+        id: "merger-1",
+        type: "merger",
+        position: { x: 1200, y: 200 },
+        config: {
+          strategy: "summarize",
+          prompt:
+            "Merge all part-level specs into one unified CTO document with sections:\n- Executive summary\n- Recommended stack and rationale\n- Big-picture product architecture\n- Cross-cutting standards (security, observability, reliability, DX)\n- Detailed specs by product part\n- Delivery phases and milestones\n- Risk register and open questions\nDeduplicate overlaps, resolve terminology conflicts, and keep the final document coherent.",
+        },
+      },
+      {
+        id: "output-1",
+        type: "output",
+        position: { x: 1500, y: 200 },
+        config: {},
+      },
+    ],
+    edges: [
+      { id: "e-input-architect", source: "input-1", target: "architect-1", type: "default" },
+      { id: "e-architect-splitter", source: "architect-1", target: "splitter-1", type: "default" },
+      { id: "e-splitter-partspec", source: "splitter-1", target: "part-spec-1", type: "default" },
+      { id: "e-partspec-merger", source: "part-spec-1", target: "merger-1", type: "default" },
+      { id: "e-merger-output", source: "merger-1", target: "output-1", type: "default" },
+    ],
+  },
+}
+
 // ── Public API ────────────────────────────────────────────
 
 const builtinTemplates: WorkflowTemplate[] = [
@@ -1566,6 +1650,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   resumeTailoringPipeline,
   fullStackCodeAudit,
   landingPageGenerator,
+  ctoProductSpec,
 ]
 
 export function getBuiltinTemplates(): WorkflowTemplate[] {
