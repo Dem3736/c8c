@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/thumb.png" alt="c8c — skill operations for Claude Code" width="720" />
+  <img src="public/thumb.png" alt="c8c — skill operations for Claude Code" width="480" />
 </p>
 
 <p align="center">
