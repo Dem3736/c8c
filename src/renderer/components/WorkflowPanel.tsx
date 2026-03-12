@@ -87,7 +87,11 @@ export function WorkflowPanel() {
     }
   }, [runStatus, viewMode])
 
-  if (!selectedProject) {
+  const hasMeaningfulContent = workflow.nodes.length > 0
+    || workflow.name.trim().length > 0
+    || (workflow.description || "").trim().length > 0
+
+  if (!selectedProject && !hasMeaningfulContent) {
     return (
       <EmptyState
         icon={FolderOpen}
@@ -97,7 +101,7 @@ export function WorkflowPanel() {
     )
   }
 
-  if (!selectedWorkflowPath) {
+  if (!selectedWorkflowPath && !hasMeaningfulContent) {
     return (
       <EmptyState
         icon={FileStack}

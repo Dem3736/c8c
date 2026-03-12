@@ -186,6 +186,34 @@ export function WorkflowsTemplatesPage() {
     })
   }
 
+  const doCreateFromTemplate = async (template: WorkflowTemplate) => {
+    if (!selectedProject) return
+    const nextWorkflow = applyWebSearchBackendPreset(
+      template.workflow,
+      template.category,
+      webSearchBackend,
+    )
+    const existingNames = new Set(workflows.map((item) => item.name.toLowerCase()))
+    let name = template.name.toLowerCase().replace(/\s+/g, "-")
+    if (existingNames.has(name)) {
+      let index = 2
+      while (existingNames.has(`${name}-${index}`)) index += 1
+      name = `${name}-${index}`
+    }
+    try {
+      const filePath = await window.api.createWorkflow(selectedProject, name, nextWorkflow)
+      setWorkflows((prev) => [{ name, path: filePath, updatedAt: Date.now() }, ...prev])
+      setSelectedWorkflowPath(filePath)
+      setWorkflow(nextWorkflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow))
+      setMainView("thread")
+      setPendingTemplate(null)
+      toast.success(`Created "${name}" from template`)
+    } catch (error) {
+      toast.error(`Failed to create workflow: ${String(error)}`)
+    }
+  }
+
   const createWorkflow = async () => {
     if (!selectedProject) {
       toast("Select a project in Projects first")
@@ -313,17 +341,22 @@ export function WorkflowsTemplatesPage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Replace current workflow?</DialogTitle>
+            <DialogTitle>Apply template</DialogTitle>
             <DialogDescription>
-              Using &ldquo;{pendingTemplate?.name}&rdquo; will replace the current workflow. You can undo this via the toast notification.
+              How would you like to use &ldquo;{pendingTemplate?.name}&rdquo;?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPendingTemplate(null)}>
               Cancel
             </Button>
+            {selectedProject && (
+              <Button variant="outline" onClick={() => pendingTemplate && void doCreateFromTemplate(pendingTemplate)}>
+                Create new
+              </Button>
+            )}
             <Button onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}>
-              Use template
+              Replace current
             </Button>
           </DialogFooter>
         </DialogContent>

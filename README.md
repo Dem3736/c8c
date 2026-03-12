@@ -4,14 +4,12 @@
 
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
-  <a href="https://c8c.app/docs"><strong>Docs</strong></a> &middot;
-  <a href="https://github.com/c8c-ai/c8c"><strong>GitHub</strong></a> &middot;
-  <a href="https://discord.gg/TODO"><strong>Discord</strong></a>
+  <a href="https://github.com/bluzir/c8c"><strong>GitHub</strong></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/c8c-ai/c8c/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
-  <a href="https://github.com/c8c-ai/c8c/stargazers"><img src="https://img.shields.io/github/stars/c8c-ai/c8c?style=flat" alt="Stars" /></a>
+  <a href="https://github.com/bluzir/c8c/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="https://github.com/bluzir/c8c/stargazers"><img src="https://img.shields.io/github/stars/bluzir/c8c?style=flat" alt="Stars" /></a>
 </p>
 
 <br/>
@@ -26,23 +24,24 @@ c8c is a desktop app that lets you build visual pipelines from Claude Code skill
 
 It looks like Apple Shortcuts — but under the hood it has directed graphs, evaluator gates, parallel branches, and cost tracking.
 
-**Run operations, not prompts.**
-
 |        | Step               | Example                                                                       |
 | ------ | ------------------ | ----------------------------------------------------------------------------- |
 | **01** | Pick your skills   | Summarize, translate, code-review, fact-check — any Claude Code skill.        |
 | **02** | Wire the pipeline  | Connect nodes on a visual canvas. Add evaluators, splitters, approval gates.  |
 | **03** | Run it             | Hit run. Watch data flow through every node. See tokens, cost, time — live.   |
 
+<p align="center">
+  <img src="public/demo.png" alt="c8c workflow editor" width="720" />
+</p>
+
 <br/>
 
 ## c8c is right for you if
 
 - ✅ You use **Claude Code skills** and want to chain them into repeatable workflows
-- ✅ You're tired of **copy-pasting outputs** between Claude conversations
+- ✅ You **copy-paste outputs** between Claude conversations manually
 - ✅ You want **evaluator loops** — retry until the output meets your quality bar
 - ✅ You want to **see what's happening** at every step, not just the final answer
-- ✅ You want to **track cost and tokens** across multi-step operations
 - ✅ You want operations that are **predictable and repeatable**, not one-shot prompts
 - ✅ You prefer a **visual editor** over writing orchestration code
 
@@ -104,7 +103,7 @@ Workflows live with your project. Different repos, different pipelines, same app
 | ❌ One Claude agent doing everything — loses context on complex tasks | ✅ Each skill node does one thing well. The pipeline does everything. |
 | ❌ Copy-pasting outputs between conversations manually | ✅ Outputs flow automatically from node to node |
 | ❌ No idea if the output is good until you read the whole thing | ✅ Evaluator nodes score output and retry if it fails |
-| ❌ Running the same multi-step process by hand, every time | ✅ Build once, run forever. Same pipeline, same quality. |
+| ❌ Running the same multi-step process by hand, every time | ✅ Build once, rerun on any input. Same pipeline, same quality. |
 | ❌ No visibility into token usage or cost across steps | ✅ Tokens, cost, and duration tracked per node and per run |
 | ❌ Can't parallelize — one prompt at a time | ✅ Splitter nodes fan out into parallel branches |
 
@@ -126,7 +125,7 @@ Workflows live with your project. Different repos, different pipelines, same app
 Download the latest release from [c8c.app](https://c8c.app) or build from source:
 
 ```bash
-git clone https://github.com/c8c-ai/c8c.git
+git clone https://github.com/bluzir/c8c.git
 cd c8c
 npm install
 npm run dev
@@ -205,9 +204,8 @@ We welcome contributions. See the [contributing guide](CONTRIBUTING.md) for deta
 
 ## Community
 
-- [Discord](https://discord.gg/TODO) — Join the community
-- [GitHub Issues](https://github.com/c8c-ai/c8c/issues) — Bugs and feature requests
-- [GitHub Discussions](https://github.com/c8c-ai/c8c/discussions) — Ideas and RFCs
+- [GitHub Issues](https://github.com/bluzir/c8c/issues) — Bugs and feature requests
+- [GitHub Discussions](https://github.com/bluzir/c8c/discussions) — Ideas and RFCs
 
 <br/>
 

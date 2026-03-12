@@ -20,8 +20,7 @@ docs/
 
 # Temp/scratch files
 *.chat.json
-ajdtd.json.chain
-new-workflow.chat.json
+*.chain
 
 # OS
 Thumbs.db
