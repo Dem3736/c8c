@@ -72,9 +72,9 @@ describe("scaffoldMissingSkills", () => {
     const content = await readFile(existingPath, "utf-8")
     expect(content).toContain("Existing content")
 
-    // skillPaths should not be set
+    // skillPaths should still be set even though file wasn't recreated
     const config = result.nodes[0].config as SkillNodeConfig
-    expect(config.skillPaths).toBeUndefined()
+    expect(config.skillPaths).toContain(existingPath)
   })
 
   it("skips skills that are in availableSkills", async () => {

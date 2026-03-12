@@ -2,6 +2,8 @@ import { ipcMain, BrowserWindow, shell, type IpcMainInvokeEvent } from "electron
 import { runWorkflow, rerunFromNode, cancelWorkflowRun, resolveApproval } from "../lib/workflow-runner"
 import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch } from "../lib/batch-runner"
+import { scaffoldMissingSkills } from "../lib/skill-scaffold"
+import { scanAllSkills } from "../lib/skill-scanner"
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type { Workflow, WorkflowInput, RunResult } from "@shared/types"
@@ -55,6 +57,20 @@ export function registerExecutorHandlers() {
         return { error: errors.join("; ") }
       }
 
+      // Auto-scaffold missing skills before run
+      if (projectPath) {
+        try {
+          const availableSkills = await scanAllSkills(projectPath)
+          workflow = await scaffoldMissingSkills(
+            workflow,
+            availableSkills.map(s => ({ name: s.name, category: s.category })),
+            projectPath,
+          )
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
+        }
+      }
+
       const runId = `run-${++runCounter}-${Date.now()}`
 
       activeWindowRuns.set(window.id, runId)
@@ -101,8 +117,28 @@ export function registerExecutorHandlers() {
       if (!window) return null
       if (activeWindowRuns.has(window.id)) return null
 
+      const valErrors = validateWorkflow(workflow)
+      if (valErrors.length > 0) {
+        return { error: valErrors.join("; ") }
+      }
+
       const runId = `rerun-${++runCounter}-${Date.now()}`
       const safeWorkspace = await assertRunWorkspacePath(workspace)
+
+      // Auto-scaffold missing skills before rerun
+      if (projectPath) {
+        try {
+          const availableSkills = await scanAllSkills(projectPath)
+          workflow = await scaffoldMissingSkills(
+            workflow,
+            availableSkills.map(s => ({ name: s.name, category: s.category })),
+            projectPath,
+          )
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
+        }
+      }
+
       activeWindowRuns.set(window.id, runId)
 
       rerunFromNode(
@@ -198,20 +234,33 @@ export function registerExecutorHandlers() {
       if (!window) return null
       if (activeWindowRuns.has(window.id)) return null
 
+      const valErrors = validateWorkflow(workflow)
+      if (valErrors.length > 0) {
+        return { error: valErrors.join("; ") }
+      }
+
+      // Auto-scaffold missing skills before batch run
+      if (projectPath) {
+        try {
+          const availableSkills = await scanAllSkills(projectPath)
+          workflow = await scaffoldMissingSkills(
+            workflow,
+            availableSkills.map(s => ({ name: s.name, category: s.category })),
+            projectPath,
+          )
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
+        }
+      }
+
       const batchId = `batch-${++batchCounter}-${Date.now()}`
       activeWindowRuns.set(window.id, `batch:${batchId}`)
 
-      queueMicrotask(() => {
-        runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath).catch((err) => {
-          if (!window.isDestroyed()) {
-            window.webContents.send("batch:event", {
-              type: "batch-error",
-              batchId,
-              error: String(err),
-            })
-          }
-        }).finally(() => activeWindowRuns.delete(window.id))
-      })
+      runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
+        .catch((err) => {
+          console.error("[executor] run-batch failed:", err)
+        })
+        .finally(() => activeWindowRuns.delete(window.id))
 
       return batchId
     },

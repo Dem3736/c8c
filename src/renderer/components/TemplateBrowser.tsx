@@ -294,7 +294,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
           </div>
         ) : (
           <CanvasDialogFooter className="bg-surface-1/60">
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" onClick={closeBrowser}>
               Cancel
             </Button>
             <Button

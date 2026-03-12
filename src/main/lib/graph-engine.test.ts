@@ -294,6 +294,32 @@ describe("validateWorkflow", () => {
     const errors = validateWorkflow(LOOP)
     expect(errors).toEqual([])
   })
+
+  it("detects skill node with empty skillRef", () => {
+    const broken: Workflow = {
+      ...LINEAR,
+      nodes: [
+        LINEAR.nodes[0],
+        { id: "skill-1", type: "skill", position: { x: 300, y: 0 }, config: { skillRef: "", prompt: "Do it" } },
+        LINEAR.nodes[2],
+      ],
+    }
+    const errors = validateWorkflow(broken)
+    expect(errors.some((e) => e.includes("skillRef"))).toBe(true)
+  })
+
+  it("detects skill node with whitespace-only skillRef", () => {
+    const broken: Workflow = {
+      ...LINEAR,
+      nodes: [
+        LINEAR.nodes[0],
+        { id: "skill-1", type: "skill", position: { x: 300, y: 0 }, config: { skillRef: "  ", prompt: "Do it" } },
+        LINEAR.nodes[2],
+      ],
+    }
+    const errors = validateWorkflow(broken)
+    expect(errors.some((e) => e.includes("skillRef"))).toBe(true)
+  })
 })
 
 // Fan-out workflow: input → splitter → [skill-a, skill-b, skill-c] → merger → output

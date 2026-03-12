@@ -18,6 +18,7 @@ import type {
   DesktopRuntimeInfo,
   DesktopPlatform,
 } from "@shared/types"
+import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
 import type { WebSearchBackend } from "./web-search-backend"
 
 // Re-export shared types for convenience
@@ -179,6 +180,10 @@ export const webSearchBackendAtom = atomWithStorage<WebSearchBackend>(
   "c8c:web-search-backend",
   "builtin",
 )
+
+// CLI status
+export const cliStatusAtom = atom<ClaudeCodeSubscriptionStatus | null>(null)
+export const cliStatusBannerDismissedAtom = atom(false)
 
 // View mode
 export type ViewMode = "list" | "canvas" | "settings"

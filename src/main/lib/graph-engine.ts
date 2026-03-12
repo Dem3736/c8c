@@ -1,4 +1,4 @@
-import type { Workflow, WorkflowNode, WorkflowEdge, NodeState } from "@shared/types"
+import type { Workflow, WorkflowNode, WorkflowEdge, NodeState, SkillNodeConfig } from "@shared/types"
 
 export function findNodeById(workflow: Workflow, nodeId: string): WorkflowNode | undefined {
   return workflow.nodes.find((n) => n.id === nodeId)
@@ -119,6 +119,16 @@ export function validateWorkflow(workflow: Workflow): string[] {
       errors.push(`Duplicate node ID "${node.id}"`)
     }
     seen.add(node.id)
+  }
+
+  // Skill nodes must have a skillRef
+  for (const node of workflow.nodes) {
+    if (node.type === "skill") {
+      const config = node.config as SkillNodeConfig
+      if (!config.skillRef || !config.skillRef.trim()) {
+        errors.push(`Skill node "${node.id}" has no skillRef — select a skill before running`)
+      }
+    }
   }
 
   // Cycle detection via topological sort (ignoring evaluator fail edges)

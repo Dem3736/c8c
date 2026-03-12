@@ -10,7 +10,8 @@ import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
 import { SettingsPage } from "@/components/SettingsPage"
 import { AppStatusBar } from "@/components/AppStatusBar"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
-import { mainViewAtom, desktopRuntimeAtom, chatPanelOpenAtom, workflowDirtyAtom } from "@/lib/store"
+import { CliBanner } from "@/components/CliBanner"
+import { mainViewAtom, desktopRuntimeAtom, chatPanelOpenAtom, workflowDirtyAtom, cliStatusAtom } from "@/lib/store"
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
@@ -26,6 +27,7 @@ const AppShell = memo(function AppShell() {
   const [mainView, setMainView] = useAtom(mainViewAtom)
   const [, setChatPanelOpen] = useAtom(chatPanelOpenAtom)
   const [desktopRuntime, setDesktopRuntime] = useAtom(desktopRuntimeAtom)
+  const [, setCliStatus] = useAtom(cliStatusAtom)
   const workflowDirty = useAtomValue(workflowDirtyAtom)
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
 
@@ -105,6 +107,10 @@ const AppShell = memo(function AppShell() {
   }, [desktopRuntime.primaryModifierKey, mainView, setChatPanelOpen, setMainView])
 
   useEffect(() => {
+    window.api.getClaudeCodeSubscriptionStatus().then(setCliStatus).catch(() => {})
+  }, [setCliStatus])
+
+  useEffect(() => {
     if (!workflowDirty) return
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault()
@@ -129,6 +135,7 @@ const AppShell = memo(function AppShell() {
       </SectionErrorBoundary>
 
       <div className="min-w-0 min-h-0 flex-1 flex flex-col">
+        <CliBanner />
         {/* Main area — workflow editor */}
         <SectionErrorBoundary sectionName="workflow panel">
           <MainView />

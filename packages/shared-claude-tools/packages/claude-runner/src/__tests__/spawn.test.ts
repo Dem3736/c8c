@@ -12,6 +12,18 @@ describe('spawnClaude', () => {
     expect(result.durationMs).toBe(0);
   });
 
+  it('calls onStderr with diagnostic when workdir missing', async () => {
+    const stderrChunks: Buffer[] = [];
+    await spawnClaude({
+      workdir: '/nonexistent/path',
+      prompt: 'hi',
+      onStderr: (data) => stderrChunks.push(data),
+    });
+    const stderr = Buffer.concat(stderrChunks).toString();
+    expect(stderr).toContain('Working directory does not exist');
+    expect(stderr).toContain('/nonexistent/path');
+  });
+
   it('returns failure for non-existent claude binary', async () => {
     const result = await spawnClaude({
       claudePath: '/nonexistent/bin/claude',

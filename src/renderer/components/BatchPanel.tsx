@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useAtom } from "jotai"
 import {
   batchDialogOpenAtom,
@@ -98,6 +98,7 @@ export function BatchPanel() {
   const [inputText, setInputText] = useState("")
   const [concurrency, setConcurrency] = useState(2)
   const [stopOnFailure, setStopOnFailure] = useState(false)
+  const prevOpenRef = useRef(open)
 
   const inputs = inputText
     .split("\n")
@@ -140,6 +141,20 @@ export function BatchPanel() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-")
     downloadText(`batch-results-${stamp}.csv`, toBatchCsv(batchItems), "text/csv;charset=utf-8")
   }, [batchItems])
+
+  useEffect(() => {
+    if (prevOpenRef.current === open) return
+    const openedNow = !prevOpenRef.current && open
+    prevOpenRef.current = open
+    if (!openedNow) return
+    if (batchStatus === "running") return
+
+    setBatchStatus("idle")
+    setBatchError(null)
+    setBatchItems([])
+    setBatchSummary(null)
+    setBatchProgress({ completed: 0, total: 0, running: 0 })
+  }, [open, batchStatus, setBatchStatus, setBatchError, setBatchItems, setBatchSummary, setBatchProgress])
 
   return (
     <Dialog

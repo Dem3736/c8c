@@ -39,6 +39,9 @@ jobs:
           C8C_POSTHOG_HOST: ${{ secrets.C8C_POSTHOG_HOST }}
           C8C_POSTHOG_KEY: ${{ secrets.C8C_POSTHOG_KEY }}
         run: |
+          if [ -z "$C8C_POSTHOG_HOST" ] || [ -z "$C8C_POSTHOG_KEY" ]; then
+            echo "::warning::C8C_POSTHOG_HOST or C8C_POSTHOG_KEY is empty — telemetry will be disabled in this build"
+          fi
           npm run build:shared
           npm run build
 

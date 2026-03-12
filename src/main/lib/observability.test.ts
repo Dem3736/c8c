@@ -8,7 +8,11 @@ describe("classifyError", () => {
   })
 
   it("classifies exit code errors as tool", () => {
-    expect(classifyError(new Error("Skill node failed with exit code 1"), false)).toBe("tool")
+    expect(classifyError(new Error("Skill node failed: exit code 1"), false)).toBe("tool")
+  })
+
+  it("classifies null exit code (CLI not found) as tool", () => {
+    expect(classifyError(new Error("Skill node failed: Could not start Claude CLI — check that 'claude' is in your PATH and accessible"), false)).toBe("tool")
   })
 
   it("classifies ENOENT as tool", () => {

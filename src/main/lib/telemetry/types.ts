@@ -9,6 +9,10 @@ export type TelemetryEventName =
   | "workflow_run_started"
   | "workflow_run_finished"
   | "workflow_node_finished"
+  | "skill_scan_completed"
+  | "skill_scaffold_completed"
+  | "skill_template_created"
+  | "library_action"
   | "update_check_started"
   | "update_check_result"
 
@@ -36,4 +40,3 @@ export interface TelemetryProviderConfig {
   posthogApiKey: string
   consent: boolean
 }
-

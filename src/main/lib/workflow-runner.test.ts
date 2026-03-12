@@ -273,6 +273,25 @@ describe("workflow-runner evaluator loop", () => {
     expect(runDone.status).toBe("failed")
   })
 
+  it("reports descriptive error when CLI spawn fails (exitCode null)", async () => {
+    mockedSpawn.mockImplementation(async () => {
+      return { success: false, exitCode: null, signal: null, killed: false, aborted: false, durationMs: 0 }
+    })
+
+    const { runWorkflow } = await import("./workflow-runner")
+    await runWorkflow("run-spawn-fail", SIMPLE_SKILL_WORKFLOW, { type: "text", value: "input" }, mockWindow)
+
+    const skillError = events.find(
+      (e) => e.type === "node-error" && (e as any).nodeId === "skill-1",
+    ) as any
+    expect(skillError).toBeDefined()
+    expect(skillError.error).toContain("Could not start Claude CLI")
+
+    const runDone = events.find((e) => e.type === "run-done") as any
+    expect(runDone).toBeDefined()
+    expect(runDone.status).toBe("failed")
+  })
+
   it("uses mirrored outputs/content-*.md when primary content file is unchanged", async () => {
     mockedReadFile.mockImplementation(async (path: any) => {
       const p = String(path)

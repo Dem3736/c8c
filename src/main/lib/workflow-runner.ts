@@ -812,7 +812,10 @@ export async function runWorkflow(
             updateSkillMetricsAndMeta()
 
             if (!result.success && !controller.signal.aborted) {
-              throw new Error(`Skill node failed with exit code ${result.exitCode}`)
+              const detail = result.exitCode === null
+                ? "Could not start Claude CLI — check that 'claude' is in your PATH and accessible"
+                : `exit code ${result.exitCode}`
+              throw new Error(`Skill node failed: ${detail}`)
             }
 
             output = await buildSkillNodeOutput(
@@ -1833,7 +1836,10 @@ export async function rerunFromNode(
             updateSkillMetricsAndMeta()
 
             if (!result.success && !controller.signal.aborted) {
-              throw new Error(`Skill node failed with exit code ${result.exitCode}`)
+              const detail = result.exitCode === null
+                ? "Could not start Claude CLI — check that 'claude' is in your PATH and accessible"
+                : `exit code ${result.exitCode}`
+              throw new Error(`Skill node failed: ${detail}`)
             }
 
             output = await buildSkillNodeOutput(

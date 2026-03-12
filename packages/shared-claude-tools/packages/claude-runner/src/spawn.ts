@@ -18,6 +18,7 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
 
   if (!existsSync(options.workdir)) {
+    options.onStderr?.(Buffer.from(`Working directory does not exist: ${options.workdir}\n`));
     return Promise.resolve({
       success: false,
       exitCode: null,

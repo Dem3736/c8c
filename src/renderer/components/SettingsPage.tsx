@@ -383,6 +383,27 @@ export function SettingsPage() {
               {subscriptionStatus.error}
             </p>
           ) : null}
+
+          {subscriptionStatus && !subscriptionStatus.cliInstalled && (
+            <div className="rounded-lg border border-status-warning/25 bg-status-warning/10 px-3 py-2 text-body-sm space-y-1">
+              <p className="font-medium text-status-warning">Claude CLI is required to run workflows</p>
+              <p className="text-muted-foreground">
+                Install via: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">npm install -g @anthropic-ai/claude-code</code>
+              </p>
+              <p className="text-muted-foreground">
+                Then authenticate: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">claude login</code>
+              </p>
+            </div>
+          )}
+
+          {subscriptionStatus?.cliInstalled && !subscriptionStatus.loggedIn && (
+            <div className="rounded-lg border border-status-warning/25 bg-status-warning/10 px-3 py-2 text-body-sm space-y-1">
+              <p className="font-medium text-status-warning">Not authenticated</p>
+              <p className="text-muted-foreground">
+                Run <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">claude login</code> in your terminal, then click Refresh above.
+              </p>
+            </div>
+          )}
         </article>
       </section>
 

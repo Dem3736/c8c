@@ -61,12 +61,19 @@ export async function scaffoldMissingSkills(
       throw new Error("Resolved skill path is outside project skills directory")
     }
 
-    // Skip if file already exists
+    // Skip file creation if already exists, but still set skillPaths
     try {
       await stat(skillPath)
+      updatedNodes[i] = {
+        ...node,
+        config: {
+          ...config,
+          skillPaths: [...(config.skillPaths || []), skillPath],
+        },
+      }
       continue
     } catch {
-      // File doesn't exist — create it
+      // File doesn't exist — create it below
     }
 
     const description = config.prompt

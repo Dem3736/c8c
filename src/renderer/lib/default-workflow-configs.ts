@@ -22,7 +22,7 @@ export const DEFAULT_FANOUT_PATTERN: {
     maxBranches: 8,
   },
   worker: {
-    skillRef: "parallel-worker",
+    skillRef: "",
     prompt: "Process this subtask",
   },
   merger: {

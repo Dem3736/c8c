@@ -62,9 +62,11 @@ function workflowSummary(template: WorkflowTemplate) {
 function TemplateCard({
   template,
   onUse,
+  disabled,
 }: {
   template: WorkflowTemplate
   onUse: (template: WorkflowTemplate) => void
+  disabled?: boolean
 }) {
   const Icon = CATEGORY_ICONS[template.category] ?? Layers
   const extraTagCount = template.tags.length - 2
@@ -104,7 +106,7 @@ function TemplateCard({
       </div>
 
       <div className="mt-auto">
-        <Button variant="outline" size="sm" onClick={() => onUse(template)}>
+        <Button variant="outline" size="sm" onClick={() => onUse(template)} disabled={disabled}>
           Use template
         </Button>
       </div>
@@ -286,6 +288,7 @@ export function WorkflowsTemplatesPage() {
               size="sm"
               className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
               onClick={() => void createWorkflow()}
+              disabled={!selectedProject}
             >
               <Plus size={14} />
               New workflow
@@ -332,6 +335,7 @@ export function WorkflowsTemplatesPage() {
                 key={template.id}
                 template={template}
                 onUse={confirmApplyTemplate}
+                disabled={!selectedProject}
               />
             ))}
           </div>

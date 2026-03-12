@@ -416,6 +416,7 @@ export function SkillsPage() {
               variant="default"
               className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
               onClick={() => void createSkill()}
+              disabled={!selectedProject}
             >
               <Plus size={14} />
               New skill

@@ -156,8 +156,12 @@ export function RunCompare({
   runA: RunResult
   runB: RunResult
 }) {
-  const costDiff = (runB.totalCost || 0) - (runA.totalCost || 0)
-  const durationDiff = (runB.durationMs || 0) - (runA.durationMs || 0)
+  const costA = typeof runA.totalCost === "number" ? runA.totalCost : null
+  const costB = typeof runB.totalCost === "number" ? runB.totalCost : null
+  const durationA = typeof runA.durationMs === "number" ? runA.durationMs : null
+  const durationB = typeof runB.durationMs === "number" ? runB.durationMs : null
+  const costDiff = costA != null && costB != null ? costB - costA : null
+  const durationDiff = durationA != null && durationB != null ? durationB - durationA : null
 
   // Compare eval scores
   const allEvalIds = new Set([
@@ -174,31 +178,31 @@ export function RunCompare({
       </div>
       <CompareRow
         label="Cost"
-        valueA={`$${(runA.totalCost || 0).toFixed(4)}`}
-        valueB={`$${(runB.totalCost || 0).toFixed(4)}`}
+        valueA={costA != null ? `$${costA.toFixed(4)}` : "n/a"}
+        valueB={costB != null ? `$${costB.toFixed(4)}` : "n/a"}
         diff={costDiff}
         formatDiff={(d) => `${d > 0 ? "+" : ""}$${d.toFixed(4)}`}
         betterWhenLower
       />
       <CompareRow
         label="Duration"
-        valueA={`${((runA.durationMs || 0) / 1000).toFixed(1)}s`}
-        valueB={`${((runB.durationMs || 0) / 1000).toFixed(1)}s`}
+        valueA={durationA != null ? `${(durationA / 1000).toFixed(1)}s` : "n/a"}
+        valueB={durationB != null ? `${(durationB / 1000).toFixed(1)}s` : "n/a"}
         diff={durationDiff}
         formatDiff={(d) => `${d > 0 ? "+" : ""}${(d / 1000).toFixed(1)}s`}
         betterWhenLower
       />
       {[...allEvalIds].map((id) => {
-        const scoreA = runA.evalScores?.[id] ?? 0
-        const scoreB = runB.evalScores?.[id] ?? 0
+        const scoreA = typeof runA.evalScores?.[id] === "number" ? runA.evalScores[id] : null
+        const scoreB = typeof runB.evalScores?.[id] === "number" ? runB.evalScores[id] : null
         return (
           <CompareRow
             key={id}
             label={`Score: ${id}`}
             labelTitle={id}
-            valueA={`${scoreA}/10`}
-            valueB={`${scoreB}/10`}
-            diff={scoreB - scoreA}
+            valueA={scoreA != null ? `${scoreA}/10` : "n/a"}
+            valueB={scoreB != null ? `${scoreB}/10` : "n/a"}
+            diff={scoreA != null && scoreB != null ? scoreB - scoreA : null}
             formatDiff={(d) => `${d > 0 ? "+" : ""}${d}`}
             betterWhenLower={false}
           />
@@ -221,12 +225,12 @@ function CompareRow({
   labelTitle?: string
   valueA: string
   valueB: string
-  diff: number
+  diff: number | null
   formatDiff: (d: number) => string
   betterWhenLower: boolean
 }) {
-  const improved = betterWhenLower ? diff < 0 : diff > 0
-  const worsened = betterWhenLower ? diff > 0 : diff < 0
+  const improved = diff != null && (betterWhenLower ? diff < 0 : diff > 0)
+  const worsened = diff != null && (betterWhenLower ? diff > 0 : diff < 0)
 
   return (
     <div className="grid grid-cols-3 gap-1 ui-meta-text items-center">
@@ -234,7 +238,7 @@ function CompareRow({
       <div className="text-center font-mono">{valueA}</div>
       <div className="text-center font-mono flex items-center justify-center gap-1">
         {valueB}
-        {diff !== 0 && (
+        {diff != null && diff !== 0 && (
           <span
             className={cn(
               "ui-meta-text",

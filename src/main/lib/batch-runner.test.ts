@@ -202,4 +202,45 @@ describe("batch-runner", () => {
     expect(errorEvent).toBeDefined()
     expect(mockRunWorkflow).not.toHaveBeenCalled()
   })
+
+  it("cancels in-flight runs via cancelBatch", async () => {
+    let resolveRun: ((value: {
+      status: "cancelled"
+      evalScores: Record<string, number>
+      totalCost: number
+      durationMs: number
+    }) => void) | null = null
+    mockRunWorkflow.mockImplementation(() => new Promise((resolve) => {
+      resolveRun = resolve as typeof resolveRun
+    }))
+    mockCancelWorkflowRun.mockImplementation(() => {
+      resolveRun?.({
+        status: "cancelled",
+        evalScores: {},
+        totalCost: 0,
+        durationMs: 10,
+      })
+    })
+
+    const { runBatch, cancelBatch } = await import("./batch-runner")
+    const inputs: WorkflowInput[] = [
+      { type: "text", value: "A" },
+      { type: "text", value: "B" },
+    ]
+
+    const batchPromise = runBatch("batch-cancel", TEST_WORKFLOW, inputs, 1, false, mockWindow)
+    for (let i = 0; i < 10 && mockRunWorkflow.mock.calls.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    expect(cancelBatch("batch-cancel")).toBe(true)
+    await batchPromise
+
+    expect(mockCancelWorkflowRun).toHaveBeenCalled()
+    const doneEvent = events.find((e) => e.type === "batch-done")
+    expect(doneEvent).toBeDefined()
+    if (doneEvent?.type === "batch-done") {
+      expect(doneEvent.summary.total).toBe(2)
+      expect(doneEvent.summary.cancelled).toBeGreaterThan(0)
+    }
+  })
 })
