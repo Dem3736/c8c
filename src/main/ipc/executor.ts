@@ -4,6 +4,8 @@ import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { scanAllSkills } from "../lib/skill-scanner"
+import { trackTelemetryEvent } from "../lib/telemetry/service"
+import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type { Workflow, WorkflowInput, RunResult } from "@shared/types"
@@ -27,6 +29,50 @@ async function assertRunWorkspacePath(workspace: string): Promise<string> {
 async function assertReportPath(reportPath: string): Promise<string> {
   const reportRoots = await allowedReportRoots()
   return assertWithinRoots(resolve(reportPath), reportRoots, "Report path")
+}
+
+async function scaffoldWorkflowWithTelemetry(
+  workflow: Workflow,
+  projectPath: string,
+  source: "executor_run" | "executor_rerun" | "executor_batch",
+): Promise<Workflow> {
+  const startedAt = Date.now()
+  const availableSkills = await scanAllSkills(projectPath)
+  const availableRefs = availableSkills.map((skill) => ({
+    name: skill.name,
+    category: skill.category,
+  }))
+  const before = summarizeMissingWorkflowSkillRefs(workflow, availableRefs)
+
+  try {
+    const scaffoldedWorkflow = await scaffoldMissingSkills(workflow, availableRefs, projectPath)
+    const after = summarizeMissingWorkflowSkillRefs(scaffoldedWorkflow, availableRefs)
+    void trackTelemetryEvent("skill_scaffold_completed", {
+      source,
+      status: "success",
+      duration_ms: Date.now() - startedAt,
+      skill_nodes_total: before.skillNodesTotal,
+      available_skills_total: before.availableSkillsTotal,
+      missing_refs_total: before.missingRefsTotal,
+      missing_refs_unique: before.missingRefsUnique,
+      missing_refs: before.missingRefsList,
+      remaining_missing_refs_total: after.missingRefsTotal,
+    })
+    return scaffoldedWorkflow
+  } catch (error) {
+    void trackTelemetryEvent("skill_scaffold_completed", {
+      source,
+      status: "failed",
+      duration_ms: Date.now() - startedAt,
+      skill_nodes_total: before.skillNodesTotal,
+      available_skills_total: before.availableSkillsTotal,
+      missing_refs_total: before.missingRefsTotal,
+      missing_refs_unique: before.missingRefsUnique,
+      missing_refs: before.missingRefsList,
+      error_kind: "scaffold_failed",
+    })
+    throw error
+  }
 }
 
 export function registerExecutorHandlers() {
@@ -60,12 +106,7 @@ export function registerExecutorHandlers() {
       // Auto-scaffold missing skills before run
       if (projectPath) {
         try {
-          const availableSkills = await scanAllSkills(projectPath)
-          workflow = await scaffoldMissingSkills(
-            workflow,
-            availableSkills.map(s => ({ name: s.name, category: s.category })),
-            projectPath,
-          )
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
         } catch (err) {
           return { error: `Skill scaffolding failed: ${String(err)}` }
         }
@@ -128,12 +169,7 @@ export function registerExecutorHandlers() {
       // Auto-scaffold missing skills before rerun
       if (projectPath) {
         try {
-          const availableSkills = await scanAllSkills(projectPath)
-          workflow = await scaffoldMissingSkills(
-            workflow,
-            availableSkills.map(s => ({ name: s.name, category: s.category })),
-            projectPath,
-          )
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
         } catch (err) {
           return { error: `Skill scaffolding failed: ${String(err)}` }
         }
@@ -242,12 +278,7 @@ export function registerExecutorHandlers() {
       // Auto-scaffold missing skills before batch run
       if (projectPath) {
         try {
-          const availableSkills = await scanAllSkills(projectPath)
-          workflow = await scaffoldMissingSkills(
-            workflow,
-            availableSkills.map(s => ({ name: s.name, category: s.category })),
-            projectPath,
-          )
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
         } catch (err) {
           return { error: `Skill scaffolding failed: ${String(err)}` }
         }

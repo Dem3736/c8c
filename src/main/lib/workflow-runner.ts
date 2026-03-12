@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join, dirname, basename } from "node:path"
 import { BrowserWindow } from "electron"
 import { trackTelemetryEvent } from "./telemetry/service"
+import { summarizeWorkflowSkillCoverage, workflowFingerprint } from "./telemetry/workflow-usage"
 import { LogParser } from "./log-parser"
 import { classifyError, estimateCost, collectMetrics, buildNodeMeta } from "./observability"
 import {
@@ -107,6 +108,90 @@ function computeRetryDelayMs(policy: ResolvedRetryPolicy, retriesUsed: number): 
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve()
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function workflowNodeTypeCounts(workflow: Workflow): Record<string, number> {
+  let skillNodes = 0
+  let evaluatorNodes = 0
+  let splitterNodes = 0
+  let mergerNodes = 0
+  let approvalNodes = 0
+
+  for (const node of workflow.nodes) {
+    if (node.type === "skill") skillNodes += 1
+    if (node.type === "evaluator") evaluatorNodes += 1
+    if (node.type === "splitter") splitterNodes += 1
+    if (node.type === "merger") mergerNodes += 1
+    if (node.type === "approval") approvalNodes += 1
+  }
+
+  return {
+    nodes_skill: skillNodes,
+    nodes_evaluator: evaluatorNodes,
+    nodes_splitter: splitterNodes,
+    nodes_merger: mergerNodes,
+    nodes_approval: approvalNodes,
+  }
+}
+
+function workflowRunStartTelemetry(
+  workflow: Workflow,
+  runId: string,
+  mode: "run" | "rerun",
+): Record<string, string | number | boolean | null> {
+  const skillCoverage = summarizeWorkflowSkillCoverage(workflow)
+  return {
+    workflow_id: workflow.id ?? runId,
+    workflow_fingerprint: workflowFingerprint(workflow),
+    workflow_version: workflow.version,
+    run_mode: mode,
+    nodes_total: workflow.nodes.length,
+    ...workflowNodeTypeCounts(workflow),
+    skill_refs_total: skillCoverage.skillRefsTotal,
+    skill_refs_unique: skillCoverage.skillRefsUnique,
+    skill_refs: skillCoverage.skillRefsList,
+    evaluator_skill_refs_total: skillCoverage.evaluatorSkillRefsTotal,
+    evaluator_skill_refs_unique: skillCoverage.evaluatorSkillRefsUnique,
+    evaluator_skill_refs: skillCoverage.evaluatorSkillRefsList,
+  }
+}
+
+function incomingEdgePriority(type: WorkflowEdge["type"]): number {
+  if (type === "fail") return 0
+  if (type === "pass") return 1
+  return 2
+}
+
+function selectIncomingContent(
+  incomingEdges: WorkflowEdge[],
+  nodeStates: Record<string, NodeState>,
+  fallback: string,
+): string {
+  const candidates = incomingEdges.flatMap((edge) => {
+    const sourceState = nodeStates[edge.source]
+    const content = sourceState?.output?.content
+    if (typeof content !== "string" || content.length === 0) return []
+    return [{
+      edge,
+      content,
+      completedAt: sourceState.completedAt ?? 0,
+    }]
+  })
+
+  if (candidates.length === 0) return fallback
+
+  candidates.sort((a, b) => {
+    if (a.completedAt !== b.completedAt) {
+      return b.completedAt - a.completedAt
+    }
+    const typeDiff = incomingEdgePriority(a.edge.type) - incomingEdgePriority(b.edge.type)
+    if (typeDiff !== 0) return typeDiff
+    const sourceDiff = a.edge.source.localeCompare(b.edge.source)
+    if (sourceDiff !== 0) return sourceDiff
+    return a.edge.id.localeCompare(b.edge.id)
+  })
+
+  return candidates[0].content
 }
 
 function buildContinueOutput(
@@ -587,10 +672,7 @@ export async function runWorkflow(
     "utf-8",
   )
 
-  void trackTelemetryEvent("workflow_run_started", {
-    workflow_id: workflow.id ?? runId,
-    nodes_total: workflow.nodes.length,
-  })
+  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "run"))
 
   const inputContent = sanitizedInputValue
 
@@ -657,13 +739,7 @@ export async function runWorkflow(
       try {
         // Gather input from completed upstream nodes
         const incoming = runtimeWorkflow.edges.filter((e) => e.target === node.id)
-        for (const edge of incoming) {
-          const sourceState = nodeStates[edge.source]
-          if (sourceState?.output?.content) {
-            incomingContent = sourceState.output.content
-            break
-          }
-        }
+        incomingContent = selectIncomingContent(incoming, nodeStates, inputContent)
 
         let output: NodeInput
 
@@ -1377,7 +1453,7 @@ export async function runWorkflow(
           nodeStates[node.id].status = "queued"
         }
 
-        const promise = processNode(node.id).then(() => {
+        const promise = processNode(node.id).finally(() => {
           runningPromises.delete(node.id)
         })
         runningPromises.set(node.id, promise)
@@ -1516,6 +1592,7 @@ export async function runWorkflow(
 
     const nodesFailed = Object.values(nodeStates).filter((s) => s.status === "failed").length
     void trackTelemetryEvent("workflow_run_finished", {
+      run_mode: "run",
       status: finalStatus,
       duration_ms: durationMs,
       nodes_total: runtimeWorkflow.nodes.length,
@@ -1641,10 +1718,7 @@ export async function rerunFromNode(
   const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
   const rerunStartedAt = Date.now()
 
-  void trackTelemetryEvent("workflow_run_started", {
-    workflow_id: workflow.id ?? runId,
-    nodes_total: workflow.nodes.length,
-  })
+  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "rerun"))
 
   try {
     const maxParallel = workflow.defaults?.maxParallel || 8
@@ -1690,15 +1764,17 @@ export async function rerunFromNode(
           const budgetCost = workflow.defaults?.budget_cost_usd
           const budgetTokens = workflow.defaults?.budget_tokens
           if (budgetCost != null && getAccumulatedCost() >= budgetCost) {
-            state.status = "failed"
+            state.status = "skipped"
             state.completedAt = Date.now()
+            state.errorKind = "policy"
             state.error = `Budget exceeded: $${getAccumulatedCost().toFixed(4)} >= $${budgetCost}`
             send({ type: "node-error", runId, nodeId: node.id, error: state.error })
             return
           }
           if (budgetTokens != null && getAccumulatedTokens() >= budgetTokens) {
-            state.status = "failed"
+            state.status = "skipped"
             state.completedAt = Date.now()
+            state.errorKind = "policy"
             state.error = `Token budget exceeded: ${getAccumulatedTokens()} >= ${budgetTokens}`
             send({ type: "node-error", runId, nodeId: node.id, error: state.error })
             return
@@ -1706,13 +1782,7 @@ export async function rerunFromNode(
         }
 
         const incoming = runtimeWorkflow.edges.filter((e) => e.target === node.id)
-        for (const edge of incoming) {
-          const sourceState = nodeStates[edge.source]
-          if (sourceState?.output?.content) {
-            incomingContent = sourceState.output.content
-            break
-          }
-        }
+        incomingContent = selectIncomingContent(incoming, nodeStates, inputContent)
 
         let output: NodeInput
 
@@ -2336,7 +2406,7 @@ export async function rerunFromNode(
         if (nodeStates[node.id]?.status === "pending") {
           nodeStates[node.id].status = "queued"
         }
-        const promise = processNode(node.id).then(() => { runningPromises.delete(node.id) })
+        const promise = processNode(node.id).finally(() => { runningPromises.delete(node.id) })
         runningPromises.set(node.id, promise)
       }
 
@@ -2354,7 +2424,7 @@ export async function rerunFromNode(
         || state.status === "waiting_approval"
       ) {
         state.status = "skipped"
-        send({ type: "node-done", runId, nodeId, output: { content: "", metadata: { source: nodeId } } })
+        send({ type: "node-done", runId, nodeId, output: { content: "", metadata: { source: nodeId, skipped: true } } })
       }
     }
 
@@ -2426,6 +2496,7 @@ export async function rerunFromNode(
 
     const nodesFailed = Object.values(nodeStates).filter((s) => s.status === "failed").length
     void trackTelemetryEvent("workflow_run_finished", {
+      run_mode: "rerun",
       status: finalStatus,
       duration_ms: Date.now() - rerunStartedAt,
       nodes_total: runtimeWorkflow.nodes.length,

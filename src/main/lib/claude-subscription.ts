@@ -91,6 +91,8 @@ function buildClaudeStatusEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   const passthroughKeys = [
     "HOME",
+    "USER",
+    "LOGNAME",
     "USERPROFILE",
     "SHELL",
     "TMPDIR",

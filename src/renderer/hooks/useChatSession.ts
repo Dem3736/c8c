@@ -12,7 +12,31 @@ import {
   type ChatMessageDisplay,
 } from "@/lib/store"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import type { Workflow } from "@shared/types"
 import { toast } from "sonner"
+
+function isWorkflowPayload(value: unknown): value is Workflow {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as Partial<Workflow>
+  if (typeof candidate.version !== "number" || typeof candidate.name !== "string") return false
+  if (!Array.isArray(candidate.nodes) || !Array.isArray(candidate.edges)) return false
+  return (
+    candidate.nodes.every((node) => (
+      !!node
+      && typeof node.id === "string"
+      && typeof node.type === "string"
+      && !!node.config
+      && typeof node.config === "object"
+    ))
+    && candidate.edges.every((edge) => (
+      !!edge
+      && typeof edge.id === "string"
+      && typeof edge.source === "string"
+      && typeof edge.target === "string"
+      && typeof edge.type === "string"
+    ))
+  )
+}
 
 export function useChatSession() {
   const [messages, setMessages] = useAtom(chatMessagesAtom)
@@ -138,23 +162,30 @@ export function useChatSession() {
         }
 
         case "workflow-mutated": {
+          if (!isWorkflowPayload(event.workflow)) {
+            toast.error("Received an invalid workflow update from chat.")
+            break
+          }
+
+          const nextWorkflow = event.workflow
           if (!workflowRef.current) {
-            setWorkflow(event.workflow)
+            setWorkflow(nextWorkflow)
             break
           }
 
           // Push current workflow to undo stack before applying mutation.
+          const snapshot = structuredClone(workflowRef.current)
           setUndoStack((prev) => [
             ...prev.slice(-19),
-            structuredClone(workflowRef.current),
+            snapshot,
           ])
 
-          setWorkflow(event.workflow)
+          setWorkflow(nextWorkflow)
 
           const savePath = workflowPathRef.current
           if (savePath) {
-            window.api.saveWorkflow(savePath, event.workflow)
-              .then(() => setWorkflowSavedSnapshot(workflowSnapshot(event.workflow)))
+            window.api.saveWorkflow(savePath, nextWorkflow)
+              .then(() => setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow)))
               .catch((err: unknown) => console.error("[useChatSession] auto-save failed:", err))
           }
 
@@ -170,6 +201,7 @@ export function useChatSession() {
                 setUndoStack((prev) => {
                   if (prev.length === 0) return prev
                   const last = prev[prev.length - 1]
+                  if (last !== snapshot) return prev
                   setWorkflow(last)
                   return prev.slice(0, -1)
                 })
@@ -333,15 +365,21 @@ export function useChatSession() {
   }, [resetLocalSessionState, removeStreamingPlaceholder])
 
   const clearHistory = useCallback(async () => {
-    if (statusRef.current !== "idle") return
     if (!workflowPath) return
 
     const activeSessionId = sessionIdRef.current || pendingSessionRef.current
+    if (!activeSessionId && statusRef.current !== "idle") {
+      toast.error("Please wait for the chat session to initialize before clearing history.")
+      return
+    }
+
     if (activeSessionId) {
       try {
         await window.api.chatCancel(activeSessionId)
       } catch (err) {
         console.error("[useChatSession] chatCancel before clear failed:", err)
+        toast.error("Could not stop active chat before clearing history.")
+        return
       }
     }
 
@@ -354,9 +392,10 @@ export function useChatSession() {
     }
 
     resetLocalSessionState()
+    removeStreamingPlaceholder()
     setMessages([])
     setUndoStack([])
-  }, [workflowPath, resetLocalSessionState, setMessages, setUndoStack])
+  }, [workflowPath, resetLocalSessionState, removeStreamingPlaceholder, setMessages, setUndoStack])
 
   const undo = useCallback(() => {
     if (statusRef.current !== "idle") return

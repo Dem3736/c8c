@@ -2,6 +2,8 @@ import { ipcMain } from "electron"
 import { scanAllSkills } from "../lib/skill-scanner"
 import { scanAllLibraries } from "../lib/libraries"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
+import { trackTelemetryEvent } from "../lib/telemetry/service"
+import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import type { DiscoveredSkill, Workflow } from "@shared/types"
 import { mkdir, writeFile, access } from "node:fs/promises"
 import { join, resolve } from "node:path"
@@ -29,6 +31,7 @@ export function registerSkillsHandlers() {
   ipcMain.handle(
     "skills:scan",
     async (_e, projectPath: string): Promise<DiscoveredSkill[]> => {
+      const startedAt = Date.now()
       const safeProjectPath = await assertProjectPath(projectPath)
       const [projectSkills, librarySkills] = await Promise.all([
         scanAllSkills(safeProjectPath),
@@ -52,6 +55,14 @@ export function registerSkillsHandlers() {
         }
       }
 
+      void trackTelemetryEvent("skill_scan_completed", {
+        source: "manual",
+        project_skills_total: projectSkills.length,
+        library_skills_total: librarySkills.length,
+        merged_skills_total: merged.length,
+        duration_ms: Date.now() - startedAt,
+      })
+
       return merged
     },
   )
@@ -65,7 +76,38 @@ export function registerSkillsHandlers() {
       projectPath: string,
     ): Promise<Workflow> => {
       const safeProjectPath = await assertProjectPath(projectPath)
-      return scaffoldMissingSkills(workflow, availableSkills, safeProjectPath)
+      const startedAt = Date.now()
+      const before = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
+
+      try {
+        const scaffoldedWorkflow = await scaffoldMissingSkills(workflow, availableSkills, safeProjectPath)
+        const after = summarizeMissingWorkflowSkillRefs(scaffoldedWorkflow, availableSkills)
+        void trackTelemetryEvent("skill_scaffold_completed", {
+          source: "manual",
+          status: "success",
+          duration_ms: Date.now() - startedAt,
+          skill_nodes_total: before.skillNodesTotal,
+          available_skills_total: before.availableSkillsTotal,
+          missing_refs_total: before.missingRefsTotal,
+          missing_refs_unique: before.missingRefsUnique,
+          missing_refs: before.missingRefsList,
+          remaining_missing_refs_total: after.missingRefsTotal,
+        })
+        return scaffoldedWorkflow
+      } catch (error) {
+        void trackTelemetryEvent("skill_scaffold_completed", {
+          source: "manual",
+          status: "failed",
+          duration_ms: Date.now() - startedAt,
+          skill_nodes_total: before.skillNodesTotal,
+          available_skills_total: before.availableSkillsTotal,
+          missing_refs_total: before.missingRefsTotal,
+          missing_refs_unique: before.missingRefsUnique,
+          missing_refs: before.missingRefsList,
+          error_kind: "scaffold_failed",
+        })
+        throw error
+      }
     },
   )
 
@@ -103,6 +145,11 @@ Describe what this skill should do.
 `
 
     await writeFile(filePath, template, "utf-8")
+    void trackTelemetryEvent("skill_template_created", {
+      source: "manual",
+      status: "success",
+      template_index: index,
+    })
     return filePath
   })
 }

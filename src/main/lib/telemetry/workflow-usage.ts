@@ -22,6 +22,11 @@ export interface MissingWorkflowSkillRefs {
   missingRefsList: string | null
 }
 
+interface TelemetrySkillRef {
+  name: string
+  category: string
+}
+
 function normalizeSkillRef(raw: string | undefined): string | null {
   if (typeof raw !== "string") return null
   const normalized = raw.trim().replaceAll("\\", "/").toLowerCase()
@@ -83,7 +88,7 @@ export function summarizeWorkflowSkillCoverage(workflow: Workflow): WorkflowSkil
 
 export function summarizeMissingWorkflowSkillRefs(
   workflow: Workflow,
-  availableSkills: Array<Pick<{ name: string; category: string }, "name" | "category">>,
+  availableSkills: TelemetrySkillRef[],
 ): MissingWorkflowSkillRefs {
   const knownRefs = new Set(
     availableSkills

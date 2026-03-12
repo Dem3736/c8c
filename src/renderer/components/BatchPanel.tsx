@@ -122,13 +122,6 @@ export function BatchPanel() {
       .filter((item) => item.status === "completed")
       .map((item) => item.input_index),
   )
-  const pendingInputIndexes = inputs
-    .map((_, index) => index)
-    .filter((index) => !completedInputIndexes.has(index))
-  const activeInputIndexes = new Set<number>()
-  for (const index of pendingInputIndexes.slice(0, batchProgress.running)) {
-    activeInputIndexes.add(index)
-  }
 
   const handleExportJson = useCallback(() => {
     if (batchItems.length === 0) return
@@ -244,7 +237,7 @@ export function BatchPanel() {
             <BatchInputPreview
               inputs={inputs}
               completedIndexes={completedInputIndexes}
-              activeIndexes={activeInputIndexes}
+              runningCount={batchProgress.running}
             />
             <BatchItemList items={batchItems} />
           </div>
@@ -356,11 +349,11 @@ function SummaryCard({
 function BatchInputPreview({
   inputs,
   completedIndexes,
-  activeIndexes,
+  runningCount,
 }: {
   inputs: string[]
   completedIndexes: Set<number>
-  activeIndexes: Set<number>
+  runningCount: number
 }) {
   if (inputs.length === 0) return null
   const previewCount = Math.min(inputs.length, 12)
@@ -369,10 +362,14 @@ function BatchInputPreview({
   return (
     <div className="rounded-md border border-hairline bg-surface-2/70 p-2">
       <div className="ui-meta-text text-muted-foreground mb-1">Inputs preview</div>
+      {runningCount > 0 && (
+        <div className="ui-meta-text text-muted-foreground mb-1">
+          {runningCount} item{runningCount !== 1 ? "s" : ""} currently running
+        </div>
+      )}
       <div className="space-y-1 max-h-40 overflow-y-auto">
         {inputs.slice(0, previewCount).map((value, index) => {
           const done = completedIndexes.has(index)
-          const running = !done && activeIndexes.has(index)
           return (
             <div key={`preview-${index}-${value}`} className="flex items-center gap-2 ui-meta-text">
               <span className="text-muted-foreground w-8">#{index + 1}</span>
@@ -381,12 +378,10 @@ function BatchInputPreview({
                   "rounded px-1 py-0 font-mono",
                   done
                     ? "bg-status-success/20 text-status-success"
-                    : running
-                      ? "bg-status-info/20 text-status-info"
-                      : "bg-surface-3 text-foreground/75",
+                    : "bg-surface-3 text-foreground/75",
                 )}
               >
-                {done ? "done" : running ? "running" : "waiting"}
+                {done ? "done" : "waiting"}
               </span>
               <span className="truncate text-foreground/90">{value}</span>
             </div>

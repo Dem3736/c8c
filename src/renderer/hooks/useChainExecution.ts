@@ -110,6 +110,9 @@ export function useChainExecution() {
         if (event.nodeId === "__global") {
           setRunStatus("error")
           setActiveNodeId(null)
+          toast.error("Run failed", {
+            description: event.error || "Workflow execution failed.",
+          })
         } else {
           setNodeStates((prev) => ({
             ...prev,

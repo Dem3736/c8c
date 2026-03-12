@@ -4,6 +4,8 @@ import { getBuiltinTemplates } from "../lib/templates"
 import { LogParser } from "../lib/log-parser"
 import { buildGeneratorPrompt, parseGeneratedWorkflow } from "../lib/workflow-generator"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
+import { trackTelemetryEvent } from "../lib/telemetry/service"
+import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import type { DiscoveredSkill, GenerationProgress, Workflow, WorkflowTemplate } from "@shared/types"
 import { allowedProjectRoots } from "../lib/security-paths"
 import { resolve } from "node:path"
@@ -71,7 +73,6 @@ export function registerTemplateHandlers() {
           prompt,
           model: "sonnet",
           maxTurns: 30,
-          permissionMode: "acceptEdits",
           systemPrompts: [
             "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
           ],
@@ -147,7 +148,36 @@ export function registerTemplateHandlers() {
       }
 
       if (projectPath) {
-        workflow = await scaffoldMissingSkills(workflow, availableSkills, safeWorkdir)
+        const startedAt = Date.now()
+        const before = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
+        try {
+          workflow = await scaffoldMissingSkills(workflow, availableSkills, safeWorkdir)
+          const after = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
+          void trackTelemetryEvent("skill_scaffold_completed", {
+            source: "template_generate",
+            status: "success",
+            duration_ms: Date.now() - startedAt,
+            skill_nodes_total: before.skillNodesTotal,
+            available_skills_total: before.availableSkillsTotal,
+            missing_refs_total: before.missingRefsTotal,
+            missing_refs_unique: before.missingRefsUnique,
+            missing_refs: before.missingRefsList,
+            remaining_missing_refs_total: after.missingRefsTotal,
+          })
+        } catch (error) {
+          void trackTelemetryEvent("skill_scaffold_completed", {
+            source: "template_generate",
+            status: "failed",
+            duration_ms: Date.now() - startedAt,
+            skill_nodes_total: before.skillNodesTotal,
+            available_skills_total: before.availableSkillsTotal,
+            missing_refs_total: before.missingRefsTotal,
+            missing_refs_unique: before.missingRefsUnique,
+            missing_refs: before.missingRefsList,
+            error_kind: "scaffold_failed",
+          })
+          throw error
+        }
       }
 
       sendProgress("done", entryCount)
