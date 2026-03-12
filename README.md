@@ -122,7 +122,7 @@ Workflows live with your project. Different repos, different pipelines, same app
 
 ## Quickstart
 
-Download the latest release from [c8c.app](https://c8c.app) or build from source:
+Download the latest `.dmg` from [Releases](https://github.com/bluzir/c8c/releases), or build from source:
 
 ```bash
 git clone https://github.com/bluzir/c8c.git
@@ -130,6 +130,12 @@ cd c8c
 npm install
 npm run dev
 ```
+
+> **macOS note:** The app is not code-signed. On first launch, macOS will block it. Run:
+> ```bash
+> xattr -cr /Applications/c8c.app
+> ```
+> Or right-click the app → Open → Open.
 
 > **Requirements:** Node.js 20+, Claude Code CLI installed
 
