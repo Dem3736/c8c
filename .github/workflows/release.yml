@@ -58,31 +58,3 @@ jobs:
         with:
           files: release/SHA256SUMS
 
-  release-oss:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build OSS
-        env:
-          C8C_BUILD_FLAVOR: oss
-          C8C_TELEMETRY_PROVIDER: noop
-        run: |
-          npm run build:shared
-          npm run build
-
-      - name: Verify no PostHog in OSS build
-        run: |
-          if grep -r "posthog" out/main/index.js 2>/dev/null | grep -v "__TELEMETRY_PROVIDER__" | grep -q "app.posthog.com\|phc_"; then
-            echo "ERROR: PostHog credentials found in OSS build"
-            exit 1
-          fi
-          echo "OK: No PostHog credentials in OSS build"
