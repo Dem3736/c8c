@@ -185,6 +185,7 @@ export function SettingsPage() {
         subtitle="Configure global behavior for generated and template-based workflows."
       />
 
+      {process.env.NODE_ENV !== "development" && (
       <section className="space-y-3">
         <SectionHeading title="Updates" />
 
@@ -274,6 +275,7 @@ export function SettingsPage() {
           )}
         </article>
       </section>
+      )}
 
       <section className="space-y-3">
         <SectionHeading title="Research" />

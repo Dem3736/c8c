@@ -61,6 +61,9 @@ Rules:
 - Keep list layout flat and lightweight; avoid heavy card borders around each row.
 - Prefer one active highlight (`sidebar-active`) and subtle hover (`sidebar-hover`).
 - Show progress bars only for actionable states (for example running/in-progress), not for every idle row.
+- Keep row rhythm compact and consistent: one primary line + optional single meta line below.
+- Running state is owner-based: show spinner/progress on the workflow that owns the active run, not on the currently selected row.
+- For non-owner selected rows, show historical summary (`Last run`) instead of fake live progress.
 
 ### Borders
 

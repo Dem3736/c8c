@@ -9,9 +9,9 @@ import {
   currentWorkflowAtom,
   skillsAtom,
   runStatusAtom,
+  runWorkflowPathAtom,
   mainViewAtom,
   nodeStatesAtom,
-  runtimeNodesAtom,
   pastRunsAtom,
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
@@ -57,10 +57,6 @@ import { CursorMenu } from "@/components/ui/cursor-menu"
 interface ProjectSidebarProps {
   onProjectAdd?: (projectPath: string) => void
   onWorkflowCreate?: (workflowPath: string) => void
-}
-
-function isStepNodeType(nodeType: string): boolean {
-  return nodeType !== "input" && nodeType !== "output"
 }
 
 function historicalRunVisual(status?: string): {
@@ -121,12 +117,12 @@ export function ProjectSidebar({
   const [sidebarWidth, setSidebarWidth] = useAtom(projectSidebarWidthAtom)
   const [currentWorkflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
-  const [runtimeNodes] = useAtom(runtimeNodesAtom)
   const [pastRuns] = useAtom(pastRunsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSkills] = useAtom(skillsAtom)
   const [mainView, setMainView] = useAtom(mainViewAtom)
   const [runStatus] = useAtom(runStatusAtom)
+  const [runWorkflowPath] = useAtom(runWorkflowPathAtom)
   const [pendingRenameWorkflow, setPendingRenameWorkflow] = useState<WorkflowFile | null>(null)
   const [renameInput, setRenameInput] = useState("")
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<WorkflowFile | null>(null)
@@ -144,6 +140,10 @@ export function ProjectSidebar({
 
   const resetExecutionState = useExecutionReset({ clearReportPath: true, clearSelectedPastRun: true })
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
+  const resetExecutionIfSafe = () => {
+    if (runStatus === "running") return
+    resetExecutionState()
+  }
 
   useEffect(() => {
     window.api.listProjects().then(setProjects)
@@ -184,7 +184,7 @@ export function ProjectSidebar({
       const emptyWorkflow = createEmptyWorkflow()
       setCurrentWorkflow(emptyWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-      resetExecutionState()
+      resetExecutionIfSafe()
       onProjectAdd?.(projectPath)
     } catch (error) {
       toast.error(`Failed to add project: ${String(error)}`)
@@ -217,7 +217,7 @@ export function ProjectSidebar({
     const emptyWorkflow = createEmptyWorkflow()
     setCurrentWorkflow(emptyWorkflow)
     setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-    resetExecutionState()
+    resetExecutionIfSafe()
   }
 
   const selectProject = async (projectPath: string) => {
@@ -232,7 +232,7 @@ export function ProjectSidebar({
       const emptyWorkflow = createEmptyWorkflow()
       setCurrentWorkflow(emptyWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-      resetExecutionState()
+      resetExecutionIfSafe()
     }
 
     setSelectedProject(projectPath)
@@ -254,7 +254,7 @@ export function ProjectSidebar({
       setSelectedWorkflowPath(workflow.path)
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
-      resetExecutionState()
+      resetExecutionIfSafe()
     } catch (error) {
       toast.error(`Failed to open workflow: ${String(error)}`)
     }
@@ -282,7 +282,7 @@ export function ProjectSidebar({
       setSelectedWorkflowPath(filePath)
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
-      resetExecutionState()
+      resetExecutionIfSafe()
       onWorkflowCreate?.(filePath)
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
@@ -356,7 +356,7 @@ export function ProjectSidebar({
         const emptyWorkflow = createEmptyWorkflow()
         setCurrentWorkflow(emptyWorkflow)
         setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-        resetExecutionState()
+        resetExecutionIfSafe()
       }
 
       toast.success(`Workflow deleted: ${workflow.name}`)
@@ -398,7 +398,7 @@ export function ProjectSidebar({
       setSelectedWorkflowPath(workflow.path)
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
-      resetExecutionState()
+      resetExecutionIfSafe()
     } catch (error) {
       toast.error(`Failed to open workflow: ${String(error)}`)
     }
@@ -417,55 +417,44 @@ export function ProjectSidebar({
     latestRunByWorkflowPath.set(path, run)
   }
 
-  const nodeTypeById = new Map(
-    (runtimeNodes.length > 0 ? runtimeNodes : currentWorkflow.nodes).map((node) => [node.id, node.type]),
-  )
-  const selectedWorkflowStepNodeIds = new Set<string>()
-  for (const [nodeId, nodeType] of nodeTypeById.entries()) {
-    if (isStepNodeType(nodeType)) selectedWorkflowStepNodeIds.add(nodeId)
+  const activeRunStates = Object.values(nodeStates)
+  let activeRunCompletedSteps = 0
+  let activeRunRunningSteps = 0
+  let activeRunFailedSteps = 0
+  let activeRunWaitingSteps = 0
+  for (const state of activeRunStates) {
+    const status = state.status || "pending"
+    if (status === "completed" || status === "skipped") activeRunCompletedSteps += 1
+    if (status === "running") activeRunRunningSteps += 1
+    if (status === "failed") activeRunFailedSteps += 1
+    if (status === "waiting_approval") activeRunWaitingSteps += 1
   }
-  for (const nodeId of Object.keys(nodeStates)) {
-    const nodeType = nodeTypeById.get(nodeId)
-    if ((nodeType && isStepNodeType(nodeType)) || nodeId.includes("::")) {
-      selectedWorkflowStepNodeIds.add(nodeId)
-    }
-  }
-
-  let selectedWorkflowCompletedSteps = 0
-  let selectedWorkflowRunningSteps = 0
-  let selectedWorkflowFailedSteps = 0
-  let selectedWorkflowWaitingSteps = 0
-  for (const nodeId of selectedWorkflowStepNodeIds) {
-    const status = nodeStates[nodeId]?.status || "pending"
-    if (status === "completed" || status === "skipped") selectedWorkflowCompletedSteps += 1
-    if (status === "running") selectedWorkflowRunningSteps += 1
-    if (status === "failed") selectedWorkflowFailedSteps += 1
-    if (status === "waiting_approval") selectedWorkflowWaitingSteps += 1
-  }
-  const selectedWorkflowTotalSteps = selectedWorkflowStepNodeIds.size
-  const selectedWorkflowProgress = selectedWorkflowTotalSteps > 0
-    ? Math.round((selectedWorkflowCompletedSteps / selectedWorkflowTotalSteps) * 100)
+  const activeRunTotalSteps = activeRunStates.length
+  const activeRunProgress = activeRunTotalSteps > 0
+    ? Math.round((activeRunCompletedSteps / activeRunTotalSteps) * 100)
     : 0
-  const selectedWorkflowPhase = runStatus === "done"
-    ? "completed"
-    : runStatus === "error"
-      ? "failed"
-      : selectedWorkflowWaitingSteps > 0
-        ? "waiting approval"
-        : selectedWorkflowFailedSteps > 0
-          ? "errors"
-          : selectedWorkflowRunningSteps > 0
-            ? "running"
-            : "queued"
-  const selectedWorkflowLiveBarClass = runStatus === "done"
-    ? "bg-status-success"
-    : runStatus === "error" || selectedWorkflowFailedSteps > 0
+  const activeRunPhase = activeRunWaitingSteps > 0
+    ? "waiting approval"
+    : activeRunFailedSteps > 0
+      ? "errors"
+      : activeRunRunningSteps > 0
+        ? "running"
+        : "queued"
+  const activeRunLiveBarClass = activeRunFailedSteps > 0
       ? "bg-status-danger"
-      : selectedWorkflowWaitingSteps > 0
+      : activeRunWaitingSteps > 0
         ? "bg-status-warning"
         : "bg-status-info"
-  const showSelectedWorkflowProgress = runStatus !== "idle" && selectedWorkflowTotalSteps > 0
-  const selectedWorkflowTitle = workflows.find((workflow) => workflow.path === selectedWorkflowPath)?.name || "Selected workflow"
+  const showSelectedWorkflowProgress = (
+    runStatus === "running"
+    && runWorkflowPath != null
+    && activeRunTotalSteps > 0
+  )
+  const selectedWorkflowTitle = (
+    workflows.find((workflow) => workflow.path === runWorkflowPath)?.name
+    || runWorkflowPath?.split("/").pop()
+    || "Running workflow"
+  )
 
   const formatRelativeTime = (updatedAt?: number) => {
     if (!updatedAt) return ""
@@ -709,7 +698,8 @@ export function ProjectSidebar({
                 <div className="mt-1 ml-8 space-y-0.5">
                   {workflows.map((workflow) => {
                     const isSelected = selectedWorkflowPath === workflow.path
-                    const isRunning = isSelected && runStatus === "running"
+                    const isRunOwner = runStatus === "running" && runWorkflowPath === workflow.path
+                    const isRunning = isRunOwner
                     const isDirty = isSelected && workflowDirty
                     const latestRun = latestRunByWorkflowPath.get(workflow.path)
                     const latestRunMeta = historicalRunVisual(latestRun?.status)
@@ -722,7 +712,8 @@ export function ProjectSidebar({
                           : latestRun?.status === "cancelled"
                             ? "border-muted-foreground/40"
                             : "border-muted-foreground/35"
-                    const showLiveProgress = isSelected && runStatus === "running" && showSelectedWorkflowProgress
+                    const showLiveProgress = isRunOwner && showSelectedWorkflowProgress
+                    const runningHint = isSelected ? `Running · ${activeRunPhase}` : "Running in background"
 
                     return (
                       <div
@@ -820,20 +811,26 @@ export function ProjectSidebar({
                           <div className="px-1.5 pb-1">
                             <div className="sidebar-progress-track">
                               <div
-                                className={cn("sidebar-progress-bar", selectedWorkflowLiveBarClass)}
-                                style={{ width: `${selectedWorkflowProgress}%` }}
+                                className={cn("sidebar-progress-bar", activeRunLiveBarClass)}
+                                style={{ width: `${activeRunProgress}%` }}
                               />
                             </div>
                             <div className="mt-1 flex items-center justify-between text-sidebar-meta text-muted-foreground">
                               <span className="truncate pr-2">{selectedWorkflowTitle}</span>
                               <span className="tabular-nums">
-                                {selectedWorkflowCompletedSteps}/{selectedWorkflowTotalSteps}
+                                {activeRunCompletedSteps}/{activeRunTotalSteps}
                               </span>
                             </div>
                           </div>
                         )}
 
-                        {!showLiveProgress && isSelected && latestRun && (
+                        {!showLiveProgress && isRunOwner && (
+                          <div className="px-1.5 pb-1 text-sidebar-meta text-status-info">
+                            {runningHint}
+                          </div>
+                        )}
+
+                        {!showLiveProgress && !isRunOwner && isSelected && latestRun && (
                           <div className="px-1.5 pb-1 text-sidebar-meta text-muted-foreground">
                             Last run: <span className={latestRunMeta.textClass}>{latestRunMeta.label}</span>
                           </div>

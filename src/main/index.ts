@@ -337,7 +337,9 @@ app.whenReady().then(async () => {
 
   console.log("[main] all handlers registered, creating window...")
   createWindow()
-  initUpdater()
+  if (app.isPackaged) {
+    initUpdater()
+  }
   try {
     await trackTelemetryEvent("app_ready", { startup_ms: Date.now() - processStartedAt })
   } catch (error) {

@@ -3,6 +3,7 @@ import { useAtom, useSetAtom } from "jotai"
 import {
   runStatusAtom,
   runIdAtom,
+  runWorkflowPathAtom,
   nodeStatesAtom,
   activeNodeIdAtom,
   currentWorkflowAtom,
@@ -39,7 +40,8 @@ function isResearchLikeWorkflow(workflow: { name: string; description?: string; 
 
 export function useChainExecution() {
   const [runStatus, setRunStatus] = useAtom(runStatusAtom)
-  const [, setRunId] = useAtom(runIdAtom)
+  const [runId, setRunId] = useAtom(runIdAtom)
+  const [, setRunWorkflowPath] = useAtom(runWorkflowPathAtom)
   const [nodeStates, setNodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId, setActiveNodeId] = useAtom(activeNodeIdAtom)
   const setFinalContent = useSetAtom(finalContentAtom)
@@ -63,6 +65,10 @@ export function useChainExecution() {
   const listRunsRequestRef = useRef(0)
   const selectedProjectRef = useRef(selectedProject)
   selectedProjectRef.current = selectedProject
+
+  useEffect(() => {
+    runIdRef.current = runId
+  }, [runId])
 
   const clearRunTracking = useCallback(() => {
     runIdRef.current = null
@@ -176,6 +182,7 @@ export function useChainExecution() {
 
       case "run-done":
         clearRunTracking()
+        setRunWorkflowPath(null)
         if (event.status === "completed") {
           toast.success("Run complete", {
             description: "Result is ready in Output.",
@@ -212,7 +219,7 @@ export function useChainExecution() {
         }
         break
     }
-  }, [clearRunTracking, setActiveNodeId, setNodeStates, setRunStatus, setRunId, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, setPastRuns])
+  }, [clearRunTracking, setActiveNodeId, setNodeStates, setRunStatus, setRunId, setRunWorkflowPath, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, setPastRuns])
 
   useEffect(() => {
     const unsubscribe = window.api.onWorkflowEvent((event: WorkflowEvent) => {
@@ -294,6 +301,7 @@ export function useChainExecution() {
     setRuntimeEdges([])
     setRuntimeMeta({})
     setRunStatus("running")
+    setRunWorkflowPath(selectedWorkflowPath ?? null)
     setActiveNodeId(null)
     setApprovalRequest(null)
     setFinalContent("")
@@ -322,6 +330,7 @@ export function useChainExecution() {
           description: "No active window is available for execution.",
         })
         setRunStatus("idle")
+        setRunWorkflowPath(null)
         clearRunTracking()
         setRunId(null)
         setNodeStates({})
@@ -336,6 +345,7 @@ export function useChainExecution() {
           description: result.error,
         })
         setRunStatus("idle")
+        setRunWorkflowPath(null)
         clearRunTracking()
         setRunId(null)
         setNodeStates({})
@@ -361,6 +371,7 @@ export function useChainExecution() {
         description: String(err),
       })
       setRunStatus("idle")
+      setRunWorkflowPath(null)
       clearRunTracking()
       setRunId(null)
       setApprovalRequest(null)
@@ -370,7 +381,7 @@ export function useChainExecution() {
       setRuntimeEdges([])
       setRuntimeMeta({})
     }
-  }, [runStatus, workflow, inputValue, selectedProject, selectedWorkflowPath, webSearchBackend, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setRunStatus, setActiveNodeId, setRunId, setFinalContent, setApprovalRequest, setReportPath, clearRunTracking, processWorkflowEvent])
+  }, [runStatus, workflow, inputValue, selectedProject, selectedWorkflowPath, webSearchBackend, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setRunStatus, setRunWorkflowPath, setActiveNodeId, setRunId, setFinalContent, setApprovalRequest, setReportPath, clearRunTracking, processWorkflowEvent])
 
   const cancel = useCallback(async () => {
     const currentRunId = runIdRef.current
@@ -387,6 +398,7 @@ export function useChainExecution() {
     }
     clearRunTracking()
     setRunStatus("idle")
+    setRunWorkflowPath(null)
     setRunId(null)
     setActiveNodeId(null)
     setApprovalRequest(null)
@@ -397,7 +409,7 @@ export function useChainExecution() {
     setRuntimeMeta({})
     setReportPath(null)
     setWorkspace(null)
-  }, [setRunStatus, setRunId, setActiveNodeId, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, clearRunTracking])
+  }, [setRunStatus, setRunWorkflowPath, setRunId, setActiveNodeId, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, clearRunTracking])
 
   const rerunFrom = useCallback(async (fromNodeId: string) => {
     if (runStatus === "running") return
@@ -413,6 +425,7 @@ export function useChainExecution() {
     setRuntimeEdges([])
     setRuntimeMeta({})
     setRunStatus("running")
+    setRunWorkflowPath(selectedWorkflowPath ?? null)
     setActiveNodeId(null)
     setApprovalRequest(null)
     setFinalContent("")
@@ -461,6 +474,7 @@ export function useChainExecution() {
 
     clearRunTracking()
     setRunStatus("idle")
+    setRunWorkflowPath(null)
     setRunId(null)
     setApprovalRequest(null)
     setNodeStates({})
@@ -468,7 +482,7 @@ export function useChainExecution() {
     setRuntimeNodes([])
     setRuntimeEdges([])
     setRuntimeMeta({})
-  }, [runStatus, workspace, workflow, selectedProject, selectedWorkflowPath, webSearchBackend, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setRunStatus, setActiveNodeId, setRunId, setApprovalRequest, setFinalContent, setReportPath, clearRunTracking, processWorkflowEvent])
+  }, [runStatus, workspace, workflow, selectedProject, selectedWorkflowPath, webSearchBackend, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setRunStatus, setRunWorkflowPath, setActiveNodeId, setRunId, setApprovalRequest, setFinalContent, setReportPath, clearRunTracking, processWorkflowEvent])
 
   return { runStatus, nodeStates, activeNodeId, evalResults, workspace, run, cancel, rerunFrom }
 }

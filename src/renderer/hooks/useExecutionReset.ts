@@ -7,6 +7,7 @@ import {
   nodeStatesAtom,
   reportPathAtom,
   runIdAtom,
+  runWorkflowPathAtom,
   runStatusAtom,
   runtimeEdgesAtom,
   runtimeMetaAtom,
@@ -26,6 +27,7 @@ export function useExecutionReset({
 }: UseExecutionResetOptions = {}) {
   const setRunStatus = useSetAtom(runStatusAtom)
   const setRunId = useSetAtom(runIdAtom)
+  const setRunWorkflowPath = useSetAtom(runWorkflowPathAtom)
   const setFinalContent = useSetAtom(finalContentAtom)
   const setNodeStates = useSetAtom(nodeStatesAtom)
   const setActiveNodeId = useSetAtom(activeNodeIdAtom)
@@ -40,6 +42,7 @@ export function useExecutionReset({
   return useCallback(() => {
     setRunStatus("idle")
     setRunId(null)
+    setRunWorkflowPath(null)
     setFinalContent("")
     setNodeStates({})
     setActiveNodeId(null)
@@ -64,6 +67,7 @@ export function useExecutionReset({
     setNodeStates,
     setReportPath,
     setRunId,
+    setRunWorkflowPath,
     setRuntimeEdges,
     setRuntimeMeta,
     setRuntimeNodes,

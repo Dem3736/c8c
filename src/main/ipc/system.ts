@@ -121,16 +121,23 @@ export function registerSystemHandlers() {
 
   // Auto-updater
   ipcMain.handle("system:check-for-update", async () => {
+    if (!app.isPackaged) {
+      return { status: "error" as const, error: "Auto-updates are not available in development mode." }
+    }
     await checkForUpdate()
     return getUpdateStatus()
   })
 
   ipcMain.handle("system:install-update", () => {
+    if (!app.isPackaged) return false
     installUpdate()
     return true
   })
 
   ipcMain.handle("system:get-update-status", () => {
+    if (!app.isPackaged) {
+      return { status: "error" as const, error: "Auto-updates are not available in development mode." }
+    }
     return getUpdateStatus()
   })
 }

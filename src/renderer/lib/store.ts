@@ -146,6 +146,7 @@ export const inputValueAtom = atom("")
 // Execution state
 export const runStatusAtom = atom<ExecutionRunStatus>("idle")
 export const runIdAtom = atom<string | null>(null)
+export const runWorkflowPathAtom = atom<string | null>(null)
 export const nodeStatesAtom = atom<Record<string, NodeState>>({})
 export const activeNodeIdAtom = atom<string | null>(null)
 export const selectedNodeIdAtom = atom<string | null>(null)
