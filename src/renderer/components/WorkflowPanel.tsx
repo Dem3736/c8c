@@ -124,10 +124,10 @@ export function WorkflowPanel() {
         >
           <div className="border-b border-hairline bg-gradient-to-b from-surface-1/90 to-surface-1/90">
             <div className="ui-content-shell py-4 flex flex-wrap items-start gap-3">
-              <div className="flex-1 min-w-[280px]">
+              <div className="flex-1 min-w-[280px] group/workflow-meta">
                 <div className="mb-1 flex items-center gap-2">
                   <Label htmlFor="workflow-name" className="section-kicker text-muted-foreground/80">Workflow Name</Label>
-                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground/70">
+                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground/70 transition-opacity group-focus-within/workflow-meta:opacity-0">
                     <PencilLine size={11} />
                     click to edit
                   </span>
@@ -139,6 +139,7 @@ export function WorkflowPanel() {
                   onChange={(e) =>
                     setWorkflow((prev) => ({ ...prev, name: e.target.value }))
                   }
+                  disabled={runStatus === "running"}
                   placeholder="Workflow name"
                   className="h-auto border-none bg-transparent px-0 py-0 text-title-lg font-semibold shadow-none placeholder:text-foreground/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
@@ -150,6 +151,7 @@ export function WorkflowPanel() {
                   onChange={(e) =>
                     setWorkflow((prev) => ({ ...prev, description: e.target.value }))
                   }
+                  disabled={runStatus === "running"}
                   placeholder="What does this workflow do?"
                   className="mt-1 h-auto border-none bg-transparent px-0 py-0 text-body-md text-muted-foreground shadow-none placeholder:text-muted-foreground/80 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
@@ -181,7 +183,7 @@ export function WorkflowPanel() {
                 <CanvasView />
               </SectionErrorBoundary>
             </div>
-            <div className="ui-scroll-region border-t border-hairline overflow-y-auto max-h-[40%] min-h-[120px]">
+            <div className="ui-scroll-region border-t border-hairline overflow-y-auto h-[clamp(120px,30vh,320px)]">
               <div className="ui-content-shell py-6 space-y-6">
                 <InputPanel />
                 <SectionErrorBoundary sectionName="output panel">
