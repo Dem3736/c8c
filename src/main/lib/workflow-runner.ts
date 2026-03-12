@@ -15,13 +15,14 @@ import {
   getDownstreamNodeIds,
 } from "./graph-engine"
 import { parseEvaluatorOutput, buildEvaluatorPrompt } from "./evaluator"
-import { expandSplitter, type RuntimeWorkflow } from "./runtime-graph"
+import { expandSplitter, type RuntimeWorkflow, type Subtask } from "./runtime-graph"
 import {
   buildSplitterPrompt,
   parseSplitterOutput,
   shouldRetrySplitter,
   buildSplitterRecoveryPrompt,
   heuristicSplitInput,
+  tryStructuredSplit,
 } from "./node-executors/splitter"
 import { mergeResults, buildMergerPrompt } from "./node-executors/merger"
 import { buildClaudeExtraArgs, prepareWorkspaceMcpConfig, type WebSearchBackend } from "./mcp-config"
@@ -1105,43 +1106,58 @@ export async function runWorkflow(
               return logParser.textContent
             }
 
-            const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-            console.log("[splitter] spawning claude...")
-            let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
-            let subtasks = parseSplitterOutput(splitterRawOutput)
-
-            if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
-              console.warn(`[splitter] ${node.id} returned suspicious single subtask, retrying with stricter prompt`)
-              const recoveryPrompt = buildSplitterRecoveryPrompt(
-                splitterConfig.strategy,
-                incomingContent,
-                maxBranches,
-              )
-              splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
-              subtasks = parseSplitterOutput(splitterRawOutput)
-            }
-
-            const beforeFilterCount = subtasks.length
-            subtasks = subtasks.filter((s) => s.content.trim().length > 0)
-            if (beforeFilterCount !== subtasks.length) {
-              const dropped = beforeFilterCount - subtasks.length
+            // Fast-path: if input is already structured, skip Claude entirely
+            const structuredSubtasks = tryStructuredSplit(incomingContent, maxBranches)
+            let subtasks: Subtask[]
+            if (structuredSubtasks) {
+              console.log(`[splitter] using structured input directly (${structuredSubtasks.length} subtasks)`)
               const entry = {
                 type: "text" as const,
-                content: `[splitter] dropped ${dropped} empty subtasks\n`,
+                content: `[splitter] using structured input directly (${structuredSubtasks.length} subtasks)\n`,
                 timestamp: Date.now(),
               }
               state.log.push(entry)
               send({ type: "node-log", runId, nodeId: node.id, entry })
-            }
+              subtasks = structuredSubtasks
+            } else {
+              const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
+              console.log("[splitter] spawning claude...")
+              let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
+              subtasks = parseSplitterOutput(splitterRawOutput)
 
-            const shouldFallbackToHeuristic = subtasks.length === 0 || (
-              maxBranches > 1 &&
-              shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
-            )
+              if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
+                console.warn(`[splitter] ${node.id} returned suspicious single subtask, retrying with stricter prompt`)
+                const recoveryPrompt = buildSplitterRecoveryPrompt(
+                  splitterConfig.strategy,
+                  incomingContent,
+                  maxBranches,
+                )
+                splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
+                subtasks = parseSplitterOutput(splitterRawOutput)
+              }
 
-            if (shouldFallbackToHeuristic) {
-              console.warn(`[splitter] ${node.id} using heuristic fallback decomposition`)
-              subtasks = heuristicSplitInput(incomingContent, maxBranches)
+              const beforeFilterCount = subtasks.length
+              subtasks = subtasks.filter((s) => s.content.trim().length > 0)
+              if (beforeFilterCount !== subtasks.length) {
+                const dropped = beforeFilterCount - subtasks.length
+                const entry = {
+                  type: "text" as const,
+                  content: `[splitter] dropped ${dropped} empty subtasks\n`,
+                  timestamp: Date.now(),
+                }
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              }
+
+              const shouldFallbackToHeuristic = subtasks.length === 0 || (
+                maxBranches > 1 &&
+                shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
+              )
+
+              if (shouldFallbackToHeuristic) {
+                console.warn(`[splitter] ${node.id} using heuristic fallback decomposition`)
+                subtasks = heuristicSplitInput(incomingContent, maxBranches)
+              }
             }
 
             const totalSubtasks = subtasks.length
@@ -2072,43 +2088,58 @@ export async function rerunFromNode(
               return logParser.textContent
             }
 
-            const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-            console.log("[splitter] spawning claude...")
-            let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
-            let subtasks = parseSplitterOutput(splitterRawOutput)
-
-            if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
-              console.warn(`[splitter] ${node.id} returned suspicious single subtask, retrying with stricter prompt`)
-              const recoveryPrompt = buildSplitterRecoveryPrompt(
-                splitterConfig.strategy,
-                incomingContent,
-                maxBranches,
-              )
-              splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
-              subtasks = parseSplitterOutput(splitterRawOutput)
-            }
-
-            const beforeFilterCount = subtasks.length
-            subtasks = subtasks.filter((s) => s.content.trim().length > 0)
-            if (beforeFilterCount !== subtasks.length) {
-              const dropped = beforeFilterCount - subtasks.length
+            // Fast-path: if input is already structured, skip Claude entirely
+            const structuredSubtasks = tryStructuredSplit(incomingContent, maxBranches)
+            let subtasks: Subtask[]
+            if (structuredSubtasks) {
+              console.log(`[splitter] using structured input directly (${structuredSubtasks.length} subtasks)`)
               const entry = {
                 type: "text" as const,
-                content: `[splitter] dropped ${dropped} empty subtasks\n`,
+                content: `[splitter] using structured input directly (${structuredSubtasks.length} subtasks)\n`,
                 timestamp: Date.now(),
               }
               state.log.push(entry)
               send({ type: "node-log", runId, nodeId: node.id, entry })
-            }
+              subtasks = structuredSubtasks
+            } else {
+              const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
+              console.log("[splitter] spawning claude...")
+              let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
+              subtasks = parseSplitterOutput(splitterRawOutput)
 
-            const shouldFallbackToHeuristic = subtasks.length === 0 || (
-              maxBranches > 1 &&
-              shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
-            )
+              if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
+                console.warn(`[splitter] ${node.id} returned suspicious single subtask, retrying with stricter prompt`)
+                const recoveryPrompt = buildSplitterRecoveryPrompt(
+                  splitterConfig.strategy,
+                  incomingContent,
+                  maxBranches,
+                )
+                splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
+                subtasks = parseSplitterOutput(splitterRawOutput)
+              }
 
-            if (shouldFallbackToHeuristic) {
-              console.warn(`[splitter] ${node.id} using heuristic fallback decomposition`)
-              subtasks = heuristicSplitInput(incomingContent, maxBranches)
+              const beforeFilterCount = subtasks.length
+              subtasks = subtasks.filter((s) => s.content.trim().length > 0)
+              if (beforeFilterCount !== subtasks.length) {
+                const dropped = beforeFilterCount - subtasks.length
+                const entry = {
+                  type: "text" as const,
+                  content: `[splitter] dropped ${dropped} empty subtasks\n`,
+                  timestamp: Date.now(),
+                }
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              }
+
+              const shouldFallbackToHeuristic = subtasks.length === 0 || (
+                maxBranches > 1 &&
+                shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
+              )
+
+              if (shouldFallbackToHeuristic) {
+                console.warn(`[splitter] ${node.id} using heuristic fallback decomposition`)
+                subtasks = heuristicSplitInput(incomingContent, maxBranches)
+              }
             }
 
             const totalSubtasks = subtasks.length

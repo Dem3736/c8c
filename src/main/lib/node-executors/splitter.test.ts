@@ -5,6 +5,7 @@ import {
   shouldRetrySplitter,
   buildSplitterRecoveryPrompt,
   heuristicSplitInput,
+  tryStructuredSplit,
 } from "./splitter"
 
 describe("parseSplitterOutput", () => {
@@ -125,6 +126,82 @@ describe("buildSplitterRecoveryPrompt", () => {
     expect(prompt).toContain("Return a JSON array with 2-6 objects")
     expect(prompt).toContain("Do NOT echo instructions")
     expect(prompt).toContain("Split by entities")
+  })
+})
+
+describe("tryStructuredSplit", () => {
+  it("returns subtasks for JSON array with >1 items", () => {
+    const input = `Research each company independently.
+
+[
+  {"domain":"a.com","name":"Company A","description":"Alpha"},
+  {"domain":"b.com","name":"Company B","description":"Beta"}
+]`
+
+    const result = tryStructuredSplit(input, 8)
+    expect(result).not.toBeNull()
+    expect(result!.length).toBeGreaterThan(1)
+    expect(result!.some((s) => s.key === "a-com")).toBe(true)
+    expect(result!.some((s) => s.key === "b-com")).toBe(true)
+  })
+
+  it("returns subtasks for bullet list with >1 items", () => {
+    const input = `- Onboarding: add first project
+- Build workflow in canvas
+- Run and inspect logs`
+
+    const result = tryStructuredSplit(input, 8)
+    expect(result).not.toBeNull()
+    expect(result).toHaveLength(3)
+    expect(result![0].content.toLowerCase()).toContain("onboarding")
+  })
+
+  it("returns subtasks for markdown table with >1 data rows", () => {
+    const input = `| Component | Type |
+|---|---|
+| Chat IPC Handler | IPC |
+| Executor IPC Handler | IPC |
+| Skills IPC Handler | IPC |`
+
+    const result = tryStructuredSplit(input, 8)
+    expect(result).not.toBeNull()
+    expect(result).toHaveLength(3)
+    expect(result![0].content).toContain("Chat IPC Handler")
+  })
+
+  it("returns null for single JSON item", () => {
+    const input = `[{"domain":"a.com","name":"Only One"}]`
+    const result = tryStructuredSplit(input, 8)
+    expect(result).toBeNull()
+  })
+
+  it("returns null for plain prose", () => {
+    const input = "Research RAG best practices and split into independent aspects."
+    const result = tryStructuredSplit(input, 8)
+    expect(result).toBeNull()
+  })
+
+  it("returns null for multi-paragraph text", () => {
+    const input = `This is the first paragraph about a complex topic that needs decomposition by Claude.
+
+This is the second paragraph with additional context about the research direction and scope.
+
+And a third paragraph with even more details about what should be investigated.`
+
+    const result = tryStructuredSplit(input, 8)
+    expect(result).toBeNull()
+  })
+
+  it("respects maxBranches limit", () => {
+    const input = `- Item 1
+- Item 2
+- Item 3
+- Item 4
+- Item 5`
+
+    const result = tryStructuredSplit(input, 3)
+    expect(result).not.toBeNull()
+    expect(result).toHaveLength(3)
   })
 })
 

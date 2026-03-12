@@ -235,6 +235,73 @@ export function buildSplitterRecoveryPrompt(
   ].join("\n")
 }
 
+/**
+ * Fast-path: if input is already structured (markdown table, JSON array, or
+ * bullet/numbered list with >1 items), return subtasks directly without
+ * calling Claude. Returns `null` for unstructured input that needs Claude's
+ * intelligence for meaningful decomposition.
+ */
+export function tryStructuredSplit(inputContent: string, maxBranches = 8): Subtask[] | null {
+  const limit = Math.max(1, maxBranches)
+  const normalized = inputContent.trim()
+  if (!normalized) return null
+
+  // 1. Markdown tables with >1 data rows
+  const tableRows = extractMarkdownTableRows(inputContent)
+  if (tableRows.length > 1) {
+    return tableRows.slice(0, limit).map((row, i) => {
+      const leadingCell = row.split("|")[0]?.trim() || row
+      return {
+        key: makeKebabKey(leadingCell.split(/\s+/).slice(0, 6).join(" "), `row-${i + 1}`),
+        content: row,
+      }
+    })
+  }
+
+  // 2. JSON arrays with >1 items
+  const array = extractJsonArray(inputContent)
+  if (array && array.length > 1) {
+    const prefix = normalizeWhitespace(inputContent.replace(/\[[\s\S]*\]/, "").trim())
+    const subtasks: Subtask[] = []
+    if (prefix && prefix.length > 30) {
+      subtasks.push({ key: "research-scope", content: prefix })
+    }
+    const room = Math.max(1, limit - subtasks.length)
+    for (let i = 0; i < Math.min(array.length, room); i++) {
+      const item = array[i]
+      if (typeof item === "object" && item !== null) {
+        const asObj = item as Record<string, unknown>
+        const label = String(asObj.domain || asObj.name || `item-${i + 1}`)
+        subtasks.push({
+          key: makeKebabKey(label, `record-${i + 1}`),
+          content: JSON.stringify(item, null, 2),
+        })
+      } else {
+        subtasks.push({ key: `record-${i + 1}`, content: String(item) })
+      }
+    }
+    if (subtasks.length > 1) return subtasks
+  }
+
+  // 3. Bullet/numbered lists with >1 items
+  const listItems = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+\S+/.test(line))
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
+    .filter((line) => line.length > 0)
+
+  if (listItems.length > 1) {
+    return listItems.slice(0, limit).map((line, i) => ({
+      key: makeKebabKey(line.split(/\s+/).slice(0, 6).join(" "), `item-${i + 1}`),
+      content: line,
+    }))
+  }
+
+  // Unstructured input — needs Claude
+  return null
+}
+
 export function heuristicSplitInput(inputContent: string, maxBranches = 8): Subtask[] {
   const limit = Math.max(2, maxBranches)
   const normalized = inputContent.trim()

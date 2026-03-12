@@ -597,10 +597,7 @@ describe("workflow-runner splitter recovery", () => {
       SPLITTER_RECOVERY_WORKFLOW,
       {
         type: "text",
-        value: JSON.stringify([
-          { title: "Onboarding", description: "Add project" },
-          { title: "Execution", description: "Run workflow" },
-        ]),
+        value: "Research the onboarding funnel and identify friction points that cause drop-off during the first session. Focus on the signup form, the project creation wizard, and the initial tutorial overlay.\n\nSeparately, audit the execution pipeline for performance bottlenecks. Measure cold-start latency, node-to-node handoff overhead, and memory consumption under concurrent branch expansion.",
       },
       mockWindow,
     )
