@@ -88,10 +88,10 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
           spellCheck
           autoCorrect="on"
           className={cn(
-            "w-full resize-none rounded-lg border border-hairline bg-surface-2 px-3 py-2 pr-10",
-            "text-body-md text-foreground placeholder:text-muted-foreground/60",
-            "focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40",
-            "disabled:border-hairline disabled:bg-surface-2/75 disabled:text-foreground/75 disabled:cursor-not-allowed",
+            "w-full resize-none rounded-md border border-input bg-input-background px-3 py-2 pr-10",
+            "text-body-md text-foreground placeholder:text-muted-foreground/80",
+            "focus:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20",
+            "disabled:border-hairline disabled:bg-surface-2/80 disabled:text-disabled disabled:cursor-not-allowed",
           )}
         />
         <div className="absolute right-1.5 bottom-1.5">
@@ -103,7 +103,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
               title="Cancel (Esc)"
               variant="ghost"
               size="icon"
-              className="bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+              className="bg-status-danger/10 text-status-danger hover:bg-status-danger/20 hover:text-status-danger"
             >
               <Square size={14} aria-hidden="true" />
             </Button>
@@ -115,7 +115,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
               aria-label="Send message"
               title={`Send (${sendShortcutLabel})`}
               className={cn(
-                "h-control-sm w-control-sm rounded-md transition-colors ui-motion-fast",
+                "h-control-sm w-control-sm rounded-md ui-transition-colors ui-motion-fast",
                 value.trim() && !isStreaming
                   ? "bg-primary/10 text-primary hover:bg-primary/20"
                   : "text-muted-foreground/70 cursor-not-allowed",
@@ -128,7 +128,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
           )}
         </div>
       </div>
-      <p className="ui-meta-text text-muted-foreground/50 mt-1 px-1" aria-hidden="true">
+      <p className="ui-meta-text text-muted-foreground mt-1 px-1" aria-hidden="true">
         {sendShortcutLabel} send · Shift+Enter newline · Esc cancel
       </p>
       <span className="sr-only">Press {sendShortcutAriaLabel} to send, Shift Enter for a new line, Escape to cancel generation</span>

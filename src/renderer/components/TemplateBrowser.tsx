@@ -39,7 +39,7 @@ const CATEGORY_ICONS: Record<string, typeof FileText> = {
 const CATEGORY_COLORS: Record<string, string> = {
   content: "text-status-info",
   code: "text-status-success",
-  research: "text-foreground/80",
+  research: "text-foreground-subtle",
   marketing: "text-status-warning",
   general: "text-muted-foreground",
 }
@@ -170,7 +170,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             aria-label="Workflow templates"
             aria-activedescendant={selectedOptionId}
             tabIndex={0}
-            className="overflow-y-auto space-y-2 pr-1 focus:outline-none"
+            className="overflow-y-auto ui-scroll-region space-y-2 pr-1 focus:outline-none"
             onKeyDown={handleListKeyDown}
           >
             {isLoading && (
@@ -195,7 +195,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   variant="ghost"
                   size="auto"
                   className={cn(
-                    "h-auto w-full justify-start rounded-md border border-hairline bg-surface-1 p-3 text-left whitespace-normal hover:bg-surface-3 transition-colors ui-motion-fast ui-elevation-inset",
+                    "h-auto w-full justify-start rounded-md border border-hairline bg-surface-1 p-3 text-left whitespace-normal hover:bg-surface-3 ui-transition-colors ui-motion-fast ui-elevation-inset",
                     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                     isSelected && "ring-2 ring-foreground/20 bg-surface-3",
                   )}
@@ -237,7 +237,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             })}
           </div>
 
-          <div className="rounded-lg surface-soft p-3 overflow-y-auto min-h-[180px]">
+          <div className="rounded-lg surface-soft p-3 overflow-y-auto ui-scroll-region min-h-[180px]">
             {!selected ? (
               <p className="text-body-md text-muted-foreground">
                 Select a template to preview nodes and structure before applying.
@@ -299,7 +299,6 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             </Button>
             <Button
               variant="default"
-              className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
               onClick={() => applyTemplate()}
               disabled={!selected}
             >

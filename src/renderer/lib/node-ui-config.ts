@@ -30,6 +30,16 @@ export const NODE_LABELS: Record<NodeType, string> = {
   approval: "Approval",
 }
 
+export const NODE_ICON_TONES: Record<NodeType, string> = {
+  input: "border-status-info/30 bg-status-info/10 text-status-info",
+  output: "border-hairline bg-surface-1 text-muted-foreground",
+  skill: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
+  evaluator: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+  splitter: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
+  merger: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
+  approval: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+}
+
 export const NODE_ACCENTS: Partial<Record<NodeType, string>> = {
   input: "border-status-info/40",
   output: "border-hairline",

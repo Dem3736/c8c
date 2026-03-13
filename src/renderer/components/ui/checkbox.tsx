@@ -22,14 +22,14 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       <span
         aria-hidden="true"
         className={cn(
-          "inline-flex h-full w-full items-center justify-center rounded-sm border border-input bg-input-background text-foreground transition-colors ui-motion-fast",
+          "inline-flex h-full w-full items-center justify-center rounded-sm border border-input bg-input-background text-foreground ui-transition-colors ui-motion-fast",
           "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ring/70",
           "peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground",
           "peer-checked:[&_svg]:opacity-100",
-          "peer-disabled:border-hairline peer-disabled:bg-surface-2/80 peer-disabled:text-foreground/70",
+          "peer-disabled:border-hairline peer-disabled:bg-surface-2/80 peer-disabled:text-disabled",
         )}
       >
-        <Check size={12} className="opacity-0 transition-opacity ui-motion-fast" />
+        <Check size={12} className="opacity-0 ui-transition-opacity ui-motion-fast" />
       </span>
     </label>
   ),

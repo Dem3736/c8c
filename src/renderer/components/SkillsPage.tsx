@@ -414,7 +414,6 @@ export function SkillsPage() {
             <Button
               size="sm"
               variant="default"
-              className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
               onClick={() => void createSkill()}
               disabled={!selectedProject}
             >
@@ -426,7 +425,7 @@ export function SkillsPage() {
       />
 
       {currentLibraryActionLabel && (
-        <div className="rounded-lg border border-status-info/25 bg-status-info/10 px-3 py-2 text-body-sm text-status-info flex items-center gap-2">
+        <div className="ui-alert-info text-status-info flex items-center gap-2">
           <Loader2 size={14} className="animate-spin" />
           {currentLibraryActionLabel}
         </div>
@@ -554,7 +553,7 @@ export function SkillsPage() {
           </DialogHeader>
 
           {pendingUninstallRefs.length > 0 && (
-            <div className="rounded-md border border-status-warning/35 bg-status-warning/10 px-3 py-2 space-y-2">
+            <div className="ui-alert-warning space-y-2">
               <p className="text-body-sm text-status-warning">
                 Dependency warning: current workflow references skills from this library.
               </p>
@@ -601,9 +600,9 @@ export function SkillsPage() {
 
           <div className="space-y-2">
             {previewLibrary?.installed && previewItems.length > 0 ? (
-              <div className="rounded-md border border-hairline bg-surface-2/65 p-2 max-h-56 overflow-y-auto space-y-1">
+              <div className="rounded-md border border-hairline bg-surface-2/65 p-2 max-h-56 overflow-y-auto ui-scroll-region space-y-1">
                 {previewItems.slice(0, 20).map((item) => (
-                  <div key={item} className="ui-meta-text font-mono text-foreground/85">{item}</div>
+                  <div key={item} className="ui-meta-text font-mono text-foreground-subtle">{item}</div>
                 ))}
                 {previewItems.length > 20 && (
                   <div className="ui-meta-text text-muted-foreground">+{previewItems.length - 20} more</div>
@@ -612,7 +611,7 @@ export function SkillsPage() {
             ) : previewHints.length > 0 ? (
               <div className="rounded-md border border-hairline bg-surface-2/65 p-2 space-y-1">
                 {previewHints.map((item) => (
-                  <div key={item} className="text-body-sm text-foreground/85">{item}</div>
+                  <div key={item} className="text-body-sm text-foreground-subtle">{item}</div>
                 ))}
               </div>
             ) : (

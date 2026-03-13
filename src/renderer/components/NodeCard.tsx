@@ -118,7 +118,7 @@ function RuntimePolicyEditor({
 
   return (
     <details className="ui-disclosure rounded-md border border-hairline bg-surface-1/80">
-      <summary className="cursor-pointer list-none px-2 py-2 ui-meta-text font-medium text-muted-foreground hover:text-foreground ui-motion-fast">
+      <summary className="cursor-pointer list-none px-2 py-2 ui-meta-label text-muted-foreground hover:text-foreground ui-motion-fast">
         Runtime Policy (Advanced)
       </summary>
       <div className="space-y-2 border-t border-hairline px-2 py-2">
@@ -380,10 +380,10 @@ export function NodeCard({
   const TYPE_ICON_CLASSES: Record<string, string> = {
     input: "border-status-info/30 bg-status-info/10 text-status-info",
     output: "border-hairline bg-surface-2/80 text-muted-foreground",
-    skill: "border-foreground/20 bg-foreground/10 text-foreground/80",
+    skill: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
     evaluator: "border-status-warning/30 bg-status-warning/10 text-status-warning",
-    splitter: "border-foreground/20 bg-foreground/10 text-foreground/80",
-    merger: "border-foreground/20 bg-foreground/10 text-foreground/80",
+    splitter: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
+    merger: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
     approval: "border-status-warning/30 bg-status-warning/10 text-status-warning",
   }
   const statusLabel = state?.status ? STATUS_LABELS[state.status] || state.status : null
@@ -470,7 +470,7 @@ export function NodeCard({
 
         {/* Move/remove buttons — only for non-terminal nodes */}
         {!isTerminal && (
-          <div className="flex items-center gap-1 pt-0.5 opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <div className="flex items-center gap-1 pt-0.5 opacity-60 ui-transition-opacity ui-motion-fast group-hover:opacity-100 group-focus-within:opacity-100">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -520,7 +520,7 @@ export function NodeCard({
                   }}
                   variant="ghost"
                   size="icon"
-                  className="h-control-sm w-control-sm ui-pressable rounded-md text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                  className="h-control-sm w-control-sm ui-pressable rounded-md text-muted-foreground hover:bg-status-danger/20 hover:text-status-danger"
                 >
                   <X size={12} />
                 </Button>
@@ -759,7 +759,7 @@ export function NodeCard({
           </div>
 
           <div className="rounded-md border border-hairline bg-surface-1/80 px-2 py-2 space-y-2">
-            <p className="ui-meta-text font-medium text-muted-foreground">Tool Access</p>
+            <p className="ui-meta-label text-muted-foreground">Tool Access</p>
             <ToolArrayEditor
               nodeId={`${node.id}-allowed`}
               label="Allowed Tools"

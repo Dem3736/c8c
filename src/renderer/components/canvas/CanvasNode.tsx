@@ -6,19 +6,9 @@ import { cn } from "@/lib/cn"
 import {
   Zap,
 } from "lucide-react"
-import { NODE_ACCENTS, NODE_ICONS, STATUS_STYLES } from "@/lib/node-ui-config"
+import { NODE_ACCENTS, NODE_ICONS, NODE_ICON_TONES, STATUS_STYLES } from "@/lib/node-ui-config"
 
 export type CanvasNodeType = Node<CanvasNodeData>
-
-const NODE_ICON_TONES: Record<string, string> = {
-  input: "border-status-info/30 bg-status-info/10 text-status-info",
-  output: "border-hairline bg-surface-1 text-muted-foreground",
-  skill: "border-foreground/20 bg-foreground/10 text-foreground/80",
-  evaluator: "border-status-warning/30 bg-status-warning/10 text-status-warning",
-  splitter: "border-foreground/20 bg-foreground/10 text-foreground/70",
-  merger: "border-foreground/20 bg-foreground/10 text-foreground/70",
-  approval: "border-status-warning/30 bg-status-warning/10 text-status-warning",
-}
 
 const STATUS_DOT_STYLES: Record<string, string> = {
   running: "bg-status-info animate-pulse",
@@ -45,7 +35,7 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
   const nodeTypeLabel = data.nodeTypeLabel || data.nodeType
   const status = data.status || "pending"
   const showStatusDot = status !== "pending"
-  const iconTone = NODE_ICON_TONES[data.nodeType] || NODE_ICON_TONES.skill
+  const iconTone = NODE_ICON_TONES[data.nodeType as keyof typeof NODE_ICON_TONES] || NODE_ICON_TONES.skill
   const accent = isBranch ? "border-hairline border-dashed" : (NODE_ACCENTS[data.nodeType as keyof typeof NODE_ACCENTS] || "")
   const statusStyle = data.status ? STATUS_STYLES[data.status as keyof typeof STATUS_STYLES] || "" : ""
   const ringStyle = data.isActive
@@ -91,7 +81,7 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="ui-meta-text uppercase tracking-[0.08em] font-semibold text-muted-foreground">
+              <span className="section-kicker">
                 {nodeTypeLabel}
               </span>
               {isBranch && (

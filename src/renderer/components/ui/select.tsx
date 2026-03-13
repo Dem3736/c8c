@@ -42,7 +42,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-control-md w-full min-w-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-md border border-input bg-input-background px-3 py-1 text-start text-body-sm text-foreground transition-[border-color,box-shadow,background-color,color] ui-motion-fast focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface-2/80 disabled:text-foreground/75 disabled:opacity-100 disabled:[-webkit-text-fill-color:currentColor] disabled:shadow-none data-[placeholder]:text-muted-foreground/70 [&>span]:block [&>span]:min-w-0 [&>span]:truncate",
+      "flex h-control-md w-full min-w-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-md border border-input bg-input-background px-3 py-1 text-start text-body-sm text-foreground transition-[border-color,box-shadow,background-color,color] ui-motion-fast focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface-2/80 disabled:text-disabled disabled:opacity-100 disabled:[-webkit-text-fill-color:currentColor] disabled:shadow-none data-[placeholder]:text-muted-foreground/70 [&>span]:block [&>span]:min-w-0 [&>span]:truncate",
       className,
     )}
     {...props}
@@ -66,7 +66,7 @@ const SelectScrollUpButton = React.forwardRef<
   <SelectPrimitive.ScrollUpButton
     ref={ref}
     className={cn(
-      "absolute top-0 left-0 right-0 z-10 flex cursor-default items-center justify-center h-6 bg-gradient-to-b from-popover via-popover/80 to-transparent animate-in fade-in-0 duration-150",
+      "absolute top-0 left-0 right-0 z-10 flex cursor-default items-center justify-center h-6 bg-gradient-to-b from-popover via-popover/80 to-transparent animate-in fade-in-0 ui-motion-fast",
       className,
     )}
     {...props}
@@ -83,7 +83,7 @@ const SelectScrollDownButton = React.forwardRef<
   <SelectPrimitive.ScrollDownButton
     ref={ref}
     className={cn(
-      "absolute bottom-0 left-0 right-0 z-10 flex cursor-default items-center justify-center h-6 bg-gradient-to-t from-popover via-popover/80 to-transparent animate-in fade-in-0 duration-150",
+      "absolute bottom-0 left-0 right-0 z-10 flex cursor-default items-center justify-center h-6 bg-gradient-to-t from-popover via-popover/80 to-transparent animate-in fade-in-0 ui-motion-fast",
       className,
     )}
     {...props}

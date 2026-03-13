@@ -39,6 +39,7 @@ import {
   removeEdgeFromWorkflow,
   removeNodeAndRewireWorkflow,
 } from "@/lib/workflow-mutations"
+import { MOTION_BASE_MS } from "@/lib/tokens"
 
 const nodeTypes: NodeTypes = {
   input: CanvasNode,
@@ -144,7 +145,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
   useEffect(() => {
     if (!reactFlow || nodes.length === 0 || hasUserNavigatedCanvas) return
     const id = window.setTimeout(() => {
-      void reactFlow.fitView({ padding: 0.3, duration: 180 })
+      void reactFlow.fitView({ padding: 0.3, duration: MOTION_BASE_MS })
     }, 0)
     return () => window.clearTimeout(id)
   }, [reactFlow, structureKey, nodes.length, hasUserNavigatedCanvas])
@@ -152,7 +153,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
   const recenterCanvas = () => {
     if (!reactFlow || nodes.length === 0) return
     setHasUserNavigatedCanvas(false)
-    void reactFlow.fitView({ padding: 0.3, duration: 180 })
+    void reactFlow.fitView({ padding: 0.3, duration: MOTION_BASE_MS })
   }
 
   const selectedTemplateNode = selectedNodeId
@@ -319,14 +320,14 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
         <MiniMap
           pannable
           zoomable
-          className="!bg-surface-1/90 !border !border-hairline !rounded-md !shadow-[0_0_0_1px_hsl(var(--hairline)/0.22)]"
+          className="canvas-minimap"
           nodeStrokeColor="hsl(var(--hairline))"
           nodeColor="hsl(var(--surface-2))"
           maskColor="hsl(var(--background) / 0.58)"
         />
         <Controls
           showInteractive={false}
-          className="!bg-surface-1/90 !border-hairline !rounded-lg !shadow-[0_0_0_1px_hsl(var(--hairline)/0.3),0_10px_20px_hsl(var(--foreground)/0.08)] [&>button]:!bg-surface-1 [&>button]:!border-border [&>button]:!text-foreground [&>button]:ui-motion-fast [&>button:hover]:!bg-surface-3"
+          className="canvas-controls [&>button]:ui-motion-fast"
         />
       </ReactFlow>
 
@@ -358,7 +359,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           aria-label="Delete selected item"
           onClick={removeSelection}
           disabled={!canDeleteSelection}
-          className="text-muted-foreground enabled:hover:text-destructive"
+          className="text-muted-foreground enabled:hover:text-status-danger"
         >
           <Trash2 size={14} />
         </Button>

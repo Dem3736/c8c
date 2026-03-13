@@ -78,7 +78,7 @@ Main ↔ Renderer communication via `window.api` (defined in preload). Two patte
 - **Status colors**: `text-status-success`, `text-status-warning`, `text-status-danger`, `text-status-info`
 - **Elevation**: `--elevation-base`, `--elevation-overlay` (inset highlights + shadows)
 - **Motion**: `--motion-fast` (140ms), `--motion-base` (170ms), `--motion-slow` (220ms)
-- **Control heights**: `control-sm` (1.75rem), `control-md` (2.25rem), `control-lg` (2.5rem)
+- **Control heights**: `control-xs` (1.25rem), `control-sm` (1.75rem), `control-md` (2.25rem), `control-lg` (2.5rem)
 
 ### Sidebar typography tokens (defined in tailwind.config.js)
 
@@ -92,13 +92,29 @@ Use these for sidebar elements — not generic `text-body-sm` or `ui-meta-text`:
 
 `section-kicker` (11px, fw 600, uppercase, tracked) stays for structural section dividers like "Threads".
 
+### Content typography tokens
+
+`text-body-sm` and `text-body-md` are approved content tokens (defined in `tailwind.config.js`) and can be used in components.
+
+- `text-body-md` (14px) — default readable body text
+- `text-body-sm` (13px) — compact body/controls copy
+- `ui-body-text` is the utility equivalent of `text-body-md`
+- `ui-meta-text` is for metadata/helper text
+
 ### Custom utility classes (in globals.css)
 
-- `.surface-panel`, `.surface-elevated`, `.surface-soft` — layered surface styles
-- `.section-kicker`, `.ui-title-text`, `.ui-body-text`, `.ui-meta-text` — content typography
+- `.surface-panel`, `.surface-elevated`, `.surface-soft`, `.surface-inset-card` — layered surface styles
+- `.surface-danger-soft`, `.surface-warning-soft` — soft severity surfaces
+- `.section-kicker`, `.ui-title-text`, `.ui-body-text`, `.ui-meta-text`, `.ui-meta-label`, `.ui-body-text-medium` — content typography
 - `.ui-motion-fast`, `.ui-motion-standard` — transition duration shortcuts
+- `.ui-transition-colors`, `.ui-transition-surface`, `.ui-transition-opacity`, `.ui-transition-width` — transition property helpers
 - `.ui-scroll-region` — containment + gutter management
-- `.ui-interactive-card`, `.ui-pressable` — interaction feedback
+- `.ui-interactive-card`, `.ui-pressable`, `.ui-icon-button`, `.ui-resize-handle` — interaction feedback
+- `.ui-status-badge`, `.ui-status-badge-success|warning|danger|info` — status badge pattern
+- `.ui-badge-row`, `.ui-empty-state`, `.ui-metric-text`, `.inline-code`, `.prose-c8c` — layout/content helpers
+- `.control-cluster`, `.control-badge`, `.border-hairline`, `.ui-disclosure` — shared control primitives
+- `.ui-elevation-base`, `.ui-elevation-inset`, `.ui-fade-slide-in` — elevation + motion composition
+- `.sidebar-progress-track`, `.sidebar-progress-bar`, `.ui-content-shell` — app-shell and sidebar utilities
 
 ## Key Dependencies
 

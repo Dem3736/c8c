@@ -249,7 +249,7 @@ export function ChainBuilder() {
               })
             }}
             className={cn(
-              "rounded-lg transition-colors",
+              "rounded-lg ui-transition-colors ui-motion-fast",
               dragOverNodeId === node.id && "ring-2 ring-primary/50 ring-offset-2 ring-offset-surface-1",
             )}
           >

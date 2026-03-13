@@ -605,7 +605,7 @@ export function ProjectSidebar({
         <div className="flex items-center justify-between">
           <span className="section-kicker inline-flex items-center gap-1.5">
             Workflows
-            <span className="text-sidebar-meta text-muted-foreground/80 normal-case tracking-normal">
+            <span className="text-sidebar-meta text-muted-foreground normal-case tracking-normal">
               {workflows.length}
             </span>
             {workflowDirty && selectedWorkflowPath && (
@@ -618,7 +618,7 @@ export function ProjectSidebar({
                 <button
                   type="button"
                   data-sidebar-item="true"
-                  className="flex items-center justify-center h-control-sm w-control-sm rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors ui-motion-fast"
+                  className="flex items-center justify-center h-control-sm w-control-sm rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground ui-transition-colors ui-motion-fast"
                   onClick={() => void createNewWorkflow()}
                   aria-label="New workflow"
                 >
@@ -632,7 +632,7 @@ export function ProjectSidebar({
                 <button
                   type="button"
                   data-sidebar-item="true"
-                  className="flex items-center justify-center h-control-sm w-control-sm rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors ui-motion-fast"
+                  className="flex items-center justify-center h-control-sm w-control-sm rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground ui-transition-colors ui-motion-fast"
                   onClick={() => void addProject()}
                   aria-label="Add project"
                 >
@@ -653,7 +653,7 @@ export function ProjectSidebar({
             type="button"
             data-sidebar-item="true"
             onClick={() => void addProject()}
-            className="mx-2 mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-sidebar-item text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors ui-motion-fast"
+            className="mx-2 mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-sidebar-item text-muted-foreground hover:bg-surface-2 hover:text-foreground ui-transition-colors ui-motion-fast"
           >
             <FolderOpen size={16} className="flex-shrink-0 opacity-60" />
             <span>Open a project</span>
@@ -670,7 +670,7 @@ export function ProjectSidebar({
                   type="button"
                   data-sidebar-item="true"
                   className={cn(
-                    "sidebar-project-row text-left text-sidebar-item",
+                    "sidebar-project-row text-left text-sidebar-label",
                     isSelectedProject ? "text-foreground" : "text-muted-foreground",
                   )}
                   onClick={() => void selectProject(projectPath)}
@@ -683,7 +683,7 @@ export function ProjectSidebar({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center justify-center h-control-xs w-control-xs rounded-md opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-all ui-motion-fast"
+                      className="ui-icon-button opacity-0 group-hover:opacity-100 hover:bg-status-danger/20 hover:text-status-danger transition-[opacity,background-color,color] ui-motion-fast"
                       onClick={(event) => openRemoveProjectDialog(projectPath, event)}
                       aria-label="Remove project"
                     >
@@ -748,7 +748,7 @@ export function ProjectSidebar({
                             )}
                             <span className={cn(
                               "truncate flex-1 text-sidebar-item",
-                              isSelected ? "text-foreground" : "text-foreground/90",
+                              isSelected ? "text-foreground" : "text-foreground-subtle",
                             )}
                             >
                               {workflow.name}
@@ -762,7 +762,7 @@ export function ProjectSidebar({
 
                           <div
                             className={cn(
-                              "flex items-center gap-0.5 transition-opacity ui-motion-fast",
+                              "flex items-center gap-0.5 ui-transition-opacity ui-motion-fast",
                               isSelected
                                 ? "opacity-100"
                                 : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
@@ -772,7 +772,7 @@ export function ProjectSidebar({
                               <TooltipTrigger asChild>
                                 <button
                                   type="button"
-                                  className="flex items-center justify-center h-control-xs w-control-xs rounded-md text-muted-foreground hover:bg-surface-3 hover:text-foreground transition-colors ui-motion-fast"
+                                  className="ui-icon-button ui-transition-colors ui-motion-fast"
                                   onClick={(event) => openRenameWorkflowDialog(workflow, event)}
                                   aria-label={`Rename ${workflow.name}`}
                                 >
@@ -786,7 +786,7 @@ export function ProjectSidebar({
                               <TooltipTrigger asChild>
                                 <button
                                   type="button"
-                                  className="flex items-center justify-center h-control-xs w-control-xs rounded-md text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors ui-motion-fast"
+                                  className="ui-icon-button hover:bg-status-danger/20 hover:text-status-danger ui-transition-colors ui-motion-fast"
                                   onClick={(event) => openDeleteWorkflowDialog(workflow, event)}
                                   aria-label={`Delete ${workflow.name}`}
                                 >
@@ -799,7 +799,7 @@ export function ProjectSidebar({
 
                           <span
                             className={cn(
-                              "text-muted-foreground/70 text-sidebar-meta flex-shrink-0 tabular-nums transition-opacity ui-motion-fast",
+                              "text-muted-foreground text-sidebar-meta flex-shrink-0 tabular-nums ui-transition-opacity ui-motion-fast",
                               isSelected ? "hidden" : "group-hover:hidden",
                             )}
                           >
@@ -846,7 +846,7 @@ export function ProjectSidebar({
 
         {globalWorkflows.length > 0 && (
           <div className="mt-4 px-2">
-            <div className="px-1 pb-1.5 section-kicker text-muted-foreground/80">Global workflows</div>
+            <div className="px-1 pb-1.5 section-kicker text-muted-foreground">Global workflows</div>
             <div className="space-y-0.5 sidebar-list-group">
               {globalWorkflows.map((workflow) => {
                 const isSelected = selectedWorkflowPath === workflow.path
@@ -867,16 +867,16 @@ export function ProjectSidebar({
                       })
                     }}
                     className={cn(
-                      "w-full sidebar-thread-row text-left text-sidebar-item transition-colors ui-motion-fast",
+                      "w-full sidebar-thread-row text-left text-sidebar-item ui-transition-colors ui-motion-fast",
                       isSelected
                         ? "sidebar-thread-row--active text-foreground"
-                        : "text-foreground/90",
+                        : "text-foreground-subtle",
                     )}
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <Globe size={12} className="text-muted-foreground/80 flex-shrink-0" />
+                      <Globe size={12} className="text-muted-foreground flex-shrink-0" />
                       <span className="truncate flex-1">{workflow.name}</span>
-                      <span className="text-sidebar-meta text-muted-foreground/70 tabular-nums">
+                      <span className="text-sidebar-meta text-muted-foreground tabular-nums">
                         {formatRelativeTime(workflow.updatedAt)}
                       </span>
                     </span>
@@ -962,10 +962,10 @@ export function ProjectSidebar({
         onPointerDown={startResize}
         onKeyDown={handleResizeKeyDown}
         className={cn(
-          "absolute right-0 top-0 h-full w-1.5 cursor-ew-resize no-drag",
-          "hover:bg-primary/20",
+          "absolute right-0 top-0 h-full no-drag ui-resize-handle",
           resizing && "bg-primary/30",
         )}
+        data-resizing={resizing}
       />
 
       {/* Rename dialog */}

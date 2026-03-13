@@ -166,7 +166,7 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
                       aria-label={`Add ${skill.name} skill`}
                       variant="ghost"
                       size="auto"
-                      className="h-auto w-full justify-start items-start gap-3 rounded-md border border-transparent px-2 py-2 text-left whitespace-normal transition-[background-color,border-color] hover:border-hairline hover:bg-surface-3/80"
+                      className="h-auto w-full justify-start items-start gap-3 rounded-md border border-transparent px-2 py-2 text-left whitespace-normal ui-transition-surface ui-motion-fast hover:border-hairline hover:bg-surface-3/80"
                     >
                       <Icon
                         size={16}

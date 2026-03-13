@@ -56,11 +56,17 @@ module.exports = {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        "foreground-subtle": "hsl(var(--foreground) / 0.8)",
+        disabled: "hsl(var(--foreground) / 0.75)",
       },
       borderRadius: {
         lg: "var(--radius-container)",
         md: "var(--radius-control)",
         sm: "calc(var(--radius-control) - 2px)",
+      },
+      boxShadow: {
+        "inset-highlight": "inset 0 1px 0 rgba(255, 255, 255, 0.64)",
+        "inset-highlight-subtle": "inset 0 1px 0 rgba(255, 255, 255, 0.24)",
       },
       spacing: {
         "space-1": "var(--space-1)",

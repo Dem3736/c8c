@@ -125,6 +125,21 @@ contextBridge.exposeInMainWorld("api", {
       workflowPath,
       webSearchBackend,
     ),
+  continueRun: (
+    workflow: Workflow,
+    workspace: string,
+    projectPath?: string,
+    workflowPath?: string,
+    webSearchBackend?: "builtin" | "exa",
+  ) =>
+    ipcRenderer.invoke(
+      "executor:continue",
+      workflow,
+      workspace,
+      projectPath,
+      workflowPath,
+      webSearchBackend,
+    ),
   listRuns: (projectPath: string) => ipcRenderer.invoke("executor:list-runs", projectPath),
   loadRunResult: (workspace: string) => ipcRenderer.invoke("executor:load-run-result", workspace),
   openReport: (reportPath: string) => ipcRenderer.invoke("executor:open-report", reportPath),
@@ -281,7 +296,14 @@ export interface C8cApi {
     projectPath?: string,
     workflowPath?: string,
     webSearchBackend?: "builtin" | "exa",
-  ) => Promise<string | null>
+  ) => Promise<string | { error: string } | null>
+  continueRun: (
+    workflow: Workflow,
+    workspace: string,
+    projectPath?: string,
+    workflowPath?: string,
+    webSearchBackend?: "builtin" | "exa",
+  ) => Promise<string | { error: string } | null>
   listRuns: (projectPath: string) => Promise<RunResult[]>
   loadRunResult: (workspace: string) => Promise<(RunResult & { reportContent: string }) | null>
   openReport: (reportPath: string) => Promise<string>

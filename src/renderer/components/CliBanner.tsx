@@ -20,7 +20,7 @@ export function CliBanner() {
   if (!message) return null
 
   return (
-    <div className="flex items-center gap-2 border-b border-status-warning/25 bg-status-warning/10 px-3 py-2 text-body-sm">
+    <div className="flex items-center gap-2 ui-alert-warning border-b">
       <AlertTriangle size={14} className="shrink-0 text-status-warning" />
       <span className="flex-1 text-status-warning">{message}</span>
       <Button

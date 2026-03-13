@@ -80,7 +80,7 @@ export function ChatMessageBubble({
               Thinking...
             </div>
           ) : (
-            <div className="text-body-md break-words leading-relaxed [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-hairline [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-surface-3/60 [&_code]:px-1 [&_code]:py-0.5 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-hairline/40 [&_pre]:bg-surface-3/50 [&_pre]:p-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+            <div className="prose-c8c">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                 {message.content}
               </ReactMarkdown>
@@ -103,23 +103,23 @@ export function ChatMessageBubble({
           onClick={() => setToolExpanded(!toolExpanded)}
           className={cn(
             "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg",
-            "ui-meta-text text-status-info transition-colors hover:bg-status-info/10",
+            "ui-meta-text text-status-info ui-transition-colors ui-motion-fast hover:bg-status-info/10",
           )}
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-status-info/15">
+            <span className="inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md bg-status-info/15">
               <Wrench size={11} />
             </span>
             <span className="min-w-0 text-left">
               <span className="block font-medium truncate">{message.toolName || "tool"}</span>
-              <span className="block text-[11px] text-muted-foreground/80">Running tool</span>
+              <span className="block text-sidebar-label text-muted-foreground">Running tool</span>
             </span>
           </span>
           {toolExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
 
         {!toolExpanded && preview && (
-          <div className="px-2.5 pb-2 ui-meta-text text-muted-foreground/75 truncate">
+          <div className="px-2.5 pb-2 ui-meta-text text-muted-foreground truncate">
             {preview}
           </div>
         )}
@@ -150,7 +150,7 @@ export function ChatMessageBubble({
           onClick={() => setToolExpanded(!toolExpanded)}
           className={cn(
             "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg",
-            "ui-meta-text transition-colors",
+            "ui-meta-text ui-transition-colors ui-motion-fast",
             isError
               ? "text-status-danger hover:bg-status-danger/10"
               : "text-status-success hover:bg-status-success/10",
@@ -158,7 +158,7 @@ export function ChatMessageBubble({
         >
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn(
-              "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+              "inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md",
               isError ? "bg-status-danger/15" : "bg-status-success/15",
             )}>
               {isError ? <AlertCircle size={11} /> : <CheckCircle2 size={11} />}
@@ -166,7 +166,7 @@ export function ChatMessageBubble({
             <span className="min-w-0 text-left">
               <span className="block font-medium truncate">{message.toolName} result</span>
               <span className={cn(
-                "block text-[11px]",
+                "block text-sidebar-label",
                 isError ? "text-status-danger/75" : "text-status-success/75",
               )}>
                 {isError ? "Error" : "Success"}
@@ -179,7 +179,7 @@ export function ChatMessageBubble({
         {!toolExpanded && preview && (
           <div className={cn(
             "px-2.5 pb-2 ui-meta-text truncate",
-            isError ? "text-status-danger/80" : "text-muted-foreground/75",
+            isError ? "text-status-danger/80" : "text-muted-foreground",
           )}>
             {preview}
           </div>

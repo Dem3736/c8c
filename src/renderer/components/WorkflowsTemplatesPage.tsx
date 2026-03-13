@@ -46,6 +46,15 @@ const CATEGORY_ICONS: Record<string, typeof Layers> = {
   marketing: Megaphone,
   general: Layers,
 }
+const MAX_VISIBLE_TAG_FILTERS = 24
+
+function formatFacetLabel(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(" ")
+}
 
 function workflowSummary(template: WorkflowTemplate) {
   const workflow = template.workflow
@@ -101,7 +110,7 @@ function TemplateCard({
         )}
       </div>
 
-      <div className="ui-meta-text font-mono">
+      <div className="ui-meta-text text-muted-foreground font-mono">
         {workflowSummary(template) || "input · output"}
       </div>
 
@@ -118,6 +127,8 @@ export function WorkflowsTemplatesPage() {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState("")
+  const [activeCategory, setActiveCategory] = useState<string>("all")
+  const [activeTags, setActiveTags] = useState<string[]>([])
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
@@ -145,7 +156,7 @@ export function WorkflowsTemplatesPage() {
     void loadTemplates()
   }, [loadTemplates])
 
-  const filteredTemplates = useMemo(() => {
+  const searchFilteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return templates
     return templates.filter((template) =>
@@ -154,6 +165,66 @@ export function WorkflowsTemplatesPage() {
         .includes(q),
     )
   }, [query, templates])
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const template of searchFilteredTemplates) {
+      counts.set(template.category, (counts.get(template.category) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [searchFilteredTemplates])
+
+  useEffect(() => {
+    if (activeCategory === "all") return
+    const stillAvailable = categoryCounts.some(([category]) => category === activeCategory)
+    if (!stillAvailable) {
+      setActiveCategory("all")
+    }
+  }, [activeCategory, categoryCounts])
+
+  const categoryFilteredTemplates = useMemo(() => {
+    if (activeCategory === "all") return searchFilteredTemplates
+    return searchFilteredTemplates.filter((template) => template.category === activeCategory)
+  }, [activeCategory, searchFilteredTemplates])
+
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const template of categoryFilteredTemplates) {
+      for (const tag of template.tags) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1)
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [categoryFilteredTemplates])
+
+  useEffect(() => {
+    const availableTags = new Set(tagCounts.map(([tag]) => tag))
+    setActiveTags((prev) => prev.filter((tag) => availableTags.has(tag)))
+  }, [tagCounts])
+
+  const visibleTagFilters = useMemo(
+    () => tagCounts.slice(0, MAX_VISIBLE_TAG_FILTERS),
+    [tagCounts],
+  )
+
+  const filteredTemplates = useMemo(() => {
+    if (activeTags.length === 0) return categoryFilteredTemplates
+    return categoryFilteredTemplates.filter((template) => activeTags.every((tag) => template.tags.includes(tag)))
+  }, [activeTags, categoryFilteredTemplates])
+
+  const hasActiveFilters = activeCategory !== "all" || activeTags.length > 0 || query.trim().length > 0
+
+  const toggleTagFilter = (tag: string) => {
+    setActiveTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]))
+  }
+
+  const clearFilters = () => {
+    setQuery("")
+    setActiveCategory("all")
+    setActiveTags([])
+  }
 
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
     const nextWorkflow = applyWebSearchBackendPreset(
@@ -286,7 +357,6 @@ export function WorkflowsTemplatesPage() {
 
             <Button
               size="sm"
-              className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
               onClick={() => void createWorkflow()}
               disabled={!selectedProject}
             >
@@ -302,6 +372,68 @@ export function WorkflowsTemplatesPage() {
           title="Template Catalog"
           meta={<Badge variant="outline">{filteredTemplates.length}</Badge>}
         />
+        <div className="rounded-lg surface-panel p-3 space-y-3">
+          <div className="space-y-2">
+            <div className="ui-meta-text text-muted-foreground">Category</div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={activeCategory === "all" ? "secondary" : "outline"}
+                size="xs"
+                onClick={() => setActiveCategory("all")}
+                aria-pressed={activeCategory === "all"}
+              >
+                All ({searchFilteredTemplates.length})
+              </Button>
+              {categoryCounts.map(([category, count]) => (
+                <Button
+                  key={category}
+                  variant={activeCategory === category ? "secondary" : "outline"}
+                  size="xs"
+                  onClick={() => setActiveCategory(category)}
+                  aria-pressed={activeCategory === category}
+                  className="capitalize"
+                >
+                  {formatFacetLabel(category)} ({count})
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="ui-meta-text text-muted-foreground">Tags</div>
+            {visibleTagFilters.length === 0 ? (
+              <p className="text-body-sm text-muted-foreground">No tags available for this category filter.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {visibleTagFilters.map(([tag, count]) => (
+                  <Button
+                    key={tag}
+                    variant={activeTags.includes(tag) ? "secondary" : "outline"}
+                    size="xs"
+                    onClick={() => toggleTagFilter(tag)}
+                    aria-pressed={activeTags.includes(tag)}
+                  >
+                    {tag} ({count})
+                  </Button>
+                ))}
+              </div>
+            )}
+            {tagCounts.length > visibleTagFilters.length && (
+              <p className="text-body-sm text-muted-foreground">
+                Showing top {visibleTagFilters.length} tags by template count.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="ui-meta-text text-muted-foreground">
+              {filteredTemplates.length} result{filteredTemplates.length === 1 ? "" : "s"}
+            </div>
+            <Button variant="ghost" size="xs" onClick={clearFilters} disabled={!hasActiveFilters}>
+              Clear filters
+            </Button>
+          </div>
+        </div>
 
         {loading ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">

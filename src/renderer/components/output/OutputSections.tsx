@@ -86,7 +86,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? `Expand ${toolDisplayName} input` : `Collapse ${toolDisplayName} input`}
-          className="flex items-center gap-2 ui-meta-text font-medium text-foreground/80 hover:text-foreground"
+          className="flex items-center gap-2 ui-meta-label text-foreground-subtle hover:text-foreground"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <Wrench size={12} />
@@ -94,7 +94,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0">MCP</Badge>}
         </button>
         {!collapsed && (
-          <pre className="ui-meta-text text-muted-foreground whitespace-pre-wrap font-mono mt-1 max-h-60 overflow-y-auto">
+          <pre className="ui-meta-text text-muted-foreground whitespace-pre-wrap font-mono mt-1 max-h-60 overflow-y-auto ui-scroll-region">
             {inputPreview}
           </pre>
         )}
@@ -117,7 +117,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
     const textColor = isError
       ? "text-status-danger hover:text-status-danger/80"
       : isMcp
-        ? "text-foreground/80 hover:text-foreground"
+        ? "text-foreground-subtle hover:text-foreground"
         : "text-status-success hover:text-status-success/80"
 
     return (
@@ -126,7 +126,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? `Expand ${toolDisplayName} result` : `Collapse ${toolDisplayName} result`}
-          className={cn("flex items-center gap-2 ui-meta-text font-medium", textColor)}
+          className={cn("flex items-center gap-2 ui-meta-label", textColor)}
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <span>
@@ -137,7 +137,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
         {!collapsed && (
           <pre
             className={cn(
-              "ui-meta-text whitespace-pre-wrap font-mono mt-1 max-h-60 overflow-y-auto",
+              "ui-meta-text whitespace-pre-wrap font-mono mt-1 max-h-60 overflow-y-auto ui-scroll-region",
               isError ? "text-status-danger/80" : "text-muted-foreground",
             )}
           >
@@ -217,7 +217,7 @@ export function NodesTab({
             <button
               type="button"
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-3/80 transition-colors ui-motion-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-3/80 ui-transition-colors ui-motion-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                 isActive && "bg-surface-3/80",
                 node.indent && "pl-7",
               )}
@@ -228,7 +228,7 @@ export function NodesTab({
                 size={14}
                 className={cn(
                   status === "completed" && "text-status-success",
-                  status === "failed" && "text-destructive",
+                  status === "failed" && "text-status-danger",
                   status === "running" && "text-foreground animate-spin",
                   (status === "pending" || status === "queued" || status === "skipped") &&
                     "text-muted-foreground",
@@ -307,7 +307,7 @@ export function NodesTab({
               {canRerun && (status === "completed" || status === "failed") && onRerunFrom && (
                 <button
                   type="button"
-                  className="ml-1 inline-flex h-control-xs w-control-xs items-center justify-center rounded-md border border-hairline bg-surface-1/85 text-foreground/80 hover:bg-surface-3 hover:text-foreground transition-colors ui-motion-fast"
+                  className="ml-1 inline-flex h-control-xs w-control-xs items-center justify-center rounded-md border border-hairline bg-surface-1/85 text-foreground-subtle hover:bg-surface-3 hover:text-foreground ui-transition-colors ui-motion-fast"
                   onClick={(e) => {
                     e.stopPropagation()
                     onRerunFrom(node.id)
@@ -383,7 +383,7 @@ export function LogTab({
   }
 
   return (
-    <div className="rounded-lg surface-soft p-3 max-h-96 overflow-y-auto space-y-1">
+    <div className="rounded-lg surface-soft p-3 max-h-96 overflow-y-auto ui-scroll-region space-y-1">
       {state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0) && (
         <div className="flex items-center gap-3 ui-meta-text text-muted-foreground bg-surface-2/50 rounded px-2 py-1.5 mb-1 font-mono">
           <span title="Input tokens">In: {formatTokens(state.metrics.tokens_in)}</span>
@@ -411,7 +411,7 @@ export function LogTab({
       ))}
       {selectedNodeId && evalResults[selectedNodeId]?.length > 0 && (
         <div className="border-t border-hairline pt-2 mt-2 space-y-2">
-          <span className="ui-meta-text font-medium text-muted-foreground">Evaluations</span>
+          <span className="ui-meta-label text-muted-foreground">Evaluations</span>
           {evalResults[selectedNodeId].map((er) => (
             <div key={er.attempt} className="space-y-1.5">
               <div
@@ -432,7 +432,7 @@ export function LogTab({
                       <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">
                         <div
                           className={cn(
-                            "h-full rounded-full transition-all",
+                            "h-full rounded-full ui-transition-width ui-motion-standard",
                             c.score >= 7 ? "bg-status-success" : c.score >= 4 ? "bg-status-warning" : "bg-status-danger",
                           )}
                           style={{ width: `${(c.score / 10) * 100}%` }}
@@ -445,7 +445,7 @@ export function LogTab({
               )}
               {er.fix_instructions && (
                 <div className="px-2 py-1.5 ui-meta-text bg-surface-2 border border-hairline rounded">
-                  <span className="font-medium text-foreground/80">Fix: </span>
+                  <span className="font-medium text-foreground-subtle">Fix: </span>
                   <span className="text-muted-foreground">{er.fix_instructions}</span>
                 </div>
               )}

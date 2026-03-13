@@ -98,7 +98,6 @@ export function GenerateWorkflow() {
                 type="button"
                 size="sm"
                 variant={target === "new" ? "default" : "outline"}
-                className={target === "new" ? "!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]" : undefined}
                 onClick={() => setTarget("new")}
                 disabled={generating || !selectedProject}
               >
@@ -108,7 +107,6 @@ export function GenerateWorkflow() {
                 type="button"
                 size="sm"
                 variant={target === "replace" ? "default" : "outline"}
-                className={target === "replace" ? "!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]" : undefined}
                 onClick={() => setTarget("replace")}
                 disabled={generating}
               >
@@ -140,11 +138,11 @@ export function GenerateWorkflow() {
           />
 
           {generating && progress && (
-            <div role="status" aria-live="polite" className="flex items-center gap-2 ui-meta-text">
+            <div role="status" aria-live="polite" className="flex items-center gap-2 ui-meta-text text-muted-foreground">
               <Loader2 size={12} className="animate-spin" />
               <span>{progressLabel}</span>
               {progress.count > 0 && (
-                <span className="ml-auto tabular-nums text-muted-foreground/60">
+                <span className="ml-auto tabular-nums text-muted-foreground">
                   {progress.count} events
                 </span>
               )}
@@ -152,12 +150,12 @@ export function GenerateWorkflow() {
           )}
 
           {error && (
-            <div role="alert" aria-live="assertive" className="ui-meta-text text-status-danger bg-status-danger/10 rounded-md border border-status-danger/20 p-2">
+            <div role="alert" aria-live="assertive" className="ui-alert-danger text-status-danger">
               {error}
             </div>
           )}
 
-          <div className="ui-meta-text pb-1">
+          <div className="ui-meta-text text-muted-foreground pb-1">
             {skills.length > 0
               ? `${skills.length} skills available from your projects and libraries`
               : "No skills discovered — generic skill names will be used"}
@@ -174,7 +172,6 @@ export function GenerateWorkflow() {
           </Button>
           <Button
             variant="default"
-            className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
             onClick={() => void generate(target)}
             disabled={!description.trim() || generating || (target === "new" && !selectedProject)}
           >

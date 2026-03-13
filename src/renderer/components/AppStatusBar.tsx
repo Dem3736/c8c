@@ -113,7 +113,7 @@ export function AppStatusBar({
       aria-label="Application status bar"
       className="h-control-md shrink-0 border-t border-hairline bg-gradient-to-b from-surface-1/90 to-surface-2/90 backdrop-blur-sm"
     >
-      <div className="h-full px-6 flex items-center justify-between ui-meta-text">
+      <div className="h-full px-6 flex items-center justify-between ui-meta-text text-muted-foreground">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-2">
             <Laptop size={12} aria-hidden="true" />
@@ -124,7 +124,7 @@ export function AppStatusBar({
             {permissionsLabel}
           </span>
           {selectedProject ? (
-            <span className="inline-flex h-control-sm max-w-56 items-center truncate rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.64)]">
+            <span className="inline-flex h-control-sm max-w-56 items-center truncate rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
               {folderName(selectedProject)}
             </span>
           ) : null}
@@ -136,7 +136,7 @@ export function AppStatusBar({
               role="status"
               aria-live="polite"
               className={cn(
-                "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.64)]",
+                "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 ui-elevation-inset",
                 runProgressClass,
               )}
             >
@@ -146,7 +146,7 @@ export function AppStatusBar({
             </span>
           )}
           {selectedProject && (
-            <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.64)]">
+            <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset">
               <GitBranch size={12} aria-hidden="true" />
               {branch === undefined ? <span className="opacity-60">Checking git...</span> : (branch ?? "No git branch")}
             </span>

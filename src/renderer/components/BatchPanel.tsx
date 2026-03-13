@@ -157,7 +157,7 @@ export function BatchPanel() {
         setOpen(nextOpen)
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region">
         <DialogHeader>
           <DialogTitle>Batch Run</DialogTitle>
           <DialogDescription>
@@ -170,7 +170,7 @@ export function BatchPanel() {
             {isError && (
               <div
                 role="alert"
-                className="rounded-md border border-status-danger/30 bg-status-danger/10 px-3 py-2 ui-meta-text text-status-danger"
+                className="ui-alert-danger ui-meta-text text-status-danger"
               >
                 {batchError || "Batch run failed. Check configuration and try again."}
               </div>
@@ -213,7 +213,7 @@ export function BatchPanel() {
             <div className="ui-meta-text text-muted-foreground">
               {inputs.length} input{inputs.length !== 1 ? "s" : ""} detected
             </div>
-            <div className="ui-meta-text text-muted-foreground/90">
+            <div className="ui-meta-text text-muted-foreground">
               Shortcut: press Cmd/Ctrl+Enter to start batch run.
             </div>
           </div>
@@ -228,9 +228,9 @@ export function BatchPanel() {
                 {batchProgress.running > 0 && `, ${batchProgress.running} in progress`}
               </span>
             </div>
-            <div className="w-full h-2 bg-surface-3 rounded-full overflow-hidden">
+            <div className="ui-progress-track">
               <div
-                className="h-full bg-primary rounded-full transition-all"
+                className="ui-progress-bar"
                 style={{ width: `${batchProgress.total > 0 ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }}
               />
             </div>
@@ -308,7 +308,6 @@ export function BatchPanel() {
             <Button
               size="sm"
               variant="default"
-              className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
               onClick={handleRun}
               disabled={inputs.length === 0}
             >
@@ -367,7 +366,7 @@ function BatchInputPreview({
           {runningCount} item{runningCount !== 1 ? "s" : ""} currently running
         </div>
       )}
-      <div className="space-y-1 max-h-40 overflow-y-auto">
+      <div className="space-y-1 max-h-40 overflow-y-auto ui-scroll-region">
         {inputs.slice(0, previewCount).map((value, index) => {
           const done = completedIndexes.has(index)
           return (
@@ -378,12 +377,12 @@ function BatchInputPreview({
                   "rounded px-1 py-0 font-mono",
                   done
                     ? "bg-status-success/20 text-status-success"
-                    : "bg-surface-3 text-foreground/75",
+                    : "bg-surface-3 text-foreground-subtle",
                 )}
               >
                 {done ? "done" : "waiting"}
               </span>
-              <span className="truncate text-foreground/90">{value}</span>
+              <span className="truncate text-foreground-subtle">{value}</span>
             </div>
           )
         })}
@@ -400,7 +399,7 @@ function BatchInputPreview({
 function BatchItemList({ items }: { items: BatchItemResult[] }) {
   if (items.length === 0) return null
   return (
-    <div className="border border-hairline rounded-md divide-y divide-hairline max-h-48 overflow-y-auto">
+    <div className="border border-hairline rounded-md divide-y divide-hairline max-h-48 overflow-y-auto ui-scroll-region">
       {items.map((item) => {
         const evalSummary = Object.entries(item.eval_scores || {})
           .map(([id, score]) => `${id}:${score}`)

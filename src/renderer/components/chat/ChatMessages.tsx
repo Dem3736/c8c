@@ -64,7 +64,7 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
-        <div className="text-muted-foreground/60">
+        <div className="text-muted-foreground">
           <p className="text-body-md font-medium mb-1">Pipeline Co-pilot</p>
           <p className="ui-meta-text leading-relaxed">
             Ask me to add skills, build pipelines,
@@ -77,7 +77,7 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
   }
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-0">
+    <div ref={containerRef} className="flex-1 overflow-y-auto ui-scroll-region px-3 py-3 space-y-0">
       {messages.map((msg, index) => {
         const prev = messages[index - 1]
         const next = messages[index + 1]

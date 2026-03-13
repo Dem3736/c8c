@@ -127,10 +127,10 @@ export function SettingsPage() {
 
   const subscriptionBadge = useMemo(() => {
     if (subscriptionStatusLoading && !subscriptionStatus) {
-      return <span className="ui-meta-text rounded-md border border-hairline bg-surface-2/70 px-2 py-1">Checking...</span>
+      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-2/70 px-2 py-1">Checking...</span>
     }
     if (!subscriptionStatus) {
-      return <span className="ui-meta-text rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Unknown</span>
+      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Unknown</span>
     }
     if (!subscriptionStatus.cliInstalled) {
       return <span className="ui-meta-text rounded-md border border-status-danger/30 bg-status-danger/10 px-2 py-1 text-status-danger">CLI not found</span>
@@ -138,7 +138,7 @@ export function SettingsPage() {
     if (subscriptionStatus.hasSubscription) {
       return <span className="ui-meta-text rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 text-status-success">Connected</span>
     }
-    return <span className="ui-meta-text rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Not connected</span>
+    return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Not connected</span>
   }, [subscriptionStatus, subscriptionStatusLoading])
 
   const checkedAtLabel = subscriptionStatus
@@ -167,15 +167,15 @@ export function SettingsPage() {
   }, [telemetrySettings])
   const telemetryStatusBadge = useMemo(() => {
     if (telemetrySettingsLoading && !telemetrySettings) {
-      return <span className="ui-meta-text rounded-md border border-hairline bg-surface-2/70 px-2 py-1">Checking...</span>
+      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-2/70 px-2 py-1">Checking...</span>
     }
     if (!telemetryAvailable) {
-      return <span className="ui-meta-text rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled in build</span>
+      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled in build</span>
     }
     if (telemetryChecked) {
       return <span className="ui-meta-text rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 text-status-success">Enabled</span>
     }
-    return <span className="ui-meta-text rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled</span>
+    return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled</span>
   }, [telemetryAvailable, telemetryChecked, telemetrySettings, telemetrySettingsLoading])
 
   return (
@@ -189,7 +189,7 @@ export function SettingsPage() {
       <section className="space-y-3">
         <SectionHeading title="Updates" />
 
-        <article className="rounded-2xl surface-panel p-4 space-y-3">
+        <article className="rounded-lg surface-panel p-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-body-md font-semibold">Application Updates</h3>
@@ -238,9 +238,9 @@ export function SettingsPage() {
               <p className="text-body-sm text-muted-foreground">
                 Downloading update... {updateInfo.progress ?? 0}%
               </p>
-              <div className="h-1.5 w-full rounded-full bg-surface-2">
+              <div className="ui-progress-track">
                 <div
-                  className="h-full rounded-full bg-accent transition-all duration-300"
+                  className="ui-progress-bar"
                   style={{ width: `${updateInfo.progress ?? 0}%` }}
                 />
               </div>
@@ -254,13 +254,13 @@ export function SettingsPage() {
           )}
 
           {updateInfo.status === "not-available" && (
-            <p className="ui-meta-text">You're on the latest version.</p>
+            <p className="ui-meta-text text-muted-foreground">You're on the latest version.</p>
           )}
 
           {updateInfo.status === "error" && (
             <div className="space-y-1">
-              <p className="text-body-sm text-destructive">{updateInfo.error}</p>
-              <p className="ui-meta-text">
+              <p className="text-body-sm text-status-danger">{updateInfo.error}</p>
+              <p className="ui-meta-text text-muted-foreground">
                 You can download the latest version from{" "}
                 <a
                   href="https://github.com/c8c-ai/c8c/releases"
@@ -280,7 +280,7 @@ export function SettingsPage() {
       <section className="space-y-3">
         <SectionHeading title="Research" />
 
-        <article className="rounded-2xl surface-panel p-4 space-y-3">
+        <article className="rounded-lg surface-panel p-4 space-y-3">
           <div>
             <h3 className="text-body-md font-semibold">Web Search Backend</h3>
             <p className="text-body-sm text-muted-foreground mt-1">
@@ -303,7 +303,7 @@ export function SettingsPage() {
             </SelectContent>
           </Select>
 
-          <p className="ui-meta-text">
+          <p className="ui-meta-text text-muted-foreground">
             Current setting is stored locally for this app profile and does not modify existing workflow files.
           </p>
         </article>
@@ -312,7 +312,7 @@ export function SettingsPage() {
       <section className="space-y-3">
         <SectionHeading title="Integrations" />
 
-        <article className="rounded-2xl surface-panel p-4 space-y-3">
+        <article className="rounded-lg surface-panel p-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-body-md font-semibold">Claude Code Subscription</h3>
@@ -375,34 +375,34 @@ export function SettingsPage() {
           </div>
 
           {checkedAtLabel ? (
-            <p className="ui-meta-text">
+            <p className="ui-meta-text text-muted-foreground">
               Last check: {checkedAtLabel}
             </p>
           ) : null}
 
           {subscriptionStatus?.error ? (
-            <p className="text-body-sm text-destructive">
+            <p className="text-body-sm text-status-danger">
               {subscriptionStatus.error}
             </p>
           ) : null}
 
           {subscriptionStatus && !subscriptionStatus.cliInstalled && (
-            <div className="rounded-lg border border-status-warning/25 bg-status-warning/10 px-3 py-2 text-body-sm space-y-1">
+            <div className="ui-alert-warning space-y-1">
               <p className="font-medium text-status-warning">Claude CLI is required to run workflows</p>
               <p className="text-muted-foreground">
-                Install via: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">npm install -g @anthropic-ai/claude-code</code>
+                Install via: <code className="inline-code">npm install -g @anthropic-ai/claude-code</code>
               </p>
               <p className="text-muted-foreground">
-                Then authenticate: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">claude login</code>
+                Then authenticate: <code className="inline-code">claude login</code>
               </p>
             </div>
           )}
 
           {subscriptionStatus?.cliInstalled && !subscriptionStatus.loggedIn && (
-            <div className="rounded-lg border border-status-warning/25 bg-status-warning/10 px-3 py-2 text-body-sm space-y-1">
+            <div className="ui-alert-warning space-y-1">
               <p className="font-medium text-status-warning">Not authenticated</p>
               <p className="text-muted-foreground">
-                Run <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">claude login</code> in your terminal, then click Refresh above.
+                Run <code className="inline-code">claude login</code> in your terminal, then click Refresh above.
               </p>
             </div>
           )}
@@ -412,7 +412,7 @@ export function SettingsPage() {
       <section className="space-y-3">
         <SectionHeading title="Privacy" />
 
-        <article className="rounded-2xl surface-panel p-4 space-y-3">
+        <article className="rounded-lg surface-panel p-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-body-md font-semibold">Product Analytics</h3>
@@ -457,7 +457,7 @@ export function SettingsPage() {
           <div className="flex items-center justify-between rounded-lg border border-hairline bg-surface-1/60 px-3 py-2">
             <div>
               <p className="text-body-sm font-medium text-foreground">Allow product analytics</p>
-              <p className="ui-meta-text">
+              <p className="ui-meta-text text-muted-foreground">
                 {(telemetryAvailable
                   ? "You can opt in or out at any time."
                   : "Telemetry is not available in this build.")}
@@ -473,7 +473,7 @@ export function SettingsPage() {
             />
           </div>
 
-          <p className="ui-meta-text">{telemetryHint}</p>
+          <p className="ui-meta-text text-muted-foreground">{telemetryHint}</p>
         </article>
       </section>
     </PageShell>

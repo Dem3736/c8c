@@ -21,6 +21,7 @@ import { ApprovalDialog } from "./ApprovalDialog"
 import { ChatPanel } from "./chat/ChatPanel"
 import { WorkflowSettingsPanel } from "./WorkflowSettingsPanel"
 import { useWorkflowReset } from "@/hooks/useWorkflowReset"
+import { useChainExecution } from "@/hooks/useChainExecution"
 import { List, LayoutGrid, SlidersHorizontal, FolderOpen, FileStack, PencilLine, type LucideIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -49,6 +50,7 @@ export function WorkflowPanel() {
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [runStatus] = useAtom(runStatusAtom)
+  const { run, cancel, rerunFrom, continueRun } = useChainExecution()
   const listScrollRegionRef = useRef<HTMLDivElement | null>(null)
   const outputPanelRef = useRef<HTMLDivElement | null>(null)
   const previousRunStatusRef = useRef(runStatus)
@@ -115,19 +117,19 @@ export function WorkflowPanel() {
     <div className="flex-1 min-h-0 flex overflow-hidden pt-[var(--titlebar-height)]">
       {/* Main workflow editor area */}
       <div role="region" aria-label="Workflow editor" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
-        <Toolbar />
+        <Toolbar onRun={run} onCancel={cancel} />
 
         <Tabs
           value={viewMode}
           onValueChange={(next) => setViewMode(next as "list" | "canvas" | "settings")}
           className="flex-1 min-h-0 flex flex-col overflow-hidden"
         >
-          <div className="border-b border-hairline bg-gradient-to-b from-surface-1/90 to-surface-1/90">
+          <div className="border-b border-hairline bg-surface-1">
             <div className="ui-content-shell py-4 flex flex-wrap items-start gap-3">
               <div className="flex-1 min-w-[280px] group/workflow-meta">
                 <div className="mb-1 flex items-center gap-2">
-                  <Label htmlFor="workflow-name" className="section-kicker text-muted-foreground/80">Workflow Name</Label>
-                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground/70 transition-opacity group-focus-within/workflow-meta:opacity-0">
+                  <Label htmlFor="workflow-name" className="section-kicker text-muted-foreground">Workflow Name</Label>
+                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground transition-opacity group-focus-within/workflow-meta:opacity-0">
                     <PencilLine size={11} />
                     click to edit
                   </span>
@@ -141,7 +143,7 @@ export function WorkflowPanel() {
                   }
                   disabled={runStatus === "running"}
                   placeholder="Workflow name"
-                  className="h-auto border-none bg-transparent px-0 py-0 text-title-lg font-semibold shadow-none placeholder:text-foreground/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+                  className="h-auto border-none bg-transparent px-0 py-0 text-title-lg font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
                 <Label htmlFor="workflow-description" className="sr-only">Workflow description</Label>
                 <Input
@@ -153,7 +155,7 @@ export function WorkflowPanel() {
                   }
                   disabled={runStatus === "running"}
                   placeholder="What does this workflow do?"
-                  className="mt-1 h-auto border-none bg-transparent px-0 py-0 text-body-md text-muted-foreground shadow-none placeholder:text-muted-foreground/80 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+                  className="mt-1 h-auto border-none bg-transparent px-0 py-0 text-body-md text-muted-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
                 {workflowDirty && (
                   <p className="mt-2 ui-meta-text text-status-warning">Unsaved changes</p>
@@ -187,7 +189,7 @@ export function WorkflowPanel() {
               <div className="ui-content-shell py-6 space-y-6">
                 <InputPanel />
                 <SectionErrorBoundary sectionName="output panel">
-                  <OutputPanel />
+                  <OutputPanel onRerunFrom={rerunFrom} onContinueRun={continueRun} />
                 </SectionErrorBoundary>
               </div>
             </div>
@@ -211,7 +213,7 @@ export function WorkflowPanel() {
               </SectionErrorBoundary>
               <div ref={outputPanelRef} id="run-output-panel" className="scroll-mt-4">
                 <SectionErrorBoundary sectionName="output panel">
-                  <OutputPanel />
+                  <OutputPanel onRerunFrom={rerunFrom} onContinueRun={continueRun} />
                 </SectionErrorBoundary>
               </div>
             </div>

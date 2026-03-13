@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/20",
+      "fixed inset-0 z-50 bg-[var(--overlay-scrim)]",
       "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
@@ -42,7 +42,7 @@ const DialogContent = React.forwardRef<
     <DialogPortal>
       <DialogPrimitive.Overlay
         className={cn(
-          "fixed inset-0 z-50 bg-black/20",
+          "fixed inset-0 z-50 bg-[var(--overlay-scrim)]",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         )}
         onClick={onOverlayClick}
@@ -58,7 +58,7 @@ const DialogContent = React.forwardRef<
       >
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md border border-transparent p-1.5 text-muted-foreground transition-colors ui-motion-fast hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 disabled:pointer-events-none">
+          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md border border-transparent p-1.5 text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 disabled:pointer-events-none">
             <Cross2Icon className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
@@ -86,7 +86,7 @@ const CanvasDialogContent = React.forwardRef<
   <DialogPortal>
     <DialogPrimitive.Overlay
       className={cn(
-        "fixed inset-0 z-50 bg-black/20",
+        "fixed inset-0 z-50 bg-[var(--overlay-scrim)]",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       )}
     />
@@ -103,7 +103,7 @@ const CanvasDialogContent = React.forwardRef<
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close className="absolute right-3 top-3 h-control-sm w-control-sm rounded-full flex items-center justify-center text-muted-foreground transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
+        <DialogPrimitive.Close className="absolute right-3 top-3 h-control-sm w-control-sm rounded-md flex items-center justify-center text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
           <Cross2Icon className="h-3.5 w-3.5" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
@@ -179,7 +179,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-title-md font-semibold",
+      "text-title-md",
       className,
     )}
     {...props}

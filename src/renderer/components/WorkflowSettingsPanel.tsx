@@ -43,7 +43,7 @@ export function WorkflowSettingsPanel() {
     <section aria-label="Workflow settings" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
       <p className="section-kicker">Workflow Settings</p>
 
-      <div className="w-full max-w-[620px] rounded-lg border border-hairline bg-surface-2/70 p-3 space-y-2">
+      <div className="w-full max-w-[620px] surface-inset-card space-y-2">
         <p className="section-kicker">Execution Defaults</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
@@ -54,7 +54,7 @@ export function WorkflowSettingsPanel() {
               value={defaults.model || "sonnet"}
               onValueChange={(value) => updateDefaults({ model: value })}
             >
-              <SelectTrigger id="workflow-default-model" className="h-control-sm text-body-sm">
+              <SelectTrigger id="workflow-default-model" className="h-control-sm ui-body-text">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -76,7 +76,7 @@ export function WorkflowSettingsPanel() {
               step="1"
               value={defaults.maxTurns ?? ""}
               placeholder="e.g. 60"
-              className="h-control-sm text-body-sm"
+              className="h-control-sm ui-body-text"
               onChange={(event) => {
                 const maxTurns = parseOptionalPositiveInt(event.target.value)
                 updateDefaults({ maxTurns })
@@ -95,7 +95,7 @@ export function WorkflowSettingsPanel() {
               step="1"
               value={defaults.maxParallel ?? ""}
               placeholder="e.g. 8"
-              className="h-control-sm text-body-sm"
+              className="h-control-sm ui-body-text"
               onChange={(event) => {
                 const maxParallel = parseOptionalPositiveInt(event.target.value)
                 updateDefaults({ maxParallel })
@@ -114,7 +114,7 @@ export function WorkflowSettingsPanel() {
               step="1"
               value={defaults.timeout_minutes ?? ""}
               placeholder="e.g. 30"
-              className="h-control-sm text-body-sm"
+              className="h-control-sm ui-body-text"
               onChange={(event) => {
                 const timeoutMinutes = parseOptionalPositiveInt(event.target.value)
                 updateDefaults({ timeout_minutes: timeoutMinutes })
@@ -127,7 +127,7 @@ export function WorkflowSettingsPanel() {
         </p>
       </div>
 
-      <div className="w-full max-w-[620px] rounded-lg border border-hairline bg-surface-2/70 p-3 space-y-2">
+      <div className="w-full max-w-[620px] surface-inset-card space-y-2">
         <p className="section-kicker">Budget & Limits</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
@@ -141,7 +141,7 @@ export function WorkflowSettingsPanel() {
               step="0.001"
               value={defaults.budget_cost_usd ?? ""}
               placeholder="e.g. 0.10"
-              className="h-control-sm text-body-sm"
+              className="h-control-sm ui-body-text"
               onChange={(event) => {
                 const budgetCostUsd = parseOptionalNumber(event.target.value)
                 updateDefaults({ budget_cost_usd: budgetCostUsd })
@@ -159,7 +159,7 @@ export function WorkflowSettingsPanel() {
               step="1"
               value={defaults.budget_tokens ?? ""}
               placeholder="e.g. 120000"
-              className="h-control-sm text-body-sm"
+              className="h-control-sm ui-body-text"
               onChange={(event) => {
                 const budgetTokens = parseOptionalNumber(event.target.value)
                 updateDefaults({ budget_tokens: budgetTokens })

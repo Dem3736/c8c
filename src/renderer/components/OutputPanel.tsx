@@ -32,8 +32,7 @@ import remarkGfm from "remark-gfm"
 import { toast } from "sonner"
 
 const PREVIEW_MAX_W = "max-w-52" as const
-const MARKDOWN_PROSE_CLASS =
-  "text-body-md break-words leading-relaxed [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-hairline [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-surface-3/60 [&_code]:px-1 [&_code]:py-0.5 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-hairline/40 [&_pre]:bg-surface-3/50 [&_pre]:p-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+const MARKDOWN_PROSE_CLASS = "prose-c8c"
 const MARKDOWN_COMPONENTS: MarkdownComponents = {
   a: ({ href, children, ...props }) => {
     const safeHref = typeof href === "string" ? href : ""
@@ -98,12 +97,21 @@ function formatRunCompletedAt(run: RunResult, includeTime: boolean): string {
   }
   return includeTime ? completedDate.toLocaleString() : completedDate.toLocaleDateString()
 }
+
+function isRunContinuable(run: RunResult): boolean {
+  return run.status !== "completed" && run.status !== "failed" && run.status !== "cancelled"
+}
+
 // ── Main OutputPanel ─────────────────────────────────────
 
 export function OutputPanel({
   onOpenReport = (path: string) => { void window.api.openReport(path) },
+  onRerunFrom,
+  onContinueRun,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
+  onRerunFrom?: (nodeId: string) => Promise<void> | void
+  onContinueRun?: (run: RunResult) => Promise<void> | void
 }) {
   const {
     runStatus,
@@ -137,13 +145,10 @@ export function OutputPanel({
   const resultPulseTimerRef = useRef<number | null>(null)
   const resultSignalShownRef = useRef(false)
 
-  const handleRerunFrom = useCallback(
-    (nodeId: string) => {
-      if (!workspace) return
-      window.api.rerunFrom(nodeId, workflow, workspace)
-    },
-    [workspace, workflow],
-  )
+  const handleRerunFrom = useCallback((nodeId: string) => {
+    if (!onRerunFrom || !workspace) return
+    void onRerunFrom(nodeId)
+  }, [onRerunFrom, workspace])
 
   // Filter out template nodes that were replaced by runtime branches
   const replacedTemplateIds = new Set(
@@ -200,6 +205,35 @@ export function OutputPanel({
   })
 
   const allDisplayNodes = [...displayNodes, ...runtimeBranchNodes]
+  const displayLabelByNodeId = new Map(allDisplayNodes.map((node) => [node.id, node.label]))
+  for (const node of workflow.nodes) {
+    if (!displayLabelByNodeId.has(node.id)) {
+      displayLabelByNodeId.set(node.id, getWorkflowNodeLabel(node))
+    }
+  }
+  const workflowOrderIndex = new Map(workflow.nodes.map((node, index) => [node.id, index]))
+  const resultNodeOptions = Object.entries(nodeStates)
+    .filter(([, state]) => typeof state.output?.content === "string")
+    .map(([id, state]) => {
+      const workflowNode = templateById.get(id)
+      const label = workflowNode?.type === "output"
+        ? `${displayLabelByNodeId.get(id) || id} (final)`
+        : (displayLabelByNodeId.get(id) || id)
+      return {
+        id,
+        label,
+        hasContent: state.output!.content.trim().length > 0,
+      }
+    })
+    .sort((a, b) => {
+      const aIndex = workflowOrderIndex.get(a.id)
+      const bIndex = workflowOrderIndex.get(b.id)
+      if (aIndex != null && bIndex != null) return aIndex - bIndex
+      if (aIndex != null) return -1
+      if (bIndex != null) return 1
+      return a.label.localeCompare(b.label)
+    })
+  const resultNodeOptionIds = new Set(resultNodeOptions.map((option) => option.id))
 
   // Parallel execution indicator
   const runningBranches = runtimeBranchNodes.filter((n) => nodeStates[n.id]?.status === "running").length
@@ -243,7 +277,22 @@ export function OutputPanel({
           : null
 
   const hasNodeStates = Object.keys(nodeStates).length > 0
-  const hasResult = finalContent.trim().length > 0
+  const hasFinalResult = finalContent.trim().length > 0
+  const hasStageResult = resultNodeOptions.length > 0
+  const hasResult = hasFinalResult || hasStageResult
+  const outputResultNode = resultNodeOptions.find((option) => templateById.get(option.id)?.type === "output") || null
+  const selectedResultNodeId = selectedNodeId && resultNodeOptionIds.has(selectedNodeId)
+    ? selectedNodeId
+    : outputResultNode?.id || resultNodeOptions[0]?.id || null
+  const selectedResultNode = selectedResultNodeId
+    ? resultNodeOptions.find((option) => option.id === selectedResultNodeId) || null
+    : null
+  const selectedResultContent = selectedResultNodeId
+    ? (nodeStates[selectedResultNodeId]?.output?.content || "")
+    : null
+  const displayedResultContent = selectedResultContent ?? finalContent
+  const isDisplayedResultEmpty = displayedResultContent.trim().length === 0
+  const canCopyResult = displayedResultContent.length > 0
   const showIdleState = runStatus === "idle" && !hasNodeStates && !hasResult
   const completedRuns = pastRuns.filter((run) => run.status === "completed")
   const selectedHistoryRun = pastRuns.find((run) => run.runId === selectedHistoryRunId) || null
@@ -254,9 +303,9 @@ export function OutputPanel({
     : null
 
   const handleCopyResult = useCallback(async () => {
-    if (!hasResult) return
+    if (!canCopyResult) return
     try {
-      await navigator.clipboard.writeText(finalContent)
+      await navigator.clipboard.writeText(displayedResultContent)
       setCopiedResult(true)
       if (copyResetTimerRef.current) {
         window.clearTimeout(copyResetTimerRef.current)
@@ -269,7 +318,7 @@ export function OutputPanel({
       })
       setCopiedResult(false)
     }
-  }, [finalContent, hasResult])
+  }, [canCopyResult, displayedResultContent])
 
   const handleOpenReport = useCallback(async (path: string) => {
     try {
@@ -444,7 +493,7 @@ export function OutputPanel({
           ) : (
             <>
               <div className="surface-soft mb-2 rounded-lg px-3 py-2">
-                <div className="flex flex-wrap items-center gap-3 ui-meta-text text-foreground/80">
+                <div className="flex flex-wrap items-center gap-3 ui-meta-text text-foreground-subtle">
                   <span className="font-medium">Run totals</span>
                   <span className="font-mono">
                     {formatCost(accumulatedCost)}
@@ -458,7 +507,7 @@ export function OutputPanel({
               </div>
               {totalBranches > 0 && (
                 <div className="surface-soft mb-2 rounded-lg px-3 py-2 space-y-1.5">
-                  <div className="flex items-center gap-2 ui-meta-text text-foreground/80">
+                  <div className="flex items-center gap-2 ui-meta-text text-foreground-subtle">
                     {runningBranches > 0 ? (
                       <Loader2 size={12} className="animate-spin" />
                     ) : (
@@ -468,9 +517,9 @@ export function OutputPanel({
                       {runningBranches}/{totalBranches} running · {completedBranches} completed · {remainingBranches} remaining · {branchesProgressPct}%
                     </span>
                   </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                  <div className="ui-progress-track">
                     <div
-                      className="h-full rounded-full bg-primary transition-all"
+                      className="ui-progress-bar"
                       style={{ width: `${branchesProgressPct}%` }}
                     />
                   </div>
@@ -482,13 +531,17 @@ export function OutputPanel({
                     <span>Cost limit</span>
                     <span>{formatCost(accumulatedCost)} / {formatCost(budgetCost)}</span>
                   </div>
-                  <div className="w-full h-1.5 bg-surface-3 rounded-full overflow-hidden">
+                  <div className="ui-progress-track">
                     <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        budgetProgressRatio > 0.9 ? "bg-status-danger" : budgetProgressRatio > 0.7 ? "bg-status-warning" : "bg-primary",
-                      )}
-                      style={{ width: `${Math.min(100, budgetProgressRatio * 100)}%` }}
+                      className="ui-progress-bar"
+                      style={{
+                        width: `${Math.min(100, budgetProgressRatio * 100)}%`,
+                        background: budgetProgressRatio > 0.9
+                          ? "hsl(var(--status-danger))"
+                          : budgetProgressRatio > 0.7
+                            ? "hsl(var(--status-warning))"
+                            : undefined,
+                      }}
                     />
                   </div>
                   {budgetWarning && (
@@ -514,7 +567,7 @@ export function OutputPanel({
                 nodeStates={nodeStates}
                 activeNodeId={activeNodeId}
                 evalResults={evalResults}
-                canRerun={runStatus !== "running" && !!workspace}
+                canRerun={runStatus !== "running" && !!workspace && !!onRerunFrom}
                 onRerunFrom={handleRerunFrom}
                 onSelectNode={(nodeId) => {
                   setSelectedNodeId(nodeId)
@@ -526,7 +579,7 @@ export function OutputPanel({
                 <div
                   role="status"
                   aria-live="polite"
-                  className="px-3 py-2 ui-meta-text text-status-success bg-status-success/10 rounded-md border border-status-success/20 mt-2"
+                  className="ui-alert-success text-status-success mt-2"
                 >
                   Workflow completed successfully
                 </div>
@@ -534,7 +587,7 @@ export function OutputPanel({
               {runStatus === "error" && (
                 <div
                   role="alert"
-                  className="px-3 py-2 ui-meta-text text-status-danger bg-status-danger/10 rounded-md border border-status-danger/20 mt-2 space-y-1"
+                  className="ui-alert-danger text-status-danger mt-2 space-y-1"
                 >
                   <div className="font-medium text-status-danger">Workflow failed</div>
                   {Object.entries(nodeStates)
@@ -581,16 +634,43 @@ export function OutputPanel({
                 <div
                   role="status"
                   aria-live="polite"
-                  className="rounded-md border border-status-success/20 bg-status-success/10 px-3 py-1.5 ui-meta-text text-status-success"
+                  className="ui-alert-success text-status-success"
                 >
                   Result is ready.
+                </div>
+              )}
+              {resultNodeOptions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="ui-meta-label text-foreground-subtle">Step</span>
+                  <Select
+                    value={selectedResultNodeId || undefined}
+                    onValueChange={(nextNodeId) => {
+                      setSelectedNodeId(nextNodeId)
+                    }}
+                  >
+                    <SelectTrigger className="h-control-sm w-[320px] text-body-sm">
+                      <SelectValue placeholder="Select step result" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {resultNodeOptions.map((option) => (
+                        <SelectItem key={`result-node-${option.id}`} value={option.id}>
+                          {option.label}{option.hasContent ? "" : " · empty output"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedResultNode && (
+                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                      {selectedResultNode.id}
+                    </Badge>
+                  )}
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
                 {reportPath && (
                   <button
                     type="button"
-                    className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-text font-medium rounded-lg hover:bg-surface-3 transition-colors ui-motion-fast"
+                    className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-label rounded-lg hover:bg-surface-3 ui-transition-colors ui-motion-fast"
                     onClick={() => void handleOpenReport(reportPath)}
                   >
                     <FileText size={12} />
@@ -600,31 +680,40 @@ export function OutputPanel({
                 )}
                 <button
                   type="button"
-                  className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-text font-medium rounded-lg hover:bg-surface-3 transition-colors ui-motion-fast"
+                  className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-label rounded-lg hover:bg-surface-3 ui-transition-colors ui-motion-fast"
                   onClick={() => void handleCopyResult()}
+                  disabled={!canCopyResult}
                 >
                   <Copy size={12} />
                   {copiedResult ? "Copied" : "Copy Result"}
                 </button>
               </div>
               <div className="rounded-lg surface-soft p-3">
-                <div className={MARKDOWN_PROSE_CLASS}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                    {finalContent}
-                  </ReactMarkdown>
-                </div>
+                {isDisplayedResultEmpty ? (
+                  <div className="ui-meta-text text-muted-foreground">
+                    {selectedResultNode
+                      ? "This step completed with an empty output."
+                      : "Final result is empty."}
+                  </div>
+                ) : (
+                  <div className={MARKDOWN_PROSE_CLASS}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                      {displayedResultContent}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
-            <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
-              Final result will appear here after a successful run.
+            <div className="rounded-lg surface-soft p-6 ui-empty-state text-body-md text-muted-foreground">
+              Step results will appear here as nodes complete.
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="history" className="mt-2">
           {pastRuns.length === 0 ? (
-            <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
+            <div className="rounded-lg surface-soft p-6 ui-empty-state text-body-md text-muted-foreground">
               No past runs yet. Start a workflow run to build history.
             </div>
           ) : (
@@ -634,7 +723,7 @@ export function OutputPanel({
               {compareRunA && compareRunB && (
                 <div className="rounded-lg surface-soft p-3 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="ui-meta-text font-medium text-foreground/80">Compare runs</span>
+                    <span className="ui-meta-label text-foreground-subtle">Compare runs</span>
                     <Select
                       value={compareRunA.runId}
                       onValueChange={(nextRunId) => {
@@ -686,6 +775,12 @@ export function OutputPanel({
                 {pastRuns.map((run) => {
                   const isSelected = selectedHistoryRun?.runId === run.runId
                   const canOpenReport = Boolean(run.reportPath)
+                  const canContinue = Boolean(
+                    onContinueRun
+                    && run.workspace
+                    && isRunContinuable(run)
+                    && runStatus !== "running",
+                  )
                   return (
                     <div
                       key={run.runId}
@@ -704,7 +799,7 @@ export function OutputPanel({
                       <button
                         type="button"
                         className={cn(
-                          "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ui-motion-fast hover:bg-surface-3/80",
+                          "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left ui-transition-colors ui-motion-fast hover:bg-surface-3/80",
                           isSelected && "bg-surface-3/80",
                         )}
                         onClick={() => setSelectedHistoryRunId(run.runId)}
@@ -736,7 +831,7 @@ export function OutputPanel({
                       <button
                         type="button"
                         className={cn(
-                          "h-control-sm rounded-md px-2 ui-meta-text transition-colors",
+                          "h-control-sm rounded-md px-2 ui-meta-text ui-transition-colors ui-motion-fast",
                           canOpenReport
                             ? "border border-hairline bg-surface-1/80 text-foreground hover:bg-surface-3"
                             : "border border-hairline bg-surface-2/75 text-muted-foreground/85 cursor-not-allowed",
@@ -748,6 +843,22 @@ export function OutputPanel({
                         }}
                       >
                         Open file
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "h-control-sm rounded-md px-2 ui-meta-text ui-transition-colors ui-motion-fast",
+                          canContinue
+                            ? "border border-hairline bg-surface-1/80 text-foreground hover:bg-surface-3"
+                            : "border border-hairline bg-surface-2/75 text-muted-foreground/85 cursor-not-allowed",
+                        )}
+                        disabled={!canContinue}
+                        onClick={() => {
+                          if (!canContinue || !onContinueRun) return
+                          void onContinueRun(run)
+                        }}
+                      >
+                        Continue
                       </button>
                     </div>
                   )
@@ -792,7 +903,7 @@ export function OutputPanel({
                   {!historyLoading && !historyError && selectedRunDetails?.reportContent && (
                     <div className="rounded-md border border-hairline bg-surface-1/70 p-2">
                       <div className="ui-meta-text text-muted-foreground mb-1">Report preview</div>
-                      <div className="max-h-56 overflow-y-auto">
+                      <div className="max-h-56 overflow-y-auto ui-scroll-region">
                         <div className={MARKDOWN_PROSE_CLASS}>
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                             {selectedRunDetails.reportContent}
@@ -825,7 +936,7 @@ export function OutputPanel({
           <>
             <DropdownMenuLabel>Result</DropdownMenuLabel>
             <DropdownMenuItem
-              disabled={!hasResult}
+              disabled={!canCopyResult}
               onSelect={() => {
                 void handleCopyResult()
                 setOutputContextMenu(null)
@@ -863,6 +974,16 @@ export function OutputPanel({
               }}
             >
               Copy run ID
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!onContinueRun || !contextHistoryRun.workspace || !isRunContinuable(contextHistoryRun) || runStatus === "running"}
+              onSelect={() => {
+                if (!onContinueRun || !contextHistoryRun.workspace || !isRunContinuable(contextHistoryRun) || runStatus === "running") return
+                void onContinueRun(contextHistoryRun)
+                setOutputContextMenu(null)
+              }}
+            >
+              Continue run
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

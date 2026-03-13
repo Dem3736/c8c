@@ -43,10 +43,10 @@ export function ChatHeader({
           role="status"
           aria-live="polite"
           className={cn(
-            "inline-flex max-w-[170px] items-center gap-1.5 rounded-md border px-2 py-0.5 ui-meta-text truncate",
+            "ui-status-badge ui-meta-text max-w-[170px] truncate",
             status === "error"
-              ? "border-status-danger/30 bg-status-danger/10 text-status-danger"
-              : "border-status-info/30 bg-status-info/10 text-status-info",
+              ? "ui-status-badge-danger"
+              : "ui-status-badge-info",
           )}
         >
           {status === "error" ? (
@@ -76,7 +76,7 @@ export function ChatHeader({
             variant="ghost"
             size="icon"
             className={cn(
-              "transition-colors ui-motion-fast",
+              "ui-transition-colors ui-motion-fast",
               canUndo && status === "idle"
                 ? "text-muted-foreground hover:text-foreground hover:bg-surface-3"
                 : "text-muted-foreground/70 cursor-not-allowed",
@@ -97,7 +97,7 @@ export function ChatHeader({
             variant="ghost"
             size="icon"
             className={cn(
-              "transition-colors ui-motion-fast",
+              "ui-transition-colors ui-motion-fast",
               messageCount > 0 && status === "idle"
                 ? "text-muted-foreground hover:text-foreground hover:bg-surface-3"
                 : "text-muted-foreground/70 cursor-not-allowed",
@@ -116,7 +116,7 @@ export function ChatHeader({
             aria-label="Close chat"
             variant="ghost"
             size="icon"
-            className="text-muted-foreground transition-colors ui-motion-fast hover:text-foreground hover:bg-surface-3"
+            className="text-muted-foreground ui-transition-colors ui-motion-fast hover:text-foreground hover:bg-surface-3"
           >
             <PanelRightClose size={13} />
           </Button>

@@ -31,7 +31,7 @@ export const overlayItemHighlighted =
 export const overlayItemDisabled =
   "data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground/80"
 
-export const overlayItemTransition = "transition-colors ui-motion-fast"
+export const overlayItemTransition = "ui-transition-colors ui-motion-fast"
 
 export const overlayItem = `${overlayItemBase} ${overlayItemHover} ${overlayItemFocus} ${overlayItemHighlighted} ${overlayItemDisabled} ${overlayItemTransition}`
 
@@ -40,4 +40,4 @@ export const overlayItemIndicator =
 
 export const overlaySeparator = "my-1 h-px bg-border mx-1"
 
-export const overlayLabel = "mx-1 px-2 py-1 ui-meta-text font-medium"
+export const overlayLabel = "mx-1 px-2 py-1 ui-meta-label"

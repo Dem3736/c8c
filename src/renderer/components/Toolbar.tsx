@@ -17,7 +17,6 @@ import {
   workflowSavedSnapshotAtom,
   mainViewAtom,
 } from "@/lib/store"
-import { useChainExecution } from "@/hooks/useChainExecution"
 import {
   Save,
   Play,
@@ -57,7 +56,13 @@ import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import type { InputNodeConfig } from "@shared/types"
 import { toast } from "sonner"
 
-export function Toolbar() {
+export function Toolbar({
+  onRun,
+  onCancel,
+}: {
+  onRun: () => Promise<void> | void
+  onCancel: () => Promise<void> | void
+}) {
   const [workflow] = useAtom(currentWorkflowAtom)
   const [workflowPath] = useAtom(selectedWorkflowPathAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -75,8 +80,6 @@ export function Toolbar() {
   const [, setMainView] = useAtom(mainViewAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const setBatchOpen = useSetAtom(batchDialogOpenAtom)
-  const { run, cancel } = useChainExecution()
-
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -223,9 +226,9 @@ export function Toolbar() {
       if (event.key !== "Enter" || isEditable) return
       event.preventDefault()
       if (isRunning) {
-        void cancel()
+        void onCancel()
       } else if (canRun) {
-        void run()
+        void onRun()
       }
     }
 
@@ -233,7 +236,7 @@ export function Toolbar() {
     return () => {
       window.removeEventListener("keydown", handler)
     }
-  }, [canRun, cancel, desktopRuntime.primaryModifierKey, isRunning, run, save, setChatOpen, setMainView, workflowDirty, workflowPath])
+  }, [canRun, desktopRuntime.primaryModifierKey, isRunning, onCancel, onRun, save, setChatOpen, setMainView, workflowDirty, workflowPath])
 
   return (
     <>
@@ -351,14 +354,14 @@ export function Toolbar() {
           className={cn(
             "flex items-center gap-1 rounded-lg p-1",
             isRunning
-              ? "border border-destructive/20 bg-destructive/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]"
+              ? "border border-destructive/20 bg-status-danger/10 shadow-inset-highlight-subtle"
               : controlGroupClass,
           )}
         >
           {isRunning ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="destructive" size="sm" onClick={cancel}>
+                <Button variant="destructive" size="sm" onClick={() => void onCancel()}>
                   <Square size={14} />
                   Stop
                 </Button>
@@ -371,8 +374,7 @@ export function Toolbar() {
                 <Button
                   variant="default"
                   size="sm"
-                  className="!text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))]"
-                  onClick={run}
+                  onClick={() => void onRun()}
                   disabled={!canRun}
                 >
                   <Play size={14} />

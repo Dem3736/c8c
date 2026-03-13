@@ -22,7 +22,7 @@ import {
   webSearchBackendAtom,
 } from "@/lib/store"
 import type { EvaluationResult } from "@/lib/store"
-import type { WorkflowEvent, NodeState, InputNodeConfig } from "@shared/types"
+import type { Workflow, WorkflowEvent, NodeState, InputNodeConfig, RunResult } from "@shared/types"
 import { resolveWorkflowInput } from "@/lib/input-type"
 import { applyWebSearchBackendPreset } from "@/lib/web-search-backend"
 import { toast } from "sonner"
@@ -53,10 +53,10 @@ export function useChainExecution() {
   const setRuntimeEdges = useSetAtom(runtimeEdgesAtom)
   const setRuntimeMeta = useSetAtom(runtimeMetaAtom)
   const setApprovalRequest = useSetAtom(approvalRequestAtom)
-  const [workflow] = useAtom(currentWorkflowAtom)
+  const [workflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [inputValue] = useAtom(inputValueAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
-  const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
 
   const runIdRef = useRef<string | null>(null)
@@ -75,6 +75,66 @@ export function useChainExecution() {
     pendingRunRef.current = false
     pendingEventsRef.current = []
   }, [])
+
+  const beginExecution = useCallback((targetWorkflow: Workflow, workflowPathForRun: string | null) => {
+    const initialStates: Record<string, NodeState> = {}
+    for (const node of targetWorkflow.nodes) {
+      initialStates[node.id] = { status: "pending", attempts: 0, log: [] }
+    }
+    setNodeStates(initialStates)
+    setEvalResults({})
+    setRuntimeNodes([])
+    setRuntimeEdges([])
+    setRuntimeMeta({})
+    setRunStatus("running")
+    setRunWorkflowPath(workflowPathForRun)
+    setActiveNodeId(null)
+    setApprovalRequest(null)
+    setFinalContent("")
+    setReportPath(null)
+
+    clearRunTracking()
+    pendingRunRef.current = true
+    setRunId(null)
+  }, [
+    clearRunTracking,
+    setActiveNodeId,
+    setApprovalRequest,
+    setEvalResults,
+    setFinalContent,
+    setNodeStates,
+    setReportPath,
+    setRunId,
+    setRunStatus,
+    setRunWorkflowPath,
+    setRuntimeEdges,
+    setRuntimeMeta,
+    setRuntimeNodes,
+  ])
+
+  const rollbackExecutionStart = useCallback(() => {
+    clearRunTracking()
+    setRunStatus("idle")
+    setRunWorkflowPath(null)
+    setRunId(null)
+    setApprovalRequest(null)
+    setNodeStates({})
+    setEvalResults({})
+    setRuntimeNodes([])
+    setRuntimeEdges([])
+    setRuntimeMeta({})
+  }, [
+    clearRunTracking,
+    setApprovalRequest,
+    setEvalResults,
+    setNodeStates,
+    setRunId,
+    setRunStatus,
+    setRunWorkflowPath,
+    setRuntimeEdges,
+    setRuntimeMeta,
+    setRuntimeNodes,
+  ])
 
   const processWorkflowEvent = useCallback((event: WorkflowEvent) => {
     switch (event.type) {
@@ -221,6 +281,19 @@ export function useChainExecution() {
     }
   }, [clearRunTracking, setActiveNodeId, setNodeStates, setRunStatus, setRunId, setRunWorkflowPath, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, setPastRuns])
 
+  const finishStartWithRunId = useCallback((startedRunId: string) => {
+    runIdRef.current = startedRunId
+    setRunId(startedRunId)
+    const bufferedEvents = pendingEventsRef.current
+    pendingRunRef.current = false
+    pendingEventsRef.current = []
+    for (const event of bufferedEvents) {
+      if (event.runId === startedRunId) {
+        processWorkflowEvent(event)
+      }
+    }
+  }, [processWorkflowEvent, setRunId])
+
   useEffect(() => {
     const unsubscribe = window.api.onWorkflowEvent((event: WorkflowEvent) => {
       const currentRunId = runIdRef.current
@@ -290,26 +363,7 @@ export function useChainExecution() {
     })
     if (!resolvedInput.valid) return
 
-    // Initialize node states
-    const initialStates: Record<string, NodeState> = {}
-    for (const node of workflow.nodes) {
-      initialStates[node.id] = { status: "pending", attempts: 0, log: [] }
-    }
-    setNodeStates(initialStates)
-    setEvalResults({})
-    setRuntimeNodes([])
-    setRuntimeEdges([])
-    setRuntimeMeta({})
-    setRunStatus("running")
-    setRunWorkflowPath(selectedWorkflowPath ?? null)
-    setActiveNodeId(null)
-    setApprovalRequest(null)
-    setFinalContent("")
-    setReportPath(null)
-
-    clearRunTracking()
-    pendingRunRef.current = true
-    setRunId(null)
+    beginExecution(workflow, selectedWorkflowPath ?? null)
 
     const looksResearch = isResearchLikeWorkflow(workflow as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
@@ -329,59 +383,35 @@ export function useChainExecution() {
         toast.error("Could not start run", {
           description: "No active window is available for execution.",
         })
-        setRunStatus("idle")
-        setRunWorkflowPath(null)
-        clearRunTracking()
-        setRunId(null)
-        setNodeStates({})
-        setEvalResults({})
-        setRuntimeNodes([])
-        setRuntimeEdges([])
-        setRuntimeMeta({})
+        rollbackExecutionStart()
         return
       }
       if (typeof result === "object" && "error" in result) {
         toast.error("Could not start run", {
           description: result.error,
         })
-        setRunStatus("idle")
-        setRunWorkflowPath(null)
-        clearRunTracking()
-        setRunId(null)
-        setNodeStates({})
-        setEvalResults({})
-        setRuntimeNodes([])
-        setRuntimeEdges([])
-        setRuntimeMeta({})
+        rollbackExecutionStart()
         return
       }
-      runIdRef.current = result // filter to this run only
-      setRunId(result)
-      const bufferedEvents = pendingEventsRef.current
-      pendingRunRef.current = false
-      pendingEventsRef.current = []
-      for (const event of bufferedEvents) {
-        if (event.runId === result) {
-          processWorkflowEvent(event)
-        }
-      }
+      finishStartWithRunId(result)
     } catch (err) {
       console.error("[useChainExecution] runChain failed:", err)
       toast.error("Could not start run", {
         description: String(err),
       })
-      setRunStatus("idle")
-      setRunWorkflowPath(null)
-      clearRunTracking()
-      setRunId(null)
-      setApprovalRequest(null)
-      setNodeStates({})
-      setEvalResults({})
-      setRuntimeNodes([])
-      setRuntimeEdges([])
-      setRuntimeMeta({})
+      rollbackExecutionStart()
     }
-  }, [runStatus, workflow, inputValue, selectedProject, selectedWorkflowPath, webSearchBackend, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setRunStatus, setRunWorkflowPath, setActiveNodeId, setRunId, setFinalContent, setApprovalRequest, setReportPath, clearRunTracking, processWorkflowEvent])
+  }, [
+    beginExecution,
+    finishStartWithRunId,
+    inputValue,
+    rollbackExecutionStart,
+    runStatus,
+    selectedProject,
+    selectedWorkflowPath,
+    webSearchBackend,
+    workflow,
+  ])
 
   const cancel = useCallback(async () => {
     const currentRunId = runIdRef.current
@@ -415,25 +445,7 @@ export function useChainExecution() {
     if (runStatus === "running") return
     if (!workspace || !workflow.nodes.length) return
 
-    const initialStates: Record<string, NodeState> = {}
-    for (const node of workflow.nodes) {
-      initialStates[node.id] = { status: "pending", attempts: 0, log: [] }
-    }
-    setNodeStates(initialStates)
-    setEvalResults({})
-    setRuntimeNodes([])
-    setRuntimeEdges([])
-    setRuntimeMeta({})
-    setRunStatus("running")
-    setRunWorkflowPath(selectedWorkflowPath ?? null)
-    setActiveNodeId(null)
-    setApprovalRequest(null)
-    setFinalContent("")
-    setReportPath(null)
-
-    clearRunTracking()
-    pendingRunRef.current = true
-    setRunId(null)
+    beginExecution(workflow, selectedWorkflowPath ?? null)
 
     const looksResearch = isResearchLikeWorkflow(workflow as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
@@ -451,17 +463,15 @@ export function useChainExecution() {
         selectedWorkflowPath ?? undefined,
         webSearchBackend,
       )
-      if (id) {
-        runIdRef.current = id
-        setRunId(id)
-        const bufferedEvents = pendingEventsRef.current
-        pendingRunRef.current = false
-        pendingEventsRef.current = []
-        for (const event of bufferedEvents) {
-          if (event.runId === id) {
-            processWorkflowEvent(event)
-          }
-        }
+      if (id && typeof id === "string") {
+        finishStartWithRunId(id)
+        return
+      }
+      if (id && typeof id === "object" && "error" in id) {
+        toast.error("Could not restart from selected node", {
+          description: id.error,
+        })
+        rollbackExecutionStart()
         return
       }
       toast.error("Could not restart from selected node")
@@ -472,17 +482,108 @@ export function useChainExecution() {
       })
     }
 
-    clearRunTracking()
-    setRunStatus("idle")
-    setRunWorkflowPath(null)
-    setRunId(null)
-    setApprovalRequest(null)
-    setNodeStates({})
-    setEvalResults({})
-    setRuntimeNodes([])
-    setRuntimeEdges([])
-    setRuntimeMeta({})
-  }, [runStatus, workspace, workflow, selectedProject, selectedWorkflowPath, webSearchBackend, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setRunStatus, setRunWorkflowPath, setActiveNodeId, setRunId, setApprovalRequest, setFinalContent, setReportPath, clearRunTracking, processWorkflowEvent])
+    rollbackExecutionStart()
+  }, [
+    beginExecution,
+    finishStartWithRunId,
+    rollbackExecutionStart,
+    runStatus,
+    selectedProject,
+    selectedWorkflowPath,
+    webSearchBackend,
+    workflow,
+    workspace,
+  ])
 
-  return { runStatus, nodeStates, activeNodeId, evalResults, workspace, run, cancel, rerunFrom }
+  const continueRun = useCallback(async (runToContinue: RunResult) => {
+    if (runStatus === "running") return
+    if (!runToContinue.workspace) {
+      toast.error("Could not continue run", {
+        description: "Run workspace is missing.",
+      })
+      return
+    }
+
+    let workflowForRun = workflow
+    let workflowPathForRun = selectedWorkflowPath ?? null
+
+    if (runToContinue.workflowPath) {
+      try {
+        workflowForRun = await window.api.loadWorkflow(runToContinue.workflowPath)
+        workflowPathForRun = runToContinue.workflowPath
+        setCurrentWorkflow(workflowForRun)
+        setSelectedWorkflowPath(runToContinue.workflowPath)
+      } catch (err) {
+        toast.error("Could not continue run", {
+          description: `Failed to load workflow file: ${String(err)}`,
+        })
+        return
+      }
+    }
+
+    if (!workflowForRun.nodes.length) {
+      toast.error("Could not continue run", {
+        description: "Workflow has no steps.",
+      })
+      return
+    }
+
+    beginExecution(workflowForRun, workflowPathForRun)
+    setWorkspace(runToContinue.workspace)
+
+    const looksResearch = isResearchLikeWorkflow(workflowForRun as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
+    const workflowForExecution = applyWebSearchBackendPreset(
+      workflowForRun,
+      looksResearch ? "research" : "general",
+      webSearchBackend,
+    )
+
+    try {
+      const result = await window.api.continueRun(
+        workflowForExecution,
+        runToContinue.workspace,
+        selectedProject ?? undefined,
+        workflowPathForRun ?? undefined,
+        webSearchBackend,
+      )
+
+      if (typeof result === "string") {
+        finishStartWithRunId(result)
+        return
+      }
+
+      if (result && typeof result === "object" && "error" in result) {
+        toast.error("Could not continue run", {
+          description: result.error,
+        })
+        rollbackExecutionStart()
+        return
+      }
+
+      toast.error("Could not continue run", {
+        description: "No active window is available for execution.",
+      })
+    } catch (err) {
+      console.error("[useChainExecution] continueRun failed:", err)
+      toast.error("Could not continue run", {
+        description: String(err),
+      })
+    }
+
+    rollbackExecutionStart()
+  }, [
+    beginExecution,
+    finishStartWithRunId,
+    rollbackExecutionStart,
+    runStatus,
+    selectedProject,
+    selectedWorkflowPath,
+    setCurrentWorkflow,
+    setSelectedWorkflowPath,
+    setWorkspace,
+    webSearchBackend,
+    workflow,
+  ])
+
+  return { runStatus, nodeStates, activeNodeId, evalResults, workspace, run, cancel, rerunFrom, continueRun }
 }

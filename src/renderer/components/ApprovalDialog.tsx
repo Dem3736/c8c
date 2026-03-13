@@ -66,7 +66,7 @@ export function ApprovalDialog() {
 
   return (
     <Dialog open={!!request} onOpenChange={() => {}}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" showCloseButton={false}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Waiting for your approval</DialogTitle>
           <DialogDescription>
@@ -83,8 +83,8 @@ export function ApprovalDialog() {
               className="font-mono text-body-sm"
             />
           ) : (
-            <div className="rounded-md border border-hairline bg-surface-2 p-3 max-h-64 overflow-y-auto">
-              <pre className="text-body-sm text-foreground/80 whitespace-pre-wrap">{request.content}</pre>
+            <div className="rounded-md border border-hairline bg-surface-2 p-3 max-h-64 overflow-y-auto ui-scroll-region">
+              <pre className="text-body-sm text-foreground-subtle whitespace-pre-wrap">{request.content}</pre>
             </div>
           )
         )}

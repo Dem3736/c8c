@@ -7,15 +7,15 @@ import {
 import type { EdgeProps } from "@xyflow/react"
 import { cn } from "@/lib/cn"
 
-const EDGE_STYLES: Record<string, { stroke: string; strokeWidth: number; strokeDasharray?: string }> = {
-  default: { stroke: "hsl(var(--hairline))", strokeWidth: 1.35 },
-  pass: { stroke: "hsl(var(--status-success))", strokeWidth: 1.55 },
-  fail: { stroke: "hsl(var(--status-danger))", strokeWidth: 1.5, strokeDasharray: "6 4" },
+const EDGE_STYLES: Record<string, { stroke: string; strokeWidth: string; strokeDasharray?: string }> = {
+  default: { stroke: "hsl(var(--hairline))", strokeWidth: "var(--edge-stroke-width-default)" },
+  pass: { stroke: "hsl(var(--status-success))", strokeWidth: "var(--edge-stroke-width-active)" },
+  fail: { stroke: "hsl(var(--status-danger))", strokeWidth: "var(--edge-stroke-width-active)", strokeDasharray: "6 4" },
 }
 
 const LABEL_COLORS: Record<string, string> = {
-  pass: "text-status-success bg-status-success/10 border-status-success/20",
-  fail: "text-status-danger bg-status-danger/10 border-status-danger/20",
+  pass: "ui-status-badge-success",
+  fail: "ui-status-badge-danger",
 }
 
 type WorkflowDisplayEdgeType = "default" | "pass" | "fail"
@@ -63,9 +63,9 @@ function WorkflowEdgeComponent({
         )}
         style={{
           stroke: style.stroke,
-          strokeWidth: selected ? style.strokeWidth + 0.45 : style.strokeWidth,
+          strokeWidth: selected ? "var(--edge-stroke-width-active)" : style.strokeWidth,
           strokeDasharray: style.strokeDasharray,
-          opacity: selected ? 1 : 0.92,
+          opacity: selected ? 1 : "var(--edge-opacity-idle)",
           strokeLinecap: "round",
           strokeLinejoin: "round",
         }}
@@ -79,7 +79,7 @@ function WorkflowEdgeComponent({
               pointerEvents: "none",
             }}
             className={cn(
-              "edge-label rounded border px-2 py-0 ui-meta-text font-semibold uppercase tracking-[0.08em] transition-[background-color,border-color,color] ui-motion-fast",
+              "ui-edge-label ui-status-badge section-kicker ui-transition-colors ui-motion-fast",
               labelClass,
             )}
           >

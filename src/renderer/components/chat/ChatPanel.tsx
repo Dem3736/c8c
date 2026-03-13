@@ -93,10 +93,10 @@ export function ChatPanel({
         onPointerDown={startResize}
         onKeyDown={handleResizeKeyDown}
         className={cn(
-          "absolute left-0 top-0 h-full w-1.5 cursor-ew-resize z-10",
-          "hover:bg-primary/20",
+          "absolute left-0 top-0 h-full z-10 ui-resize-handle",
           resizing && "bg-primary/30",
         )}
+        data-resizing={resizing}
       />
 
       <ChatHeader

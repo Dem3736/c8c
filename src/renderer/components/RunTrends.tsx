@@ -58,7 +58,7 @@ export function RunTrends({ runs }: { runs: RunResult[] }) {
   if (metricsRuns.length < 2) {
     return (
       <div className="space-y-2 px-1 pb-2">
-        <div className="ui-meta-text font-medium">Trends</div>
+        <div className="ui-meta-label">Trends</div>
         <div className="rounded-md border border-hairline bg-surface-2 px-2.5 py-1.5 ui-meta-text text-muted-foreground">
           Complete one more run to enable trend charts.
         </div>
@@ -91,7 +91,7 @@ export function RunTrends({ runs }: { runs: RunResult[] }) {
 
   return (
     <div className="space-y-2 px-1 pb-2">
-      <div className="ui-meta-text font-medium">
+      <div className="ui-meta-label">
         Trends ({metricsRuns.length} runs)
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -142,7 +142,7 @@ function TrendCard({
     <div className={cn("rounded-md border border-hairline bg-surface-2 px-2.5 py-1.5", className)}>
       <div className="flex items-center justify-between">
         <span className="ui-meta-text text-muted-foreground truncate" title={labelTitle ?? label}>{label}</span>
-        <span className="ui-meta-text font-mono font-medium">{value}</span>
+        <span className="ui-metric-text">{value}</span>
       </div>
       <div className="mt-1">{sparkline}</div>
     </div>
