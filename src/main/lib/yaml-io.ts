@@ -1,10 +1,12 @@
-import { readFile, writeFile, readdir, mkdir, stat } from "node:fs/promises"
+import { readFile, readdir, mkdir, stat } from "node:fs/promises"
 import { join, basename } from "node:path"
 import { homedir } from "node:os"
 import YAML from "yaml"
 import type { ChainDefinition } from "./chain-runner"
 import { listChainFiles } from "./chain-io"
 import type { WorkflowFile } from "@shared/types"
+import { writeFileAtomic } from "./atomic-write"
+import { logWarn } from "./structured-log"
 
 const CHAINS_DIR = join(homedir(), ".c8c", "chains")
 
@@ -23,7 +25,7 @@ export async function saveChainYaml(
   chain: ChainDefinition,
 ): Promise<void> {
   const content = YAML.stringify(chain, { lineWidth: 120 })
-  await writeFile(filePath, content, "utf-8")
+  await writeFileAtomic(filePath, content)
 }
 
 export async function listChains(dir?: string): Promise<WorkflowFile[]> {
@@ -45,7 +47,8 @@ export async function listChains(dir?: string): Promise<WorkflowFile[]> {
         }),
     )
     return workflows
-  } catch {
+  } catch (error) {
+    logWarn("yaml-io", "list_chains_failed", { dir: targetDir, error: String(error) })
     return []
   }
 }

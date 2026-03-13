@@ -5,10 +5,23 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import matter from "gray-matter"
 import type { DiscoveredSkill } from "@shared/types"
+import { logWarn } from "./structured-log"
 
 const execFileAsync = promisify(execFile)
 
 const LIBRARIES_DIR = join(homedir(), ".c8c", "libraries")
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === "string") return code
+  }
+  return undefined
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 export interface SkillLibrary {
   id: string
@@ -192,7 +205,13 @@ async function scanFlatCategories(
   let entries
   try {
     entries = await readdir(root, { withFileTypes: true })
-  } catch {
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("libraries", "scan_root_read_failed", {
+        libraryRoot: root,
+        error: errorMessage(error),
+      })
+    }
     return []
   }
 
@@ -205,7 +224,14 @@ async function scanFlatCategories(
     let files
     try {
       files = await readdir(categoryDir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("libraries", "scan_category_read_failed", {
+          categoryDir,
+          libraryRoot: root,
+          error: errorMessage(error),
+        })
+      }
       continue
     }
 
@@ -229,8 +255,15 @@ async function scanFlatCategories(
           allowedTools: data.allowedTools || data.allowed_tools,
           disallowedTools: data.disallowedTools || data.disallowed_tools,
         })
-      } catch {
-        // skip unreadable
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") {
+          logWarn("libraries", "scan_skill_file_failed", {
+            path: fullPath,
+            category: entry.name,
+            libraryRoot: root,
+            error: errorMessage(error),
+          })
+        }
       }
     }
   }
@@ -253,7 +286,14 @@ async function scanSkillDirs(
   let entries
   try {
     entries = await readdir(scanRoot, { withFileTypes: true })
-  } catch {
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("libraries", "scan_root_read_failed", {
+        libraryRoot: root,
+        scanRoot,
+        error: errorMessage(error),
+      })
+    }
     return []
   }
 
@@ -278,8 +318,15 @@ async function scanSkillDirs(
         allowedTools: data.allowedTools || data.allowed_tools,
         disallowedTools: data.disallowedTools || data.disallowed_tools,
       })
-    } catch {
-      // No SKILL.md or unreadable — skip
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("libraries", "scan_skill_file_failed", {
+          path: skillFile,
+          category,
+          libraryRoot: root,
+          error: errorMessage(error),
+        })
+      }
     }
   }
 

@@ -1,8 +1,10 @@
 import { spawnClaude } from "@claude-tools/runner"
-import { mkdtemp, writeFile, mkdir, readFile, readdir } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, readdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, dirname } from "node:path"
 import { BrowserWindow } from "electron"
+import { writeFileAtomic } from "./atomic-write"
+import { logWarn } from "./structured-log"
 
 export type StepMode = "analyze" | "rewrite" | "both"
 
@@ -55,6 +57,18 @@ export interface StepEvent {
 // Active chain runs, keyed by runId
 const activeRuns = new Map<string, AbortController>()
 
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === "string") return code
+  }
+  return undefined
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function cancelRun(runId: string): boolean {
   const controller = activeRuns.get(runId)
   if (controller) {
@@ -96,7 +110,13 @@ async function readReportsDir(reportsDir: string): Promise<ReportFile[]> {
       }
     }
     return reports
-  } catch {
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("chain-runner", "read_reports_dir_failed", {
+        reportsDir,
+        error: errorMessage(error),
+      })
+    }
     return []
   }
 }
@@ -127,21 +147,19 @@ export async function runChain(
       workdir = input.value
       // For directory input, workspace is a subdirectory concept — copy nothing,
       // the agent works in the directory itself. Content.md acts as a scratchpad.
-      await writeFile(
+      await writeFileAtomic(
         join(workspace, "content.md"),
         `Working directory: ${input.value}\n`,
-        "utf-8",
       )
     } else if (input.type === "url") {
       workdir = workspace
-      await writeFile(
+      await writeFileAtomic(
         join(workspace, "content.md"),
         `URL to fetch and process: ${input.value}\n`,
-        "utf-8",
       )
     } else {
       workdir = workspace
-      await writeFile(join(workspace, "content.md"), input.value, "utf-8")
+      await writeFileAtomic(join(workspace, "content.md"), input.value)
     }
 
     for (let i = 0; i < chain.steps.length; i++) {
@@ -234,8 +252,14 @@ export async function runChain(
     let finalContent = ""
     try {
       finalContent = await readFile(join(workspace, "content.md"), "utf-8")
-    } catch {
+    } catch (error) {
       // content.md may not exist if all steps failed
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("chain-runner", "read_final_content_failed", {
+          workspace,
+          error: errorMessage(error),
+        })
+      }
     }
     const reports = await readReportsDir(reportsDir)
 

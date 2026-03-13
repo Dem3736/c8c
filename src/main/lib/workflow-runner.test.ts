@@ -14,6 +14,8 @@ vi.mock("@claude-tools/runner", () => ({
 vi.mock("node:fs/promises", () => ({
   mkdtemp: vi.fn(() => Promise.resolve("/tmp/test-ws")),
   writeFile: vi.fn(() => Promise.resolve()),
+  rename: vi.fn(() => Promise.resolve()),
+  unlink: vi.fn(() => Promise.resolve()),
   mkdir: vi.fn(() => Promise.resolve()),
   readFile: vi.fn(() => Promise.resolve("improved content")),
 }))

@@ -4,8 +4,10 @@ import { scanAllLibraries } from "../lib/libraries"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
+import { logError, logInfo } from "../lib/structured-log"
+import { writeFileAtomic } from "../lib/atomic-write"
 import type { DiscoveredSkill, Workflow } from "@shared/types"
-import { mkdir, writeFile, access } from "node:fs/promises"
+import { mkdir, access } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { allowedProjectRoots } from "../lib/security-paths"
 
@@ -27,43 +29,89 @@ async function assertProjectPath(projectPath: string): Promise<string> {
   return resolvedPath
 }
 
+const scanInFlightByProject = new Map<string, Promise<DiscoveredSkill[]>>()
+
 export function registerSkillsHandlers() {
   ipcMain.handle(
     "skills:scan",
     async (_e, projectPath: string): Promise<DiscoveredSkill[]> => {
-      const startedAt = Date.now()
       const safeProjectPath = await assertProjectPath(projectPath)
-      const [projectSkills, librarySkills] = await Promise.all([
-        scanAllSkills(safeProjectPath),
-        scanAllLibraries(),
-      ])
-
-      // Merge: project skills take priority, then library skills
-      const seen = new Set<string>()
-      const merged: DiscoveredSkill[] = []
-
-      for (const skill of projectSkills) {
-        const key = `${skill.type}:${skill.name}`
-        seen.add(key)
-        merged.push(skill)
+      const existingScan = scanInFlightByProject.get(safeProjectPath)
+      if (existingScan) {
+        logInfo("skills-ipc", "scan_reused_inflight", { projectPath: safeProjectPath })
+        void trackTelemetryEvent("skill_scan_completed", {
+          source: "manual",
+          status: "shared_inflight",
+          deduped: true,
+        })
+        return existingScan
       }
-      for (const skill of librarySkills) {
-        const key = `${skill.type}:${skill.name}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          merged.push(skill)
+
+      const startedAt = Date.now()
+      const scanPromise = (async (): Promise<DiscoveredSkill[]> => {
+        try {
+          const [projectSkills, librarySkills] = await Promise.all([
+            scanAllSkills(safeProjectPath),
+            scanAllLibraries(),
+          ])
+
+          // Merge: project skills take priority, then library skills
+          const seen = new Set<string>()
+          const merged: DiscoveredSkill[] = []
+
+          for (const skill of projectSkills) {
+            const key = `${skill.type}:${skill.name}`
+            seen.add(key)
+            merged.push(skill)
+          }
+          for (const skill of librarySkills) {
+            const key = `${skill.type}:${skill.name}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              merged.push(skill)
+            }
+          }
+
+          void trackTelemetryEvent("skill_scan_completed", {
+            source: "manual",
+            status: "success",
+            deduped: false,
+            project_skills_total: projectSkills.length,
+            library_skills_total: librarySkills.length,
+            merged_skills_total: merged.length,
+            duration_ms: Date.now() - startedAt,
+          })
+          logInfo("skills-ipc", "scan_completed", {
+            projectPath: safeProjectPath,
+            projectSkillsTotal: projectSkills.length,
+            librarySkillsTotal: librarySkills.length,
+            mergedSkillsTotal: merged.length,
+          })
+          return merged
+        } catch (error) {
+          void trackTelemetryEvent("skill_scan_completed", {
+            source: "manual",
+            status: "failed",
+            deduped: false,
+            duration_ms: Date.now() - startedAt,
+            error_kind: "scan_failed",
+          })
+          logError("skills-ipc", "scan_failed", {
+            projectPath: safeProjectPath,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          throw error
+        }
+      })()
+
+      scanInFlightByProject.set(safeProjectPath, scanPromise)
+      try {
+        return await scanPromise
+      } finally {
+        if (scanInFlightByProject.get(safeProjectPath) === scanPromise) {
+          scanInFlightByProject.delete(safeProjectPath)
         }
       }
-
-      void trackTelemetryEvent("skill_scan_completed", {
-        source: "manual",
-        project_skills_total: projectSkills.length,
-        library_skills_total: librarySkills.length,
-        merged_skills_total: merged.length,
-        duration_ms: Date.now() - startedAt,
-      })
-
-      return merged
     },
   )
 
@@ -144,7 +192,7 @@ Describe what this skill should do.
 3. Keep it concise and actionable.
 `
 
-    await writeFile(filePath, template, "utf-8")
+    await writeFileAtomic(filePath, template)
     void trackTelemetryEvent("skill_template_created", {
       source: "manual",
       status: "success",

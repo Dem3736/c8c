@@ -1,8 +1,9 @@
-import { mkdir, writeFile, stat } from "node:fs/promises"
+import { mkdir, stat } from "node:fs/promises"
 import { join, dirname, resolve } from "node:path"
 import type { Workflow, SkillNodeConfig } from "@shared/types"
 import YAML from "yaml"
 import { isWithinRoot } from "./security-paths"
+import { writeFileAtomic } from "./atomic-write"
 
 interface AvailableSkill {
   name: string
@@ -84,7 +85,7 @@ export async function scaffoldMissingSkills(
     const content = `---\n${frontmatter}\n---\n\n${config.prompt || `Instructions for ${name}`}\n`
 
     await mkdir(dirname(skillPath), { recursive: true })
-    await writeFile(skillPath, content, "utf-8")
+    await writeFileAtomic(skillPath, content)
 
     // Set skillPaths on the node config
     updatedNodes[i] = {

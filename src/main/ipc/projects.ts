@@ -1,11 +1,12 @@
 import { ipcMain, dialog, BrowserWindow } from "electron"
 import { loadProjectsConfig, saveProjectsConfig } from "../lib/projects-config"
+import { logInfo } from "../lib/structured-log"
 
-let configMutationQueue: Promise<void> = Promise.resolve()
+let configMutationQueue: Promise<unknown> = Promise.resolve()
 
 function runSerializedConfigOperation<T>(operation: () => Promise<T>): Promise<T> {
-  const next = configMutationQueue.then(operation, operation)
-  configMutationQueue = next.then(() => undefined, () => undefined)
+  const next = configMutationQueue.then(() => operation())
+  configMutationQueue = next.catch(() => undefined)
   return next
 }
 
@@ -33,6 +34,7 @@ export function registerIpcHandlers() {
       if (!config.projects.includes(dir)) {
         config.projects.push(dir)
         await saveProjectsConfig(config)
+        logInfo("projects-ipc", "project_added", { path: dir })
       }
     })
     return dir
@@ -46,6 +48,7 @@ export function registerIpcHandlers() {
         config.lastSelectedProject = undefined
       }
       await saveProjectsConfig(config)
+      logInfo("projects-ipc", "project_removed", { path })
     })
   })
 
@@ -54,6 +57,7 @@ export function registerIpcHandlers() {
       const config = await loadProjectsConfig()
       config.lastSelectedProject = path
       await saveProjectsConfig(config)
+      logInfo("projects-ipc", "project_selected", { path })
     })
   })
 

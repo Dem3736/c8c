@@ -7,7 +7,7 @@ import {
   type Rectangle,
 } from "electron"
 import { join } from "path"
-import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { readFile, mkdir } from "node:fs/promises"
 import { registerIpcHandlers } from "./ipc/projects"
 import { registerSkillsHandlers } from "./ipc/skills"
 import { registerWorkflowsHandlers } from "./ipc/workflows"
@@ -26,6 +26,8 @@ import {
   trackTelemetryEvent,
 } from "./lib/telemetry/service"
 import { initUpdater, shutdownUpdater } from "./lib/updater"
+import { recoverRuntimeState } from "./lib/run-recovery"
+import { writeFileAtomic } from "./lib/atomic-write"
 
 app.name = "c8c"
 
@@ -160,7 +162,7 @@ async function persistWindowState(window: BrowserWindow): Promise<void> {
 
   try {
     await mkdir(app.getPath("userData"), { recursive: true })
-    await writeFile(windowStatePath(), JSON.stringify(payload, null, 2), "utf-8")
+    await writeFileAtomic(windowStatePath(), JSON.stringify(payload, null, 2))
   } catch (error) {
     console.error("[main] failed to persist window state:", error)
   }
@@ -310,6 +312,21 @@ app.whenReady().then(async () => {
     await trackTelemetryEvent("app_started")
   } catch (error) {
     console.error("[main] telemetry init failed:", error)
+  }
+
+  try {
+    const recovery = await recoverRuntimeState()
+    await trackTelemetryEvent("runtime_recovery_completed", {
+      roots: recovery.roots,
+      workspaces: recovery.workspaces,
+      stale_runs_updated: recovery.staleRunsUpdated,
+      manifests_processed: recovery.manifestsProcessed,
+      orphan_pids_killed: recovery.orphanPidsKilled,
+      orphan_pids_missing: recovery.orphanPidsMissing,
+      orphan_pids_failed: recovery.orphanPidsFailed,
+    })
+  } catch (error) {
+    console.error("[main] runtime recovery failed:", error)
   }
 
   console.log("[main] app ready, registering IPC handlers...")

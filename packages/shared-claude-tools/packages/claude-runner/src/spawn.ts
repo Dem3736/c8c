@@ -52,6 +52,9 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
       env,
       stdio: [useStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
+    if (typeof child.pid === 'number') {
+      options.onSpawn?.(child.pid);
+    }
 
     // Pipe long prompts via stdin
     if (useStdin && child.stdin) {

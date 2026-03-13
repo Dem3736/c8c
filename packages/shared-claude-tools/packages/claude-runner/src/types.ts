@@ -14,6 +14,7 @@ export interface ClaudeSpawnOptions {
   extraEnv?: Record<string, string>;
   timeout?: number;
   abortSignal?: AbortSignal;
+  onSpawn?: (pid: number) => void;
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
 }

@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises"
 import { join, basename } from "node:path"
 import matter from "gray-matter"
 import type { DiscoveredSkill } from "@shared/types"
+import { logWarn } from "./structured-log"
 
 const SCAN_DIRS = ["skills", "agents", "commands"] as const
 type ScanDir = (typeof SCAN_DIRS)[number]
@@ -10,6 +11,18 @@ const DIR_TO_TYPE: Record<ScanDir, DiscoveredSkill["type"]> = {
   skills: "skill",
   agents: "agent",
   commands: "command",
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === "string") return code
+  }
+  return undefined
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 async function scanDirectory(
@@ -22,7 +35,15 @@ async function scanDirectory(
     let entries
     try {
       entries = await readdir(dir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("skill-scanner", "scan_dir_read_failed", {
+          dir,
+          type,
+          category,
+          error: errorMessage(error),
+        })
+      }
       return
     }
 
@@ -46,8 +67,15 @@ async function scanDirectory(
             allowedTools: data.allowedTools || data.allowed_tools,
             disallowedTools: data.disallowedTools || data.disallowed_tools,
           })
-        } catch {
-          // Skip unreadable files
+        } catch (error) {
+          if (errorCode(error) !== "ENOENT") {
+            logWarn("skill-scanner", "skill_file_parse_failed", {
+              path: fullPath,
+              type,
+              category,
+              error: errorMessage(error),
+            })
+          }
         }
       }
     }

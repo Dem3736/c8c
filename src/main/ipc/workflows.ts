@@ -177,18 +177,18 @@ export function registerWorkflowsHandlers() {
     })
 
     if (result.canceled || !result.filePaths[0]) return null
-    const filePath = result.filePaths[0]
+    const safeFilePath = await assertWorkflowFilePath(result.filePaths[0])
 
     let chain: Workflow | ChainDefinition
-    if (filePath.endsWith(".chain")) {
-      chain = await loadChain(filePath)
+    if (safeFilePath.endsWith(".chain")) {
+      chain = await loadChain(safeFilePath)
     } else {
-      const legacy = await loadChainYaml(filePath)
-      const name = basename(filePath).replace(/\.(yaml|yml)$/, "")
+      const legacy = await loadChainYaml(safeFilePath)
+      const name = basename(safeFilePath).replace(/\.(yaml|yml)$/, "")
       chain = yamlToChain(legacy, name)
     }
 
-    return { filePath, chain }
+    return { filePath: safeFilePath, chain }
   })
 
   ipcMain.handle(

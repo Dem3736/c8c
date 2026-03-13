@@ -1,6 +1,6 @@
 import { app } from "electron"
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type {
   BuildFlavor,
@@ -9,6 +9,7 @@ import type {
   TelemetryUiEvent,
 } from "@shared/types"
 import { createTelemetryClient } from "./index"
+import { writeFileAtomic } from "../atomic-write"
 import type {
   TelemetryClient,
   TelemetryEventName,
@@ -113,7 +114,7 @@ async function loadPersistedState(): Promise<TelemetryPersistedState> {
 async function persistState(): Promise<void> {
   const path = telemetryStatePath()
   await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(telemetryState, null, 2), "utf-8")
+  await writeFileAtomic(path, JSON.stringify(telemetryState, null, 2))
 }
 
 function currentAppVersion(): string {

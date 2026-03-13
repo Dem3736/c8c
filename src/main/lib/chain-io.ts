@@ -1,6 +1,8 @@
-import { readFile, writeFile, readdir, mkdir, stat } from "node:fs/promises"
+import { readFile, readdir, mkdir, stat } from "node:fs/promises"
 import { join, basename } from "node:path"
 import type { Workflow, WorkflowFile } from "@shared/types"
+import { writeFileAtomic } from "./atomic-write"
+import { logWarn } from "./structured-log"
 
 export async function loadChain(filePath: string): Promise<Workflow> {
   const content = await readFile(filePath, "utf-8")
@@ -9,7 +11,7 @@ export async function loadChain(filePath: string): Promise<Workflow> {
 
 export async function saveChain(filePath: string, workflow: Workflow): Promise<void> {
   const content = JSON.stringify(workflow, null, 2)
-  await writeFile(filePath, content, "utf-8")
+  await writeFileAtomic(filePath, content)
 }
 
 export async function listChainFiles(
@@ -32,7 +34,8 @@ export async function listChainFiles(
         }),
     )
     return workflows
-  } catch {
+  } catch (error) {
+    logWarn("chain-io", "list_chain_files_failed", { dir, error: String(error) })
     return []
   }
 }

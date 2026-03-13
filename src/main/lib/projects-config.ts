@@ -1,7 +1,9 @@
 import { app } from "electron"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { writeFileAtomic } from "./atomic-write"
+import { logWarn } from "./structured-log"
 
 export interface ProjectsConfig {
   projects: string[]
@@ -33,7 +35,13 @@ export async function loadProjectsConfig(): Promise<ProjectsConfig> {
       ? resolve(parsed.lastSelectedProject)
       : undefined
     return { projects, lastSelectedProject }
-  } catch {
+  } catch (error) {
+    const errorCode = typeof error === "object" && error && "code" in error
+      ? String((error as { code?: string }).code)
+      : undefined
+    if (errorCode !== "ENOENT") {
+      logWarn("projects-config", "load_failed", { error: String(error), path: projectsConfigPath() })
+    }
     return { projects: [] }
   }
 }
@@ -50,7 +58,7 @@ export async function saveProjectsConfig(config: ProjectsConfig): Promise<void> 
     lastSelectedProject: config.lastSelectedProject ? resolve(config.lastSelectedProject) : undefined,
   }
 
-  await mkdir(join(resolveHomeDir(), ".c8c"), { recursive: true })
-  await writeFile(projectsConfigPath(), JSON.stringify(payload, null, 2), "utf-8")
+  const configDir = join(resolveHomeDir(), ".c8c")
+  await mkdir(configDir, { recursive: true })
+  await writeFileAtomic(projectsConfigPath(), JSON.stringify(payload, null, 2))
 }
-

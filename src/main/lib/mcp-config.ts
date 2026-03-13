@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
+import { writeFileAtomic } from "./atomic-write"
 
 export type WebSearchBackend = "builtin" | "exa"
 
@@ -156,6 +157,6 @@ export async function prepareWorkspaceMcpConfig(
 
   if (!config) return undefined
 
-  await writeFile(workspaceMcpPath, JSON.stringify(config, null, 2), "utf-8")
+  await writeFileAtomic(workspaceMcpPath, JSON.stringify(config, null, 2))
   return workspaceMcpPath
 }

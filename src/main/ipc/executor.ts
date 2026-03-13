@@ -1,5 +1,11 @@
 import { ipcMain, BrowserWindow, shell, type IpcMainInvokeEvent } from "electron"
-import { runWorkflow, rerunFromNode, cancelWorkflowRun, resolveApproval } from "../lib/workflow-runner"
+import {
+  runWorkflow,
+  rerunFromNode,
+  cancelWorkflowRun,
+  resolveApproval,
+  continueRunFromWorkspace,
+} from "../lib/workflow-runner"
 import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
@@ -9,16 +15,79 @@ import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usa
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type { Workflow, WorkflowInput, RunResult } from "@shared/types"
-import { allowedReportRoots, assertWithinRoots } from "../lib/security-paths"
+import { allowedProjectRoots, allowedReportRoots, assertWithinRoots } from "../lib/security-paths"
+import { logError, logInfo, logWarn } from "../lib/structured-log"
 
 let runCounter = 0
 let batchCounter = 0
 const activeWindowRuns = new Map<number, string>()
+const windowLifecycleBindings = new Set<number>()
+
+function reserveWindowRun(windowId: number): string | null {
+  if (activeWindowRuns.has(windowId)) return null
+  const reservationId = `pending-${windowId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  activeWindowRuns.set(windowId, reservationId)
+  return reservationId
+}
+
+function releaseWindowRun(windowId: number, reservationId: string): void {
+  if (activeWindowRuns.get(windowId) === reservationId) {
+    activeWindowRuns.delete(windowId)
+  }
+}
+
+function cancelActiveWindowExecution(windowId: number): void {
+  const active = activeWindowRuns.get(windowId)
+  if (!active) return
+  activeWindowRuns.delete(windowId)
+
+  if (active.startsWith("batch:")) {
+    const batchId = active.slice("batch:".length)
+    const cancelled = cancelBatch(batchId)
+    logInfo("executor-ipc", "window_closed_cancel_batch", { windowId, batchId, cancelled })
+    return
+  }
+
+  if (active.startsWith("pending-")) {
+    logInfo("executor-ipc", "window_closed_release_pending", { windowId, reservationId: active })
+    return
+  }
+
+  const cancelled = cancelWorkflowRun(active)
+  logInfo("executor-ipc", "window_closed_cancel_run", { windowId, runId: active, cancelled })
+}
+
+function bindWindowLifecycle(window: BrowserWindow): void {
+  if (windowLifecycleBindings.has(window.id)) return
+  windowLifecycleBindings.add(window.id)
+  window.once("closed", () => {
+    windowLifecycleBindings.delete(window.id)
+    cancelActiveWindowExecution(window.id)
+  })
+}
 
 function resolveWindowFromEvent(event: IpcMainInvokeEvent): BrowserWindow | null {
   const window = BrowserWindow.fromWebContents(event.sender)
   if (!window || window.isDestroyed()) return null
+  bindWindowLifecycle(window)
   return window
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === "string") return code
+  }
+  return undefined
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+async function assertProjectPath(projectPath: string): Promise<string> {
+  const projectRoots = await allowedProjectRoots()
+  return assertWithinRoots(resolve(projectPath), projectRoots, "Project path")
 }
 
 async function assertRunWorkspacePath(workspace: string): Promise<string> {
@@ -103,39 +172,53 @@ export function registerExecutorHandlers() {
         return { error: errors.join("; ") }
       }
 
-      // Auto-scaffold missing skills before run
-      if (projectPath) {
-        try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
-        } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
-        }
+      const reservationId = reserveWindowRun(window.id)
+      if (!reservationId) {
+        return { error: "A workflow is already running" }
       }
 
-      const runId = `run-${++runCounter}-${Date.now()}`
-
-      activeWindowRuns.set(window.id, runId)
-
-      // Fire and forget — events stream back via IPC
-      runWorkflow(runId, workflow, input, window, projectPath, workflowPath, webSearchBackend).catch((err) => {
-        try {
-          if (!window.isDestroyed()) {
-            window.webContents.send("workflow:event", {
-              runId,
-              type: "node-error",
-              nodeId: "__global",
-              error: String(err),
-            })
-            window.webContents.send("workflow:event", {
-              runId,
-              type: "run-done",
-              status: "failed",
-            })
+      try {
+        // Auto-scaffold missing skills before run
+        if (projectPath) {
+          try {
+            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
+          } catch (err) {
+            return { error: `Skill scaffolding failed: ${String(err)}` }
           }
-        } catch { /* window destroyed between check and send */ }
-      }).finally(() => activeWindowRuns.delete(window.id))
+        }
 
-      return runId
+        if (window.isDestroyed()) {
+          logWarn("executor-ipc", "run_start_aborted_window_closed", { windowId: window.id })
+          return { error: "Window was closed before run start" }
+        }
+
+        const runId = `run-${++runCounter}-${Date.now()}`
+        activeWindowRuns.set(window.id, runId)
+        logInfo("executor-ipc", "run_started", { runId, windowId: window.id })
+
+        // Fire and forget — events stream back via IPC
+        runWorkflow(runId, workflow, input, window, projectPath, workflowPath, webSearchBackend).catch((err) => {
+          try {
+            if (!window.isDestroyed()) {
+              window.webContents.send("workflow:event", {
+                runId,
+                type: "node-error",
+                nodeId: "__global",
+                error: String(err),
+              })
+              window.webContents.send("workflow:event", {
+                runId,
+                type: "run-done",
+                status: "failed",
+              })
+            }
+          } catch { /* window destroyed between check and send */ }
+        }).finally(() => activeWindowRuns.delete(window.id))
+
+        return runId
+      } finally {
+        releaseWindowRun(window.id, reservationId)
+      }
     },
   )
 
@@ -156,60 +239,148 @@ export function registerExecutorHandlers() {
     ) => {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
-      if (activeWindowRuns.has(window.id)) return null
 
       const valErrors = validateWorkflow(workflow)
       if (valErrors.length > 0) {
         return { error: valErrors.join("; ") }
       }
 
-      const runId = `rerun-${++runCounter}-${Date.now()}`
-      const safeWorkspace = await assertRunWorkspacePath(workspace)
+      const reservationId = reserveWindowRun(window.id)
+      if (!reservationId) return null
 
-      // Auto-scaffold missing skills before rerun
-      if (projectPath) {
-        try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
-        } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
+      try {
+        const runId = `rerun-${++runCounter}-${Date.now()}`
+        const safeWorkspace = await assertRunWorkspacePath(workspace)
+
+        // Auto-scaffold missing skills before rerun
+        if (projectPath) {
+          try {
+            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
+          } catch (err) {
+            return { error: `Skill scaffolding failed: ${String(err)}` }
+          }
         }
+
+        if (window.isDestroyed()) {
+          logWarn("executor-ipc", "rerun_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
+          return { error: "Window was closed before rerun start" }
+        }
+
+        activeWindowRuns.set(window.id, runId)
+        logInfo("executor-ipc", "rerun_started", { runId, fromNodeId, windowId: window.id })
+
+        rerunFromNode(
+          runId,
+          fromNodeId,
+          workflow,
+          safeWorkspace,
+          window,
+          projectPath,
+          workflowPath,
+          webSearchBackend,
+        ).catch((err) => {
+          try {
+            if (!window.isDestroyed()) {
+              window.webContents.send("workflow:event", {
+                runId,
+                type: "node-error",
+                nodeId: "__global",
+                error: String(err),
+              })
+              window.webContents.send("workflow:event", {
+                runId,
+                type: "run-done",
+                status: "failed",
+              })
+            }
+          } catch { /* window destroyed between check and send */ }
+        }).finally(() => activeWindowRuns.delete(window.id))
+
+        return runId
+      } finally {
+        releaseWindowRun(window.id, reservationId)
+      }
+    },
+  )
+
+  ipcMain.handle(
+    "executor:continue",
+    async (
+      event,
+      workflow: Workflow,
+      workspace: string,
+      projectPath?: string,
+      workflowPath?: string,
+      webSearchBackend?: "builtin" | "exa",
+    ) => {
+      const window = resolveWindowFromEvent(event)
+      if (!window) return null
+
+      const valErrors = validateWorkflow(workflow)
+      if (valErrors.length > 0) {
+        return { error: valErrors.join("; ") }
       }
 
-      activeWindowRuns.set(window.id, runId)
+      const reservationId = reserveWindowRun(window.id)
+      if (!reservationId) return null
 
-      rerunFromNode(
-        runId,
-        fromNodeId,
-        workflow,
-        safeWorkspace,
-        window,
-        projectPath,
-        workflowPath,
-        webSearchBackend,
-      ).catch((err) => {
-        try {
-          if (!window.isDestroyed()) {
-            window.webContents.send("workflow:event", {
-              runId,
-              type: "node-error",
-              nodeId: "__global",
-              error: String(err),
-            })
-            window.webContents.send("workflow:event", {
-              runId,
-              type: "run-done",
-              status: "failed",
-            })
+      try {
+        const runId = `resume-${++runCounter}-${Date.now()}`
+        const safeWorkspace = await assertRunWorkspacePath(workspace)
+
+        // Auto-scaffold missing skills before continue.
+        if (projectPath) {
+          try {
+            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
+          } catch (err) {
+            return { error: `Skill scaffolding failed: ${String(err)}` }
           }
-        } catch { /* window destroyed between check and send */ }
-      }).finally(() => activeWindowRuns.delete(window.id))
+        }
 
-      return runId
+        if (window.isDestroyed()) {
+          logWarn("executor-ipc", "continue_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
+          return { error: "Window was closed before continue start" }
+        }
+
+        activeWindowRuns.set(window.id, runId)
+        logInfo("executor-ipc", "continue_started", { runId, windowId: window.id, workspace: safeWorkspace })
+
+        continueRunFromWorkspace(
+          runId,
+          workflow,
+          safeWorkspace,
+          window,
+          projectPath,
+          workflowPath,
+          webSearchBackend,
+        ).catch((err) => {
+          try {
+            if (!window.isDestroyed()) {
+              window.webContents.send("workflow:event", {
+                runId,
+                type: "node-error",
+                nodeId: "__global",
+                error: String(err),
+              })
+              window.webContents.send("workflow:event", {
+                runId,
+                type: "run-done",
+                status: "failed",
+              })
+            }
+          } catch { /* window destroyed between check and send */ }
+        }).finally(() => activeWindowRuns.delete(window.id))
+
+        return runId
+      } finally {
+        releaseWindowRun(window.id, reservationId)
+      }
     },
   )
 
   ipcMain.handle("executor:list-runs", async (_e, projectPath: string): Promise<RunResult[]> => {
-    const runsDir = join(projectPath, ".c8c", "runs")
+    const safeProjectPath = await assertProjectPath(projectPath)
+    const runsDir = join(safeProjectPath, ".c8c", "runs")
     try {
       const entries = await readdir(runsDir, { withFileTypes: true })
       const results: RunResult[] = []
@@ -224,10 +395,25 @@ export function registerExecutorHandlers() {
             result.status = "interrupted"
           }
           results.push(result)
-        } catch { /* skip dirs without run-result.json */ }
+        } catch (error) {
+          if (errorCode(error) !== "ENOENT") {
+            logWarn("executor-ipc", "list_runs_entry_failed", {
+              projectPath: safeProjectPath,
+              runDirectory: entry.name,
+              error: errorMessage(error),
+            })
+          }
+        }
       }
       return results.sort((a, b) => (b.completedAt || b.startedAt) - (a.completedAt || a.startedAt))
-    } catch {
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("executor-ipc", "list_runs_failed", {
+          projectPath: safeProjectPath,
+          runsDir,
+          error: errorMessage(error),
+        })
+      }
       return []
     }
   })
@@ -242,10 +428,22 @@ export function registerExecutorHandlers() {
         try {
           const safeReportPath = await assertReportPath(meta.reportPath)
           reportContent = await readFile(safeReportPath, "utf-8")
-        } catch { /* report file missing */ }
+        } catch (error) {
+          if (errorCode(error) !== "ENOENT") {
+            logWarn("executor-ipc", "load_run_result_report_failed", {
+              workspace: safeWorkspace,
+              reportPath: meta.reportPath,
+              error: errorMessage(error),
+            })
+          }
+        }
       }
       return { ...meta, reportContent }
-    } catch {
+    } catch (error) {
+      logWarn("executor-ipc", "load_run_result_failed", {
+        workspace,
+        error: errorMessage(error),
+      })
       return null
     }
   })
@@ -268,32 +466,54 @@ export function registerExecutorHandlers() {
     ) => {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
-      if (activeWindowRuns.has(window.id)) return null
 
       const valErrors = validateWorkflow(workflow)
       if (valErrors.length > 0) {
         return { error: valErrors.join("; ") }
       }
 
-      // Auto-scaffold missing skills before batch run
-      if (projectPath) {
-        try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
-        } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
+      const reservationId = reserveWindowRun(window.id)
+      if (!reservationId) return null
+
+      try {
+        // Auto-scaffold missing skills before batch run
+        if (projectPath) {
+          try {
+            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
+          } catch (err) {
+            return { error: `Skill scaffolding failed: ${String(err)}` }
+          }
         }
+
+        if (window.isDestroyed()) {
+          logWarn("executor-ipc", "batch_start_aborted_window_closed", { windowId: window.id })
+          return { error: "Window was closed before batch start" }
+        }
+
+        const batchId = `batch-${++batchCounter}-${Date.now()}`
+        activeWindowRuns.set(window.id, `batch:${batchId}`)
+        logInfo("executor-ipc", "batch_started", { batchId, windowId: window.id, inputs: inputs.length, concurrency, stopOnFailure })
+
+        runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
+          .catch((err) => {
+            const errorMessage = String(err)
+            logError("executor-ipc", "batch_unhandled_failure", { batchId, error: errorMessage })
+            try {
+              if (!window.isDestroyed()) {
+                window.webContents.send("batch:event", {
+                  type: "batch-error",
+                  batchId,
+                  error: errorMessage,
+                })
+              }
+            } catch { /* window destroyed between check and send */ }
+          })
+          .finally(() => activeWindowRuns.delete(window.id))
+
+        return batchId
+      } finally {
+        releaseWindowRun(window.id, reservationId)
       }
-
-      const batchId = `batch-${++batchCounter}-${Date.now()}`
-      activeWindowRuns.set(window.id, `batch:${batchId}`)
-
-      runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
-        .catch((err) => {
-          console.error("[executor] run-batch failed:", err)
-        })
-        .finally(() => activeWindowRuns.delete(window.id))
-
-      return batchId
     },
   )
 

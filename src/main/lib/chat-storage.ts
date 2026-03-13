@@ -1,5 +1,6 @@
-import { readFile, writeFile, unlink, rename, access } from "node:fs/promises"
+import { readFile, unlink, rename, access } from "node:fs/promises"
 import type { ChatConversation } from "@shared/types"
+import { writeFileAtomic } from "./atomic-write"
 
 /**
  * Get the chat history file path for a workflow file.
@@ -46,7 +47,7 @@ export async function saveChatHistory(
 ): Promise<void> {
   const chatPath = chatPathFor(workflowPath)
   conversation.updatedAt = Date.now()
-  await writeFile(chatPath, JSON.stringify(conversation, null, 2), "utf-8")
+  await writeFileAtomic(chatPath, JSON.stringify(conversation, null, 2))
 }
 
 /**

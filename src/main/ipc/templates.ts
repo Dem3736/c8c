@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from "electron"
+import { ipcMain, BrowserWindow, type WebContents } from "electron"
 import { spawnClaude } from "@claude-tools/runner"
 import { getBuiltinTemplates } from "../lib/templates"
 import { LogParser } from "../lib/log-parser"
@@ -9,8 +9,32 @@ import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usa
 import type { DiscoveredSkill, GenerationProgress, Workflow, WorkflowTemplate } from "@shared/types"
 import { allowedProjectRoots } from "../lib/security-paths"
 import { resolve } from "node:path"
+import { logError, logInfo, logWarn } from "../lib/structured-log"
 
 const activeGenerateControllers = new Map<number, AbortController>()
+const generateLifecycleBindings = new Set<number>()
+
+function abortGenerationForSender(senderId: number): void {
+  const controller = activeGenerateControllers.get(senderId)
+  if (!controller) return
+  controller.abort()
+  activeGenerateControllers.delete(senderId)
+}
+
+function bindGenerateLifecycle(sender: WebContents): void {
+  const senderId = sender.id
+  if (generateLifecycleBindings.has(senderId)) return
+  generateLifecycleBindings.add(senderId)
+
+  const cleanup = () => {
+    abortGenerationForSender(senderId)
+    generateLifecycleBindings.delete(senderId)
+  }
+
+  sender.once("destroyed", cleanup)
+  const window = BrowserWindow.fromWebContents(sender)
+  window?.once("closed", cleanup)
+}
 
 async function resolveGenerateWorkdir(projectPath?: string): Promise<string> {
   if (!projectPath) return process.cwd()
@@ -29,9 +53,8 @@ export function registerTemplateHandlers() {
 
   ipcMain.handle("templates:cancel-generate", async (event) => {
     const senderId = event.sender.id
-    const controller = activeGenerateControllers.get(senderId)
-    controller?.abort()
-    activeGenerateControllers.delete(senderId)
+    abortGenerationForSender(senderId)
+    logInfo("templates-ipc", "generate_cancel_requested", { senderId })
   })
 
   ipcMain.handle(
@@ -42,6 +65,7 @@ export function registerTemplateHandlers() {
       availableSkills: Pick<DiscoveredSkill, "name" | "category" | "description">[],
       projectPath?: string,
     ): Promise<Workflow> => {
+      bindGenerateLifecycle(event.sender)
       const safeWorkdir = await resolveGenerateWorkdir(projectPath)
       const prompt = buildGeneratorPrompt(description, availableSkills)
       const logParser = new LogParser()
@@ -65,123 +89,142 @@ export function registerTemplateHandlers() {
       let entryCount = 0
       let stderrOutput = ""
       sendProgress("starting", 0)
+      let terminalProgressSent = false
+      const sendTerminalProgress = (step: "done" | "error") => {
+        if (terminalProgressSent) return
+        terminalProgressSent = true
+        sendProgress(step, entryCount)
+      }
 
-      let result: Awaited<ReturnType<typeof spawnClaude>>
       try {
-        result = await spawnClaude({
-          workdir: safeWorkdir,
-          prompt,
-          model: "sonnet",
-          maxTurns: 30,
-          systemPrompts: [
-            "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
-          ],
-          extraArgs: ["--verbose", "--output-format", "stream-json", "--disable-slash-commands", "--tools", ""],
-          timeout: 300_000,
-          abortSignal,
-          onStdout: (data: Buffer) => {
-            const newEntries = logParser.feedChunk(data.toString())
-            for (const entry of newEntries) {
-              entryCount++
-              if (entry.type === "thinking") {
-                sendProgress("thinking", entryCount)
-              } else if (entry.type === "text") {
-                sendProgress("writing", entryCount)
-              } else if (entry.type === "tool_use" && "tool" in entry) {
-                sendProgress(`using ${entry.tool}`, entryCount)
-              }
-            }
-          },
-          onStderr: (data: Buffer) => {
-            stderrOutput += data.toString()
-          },
-        })
-      } catch (err) {
-        const msg = String(err)
-        if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
-          throw new Error("Workflow generation timed out — try a simpler description")
-        }
-        throw new Error(`Claude process failed: ${msg.slice(0, 200)}`)
-      } finally {
-        if (activeGenerateControllers.get(senderId) === controller) {
-          activeGenerateControllers.delete(senderId)
-        }
-      }
-
-      logParser.flush()
-      sendProgress("parsing", entryCount)
-
-      console.log("[generate] result:", {
-        success: result.success, exitCode: result.exitCode,
-        signal: result.signal, killed: result.killed, aborted: result.aborted,
-      })
-      console.log("[generate] entries:", logParser.entries.length, "textContent:", logParser.textContent.length)
-      if (stderrOutput) {
-        console.log("[generate] stderr:", stderrOutput.slice(0, 500))
-      }
-
-      if (!result.success) {
-        if (result.killed) {
-          throw new Error("Workflow generation timed out — try a simpler description")
-        }
-        if (result.aborted) {
-          throw new Error("Workflow generation was cancelled")
-        }
-        const preview = logParser.textContent.trim() || logParser.rawOutput.slice(0, 200)
-        throw new Error(`Workflow generation failed (exit ${result.exitCode}): ${preview || "no output"}`)
-      }
-
-      if (logParser.textContent.length === 0) {
-        const raw = logParser.rawOutput.trim()
-        if (raw.includes("max turns")) {
-          throw new Error("Claude ran out of turns before generating output — try a simpler description")
-        }
-        throw new Error(`Claude produced no text output: ${raw.slice(0, 200) || "empty response"}`)
-      }
-
-      let workflow: Workflow
-      try {
-        workflow = parseGeneratedWorkflow(logParser.textContent)
-      } catch (err) {
-        const preview = logParser.textContent.slice(0, 300)
-        throw new Error(`Could not parse workflow from AI response: ${(err as Error).message}\n\nResponse preview: ${preview}`)
-      }
-
-      if (projectPath) {
-        const startedAt = Date.now()
-        const before = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
+        let result: Awaited<ReturnType<typeof spawnClaude>>
         try {
-          workflow = await scaffoldMissingSkills(workflow, availableSkills, safeWorkdir)
-          const after = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
-          void trackTelemetryEvent("skill_scaffold_completed", {
-            source: "template_generate",
-            status: "success",
-            duration_ms: Date.now() - startedAt,
-            skill_nodes_total: before.skillNodesTotal,
-            available_skills_total: before.availableSkillsTotal,
-            missing_refs_total: before.missingRefsTotal,
-            missing_refs_unique: before.missingRefsUnique,
-            missing_refs: before.missingRefsList,
-            remaining_missing_refs_total: after.missingRefsTotal,
+          logInfo("templates-ipc", "generate_started", { senderId, projectPath: projectPath || null })
+          result = await spawnClaude({
+            workdir: safeWorkdir,
+            prompt,
+            model: "sonnet",
+            maxTurns: 30,
+            systemPrompts: [
+              "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
+            ],
+            extraArgs: ["--verbose", "--output-format", "stream-json", "--disable-slash-commands", "--tools", ""],
+            timeout: 300_000,
+            abortSignal,
+            onStdout: (data: Buffer) => {
+              const newEntries = logParser.feedChunk(data.toString())
+              for (const entry of newEntries) {
+                entryCount++
+                if (entry.type === "thinking") {
+                  sendProgress("thinking", entryCount)
+                } else if (entry.type === "text") {
+                  sendProgress("writing", entryCount)
+                } else if (entry.type === "tool_use" && "tool" in entry) {
+                  sendProgress(`using ${entry.tool}`, entryCount)
+                }
+              }
+            },
+            onStderr: (data: Buffer) => {
+              stderrOutput += data.toString()
+            },
           })
-        } catch (error) {
-          void trackTelemetryEvent("skill_scaffold_completed", {
-            source: "template_generate",
-            status: "failed",
-            duration_ms: Date.now() - startedAt,
-            skill_nodes_total: before.skillNodesTotal,
-            available_skills_total: before.availableSkillsTotal,
-            missing_refs_total: before.missingRefsTotal,
-            missing_refs_unique: before.missingRefsUnique,
-            missing_refs: before.missingRefsList,
-            error_kind: "scaffold_failed",
-          })
-          throw error
+        } catch (err) {
+          const msg = String(err)
+          if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
+            throw new Error("Workflow generation timed out — try a simpler description")
+          }
+          throw new Error(`Claude process failed: ${msg.slice(0, 200)}`)
+        } finally {
+          if (activeGenerateControllers.get(senderId) === controller) {
+            activeGenerateControllers.delete(senderId)
+          }
         }
-      }
 
-      sendProgress("done", entryCount)
-      return workflow
+        logParser.flush()
+        sendProgress("parsing", entryCount)
+
+        logInfo("templates-ipc", "generate_finished", {
+          senderId,
+          success: result.success,
+          exitCode: result.exitCode,
+          killed: result.killed,
+          aborted: result.aborted,
+          entries: logParser.entries.length,
+          textLength: logParser.textContent.length,
+          stderrPreview: stderrOutput ? stderrOutput.slice(0, 500) : "",
+        })
+
+        if (!result.success) {
+          if (result.killed) {
+            throw new Error("Workflow generation timed out — try a simpler description")
+          }
+          if (result.aborted) {
+            throw new Error("Workflow generation was cancelled")
+          }
+          const preview = logParser.textContent.trim() || logParser.rawOutput.slice(0, 200)
+          throw new Error(`Workflow generation failed (exit ${result.exitCode}): ${preview || "no output"}`)
+        }
+
+        if (logParser.textContent.length === 0) {
+          const raw = logParser.rawOutput.trim()
+          if (raw.includes("max turns")) {
+            throw new Error("Claude ran out of turns before generating output — try a simpler description")
+          }
+          throw new Error(`Claude produced no text output: ${raw.slice(0, 200) || "empty response"}`)
+        }
+
+        let workflow: Workflow
+        try {
+          workflow = parseGeneratedWorkflow(logParser.textContent)
+        } catch (err) {
+          const preview = logParser.textContent.slice(0, 300)
+          throw new Error(`Could not parse workflow from AI response: ${(err as Error).message}\n\nResponse preview: ${preview}`)
+        }
+
+        if (projectPath) {
+          const startedAt = Date.now()
+          const before = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
+          try {
+            workflow = await scaffoldMissingSkills(workflow, availableSkills, safeWorkdir)
+            const after = summarizeMissingWorkflowSkillRefs(workflow, availableSkills)
+            void trackTelemetryEvent("skill_scaffold_completed", {
+              source: "template_generate",
+              status: "success",
+              duration_ms: Date.now() - startedAt,
+              skill_nodes_total: before.skillNodesTotal,
+              available_skills_total: before.availableSkillsTotal,
+              missing_refs_total: before.missingRefsTotal,
+              missing_refs_unique: before.missingRefsUnique,
+              missing_refs: before.missingRefsList,
+              remaining_missing_refs_total: after.missingRefsTotal,
+            })
+          } catch (error) {
+            void trackTelemetryEvent("skill_scaffold_completed", {
+              source: "template_generate",
+              status: "failed",
+              duration_ms: Date.now() - startedAt,
+              skill_nodes_total: before.skillNodesTotal,
+              available_skills_total: before.availableSkillsTotal,
+              missing_refs_total: before.missingRefsTotal,
+              missing_refs_unique: before.missingRefsUnique,
+              missing_refs: before.missingRefsList,
+              error_kind: "scaffold_failed",
+            })
+            throw error
+          }
+        }
+
+        sendTerminalProgress("done")
+        return workflow
+      } catch (error) {
+        if (String(error).toLowerCase().includes("cancelled")) {
+          logWarn("templates-ipc", "generate_cancelled", { senderId, error: String(error) })
+        } else {
+          logError("templates-ipc", "generate_failed", { senderId, error: String(error) })
+        }
+        sendTerminalProgress("error")
+        throw error
+      }
     },
   )
 }
