@@ -397,9 +397,9 @@ function BatchInputPreview({
   }
 
   const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-    completed: { bg: "bg-status-success/20", text: "text-status-success", label: "done" },
-    failed: { bg: "bg-status-danger/20", text: "text-status-danger", label: "failed" },
-    running: { bg: "bg-status-info/20", text: "text-status-info", label: "running" },
+    completed: { bg: "bg-status-success/10", text: "text-status-success", label: "done" },
+    failed: { bg: "bg-status-danger/10", text: "text-status-danger", label: "failed" },
+    running: { bg: "bg-status-info/10", text: "text-status-info", label: "running" },
     waiting: { bg: "bg-surface-3", text: "text-foreground-subtle", label: "waiting" },
   }
 
@@ -449,7 +449,7 @@ function BatchItemList({ items, inputs }: { items: BatchItemResult[]; inputs?: s
           <div key={`${item.input_index}-${item.run_id}`}>
             <button
               type="button"
-              className="w-full flex items-center gap-2 px-3 py-1.5 ui-meta-text hover:bg-surface-2/50 ui-transition-colors ui-motion-fast text-left"
+              className="w-full flex items-center gap-2 px-3 py-1.5 ui-meta-text hover:bg-surface-2/50 ui-pressable text-left"
               onClick={() => setExpandedIndex(isExpanded ? null : item.input_index)}
             >
               <span className="text-muted-foreground w-8">#{item.input_index + 1}</span>
@@ -462,10 +462,11 @@ function BatchItemList({ items, inputs }: { items: BatchItemResult[]; inputs?: s
               )}
               <span
                 className={cn(
-                  item.status === "completed" && "text-foreground",
-                  item.status === "cancelled" || item.status === "interrupted"
-                    ? "text-status-warning"
-                    : item.status !== "completed" && "text-status-danger",
+                  item.status === "completed"
+                    ? "text-foreground"
+                    : item.status === "cancelled" || item.status === "interrupted"
+                      ? "text-status-warning"
+                      : "text-status-danger",
                 )}
               >
                 {item.status === "completed"
@@ -487,23 +488,23 @@ function BatchItemList({ items, inputs }: { items: BatchItemResult[]; inputs?: s
               </span>
             </button>
             {isExpanded && (
-              <div className="px-3 pb-2 space-y-1.5 border-t border-hairline/50 bg-surface-2/30">
+              <div className="px-3 pb-2 space-y-1.5 border-t border-hairline bg-surface-2/50">
                 {inputs?.[item.input_index] && (
                   <div className="pt-1.5">
                     <div className="ui-meta-label text-muted-foreground mb-0.5">Input</div>
-                    <pre className="ui-meta-text font-mono bg-surface-3/50 rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{inputs[item.input_index]}</pre>
+                    <pre className="ui-meta-text font-mono bg-surface-3/50 border border-hairline/40 rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{inputs[item.input_index]}</pre>
                   </div>
                 )}
                 {item.output && (
                   <div>
                     <div className="ui-meta-label text-muted-foreground mb-0.5">Output</div>
-                    <pre className="ui-meta-text font-mono bg-surface-3/50 rounded px-2 py-1 max-h-32 overflow-y-auto whitespace-pre-wrap">{item.output}</pre>
+                    <pre className="ui-meta-text font-mono bg-surface-3/50 border border-hairline/40 rounded px-2 py-1 max-h-32 overflow-y-auto whitespace-pre-wrap">{item.output}</pre>
                   </div>
                 )}
                 {item.error && (
                   <div>
                     <div className="ui-meta-label text-status-danger mb-0.5">Error</div>
-                    <pre className="ui-meta-text font-mono bg-status-danger/10 text-status-danger rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{item.error}</pre>
+                    <pre className="ui-meta-text font-mono bg-status-danger/10 border border-status-danger/20 text-status-danger rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{item.error}</pre>
                   </div>
                 )}
               </div>

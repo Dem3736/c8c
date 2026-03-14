@@ -36,7 +36,7 @@ import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
   return (
     <div className="flex-1 flex items-center justify-center text-muted-foreground pt-[var(--titlebar-height)]">
-      <div className="text-center rounded-lg surface-soft px-8 py-7">
+      <div className="ui-empty-state rounded-lg surface-soft px-8">
         <div className="mx-auto mb-3 h-control-lg w-control-lg rounded-md border border-hairline bg-surface-2/90 flex items-center justify-center ui-elevation-inset">
           <Icon size={20} className="opacity-70" aria-hidden="true" />
         </div>
@@ -152,7 +152,7 @@ export function WorkflowPanel() {
               <div className="flex-1 min-w-[280px] group/workflow-meta">
                 <div className="mb-1 flex items-center gap-2">
                   <Label htmlFor="workflow-name" className="section-kicker text-muted-foreground">Workflow Name</Label>
-                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground transition-opacity group-focus-within/workflow-meta:opacity-0">
+                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground ui-transition-opacity ui-motion-fast group-focus-within/workflow-meta:opacity-0">
                     <PencilLine size={11} />
                     click to edit
                   </span>

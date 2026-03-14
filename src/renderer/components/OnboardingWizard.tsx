@@ -45,7 +45,8 @@ export function OnboardingWizard() {
             {Array.from({ length: TOTAL_STEPS }, (_, i) => (
               <div
                 key={i}
-                className={`h-1.5 rounded-full ui-motion-fast transition-all ${
+                style={{ transitionProperty: "width, background-color" }}
+                className={`h-1.5 rounded-full ui-motion-fast ${
                   i + 1 === step
                     ? "w-8 bg-foreground"
                     : i + 1 < step
@@ -109,7 +110,7 @@ function StepWhatIsC8c() {
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <Workflow size={20} className="text-foreground" />
         </div>
-        <h2 className="ui-title-text text-foreground">Welcome to c8c</h2>
+        <h2 className="text-title-md text-foreground">Welcome to c8c</h2>
       </div>
       <p className="text-body-md text-muted-foreground leading-relaxed">
         c8c (cybernetic) is a visual workflow builder for the Claude CLI.
@@ -165,7 +166,7 @@ function StepCheckCli() {
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <Terminal size={20} className="text-foreground" />
         </div>
-        <h2 className="ui-title-text text-foreground">Check CLI</h2>
+        <h2 className="text-title-md text-foreground">Check CLI</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
         c8c requires the Claude Code CLI to execute workflows.
@@ -258,7 +259,7 @@ function StepOpenProject({
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <FolderOpen size={20} className="text-foreground" />
         </div>
-        <h2 className="ui-title-text text-foreground">Open a project</h2>
+        <h2 className="text-title-md text-foreground">Open a project</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
         Select a folder to use as your project root. Workflows and skills will be
@@ -309,7 +310,7 @@ function StepCreateWorkflow({
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <LayoutTemplate size={20} className="text-foreground" />
         </div>
-        <h2 className="ui-title-text text-foreground">Create your first workflow</h2>
+        <h2 className="text-title-md text-foreground">Create your first workflow</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
         Start from a pre-built template to see how workflows are structured, or

@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
-  DialogContent,
+  CanvasDialogContent,
+  CanvasDialogFooter,
+  CanvasDialogHeader,
+  DialogClose,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
@@ -487,27 +488,27 @@ export function WorkflowsTemplatesPage() {
       </section>
 
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
+        <CanvasDialogContent showCloseButton={false}>
+          <CanvasDialogHeader>
             <DialogTitle>Apply template</DialogTitle>
             <DialogDescription>
               How would you like to use &ldquo;{pendingTemplate?.name}&rdquo;?
             </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingTemplate(null)}>
-              Cancel
-            </Button>
+          </CanvasDialogHeader>
+          <CanvasDialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm">Cancel</Button>
+            </DialogClose>
             {selectedProject && (
-              <Button variant="outline" onClick={() => pendingTemplate && void doCreateFromTemplate(pendingTemplate)}>
+              <Button variant="outline" size="sm" onClick={() => pendingTemplate && void doCreateFromTemplate(pendingTemplate)}>
                 Create new
               </Button>
             )}
-            <Button onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}>
+            <Button size="sm" onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}>
               Replace current
             </Button>
-          </DialogFooter>
-        </DialogContent>
+          </CanvasDialogFooter>
+        </CanvasDialogContent>
       </Dialog>
       {unsavedChangesDialog}
     </PageShell>

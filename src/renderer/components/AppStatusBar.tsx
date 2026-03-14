@@ -163,18 +163,18 @@ export function AppStatusBar({
               role="status"
               aria-live="polite"
               className={cn(
-                "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 ui-elevation-inset",
+                "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast",
                 runProgressClass,
               )}
             >
               {(runStatus === "running" || runStatus === "starting" || runStatus === "cancelling") && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
               <span className="font-medium">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
               <span className="text-current/80">{runPhaseLabel}</span>
-              {elapsed && <span className="text-current/60 tabular-nums">{elapsed}</span>}
+              {elapsed && <span className="ui-meta-text text-current/60 tabular-nums">{elapsed}</span>}
             </span>
           )}
           {selectedProject && (
-            <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset">
+            <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast">
               <GitBranch size={12} aria-hidden="true" />
               {branch === undefined ? <span className="opacity-60">Checking git...</span> : (branch ?? "No git branch")}
             </span>

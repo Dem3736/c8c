@@ -220,7 +220,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="absolute -right-1 top-0 opacity-0 group-hover/msg:opacity-100 ui-transition-opacity ui-motion-fast p-1 rounded-md hover:bg-surface-3 text-muted-foreground hover:text-foreground"
+      className="ui-icon-button absolute -right-1 top-0 opacity-0 group-hover/msg:opacity-100 ui-transition-opacity ui-motion-fast"
       aria-label={copied ? "Copied" : "Copy message"}
       title={copied ? "Copied" : "Copy"}
     >

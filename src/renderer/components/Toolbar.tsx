@@ -428,8 +428,8 @@ export function Toolbar({
             "flex items-center gap-1 rounded-lg p-1",
             isRunning
               ? isPaused
-                ? "border border-yellow-500/20 bg-yellow-500/10 shadow-inset-highlight-subtle"
-                : "border border-destructive/20 bg-status-danger/10 shadow-inset-highlight-subtle"
+                ? "surface-warning-soft shadow-inset-highlight-subtle"
+                : "border border-status-info/20 bg-status-info/10 shadow-inset-highlight-subtle"
               : controlGroupClass,
           )}
         >

@@ -757,15 +757,15 @@ export function ProjectSidebar({
                   onClick={() => toggleProjectExpansion(projectPath)}
                   title={projectPath}
                 >
-                  <ChevronIcon size={14} className="flex-shrink-0 opacity-60" />
-                  <FolderOpen size={16} className="flex-shrink-0" />
+                  <ChevronIcon size={14} className="flex-shrink-0 text-muted-foreground" />
+                  <FolderOpen size={14} className="flex-shrink-0" />
                   <span className="truncate flex-1">{folderName(projectPath)}</span>
                 </button>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="ui-icon-button opacity-0 group-hover:opacity-100 hover:bg-status-danger/20 hover:text-status-danger transition-[opacity,background-color,color] ui-motion-fast"
+                      className="ui-icon-button opacity-0 group-hover:opacity-100 hover:bg-status-danger/20 hover:text-status-danger ui-transition-opacity ui-motion-fast"
                       onClick={(event) => openRemoveProjectDialog(projectPath, event)}
                       aria-label="Remove project"
                     >
@@ -803,6 +803,8 @@ export function ProjectSidebar({
                     return (
                       <div
                         key={workflow.path}
+                        role="option"
+                        aria-selected={isSelected}
                         className={cn(
                           "sidebar-thread-row group",
                           isSelected && "sidebar-thread-row--active",
@@ -811,8 +813,6 @@ export function ProjectSidebar({
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            role="option"
-                            aria-selected={isSelected}
                             aria-current={isSelected ? "page" : undefined}
                             data-sidebar-item="true"
                             data-workflow-path={workflow.path}

@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { cn } from "@/lib/cn"
 import type {
   InputNodeConfig,
   OutputNodeConfig,
@@ -106,7 +105,7 @@ export function ToolArrayEditor({
               <span className="font-mono">{tool}</span>
               <button
                 type="button"
-                className="rounded-sm p-0.5 hover:bg-surface-3"
+                className="rounded-sm p-0.5 hover:bg-surface-3 ui-transition-colors ui-motion-fast"
                 onClick={() => removeValue(tool)}
                 aria-label={`Remove ${tool}`}
               >
@@ -190,7 +189,7 @@ export function RuntimePolicyEditor({
 
   return (
     <details className="ui-disclosure rounded-md border border-hairline bg-surface-1/80">
-      <summary className="cursor-pointer list-none px-2 py-2 ui-meta-label text-muted-foreground hover:text-foreground ui-motion-fast">
+      <summary className="cursor-pointer list-none px-2 py-2 ui-meta-label text-muted-foreground hover:text-foreground ui-transition-colors ui-motion-fast">
         Runtime Policy (Advanced)
       </summary>
       <div className="space-y-2 border-t border-hairline px-2 py-2">
@@ -306,7 +305,7 @@ export function InputNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: InputNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div className="flex items-center gap-3">
         <Label htmlFor={`input-type-${nodeId}`} className="ui-meta-text text-muted-foreground">Input Type</Label>
         <Select
@@ -376,7 +375,7 @@ export function OutputNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: OutputNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div>
         <Label htmlFor={`output-title-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Output title
@@ -417,7 +416,7 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: SkillNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div>
         <Label htmlFor={`skill-ref-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Skill reference
@@ -525,7 +524,7 @@ export function EvaluatorNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: EvaluatorNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div>
         <Label htmlFor={`criteria-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">Criteria</Label>
         <Textarea
@@ -576,7 +575,7 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: SplitterNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div className="flex items-center gap-3">
         <Label htmlFor={`splitter-model-${nodeId}`} className="ui-meta-text text-muted-foreground">Model</Label>
         <Select
@@ -631,7 +630,7 @@ export function MergerNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: MergerNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div className="flex items-center gap-3">
         <Label htmlFor={`merger-strategy-${nodeId}`} className="ui-meta-text text-muted-foreground">Strategy</Label>
         <Select
@@ -678,7 +677,7 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: ApprovalNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-border pt-2.5 space-y-2 bg-surface-2/50">
+    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div>
         <Label htmlFor={`approval-message-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Message

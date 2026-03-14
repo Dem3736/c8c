@@ -82,7 +82,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand thinking block" : "Collapse thinking block"}
-          className="flex items-center gap-1 ui-meta-text text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-1 ui-meta-text text-muted-foreground hover:text-foreground ui-pressable"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <span className="italic">thinking...</span>
@@ -117,7 +117,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? `Expand ${toolDisplayName} input` : `Collapse ${toolDisplayName} input`}
-          className="flex items-center gap-2 ui-meta-label text-foreground-subtle hover:text-foreground"
+          className="flex items-center gap-2 ui-meta-label text-foreground-subtle hover:text-foreground ui-pressable"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <Wrench size={12} />
@@ -157,7 +157,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? `Expand ${toolDisplayName} result` : `Collapse ${toolDisplayName} result`}
-          className={cn("flex items-center gap-2 ui-meta-label", textColor)}
+          className={cn("flex items-center gap-2 ui-meta-label ui-pressable", textColor)}
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <span>
@@ -248,7 +248,7 @@ export function NodesTab({
             <button
               type="button"
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-3/80 ui-transition-colors ui-motion-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-3/80 ui-pressable focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                 isActive && "bg-surface-3/80",
                 node.indent && "pl-7",
               )}
@@ -338,7 +338,7 @@ export function NodesTab({
               {canRerun && (status === "completed" || status === "failed") && onRerunFrom && (
                 <button
                   type="button"
-                  className="ml-1 inline-flex h-control-xs w-control-xs items-center justify-center rounded-md border border-hairline bg-surface-1/80 text-foreground-subtle hover:bg-surface-3 hover:text-foreground ui-transition-colors ui-motion-fast"
+                  className="ml-1 ui-icon-button border border-hairline bg-surface-1/80"
                   onClick={(e) => {
                     e.stopPropagation()
                     onRerunFrom(node.id)
@@ -463,13 +463,13 @@ export function LogTab({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search log entries..."
-              className="w-full h-control-sm pl-8 pr-8 rounded-md border border-hairline bg-surface-2 text-body-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
+              className="w-full h-control-sm pl-8 pr-8 rounded-md border border-hairline bg-surface-2/60 text-body-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-2 top-1/2 -translate-y-1/2 ui-icon-button"
                 aria-label="Clear search"
               >
                 <X size={14} />
@@ -478,7 +478,7 @@ export function LogTab({
           </div>
 
           {/* Type filter buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex flex-wrap gap-2 items-center">
             {LOG_ENTRY_TYPES.map((type) => {
               const isActive = activeTypeFilters.has(type)
               return (
@@ -487,9 +487,12 @@ export function LogTab({
                   type="button"
                   onClick={() => toggleTypeFilter(type)}
                   className={cn(
-                    "px-2 py-0.5 rounded-md ui-meta-text border ui-transition-colors ui-motion-fast",
+                    "px-2 py-0.5 rounded-md ui-meta-text border ui-pressable",
                     isActive
-                      ? "bg-surface-3 border-hairline text-foreground"
+                      ? cn(
+                          "bg-surface-3 border-hairline",
+                          type === "error" ? "text-status-danger" : "text-foreground",
+                        )
                       : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2",
                   )}
                   aria-pressed={isActive}

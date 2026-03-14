@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
 import { globalExecutionDefaultsAtom, webSearchBackendAtom } from "@/lib/store"
 import type { ClaudeCodeSubscriptionStatus, TelemetrySettings, UpdateInfo, UpdateEvent } from "@shared/types"
@@ -293,12 +294,12 @@ export function SettingsPage() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label className="text-body-sm font-medium text-foreground">Model</label>
+              <Label htmlFor="exec-default-model" className="text-body-sm font-medium text-foreground">Model</Label>
               <Select
                 value={execDefaults.model}
                 onValueChange={(value) => setExecDefaults((prev) => ({ ...prev, model: value }))}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="exec-default-model" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -314,8 +315,9 @@ export function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-body-sm font-medium text-foreground">Max Turns</label>
+              <Label htmlFor="exec-default-max-turns" className="text-body-sm font-medium text-foreground">Max Turns</Label>
               <Input
+                id="exec-default-max-turns"
                 type="number"
                 min={1}
                 max={1000}
@@ -329,8 +331,9 @@ export function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-body-sm font-medium text-foreground">Timeout (minutes)</label>
+              <Label htmlFor="exec-default-timeout" className="text-body-sm font-medium text-foreground">Timeout (minutes)</Label>
               <Input
+                id="exec-default-timeout"
                 type="number"
                 min={1}
                 max={480}
@@ -344,8 +347,9 @@ export function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-body-sm font-medium text-foreground">Max Parallel</label>
+              <Label htmlFor="exec-default-max-parallel" className="text-body-sm font-medium text-foreground">Max Parallel</Label>
               <Input
+                id="exec-default-max-parallel"
                 type="number"
                 min={1}
                 max={32}

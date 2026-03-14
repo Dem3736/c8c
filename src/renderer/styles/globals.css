@@ -69,6 +69,15 @@
     --status-danger: 0 60% 45%;
     --status-info: 215 26% 37%;
     --selection: 0 0% 9% / 0.14;
+
+    --hljs-keyword: 280 60% 48%;
+    --hljs-string: 140 45% 38%;
+    --hljs-number: 30 65% 45%;
+    --hljs-title: 210 60% 45%;
+    --hljs-built-in: 180 45% 38%;
+    --hljs-attr: 45 65% 42%;
+    --hljs-deletion: 0 55% 45%;
+
     --radius: 0.5rem;
     --radius-control: 0.5rem;
     --radius-container: 0.75rem;
@@ -122,6 +131,15 @@
     --status-danger: 0 65% 56%;
     --status-info: 215 35% 62%;
     --selection: 0 0% 98% / 0.2;
+
+    --hljs-keyword: 280 80% 72%;
+    --hljs-string: 140 60% 65%;
+    --hljs-number: 30 80% 70%;
+    --hljs-title: 210 80% 72%;
+    --hljs-built-in: 180 60% 65%;
+    --hljs-attr: 45 80% 70%;
+    --hljs-deletion: 0 70% 65%;
+
     --overlay-scrim: oklch(0 0 0 / 0.32);
     --inset-highlight: hsl(var(--foreground) / 0.06);
     --inset-highlight-strong: hsl(var(--foreground) / 0.08);
@@ -925,14 +943,14 @@
   }
 }
 
-/* highlight.js dark theme for code blocks */
+/* highlight.js theme for code blocks — adapts to light/dark via CSS custom properties */
 .hljs { color: hsl(var(--foreground)); background: transparent; }
-.hljs-keyword, .hljs-selector-tag { color: hsl(280 80% 72%); }
-.hljs-string, .hljs-addition { color: hsl(140 60% 65%); }
-.hljs-number, .hljs-literal { color: hsl(30 80% 70%); }
+.hljs-keyword, .hljs-selector-tag { color: hsl(var(--hljs-keyword)); }
+.hljs-string, .hljs-addition { color: hsl(var(--hljs-string)); }
+.hljs-number, .hljs-literal { color: hsl(var(--hljs-number)); }
 .hljs-comment, .hljs-quote { color: hsl(var(--muted-foreground)); font-style: italic; }
-.hljs-title, .hljs-section { color: hsl(210 80% 72%); }
-.hljs-built_in, .hljs-type { color: hsl(180 60% 65%); }
-.hljs-attr, .hljs-name { color: hsl(45 80% 70%); }
-.hljs-deletion { color: hsl(0 70% 65%); }
+.hljs-title, .hljs-section { color: hsl(var(--hljs-title)); }
+.hljs-built_in, .hljs-type { color: hsl(var(--hljs-built-in)); }
+.hljs-attr, .hljs-name { color: hsl(var(--hljs-attr)); }
+.hljs-deletion { color: hsl(var(--hljs-deletion)); }
 .hljs-meta { color: hsl(var(--muted-foreground)); }

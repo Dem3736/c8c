@@ -98,14 +98,14 @@ export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
         className={cn(
           "fixed right-0 top-0 z-50 h-full w-[min(32rem,100vw-2rem)]",
           "surface-elevated flex flex-col",
-          "animate-in slide-in-from-right duration-200",
+          "animate-in slide-in-from-right duration-[var(--motion-slow)]",
         )}
       >
         {/* Header */}
         <header className="flex items-start gap-3 px-5 pt-5 pb-4 border-b border-border">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h2 className="ui-title-text text-foreground truncate">{skill.name}</h2>
+              <h2 className="text-title-md text-foreground truncate">{skill.name}</h2>
               <Badge variant="outline" className="ui-meta-text px-1.5 py-0 shrink-0">
                 {skill.type}
               </Badge>
@@ -136,7 +136,7 @@ export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
             {metaItems.map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-center gap-2 text-body-sm">
                 <Icon size={14} className="text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground">{label}:</span>
+                <span className="ui-meta-label">{label}:</span>
                 <span className="text-foreground font-medium">{value}</span>
               </div>
             ))}
@@ -145,7 +145,7 @@ export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
               <div className="flex items-start gap-2 text-body-sm">
                 <Wrench size={14} className="text-muted-foreground shrink-0 mt-0.5" />
                 <div>
-                  <span className="text-muted-foreground">Tools:</span>
+                  <span className="ui-meta-label">Tools:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {toolsList.map((tool) => (
                       <Badge key={tool} variant="secondary" className="ui-meta-text font-mono px-1.5 py-0">
@@ -163,10 +163,10 @@ export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
         <div className="px-5 py-2.5 border-b border-border">
           <div className="flex items-center gap-2 text-body-sm">
             <FileText size={14} className="text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground">File:</span>
+            <span className="ui-meta-label">File:</span>
             <button
               type="button"
-              className="text-foreground font-mono text-xs truncate hover:underline cursor-pointer"
+              className="text-foreground font-mono ui-meta-text truncate hover:underline cursor-pointer ui-transition-colors ui-motion-fast"
               title={skill.path}
               onClick={() => void window.api.showInFinder(skill.path)}
             >
@@ -176,7 +176,7 @@ export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
           {skill.library && (
             <div className="flex items-center gap-2 text-body-sm mt-1">
               <FolderOpen size={14} className="text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">Source:</span>
+              <span className="ui-meta-label">Source:</span>
               <span className="text-foreground">{skill.library}</span>
             </div>
           )}
