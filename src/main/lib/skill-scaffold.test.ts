@@ -122,4 +122,70 @@ describe("scaffoldMissingSkills", () => {
     const config = result.nodes[0].config as SkillNodeConfig
     expect(config.skillPaths).toContain(expectedPath)
   })
+
+  it("adds web allowedTools when scaffolded skill prompt targets external sites", async () => {
+    const workflow = makeWorkflow([
+      {
+        id: "s1",
+        type: "skill",
+        position: { x: 0, y: 0 },
+        config: {
+          skillRef: "analysis/site-auditor",
+          prompt: "Audit https://nhc.works and summarize key UX issues",
+        } as SkillNodeConfig,
+      },
+    ])
+
+    const result = await scaffoldMissingSkills(workflow, [], tmpDir)
+
+    const expectedPath = join(tmpDir, ".claude/skills/analysis/site-auditor.md")
+    const content = await readFile(expectedPath, "utf-8")
+    expect(content).toContain("allowedTools:")
+    expect(content).toContain("- WebFetch")
+    expect(content).toContain("- WebSearch")
+
+    const config = result.nodes[0].config as SkillNodeConfig
+    expect(config.allowedTools).toEqual(expect.arrayContaining(["WebFetch", "WebSearch"]))
+  })
+
+  it("merges inferred web tools with explicitly allowed tools", async () => {
+    const workflow = makeWorkflow([
+      {
+        id: "s1",
+        type: "skill",
+        position: { x: 0, y: 0 },
+        config: {
+          skillRef: "analysis/market-scout",
+          prompt: "Research the website examples on www.example.com",
+          allowedTools: ["Read"],
+        } as SkillNodeConfig,
+      },
+    ])
+
+    const result = await scaffoldMissingSkills(workflow, [], tmpDir)
+
+    const config = result.nodes[0].config as SkillNodeConfig
+    expect(config.allowedTools).toEqual(expect.arrayContaining(["Read", "WebFetch", "WebSearch"]))
+  })
+
+  it("does not infer blocked web tools", async () => {
+    const workflow = makeWorkflow([
+      {
+        id: "s1",
+        type: "skill",
+        position: { x: 0, y: 0 },
+        config: {
+          skillRef: "analysis/strict-auditor",
+          prompt: "Review website https://nhc.works with local notes",
+          disallowedTools: ["WebFetch"],
+        } as SkillNodeConfig,
+      },
+    ])
+
+    const result = await scaffoldMissingSkills(workflow, [], tmpDir)
+
+    const config = result.nodes[0].config as SkillNodeConfig
+    expect(config.allowedTools).toEqual(expect.arrayContaining(["WebSearch"]))
+    expect(config.allowedTools).not.toContain("WebFetch")
+  })
 })

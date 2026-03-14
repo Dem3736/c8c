@@ -10,6 +10,33 @@ interface AvailableSkill {
   category: string
 }
 
+const WEB_ACCESS_HINT_RE = /https?:\/\/|www\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b|\b(website|site|url|domain|internet|online|browse|crawl|scrape|fetch|web\s*search|search the web)\b/i
+const INFERRED_WEB_TOOLS = ["WebFetch", "WebSearch"] as const
+
+function uniqueStrings(values: string[] | undefined): string[] | undefined {
+  if (!values || values.length === 0) return undefined
+  const deduped = [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+  return deduped.length > 0 ? deduped : undefined
+}
+
+function appendUnique(values: string[] | undefined, item: string): string[] {
+  return [...new Set([...(values || []), item])]
+}
+
+function shouldInferWebAccess(config: SkillNodeConfig): boolean {
+  const text = `${config.skillRef || ""}\n${config.prompt || ""}`
+  return WEB_ACCESS_HINT_RE.test(text)
+}
+
+function resolveAllowedTools(config: SkillNodeConfig): string[] | undefined {
+  const explicitAllowed = uniqueStrings(config.allowedTools)
+  if (!shouldInferWebAccess(config)) return explicitAllowed
+
+  const disallowed = new Set(uniqueStrings(config.disallowedTools) || [])
+  const inferred = INFERRED_WEB_TOOLS.filter((tool) => !disallowed.has(tool))
+  return uniqueStrings([...(explicitAllowed || []), ...inferred])
+}
+
 export async function scaffoldMissingSkills(
   workflow: Workflow,
   availableSkills: AvailableSkill[],
@@ -38,9 +65,14 @@ export async function scaffoldMissingSkills(
     const config = node.config as SkillNodeConfig
     if (!config.skillRef) continue
     if (knownRefs.has(config.skillRef)) continue
+    const allowedTools = resolveAllowedTools(config)
+    const enrichedConfig: SkillNodeConfig = {
+      ...config,
+      ...(allowedTools ? { allowedTools } : {}),
+    }
 
     // Parse category/name from skillRef
-    const parts = config.skillRef.split("/")
+    const parts = enrichedConfig.skillRef.split("/")
     let category: string
     let name: string
     if (parts.length >= 2) {
@@ -68,8 +100,8 @@ export async function scaffoldMissingSkills(
       updatedNodes[i] = {
         ...node,
         config: {
-          ...config,
-          skillPaths: [...(config.skillPaths || []), skillPath],
+          ...enrichedConfig,
+          skillPaths: appendUnique(enrichedConfig.skillPaths, skillPath),
         },
       }
       continue
@@ -77,12 +109,16 @@ export async function scaffoldMissingSkills(
       // File doesn't exist — create it below
     }
 
-    const description = config.prompt
-      ? config.prompt.slice(0, 120).replace(/\n/g, " ")
+    const description = enrichedConfig.prompt
+      ? enrichedConfig.prompt.slice(0, 120).replace(/\n/g, " ")
       : name
 
-    const frontmatter = YAML.stringify({ name, description }).trimEnd()
-    const content = `---\n${frontmatter}\n---\n\n${config.prompt || `Instructions for ${name}`}\n`
+    const frontmatterData: Record<string, unknown> = { name, description }
+    if (allowedTools && allowedTools.length > 0) {
+      frontmatterData.allowedTools = allowedTools
+    }
+    const frontmatter = YAML.stringify(frontmatterData).trimEnd()
+    const content = `---\n${frontmatter}\n---\n\n${enrichedConfig.prompt || `Instructions for ${name}`}\n`
 
     await mkdir(dirname(skillPath), { recursive: true })
     await writeFileAtomic(skillPath, content)
@@ -91,8 +127,8 @@ export async function scaffoldMissingSkills(
     updatedNodes[i] = {
       ...node,
       config: {
-        ...config,
-        skillPaths: [...(config.skillPaths || []), skillPath],
+        ...enrichedConfig,
+        skillPaths: appendUnique(enrichedConfig.skillPaths, skillPath),
       },
     }
   }
