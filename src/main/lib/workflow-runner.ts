@@ -143,12 +143,14 @@ function getNodeRuntimeConfig(node: WorkflowNode): NodeRuntimeConfig | undefined
   return config.runtime
 }
 
-function resolveRuntimePolicy(node: WorkflowNode): ResolvedRuntimePolicy {
+function resolveRuntimePolicy(node: WorkflowNode, isRuntimeClone?: boolean): ResolvedRuntimePolicy {
   const runtime = getNodeRuntimeConfig(node)
   const retry = runtime?.retry
   const configuredRetryOn = retry?.retryOn?.filter(Boolean)
+  // Branch nodes default to "continue" so one failed branch doesn't kill the workflow
+  const defaultOnError = isRuntimeClone ? "continue" : "stop"
   return {
-    onError: runtime?.execution?.onError || "stop",
+    onError: runtime?.execution?.onError || defaultOnError,
     retry: {
       enabled: Boolean(retry?.enabled),
       maxTries: Math.max(1, Math.floor(retry?.maxTries ?? 1)),
@@ -922,7 +924,8 @@ export async function runWorkflow(
     const processNode = async (nodeId: string): Promise<void> => {
       if (controller.signal.aborted) return
       const node = runtimeWorkflow.nodes.find((n) => n.id === nodeId)!
-      const runtimePolicy = resolveRuntimePolicy(node)
+      const isRuntimeClone = Boolean(runtimeWorkflow.runtimeMeta?.[node.id])
+      const runtimePolicy = resolveRuntimePolicy(node, isRuntimeClone)
       const state = nodeStates[node.id]
       state.status = "running"
       state.startedAt = Date.now()
@@ -1521,6 +1524,18 @@ export async function runWorkflow(
               throw new Error("Merger has no branch outputs to combine")
             }
 
+            // Log which branches failed so the user has visibility
+            const failedBranches = incomingEdges.filter((e) => nodeStates[e.source]?.status === "failed")
+            if (failedBranches.length > 0) {
+              const entry = {
+                type: "text" as const,
+                content: `[merger] ${failedBranches.length}/${incomingEdges.length} branches failed, merging ${branchOutputs.length} successful outputs\n`,
+                timestamp: Date.now(),
+              }
+              state.log.push(entry)
+              send({ type: "node-log", runId, nodeId: node.id, entry })
+            }
+
             if (mergerConfig.strategy === "concatenate") {
               state.metrics = {
                 tokens_in: 0,
@@ -1865,9 +1880,16 @@ export async function runWorkflow(
       }
     }
 
+    const criticalNodeFailed = Object.entries(nodeStates).some(([id, s]) => {
+      if (s.status !== "failed") return false
+      // Runtime clone (splitter branch) failures are non-fatal if the merger/output completed
+      if (runtimeWorkflow.runtimeMeta?.[id]) return false
+      return true
+    })
+
     const finalStatus: RunStatus = controller.signal.aborted
       ? "cancelled"
-      : isRunComplete(nodeStates) && Object.values(nodeStates).every((s) => s.status !== "failed")
+      : isRunComplete(nodeStates) && !criticalNodeFailed
         ? "completed"
         : "failed"
     manifestStatus = finalStatus
@@ -2123,7 +2145,8 @@ export async function rerunFromNode(
     const processNode = async (nodeId: string): Promise<void> => {
       if (controller.signal.aborted) return
       const node = runtimeWorkflow.nodes.find((n) => n.id === nodeId)!
-      const runtimePolicy = resolveRuntimePolicy(node)
+      const isRuntimeClone = Boolean(runtimeWorkflow.runtimeMeta?.[node.id])
+      const runtimePolicy = resolveRuntimePolicy(node, isRuntimeClone)
       const state = nodeStates[node.id]
       state.status = "running"
       state.startedAt = Date.now()
@@ -2609,6 +2632,18 @@ export async function rerunFromNode(
               throw new Error("Merger has no branch outputs to combine")
             }
 
+            // Log which branches failed so the user has visibility
+            const failedBranches = incomingEdges.filter((e) => nodeStates[e.source]?.status === "failed")
+            if (failedBranches.length > 0) {
+              const entry = {
+                type: "text" as const,
+                content: `[merger] ${failedBranches.length}/${incomingEdges.length} branches failed, merging ${branchOutputs.length} successful outputs\n`,
+                timestamp: Date.now(),
+              }
+              state.log.push(entry)
+              send({ type: "node-log", runId, nodeId: node.id, entry })
+            }
+
             if (mergerConfig.strategy === "concatenate") {
               state.metrics = {
                 tokens_in: 0,
@@ -2912,9 +2947,16 @@ export async function rerunFromNode(
       }
     }
 
+    const criticalNodeFailed = Object.entries(nodeStates).some(([id, s]) => {
+      if (s.status !== "failed") return false
+      // Runtime clone (splitter branch) failures are non-fatal if the merger/output completed
+      if (runtimeWorkflow.runtimeMeta?.[id]) return false
+      return true
+    })
+
     const finalStatus: RunStatus = controller.signal.aborted
       ? "cancelled"
-      : isRunComplete(nodeStates) && Object.values(nodeStates).every((s) => s.status !== "failed")
+      : isRunComplete(nodeStates) && !criticalNodeFailed
         ? "completed"
         : "failed"
     manifestStatus = finalStatus
