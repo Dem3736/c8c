@@ -1,4 +1,4 @@
-import type { Workflow, WorkflowTemplateCategory } from "@shared/types"
+import type { Workflow, WorkflowTemplate, WorkflowTemplateCategory } from "@shared/types"
 import { cloneWorkflow } from "./workflow-graph-utils"
 
 export type WebSearchBackend = "builtin" | "exa"
@@ -59,4 +59,16 @@ export function applyWebSearchBackendPreset(
   next.defaults.disallowedTools = removeTools(next.defaults.disallowedTools, SHELL_WEB_FETCH_TOOLS)
   next.defaults.allowedTools = removeTools(next.defaults.allowedTools, EXA_WEB_TOOLS)
   return next
+}
+
+export function resolveTemplateWorkflow(
+  template: Pick<WorkflowTemplate, "workflow" | "category" | "name">,
+  backend: WebSearchBackend,
+): Workflow {
+  const nextWorkflow = applyWebSearchBackendPreset(template.workflow, template.category, backend)
+  const templateName = template.name.trim()
+  if (templateName) {
+    nextWorkflow.name = templateName
+  }
+  return nextWorkflow
 }

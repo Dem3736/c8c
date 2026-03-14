@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Workflow } from "@shared/types"
-import { applyWebSearchBackendPreset } from "./web-search-backend"
+import { applyWebSearchBackendPreset, resolveTemplateWorkflow } from "./web-search-backend"
 
 function makeWorkflow(): Workflow {
   return {
@@ -79,5 +79,19 @@ describe("applyWebSearchBackendPreset", () => {
     const workflow = makeWorkflow()
     const next = applyWebSearchBackendPreset(workflow, "marketing", "exa")
     expect(next).toEqual(workflow)
+  })
+})
+
+describe("resolveTemplateWorkflow", () => {
+  it("uses template display name as workflow name", () => {
+    const workflow = { ...makeWorkflow(), name: "new-workflow" }
+    const next = resolveTemplateWorkflow({
+      name: "Deep Research",
+      category: "research",
+      workflow,
+    }, "builtin")
+
+    expect(next.name).toBe("Deep Research")
+    expect(workflow.name).toBe("new-workflow")
   })
 })
