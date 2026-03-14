@@ -1,7 +1,17 @@
+import { useState } from "react"
 import { Undo2, Trash2, PanelRightClose, Loader2 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { cn } from "@/lib/cn"
 import { Button } from "@/components/ui/button"
+import {
+  CanvasDialogContent,
+  CanvasDialogHeader,
+  CanvasDialogFooter,
+  Dialog,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from "@/components/ui/dialog"
 
 interface ChatHeaderProps {
   onClose: () => void
@@ -24,6 +34,7 @@ export function ChatHeader({
   activeToolName,
   title = "Chat",
 }: ChatHeaderProps) {
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false)
   const statusLabel = status === "error"
     ? "Error"
     : activeToolName
@@ -54,7 +65,7 @@ export function ChatHeader({
           ) : (
             <Loader2 size={11} className="animate-spin" />
           )}
-          <span className="truncate">{statusLabel}</span>
+          <span className="truncate" title={statusLabel}>{statusLabel}</span>
         </span>
       )}
 
@@ -91,7 +102,7 @@ export function ChatHeader({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            onClick={onClear}
+            onClick={() => setConfirmClearOpen(true)}
             disabled={messageCount === 0 || status !== "idle"}
             aria-label="Clear history"
             variant="ghost"
@@ -123,6 +134,30 @@ export function ChatHeader({
         </TooltipTrigger>
         <TooltipContent>Close chat</TooltipContent>
       </Tooltip>
+
+      <Dialog open={confirmClearOpen} onOpenChange={setConfirmClearOpen}>
+        <CanvasDialogContent showCloseButton={false}>
+          <CanvasDialogHeader>
+            <DialogTitle>Clear chat history?</DialogTitle>
+            <DialogDescription>Clear all messages? This cannot be undone.</DialogDescription>
+          </CanvasDialogHeader>
+          <CanvasDialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                setConfirmClearOpen(false)
+                onClear()
+              }}
+            >
+              Clear
+            </Button>
+          </CanvasDialogFooter>
+        </CanvasDialogContent>
+      </Dialog>
     </div>
   )
 }

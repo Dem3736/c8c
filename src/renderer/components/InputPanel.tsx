@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAtom } from "jotai"
+import { cn } from "@/lib/cn"
 import { currentWorkflowAtom, inputValueAtom, selectedWorkflowPathAtom } from "@/lib/store"
 import { resolveWorkflowInput } from "@/lib/input-type"
 import type { InputNodeConfig } from "@shared/types"
@@ -8,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea"
 
 interface InputPanelProps {
   label?: string
+  compact?: boolean
 }
 
-export function InputPanel({ label = "Input" }: InputPanelProps = {}) {
+export function InputPanel({ label = "Input", compact = false }: InputPanelProps = {}) {
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
@@ -42,7 +44,12 @@ export function InputPanel({ label = "Input" }: InputPanelProps = {}) {
   }, [selectedWorkflowPath])
 
   return (
-    <section className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
+    <section
+      className={cn(
+        "rounded-lg surface-panel ui-fade-slide-in",
+        compact ? "p-2.5 space-y-2" : "p-4 space-y-3",
+      )}
+    >
       <label htmlFor="workflow-input" className="section-kicker">
         {label}
       </label>
@@ -53,13 +60,16 @@ export function InputPanel({ label = "Input" }: InputPanelProps = {}) {
         onChange={(e) => setInputValue(e.target.value)}
         onBlur={() => setTouched(true)}
         placeholder={placeholder}
-        rows={4}
+        rows={compact ? 2 : 4}
         aria-invalid={showError || undefined}
         aria-describedby={showError ? "input-hint input-error" : "input-hint"}
-        className="resize-y bg-surface-2/90 min-h-[6rem] max-h-[24rem]"
+        className={cn(
+          "resize-y bg-surface-2/90",
+          compact ? "min-h-[3.25rem] max-h-[10rem]" : "min-h-[6rem] max-h-[24rem]",
+        )}
       />
 
-      <div className="flex items-center gap-2">
+      <div className={cn("flex items-center gap-2", compact && "flex-wrap gap-y-1")}>
         <span role="status" aria-live="polite">
           <Badge variant="outline">
             Type: {inputTypeLabel}
@@ -74,9 +84,13 @@ export function InputPanel({ label = "Input" }: InputPanelProps = {}) {
           <Badge variant="secondary">Using default value</Badge>
         )}
         <span id="input-hint" className="ui-meta-text">
-          {inputConfig.required === false
-            ? "Optional input. If empty, default value is used when provided."
-            : "Auto-detected from your input. You can paste plain text, a URL, or a directory path."}
+          {compact
+            ? inputConfig.required === false
+              ? "Optional input."
+              : "Auto-detected type."
+            : inputConfig.required === false
+              ? "Optional input. If empty, default value is used when provided."
+              : "Auto-detected from your input. You can paste plain text, a URL, or a directory path."}
         </span>
       </div>
 

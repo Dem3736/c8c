@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useAtom } from "jotai"
-import { approvalRequestAtom } from "@/lib/store"
+import { approvalRequestsAtom } from "@/lib/store"
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,17 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import { Check, X } from "lucide-react"
 import { toast } from "sonner"
 
 export function ApprovalDialog() {
-  const [request, setRequest] = useAtom(approvalRequestAtom)
+  const [requests, setRequests] = useAtom(approvalRequestsAtom)
   const [editedContent, setEditedContent] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  const request = requests[0] ?? null
+  const queueCount = requests.length
 
   useEffect(() => {
     if (request) {
@@ -26,6 +30,10 @@ export function ApprovalDialog() {
   }, [request])
 
   if (!request) return null
+
+  const shiftQueue = () => {
+    setRequests((prev) => prev.slice(1))
+  }
 
   const handleApprove = async () => {
     if (submitting) return
@@ -37,7 +45,7 @@ export function ApprovalDialog() {
         toast.error("Could not approve node: run is no longer active")
         return
       }
-      setRequest(null)
+      shiftQueue()
     } catch (err) {
       console.error("[ApprovalDialog] approve failed:", err)
       toast.error("Failed to approve step")
@@ -55,7 +63,7 @@ export function ApprovalDialog() {
         toast.error("Could not stop workflow: run is no longer active")
         return
       }
-      setRequest(null)
+      shiftQueue()
     } catch (err) {
       console.error("[ApprovalDialog] reject failed:", err)
       toast.error("Failed to stop workflow")
@@ -66,10 +74,15 @@ export function ApprovalDialog() {
 
   return (
     <Dialog open={!!request} onOpenChange={() => {}}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region" showCloseButton={false}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region" showCloseButton={false} aria-describedby="approval-description">
         <DialogHeader>
-          <DialogTitle>Waiting for your approval</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            Waiting for your approval
+            {queueCount > 1 && (
+              <Badge variant="secondary">{queueCount - 1} more pending</Badge>
+            )}
+          </DialogTitle>
+          <DialogDescription id="approval-description">
             {request.message || "Review this step and choose whether to continue the run."}
           </DialogDescription>
         </DialogHeader>

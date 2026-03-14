@@ -241,6 +241,16 @@ export function useChatSession() {
           removeStreamingPlaceholder()
           resetLocalSessionState()
           toast.error(event.content || "Chat error")
+          // Persist error in chat history as a system message
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `error-${Date.now()}`,
+              role: "assistant" as const,
+              content: `**Error:** ${event.content || "Chat error"}`,
+              timestamp: Date.now(),
+            },
+          ])
           break
         }
       }

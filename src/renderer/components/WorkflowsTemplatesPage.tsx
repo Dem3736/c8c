@@ -20,6 +20,7 @@ import {
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
   workflowsAtom,
+  generateDialogOpenAtom,
   type WorkflowTemplate,
 } from "@/lib/store"
 import { toast } from "sonner"
@@ -32,6 +33,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
 } from "lucide-react"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
@@ -138,6 +140,7 @@ export function WorkflowsTemplatesPage() {
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setMainView] = useAtom(mainViewAtom)
+  const [, setGenerateDialogOpen] = useAtom(generateDialogOpenAtom)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
 
   const loadTemplates = useCallback(async () => {
@@ -355,6 +358,15 @@ export function WorkflowsTemplatesPage() {
               />
             </div>
 
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setGenerateDialogOpen(true)}
+              disabled={!selectedProject}
+            >
+              <Sparkles size={14} />
+              Generate with AI
+            </Button>
             <Button
               size="sm"
               onClick={() => void createWorkflow()}

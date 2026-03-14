@@ -33,7 +33,7 @@ export function CliBanner() {
       </Button>
       <button
         type="button"
-        className="shrink-0 rounded p-0.5 text-status-warning hover:bg-status-warning/15"
+        className="shrink-0 rounded p-0.5 text-status-warning hover:bg-status-warning/10"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
       >

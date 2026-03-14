@@ -10,6 +10,8 @@ import type {
   WorkflowEdge,
   NodeState,
   DiscoveredSkill,
+  McpServerInfo,
+  McpToolInfo,
   SkillLibrary,
   WorkflowFile,
   WorkflowTemplate,
@@ -53,7 +55,7 @@ export type {
 
 // ── Local Types ──────────────────────────────────────────
 
-export type ExecutionRunStatus = "idle" | "running" | "done" | "error"
+export type ExecutionRunStatus = "idle" | "starting" | "running" | "paused" | "cancelling" | "done" | "error"
 
 export interface EvalCriterion {
   id: string
@@ -101,8 +103,9 @@ export const selectedProjectAtom = atomWithStorage<string | null>(
   "c8c:selected-project",
   null,
 )
+export const expandedProjectsAtom = atomWithStorage<string[]>("c8c:expanded-projects", [])
 export const workflowsAtom = atom<WorkflowFile[]>([])
-export const selectedWorkflowPathAtom = atom<string | null>(null)
+export const selectedWorkflowPathAtom = atomWithStorage<string | null>("c8c:selectedWorkflowPath", null)
 export const projectSidebarWidthAtom = atomWithStorage<number>(
   "c8c:sidebar-width",
   286,
@@ -140,11 +143,21 @@ export const skillsAtom = atom<DiscoveredSkill[]>([])
 export const skillPickerOpenAtom = atom(false)
 export const librariesAtom = atom<SkillLibrary[]>([])
 
+// Validation
+export interface ValidationError {
+  nodeId: string
+  field: string
+  message: string
+  severity: "error" | "warning"
+}
+export const validationErrorsAtom = atom<Record<string, ValidationError[]>>({})
+
 // Input
 export const inputValueAtom = atom("")
 
 // Execution state
 export const runStatusAtom = atom<ExecutionRunStatus>("idle")
+export const runStartedAtAtom = atom<number | null>(null)
 export const runIdAtom = atom<string | null>(null)
 export const runWorkflowPathAtom = atom<string | null>(null)
 export const nodeStatesAtom = atom<Record<string, NodeState>>({})
@@ -168,13 +181,44 @@ export const runsByWorkflowPathAtom = atom<Record<string, RunResult[]>>((get) =>
   return grouped
 })
 
+export const workflowHistoryRunsAtom = atom<RunResult[]>((get) => {
+  const runs = get(pastRunsAtom)
+  if (runs.length === 0) return []
+
+  const selectedWorkflowPath = (get(selectedWorkflowPathAtom) || "").trim()
+  const workflowName = (get(currentWorkflowAtom).name || "").trim()
+
+  return runs.filter((run) => {
+    const runPath = (run.workflowPath || "").trim()
+    if (selectedWorkflowPath) {
+      if (runPath === selectedWorkflowPath) return true
+      // Keep history across renamed/saved versions when the workflow title stays the same.
+      if (workflowName && run.workflowName === workflowName) return true
+      return false
+    }
+    if (!workflowName) return false
+    return run.workflowName === workflowName
+  })
+})
+
 // Desktop runtime
 export const desktopRuntimeAtom = atom<DesktopRuntimeInfo>(defaultDesktopRuntime())
+
+// Canvas manual positions (overrides Dagre layout)
+export const canvasManualPositionsAtom = atom<Record<string, { x: number; y: number }>>({})
 
 // Runtime graph (expanded by splitter fan-out)
 export const runtimeNodesAtom = atom<WorkflowNode[]>([])
 export const runtimeEdgesAtom = atom<WorkflowEdge[]>([])
 export const runtimeMetaAtom = atom<WorkflowRuntimeMeta>({})
+
+// Global execution defaults (applied to new/generated workflows)
+export const globalExecutionDefaultsAtom = atomWithStorage<{
+  model: string
+  maxTurns: number
+  timeout_minutes: number
+  maxParallel: number
+}>("c8c:global-execution-defaults", { model: "sonnet", maxTurns: 60, timeout_minutes: 30, maxParallel: 8 })
 
 // Research web-search backend preference
 export const webSearchBackendAtom = atomWithStorage<WebSearchBackend>(
@@ -190,8 +234,11 @@ export const cliStatusBannerDismissedAtom = atom(false)
 export type ViewMode = "list" | "canvas" | "settings"
 export const viewModeAtom = atom<ViewMode>("list")
 
+// First launch / onboarding
+export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
+
 // App pages
-export type MainView = "thread" | "skills" | "templates" | "settings"
+export type MainView = "thread" | "skills" | "templates" | "settings" | "onboarding"
 export const mainViewAtom = atomWithStorage<MainView>(
   "c8c:main-view",
   "thread",
@@ -235,7 +282,9 @@ export interface ApprovalRequest {
   allowEdit: boolean
 }
 
-export const approvalRequestAtom = atom<ApprovalRequest | null>(null)
+export const approvalRequestsAtom = atom<ApprovalRequest[]>([])
+/** @deprecated Use approvalRequestsAtom (array) instead */
+export const approvalRequestAtom = approvalRequestsAtom
 
 // ── Batch Runs ────────────────────────────────────────
 
@@ -252,3 +301,9 @@ export const batchProgressAtom = atom<{ completed: number; total: number; runnin
   total: 0,
   running: 0,
 })
+
+// ── MCP Servers ─────────────────────────────────────────
+
+export const mcpServersAtom = atom<McpServerInfo[]>([])
+export const mcpServersLoadingAtom = atom(false)
+export const mcpDiscoveredToolsAtom = atom<McpToolInfo[]>([])

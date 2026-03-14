@@ -134,7 +134,7 @@ export function useWorkflowGeneration({
       }
 
       onOpenChange(false)
-      setDescription("")
+      // Keep description so user can refine and regenerate
 
       if (selectedProject) {
         const updatedSkills = await window.api.scanSkills(selectedProject)

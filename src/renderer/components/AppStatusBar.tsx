@@ -4,6 +4,7 @@ import {
   selectedProjectAtom,
   desktopRuntimeAtom,
   runStatusAtom,
+  runStartedAtAtom,
   nodeStatesAtom,
   currentWorkflowAtom,
   runtimeNodesAtom,
@@ -32,11 +33,29 @@ export function AppStatusBar({
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const [runStatus] = useAtom(runStatusAtom)
+  const [runStartedAt] = useAtom(runStartedAtAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [runtimeNodes] = useAtom(runtimeNodesAtom)
   // undefined = loading, null = no git, string = branch name
   const [branch, setBranch] = useState<string | null | undefined>(undefined)
+  const [elapsed, setElapsed] = useState("")
+
+  useEffect(() => {
+    if (!runStartedAt || (runStatus !== "running" && runStatus !== "starting" && runStatus !== "cancelling")) {
+      setElapsed("")
+      return
+    }
+    const tick = () => {
+      const delta = Math.floor((Date.now() - runStartedAt) / 1000)
+      const m = Math.floor(delta / 60)
+      const s = delta % 60
+      setElapsed(m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`)
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [runStartedAt, runStatus])
   const platformLabel = desktopRuntime.platform === "macos"
     ? "macOS"
     : desktopRuntime.platform === "windows"
@@ -70,27 +89,35 @@ export function AppStatusBar({
   }
 
   const totalSteps = stepNodeIds.size
-  const showRunProgress = runStatus !== "idle" && totalSteps > 0
-  const runPhaseLabel = runStatus === "running"
-    ? waitingApprovalSteps > 0
-      ? "waiting for approval"
-      : failedSteps > 0
-        ? "errors detected"
-        : runningSteps > 0
-          ? "running"
-          : "waiting"
-    : runStatus === "done"
-      ? "completed"
-      : "failed"
+  const showRunProgress = runStatus !== "idle" && (totalSteps > 0 || runStatus === "starting" || runStatus === "cancelling")
+  const runPhaseLabel = runStatus === "starting"
+    ? "connecting to CLI..."
+    : runStatus === "cancelling"
+      ? "stopping..."
+      : runStatus === "paused"
+        ? "paused"
+        : runStatus === "running"
+          ? waitingApprovalSteps > 0
+            ? "waiting for approval"
+            : failedSteps > 0
+              ? "errors detected"
+              : runningSteps > 0
+                ? "running"
+                : "waiting"
+          : runStatus === "done"
+          ? "completed"
+          : "failed"
   const runProgressClass = runStatus === "done"
     ? "border-status-success/30 text-status-success"
     : runStatus === "error"
       ? "border-status-danger/30 text-status-danger"
-      : failedSteps > 0
-        ? "border-status-danger/30 text-status-danger"
-      : waitingApprovalSteps > 0
+      : runStatus === "paused"
         ? "border-status-warning/40 text-status-warning"
-        : "border-status-info/40 text-status-info"
+        : failedSteps > 0
+          ? "border-status-danger/30 text-status-danger"
+        : waitingApprovalSteps > 0
+          ? "border-status-warning/40 text-status-warning"
+          : "border-status-info/40 text-status-info"
 
   useEffect(() => {
     if (!selectedProject) {
@@ -140,9 +167,10 @@ export function AppStatusBar({
                 runProgressClass,
               )}
             >
-              {runStatus === "running" && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+              {(runStatus === "running" || runStatus === "starting" || runStatus === "cancelling") && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
               <span className="font-medium">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
               <span className="text-current/80">{runPhaseLabel}</span>
+              {elapsed && <span className="text-current/60 tabular-nums">{elapsed}</span>}
             </span>
           )}
           {selectedProject && (

@@ -14,12 +14,13 @@ import "@xyflow/react/dist/style.css"
 import { useCanvasLayout } from "@/hooks/useCanvasLayout"
 import { CanvasNode } from "./canvas/CanvasNode"
 import { WorkflowEdge } from "./canvas/WorkflowEdge"
-import { useAtom } from "jotai"
-import { runStatusAtom, skillPickerOpenAtom, selectedNodeIdAtom, selectedWorkflowPathAtom } from "@/lib/store"
+import { useAtom, useSetAtom } from "jotai"
+import { runStatusAtom, skillPickerOpenAtom, selectedNodeIdAtom, selectedWorkflowPathAtom, canvasManualPositionsAtom } from "@/lib/store"
 import { SkillPicker } from "./SkillPicker"
 import type { DiscoveredSkill } from "@/lib/store"
+import { toast } from "sonner"
 import { currentWorkflowAtom } from "@/lib/store"
-import { Plus, BarChart3, GitFork, LocateFixed, Hand, Trash2 } from "lucide-react"
+import { Plus, BarChart3, GitFork, LocateFixed, LayoutDashboard, Hand, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -38,7 +39,9 @@ import {
   addSkillNodeToWorkflow,
   removeEdgeFromWorkflow,
   removeNodeAndRewireWorkflow,
+  wouldCreateCycle,
 } from "@/lib/workflow-mutations"
+import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { MOTION_BASE_MS } from "@/lib/tokens"
 
 const nodeTypes: NodeTypes = {
@@ -55,6 +58,9 @@ const edgeTypes: EdgeTypes = {
   workflow: WorkflowEdge,
 }
 
+const CONNECTION_LINE_STYLE = { stroke: "hsl(var(--hairline))", strokeWidth: 1.5, strokeDasharray: "6 4" }
+const PRO_OPTIONS = { hideAttribution: true }
+
 interface CanvasViewProps {
   readOnly?: boolean
   onAddSkill?: (skill: DiscoveredSkill) => void
@@ -64,13 +70,15 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
   const { nodes, edges } = useCanvasLayout()
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
   const [runStatus] = useAtom(runStatusAtom)
-  const isRunning = runStatus === "running"
+  const isRunning = runStatus === "running" || runStatus === "paused"
   const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const setManualPositions = useSetAtom(canvasManualPositionsAtom)
   const [reactFlow, setReactFlow] = useState<ReactFlowInstance | null>(null)
   const [hasUserNavigatedCanvas, setHasUserNavigatedCanvas] = useState(false)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [canvasContextMenu, setCanvasContextMenu] = useState<{
     x: number
     y: number
@@ -181,17 +189,55 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
 
   const removeSelectedNode = useCallback(() => {
     if (!selectedNodeId || readOnly || isRunning) return
+    const previousWorkflow = cloneWorkflow(workflow)
     setWorkflow((prev) => removeNodeAndRewireWorkflow(prev, selectedNodeId))
     setSelectedNodeId(null)
-  }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow])
+    toast.success("Node removed", {
+      action: {
+        label: "Undo",
+        onClick: () => setWorkflow(previousWorkflow),
+      },
+    })
+  }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow, workflow])
 
   const removeSelectedEdge = useCallback(() => {
     if (!selectedEdgeId || readOnly || isRunning) return
+    const previousWorkflow = cloneWorkflow(workflow)
     setWorkflow((prev) => removeEdgeFromWorkflow(prev, selectedEdgeId))
     setSelectedEdgeId(null)
-  }, [isRunning, readOnly, selectedEdgeId, setWorkflow])
+    toast.success("Edge removed", {
+      action: {
+        label: "Undo",
+        onClick: () => setWorkflow(previousWorkflow),
+      },
+    })
+  }, [isRunning, readOnly, selectedEdgeId, setWorkflow, workflow])
 
   const removeSelection = useCallback(() => {
+    // Multi-select delete
+    const deletableIds = selectedNodeIds.filter((id) => {
+      const node = workflow.nodes.find((n) => n.id === id)
+      return node && node.type !== "input" && node.type !== "output"
+    })
+    if (deletableIds.length > 1 && !readOnly && !isRunning) {
+      const previousWorkflow = cloneWorkflow(workflow)
+      setWorkflow((prev) => {
+        let result = prev
+        for (const nodeId of deletableIds) {
+          result = removeNodeAndRewireWorkflow(result, nodeId)
+        }
+        return result
+      })
+      setSelectedNodeId(null)
+      setSelectedNodeIds([])
+      toast.success(`${deletableIds.length} nodes removed`, {
+        action: {
+          label: "Undo",
+          onClick: () => setWorkflow(previousWorkflow),
+        },
+      })
+      return
+    }
     if (canDeleteSelectedEdge) {
       removeSelectedEdge()
       return
@@ -199,7 +245,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     if (canDeleteSelectedNode) {
       removeSelectedNode()
     }
-  }, [canDeleteSelectedEdge, canDeleteSelectedNode, removeSelectedEdge, removeSelectedNode])
+  }, [canDeleteSelectedEdge, canDeleteSelectedNode, isRunning, readOnly, removeSelectedEdge, removeSelectedNode, selectedNodeIds, setSelectedNodeId, setWorkflow, workflow])
 
   const removeNodeById = useCallback((nodeId: string) => {
     if (readOnly || isRunning) return
@@ -209,11 +255,40 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     }
   }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow])
 
+  const isValidConnection = useCallback(
+    (connection: Connection | { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => {
+      if (!connection.source || !connection.target) return false
+      if (connection.source === connection.target) return false
+      const sourceNode = workflow.nodes.find((n) => n.id === connection.source)
+      const targetNode = workflow.nodes.find((n) => n.id === connection.target)
+      if (!sourceNode || !targetNode) return false
+      if (sourceNode.type === "output") return false
+      if (targetNode.type === "input") return false
+      if (wouldCreateCycle(workflow, connection.source, connection.target)) return false
+      const duplicate = workflow.edges.some(
+        (e) => e.source === connection.source && e.target === connection.target,
+      )
+      if (duplicate) return false
+      return true
+    },
+    [workflow],
+  )
+
   const onConnect = useCallback(
     (connection: Connection) => {
       if (readOnly || isRunning) return
       if (!connection.source || !connection.target) return
-      setWorkflow((prev) => addEdgeToWorkflow(prev, connection.source!, connection.target!, "default"))
+      // Detect edge type from evaluator pass/fail handles
+      const edgeType = connection.sourceHandle === "pass" ? "pass" as const
+        : connection.sourceHandle === "fail" ? "fail" as const
+        : "default" as const
+      setWorkflow((prev) => {
+        const result = addEdgeToWorkflow(prev, connection.source!, connection.target!, edgeType)
+        if (result.error) {
+          toast.warning(result.error)
+        }
+        return result.workflow
+      })
     },
     [isRunning, readOnly, setWorkflow],
   )
@@ -289,7 +364,9 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           setSelectedNodeId(null)
           setSelectedEdgeId(null)
         }}
+        selectionOnDrag
         onSelectionChange={({ nodes: selectedNodes, edges: selectedEdges }) => {
+          setSelectedNodeIds(selectedNodes.map((n) => n.id))
           const firstSelectedNode = selectedNodes[0]
           const firstSelectedEdge = selectedEdges[0]
           if (firstSelectedNode) {
@@ -306,15 +383,23 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           setSelectedEdgeId(null)
         }}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        connectionLineStyle={CONNECTION_LINE_STYLE}
         onMoveStart={() => setHasUserNavigatedCanvas(true)}
         onInit={setReactFlow}
-        nodesDraggable={false}
+        nodesDraggable={!readOnly && !isRunning}
+        onNodeDragStop={(_event, node) => {
+          setManualPositions((prev) => ({ ...prev, [node.id]: node.position }))
+        }}
         nodesConnectable={!readOnly && !isRunning}
         elementsSelectable={!readOnly}
+        onNodeDoubleClick={(_: React.MouseEvent, node: { id: string }) => {
+          setSelectedNodeId(node.id)
+        }}
         zoomOnDoubleClick={false}
         minZoom={0.45}
         maxZoom={1.65}
-        proOptions={{ hideAttribution: true }}
+        proOptions={PRO_OPTIONS}
       >
         <Background variant={BackgroundVariant.Dots} gap={19} size={1.1} color="hsl(var(--hairline))" />
         <MiniMap
@@ -344,6 +429,19 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           Add Skill
         </Button>
 
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Auto-layout"
+          onClick={() => {
+            setManualPositions({})
+            setTimeout(() => reactFlow?.fitView({ duration: 300 }), 50)
+          }}
+          className="text-muted-foreground hover:text-foreground"
+          title="Reset to auto-layout"
+        >
+          <LayoutDashboard size={14} />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -383,17 +481,24 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
             <DropdownMenuItem
               disabled={!hasSkillNodes}
               onSelect={() => handleInsertBlock("evaluator")}
+              title="Scores the previous output 1-10. Retries if below threshold."
             >
               <BarChart3 size={13} className="mr-2" />
               Add Evaluator
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => handleInsertBlock("fanout")}>
+            <DropdownMenuItem
+              onSelect={() => handleInsertBlock("fanout")}
+              title="Splits work into parallel branches, then merges results."
+            >
               <GitFork size={13} className="mr-2" />
               Add Fan-out (3 nodes)
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => handleInsertBlock("approval")}>
+            <DropdownMenuItem
+              onSelect={() => handleInsertBlock("approval")}
+              title="Pauses workflow for your review before continuing."
+            >
               <Hand size={13} className="mr-2" />
               Add Approval Gate
             </DropdownMenuItem>

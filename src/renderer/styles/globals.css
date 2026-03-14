@@ -72,6 +72,8 @@
     --radius: 0.5rem;
     --radius-control: 0.5rem;
     --radius-container: 0.75rem;
+    --inset-highlight: rgba(255, 255, 255, 0.75);
+    --inset-highlight-strong: rgba(255, 255, 255, 0.86);
     --elevation-base:
       inset 0 1px 0 rgba(255, 255, 255, 0.8),
       0 0 0 1px hsl(var(--hairline) / 0.3),
@@ -121,6 +123,8 @@
     --status-info: 215 35% 62%;
     --selection: 0 0% 98% / 0.2;
     --overlay-scrim: oklch(0 0 0 / 0.32);
+    --inset-highlight: hsl(var(--foreground) / 0.06);
+    --inset-highlight-strong: hsl(var(--foreground) / 0.08);
     --elevation-base:
       inset 0 1px 0 hsl(var(--foreground) / 0.08),
       0 0 0 1px hsl(var(--hairline) / 0.36),
@@ -187,6 +191,15 @@
 
   ::selection {
     background: hsl(var(--selection));
+  }
+
+  :where(button, [role="button"], a[href], summary, [tabindex]:not([tabindex="-1"])):focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  :where(button, [role="button"], a[href], summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.7);
+    outline-offset: 2px;
   }
 }
 
@@ -306,12 +319,17 @@
   box-shadow: var(--elevation-base);
 }
 
+.surface-depth-header {
+  background: linear-gradient(to bottom, hsl(var(--surface-1)), hsl(var(--surface-2) / 0.7));
+  border-bottom: 1px solid hsl(var(--hairline));
+}
+
 .shadow-inset-highlight {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64);
+  box-shadow: inset 0 1px 0 var(--inset-highlight);
 }
 
 .shadow-inset-highlight-subtle {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  box-shadow: inset 0 1px 0 var(--inset-highlight, rgba(255, 255, 255, 0.24));
 }
 
 .control-cluster {
@@ -319,14 +337,8 @@
   background:
     linear-gradient(180deg, hsl(var(--surface-1) / 0.96), hsl(var(--surface-2) / 0.92));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 1px 0 var(--inset-highlight-strong),
     0 0 0 1px hsl(var(--hairline) / 0.24);
-}
-
-.dark .control-cluster {
-  box-shadow:
-    inset 0 1px 0 hsl(var(--foreground) / 0.08),
-    0 0 0 1px hsl(var(--hairline) / 0.28);
 }
 
 .control-badge {
@@ -465,6 +477,26 @@
   background: hsl(var(--sidebar-active));
   border-color: hsl(var(--hairline) / 0.36);
   box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.04);
+}
+
+[data-sidebar-item="true"] {
+  outline: none;
+}
+
+[data-sidebar-item="true"]:focus {
+  outline: none;
+}
+
+[data-sidebar-item="true"]:focus-visible {
+  outline: 2px solid transparent !important;
+  outline-offset: -2px !important;
+  box-shadow: inset 0 0 0 1px hsl(var(--hairline) / 0.82) !important;
+  background: hsl(var(--surface-2)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.sidebar-thread-row--active [data-sidebar-item="true"]:focus-visible {
+  background: transparent;
 }
 
 .sidebar-progress-track {
@@ -892,3 +924,15 @@
     animation: none;
   }
 }
+
+/* highlight.js dark theme for code blocks */
+.hljs { color: hsl(var(--foreground)); background: transparent; }
+.hljs-keyword, .hljs-selector-tag { color: hsl(280 80% 72%); }
+.hljs-string, .hljs-addition { color: hsl(140 60% 65%); }
+.hljs-number, .hljs-literal { color: hsl(30 80% 70%); }
+.hljs-comment, .hljs-quote { color: hsl(var(--muted-foreground)); font-style: italic; }
+.hljs-title, .hljs-section { color: hsl(210 80% 72%); }
+.hljs-built_in, .hljs-type { color: hsl(180 60% 65%); }
+.hljs-attr, .hljs-name { color: hsl(45 80% 70%); }
+.hljs-deletion { color: hsl(0 70% 65%); }
+.hljs-meta { color: hsl(var(--muted-foreground)); }

@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import {
   runStatusAtom,
+  runStartedAtAtom,
   runIdAtom,
   runWorkflowPathAtom,
   nodeStatesAtom,
@@ -18,7 +19,7 @@ import {
   runtimeNodesAtom,
   runtimeEdgesAtom,
   runtimeMetaAtom,
-  approvalRequestAtom,
+  approvalRequestsAtom,
   webSearchBackendAtom,
 } from "@/lib/store"
 import type { EvaluationResult } from "@/lib/store"
@@ -40,6 +41,7 @@ function isResearchLikeWorkflow(workflow: { name: string; description?: string; 
 
 export function useChainExecution() {
   const [runStatus, setRunStatus] = useAtom(runStatusAtom)
+  const setRunStartedAt = useSetAtom(runStartedAtAtom)
   const [runId, setRunId] = useAtom(runIdAtom)
   const [, setRunWorkflowPath] = useAtom(runWorkflowPathAtom)
   const [nodeStates, setNodeStates] = useAtom(nodeStatesAtom)
@@ -52,7 +54,7 @@ export function useChainExecution() {
   const setRuntimeNodes = useSetAtom(runtimeNodesAtom)
   const setRuntimeEdges = useSetAtom(runtimeEdgesAtom)
   const setRuntimeMeta = useSetAtom(runtimeMetaAtom)
-  const setApprovalRequest = useSetAtom(approvalRequestAtom)
+  const setApprovalRequests = useSetAtom(approvalRequestsAtom)
   const [workflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [inputValue] = useAtom(inputValueAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -86,10 +88,11 @@ export function useChainExecution() {
     setRuntimeNodes([])
     setRuntimeEdges([])
     setRuntimeMeta({})
-    setRunStatus("running")
+    setRunStatus("starting")
+    setRunStartedAt(Date.now())
     setRunWorkflowPath(workflowPathForRun)
     setActiveNodeId(null)
-    setApprovalRequest(null)
+    setApprovalRequests([])
     setFinalContent("")
     setReportPath(null)
 
@@ -99,7 +102,7 @@ export function useChainExecution() {
   }, [
     clearRunTracking,
     setActiveNodeId,
-    setApprovalRequest,
+    setApprovalRequests,
     setEvalResults,
     setFinalContent,
     setNodeStates,
@@ -115,9 +118,10 @@ export function useChainExecution() {
   const rollbackExecutionStart = useCallback(() => {
     clearRunTracking()
     setRunStatus("idle")
+    setRunStartedAt(null)
     setRunWorkflowPath(null)
     setRunId(null)
-    setApprovalRequest(null)
+    setApprovalRequests([])
     setNodeStates({})
     setEvalResults({})
     setRuntimeNodes([])
@@ -125,7 +129,7 @@ export function useChainExecution() {
     setRuntimeMeta({})
   }, [
     clearRunTracking,
-    setApprovalRequest,
+    setApprovalRequests,
     setEvalResults,
     setNodeStates,
     setRunId,
@@ -139,6 +143,7 @@ export function useChainExecution() {
   const processWorkflowEvent = useCallback((event: WorkflowEvent) => {
     switch (event.type) {
       case "node-start":
+        setRunStatus("running")
         setActiveNodeId(event.nodeId)
         setNodeStates((prev) => ({
           ...prev,
@@ -231,35 +236,30 @@ export function useChainExecution() {
             status: "waiting_approval",
           },
         }))
-        setApprovalRequest({
-          runId: event.runId,
-          nodeId: event.nodeId,
-          content: event.content,
-          message: event.message,
-          allowEdit: event.allowEdit,
-        })
+        setApprovalRequests((prev) => [
+          ...prev,
+          {
+            runId: event.runId,
+            nodeId: event.nodeId,
+            content: event.content,
+            message: event.message,
+            allowEdit: event.allowEdit,
+          },
+        ])
         break
 
       case "run-done":
         clearRunTracking()
         setRunWorkflowPath(null)
-        if (event.status === "completed") {
-          toast.success("Run complete", {
-            description: "Result is ready in Output.",
-          })
-        } else if (event.status === "failed" || event.status === "interrupted") {
-          toast.error("Run failed", {
-            description: "Check Output steps and logs for details.",
-          })
-        }
+        // No toasts here — OutputPanel shows inline completion/error banners
         setRunStatus(
           event.status === "completed" ? "done"
-          : event.status === "cancelled" ? "idle"
+          : event.status === "cancelled" ? "done"
           : "error"
         )
         setRunId(null)
         setActiveNodeId(null)
-        setApprovalRequest(null)
+        setApprovalRequests([])
         if (event.reportPath) {
           setReportPath(event.reportPath)
         }
@@ -279,7 +279,7 @@ export function useChainExecution() {
         }
         break
     }
-  }, [clearRunTracking, setActiveNodeId, setNodeStates, setRunStatus, setRunId, setRunWorkflowPath, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, setPastRuns])
+  }, [clearRunTracking, setActiveNodeId, setNodeStates, setRunStatus, setRunId, setRunWorkflowPath, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequests, setReportPath, setWorkspace, setPastRuns])
 
   const finishStartWithRunId = useCallback((startedRunId: string) => {
     runIdRef.current = startedRunId
@@ -351,7 +351,7 @@ export function useChainExecution() {
   }, [runStatus, workflow.nodes, nodeStates, setFinalContent])
 
   const run = useCallback(async () => {
-    if (runStatus === "running") return
+    if (runStatus === "running" || runStatus === "paused") return
     if (!workflow.nodes.length) return
 
     const inputNode = workflow.nodes.find((node) => node.type === "input")
@@ -414,6 +414,7 @@ export function useChainExecution() {
   ])
 
   const cancel = useCallback(async () => {
+    setRunStatus("cancelling")
     const currentRunId = runIdRef.current
     if (currentRunId) {
       try {
@@ -423,26 +424,32 @@ export function useChainExecution() {
         toast.error("Could not cancel run", {
           description: String(err),
         })
+        setRunStatus("running")
         return
       }
     }
     clearRunTracking()
-    setRunStatus("idle")
+    // Preserve partial results — keep nodeStates, evalResults, and runtime graph
+    // so completed node outputs remain visible in OutputPanel.
+    setRunStatus("done")
     setRunWorkflowPath(null)
     setRunId(null)
     setActiveNodeId(null)
-    setApprovalRequest(null)
-    setNodeStates({})
-    setEvalResults({})
-    setRuntimeNodes([])
-    setRuntimeEdges([])
-    setRuntimeMeta({})
-    setReportPath(null)
-    setWorkspace(null)
-  }, [setRunStatus, setRunWorkflowPath, setRunId, setActiveNodeId, setNodeStates, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequest, setReportPath, setWorkspace, clearRunTracking])
+    setApprovalRequests([])
+    // Mark any still-running nodes as skipped
+    setNodeStates((prev) => {
+      const next = { ...prev }
+      for (const [nodeId, state] of Object.entries(next)) {
+        if (state.status === "running" || state.status === "queued" || state.status === "waiting_approval") {
+          next[nodeId] = { ...state, status: "skipped" }
+        }
+      }
+      return next
+    })
+  }, [setRunStatus, setRunWorkflowPath, setRunId, setActiveNodeId, setNodeStates, setApprovalRequests, clearRunTracking])
 
   const rerunFrom = useCallback(async (fromNodeId: string) => {
-    if (runStatus === "running") return
+    if (runStatus === "running" || runStatus === "paused") return
     if (!workspace || !workflow.nodes.length) return
 
     beginExecution(workflow, selectedWorkflowPath ?? null)
@@ -496,7 +503,7 @@ export function useChainExecution() {
   ])
 
   const continueRun = useCallback(async (runToContinue: RunResult) => {
-    if (runStatus === "running") return
+    if (runStatus === "running" || runStatus === "paused") return
     if (!runToContinue.workspace) {
       toast.error("Could not continue run", {
         description: "Run workspace is missing.",

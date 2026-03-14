@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useAtom } from "jotai"
+import { cn } from "@/lib/cn"
 import {
   selectedProjectAtom,
   selectedWorkflowPathAtom,
@@ -8,27 +9,31 @@ import {
   chatPanelOpenAtom,
   workflowDirtyAtom,
   runStatusAtom,
+  mainViewAtom,
 } from "@/lib/store"
 import { InputPanel } from "./InputPanel"
 import { ChainBuilder } from "./ChainBuilder"
 import { CanvasView } from "./CanvasView"
+import { NodeInspector } from "./canvas/NodeInspector"
 import { Toolbar } from "./Toolbar"
 import { OutputPanel } from "./OutputPanel"
-import { TemplateBrowser } from "./TemplateBrowser"
 import { GenerateWorkflow } from "./GenerateWorkflow"
 import { BatchPanel } from "./BatchPanel"
 import { ApprovalDialog } from "./ApprovalDialog"
 import { ChatPanel } from "./chat/ChatPanel"
 import { WorkflowSettingsPanel } from "./WorkflowSettingsPanel"
 import { useWorkflowReset } from "@/hooks/useWorkflowReset"
+import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
+import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
-import { List, LayoutGrid, SlidersHorizontal, FolderOpen, FileStack, PencilLine, type LucideIcon } from "lucide-react"
+import { List, LayoutGrid, SlidersHorizontal, FolderOpen, FileStack, LayoutTemplate, PencilLine, type LucideIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 
-function EmptyState({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
   return (
     <div className="flex-1 flex items-center justify-center text-muted-foreground pt-[var(--titlebar-height)]">
       <div className="text-center rounded-lg surface-soft px-8 py-7">
@@ -37,6 +42,7 @@ function EmptyState({ icon: Icon, title, description }: { icon: LucideIcon; titl
         </div>
         <p className="mb-1 text-title-md text-foreground">{title}</p>
         <p className="text-body-md">{description}</p>
+        {children && <div className="mt-4 flex items-center justify-center gap-2">{children}</div>}
       </div>
     </div>
   )
@@ -50,6 +56,7 @@ export function WorkflowPanel() {
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [runStatus] = useAtom(runStatusAtom)
+  const [, setMainView] = useAtom(mainViewAtom)
   const { run, cancel, rerunFrom, continueRun } = useChainExecution()
   const listScrollRegionRef = useRef<HTMLDivElement | null>(null)
   const outputPanelRef = useRef<HTMLDivElement | null>(null)
@@ -57,6 +64,8 @@ export function WorkflowPanel() {
   const pendingListAutoScrollRef = useRef(false)
 
   useWorkflowReset()
+  useWorkflowValidation()
+  useUndoRedo()
 
   useEffect(() => {
     const previousRunStatus = previousRunStatusRef.current
@@ -99,7 +108,16 @@ export function WorkflowPanel() {
         icon={FolderOpen}
         title="Open a project"
         description="Choose a project folder in the sidebar to begin"
-      />
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void window.api.addProject()}
+        >
+          <FolderOpen size={14} />
+          Open project folder
+        </Button>
+      </EmptyState>
     )
   }
 
@@ -109,7 +127,12 @@ export function WorkflowPanel() {
         icon={FileStack}
         title="Pick a workflow"
         description="Choose an existing workflow or create a new one from the sidebar"
-      />
+      >
+        <Button variant="outline" size="sm" onClick={() => setMainView("templates")}>
+          <LayoutTemplate size={14} />
+          Start from template
+        </Button>
+      </EmptyState>
     )
   }
 
@@ -125,7 +148,7 @@ export function WorkflowPanel() {
           className="flex-1 min-h-0 flex flex-col overflow-hidden"
         >
           <div className="border-b border-hairline bg-surface-1">
-            <div className="ui-content-shell py-4 flex flex-wrap items-start gap-3">
+            <div className={cn("ui-content-shell flex flex-wrap items-start gap-3", viewMode === "list" ? "py-3" : "py-4")}>
               <div className="flex-1 min-w-[280px] group/workflow-meta">
                 <div className="mb-1 flex items-center gap-2">
                   <Label htmlFor="workflow-name" className="section-kicker text-muted-foreground">Workflow Name</Label>
@@ -141,7 +164,7 @@ export function WorkflowPanel() {
                   onChange={(e) =>
                     setWorkflow((prev) => ({ ...prev, name: e.target.value }))
                   }
-                  disabled={runStatus === "running"}
+                  disabled={runStatus === "running" || runStatus === "paused"}
                   placeholder="Workflow name"
                   className="h-auto border-none bg-transparent px-0 py-0 text-title-lg font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
@@ -153,7 +176,7 @@ export function WorkflowPanel() {
                   onChange={(e) =>
                     setWorkflow((prev) => ({ ...prev, description: e.target.value }))
                   }
-                  disabled={runStatus === "running"}
+                  disabled={runStatus === "running" || runStatus === "paused"}
                   placeholder="What does this workflow do?"
                   className="mt-1 h-auto border-none bg-transparent px-0 py-0 text-body-md text-muted-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
@@ -180,10 +203,13 @@ export function WorkflowPanel() {
 
           {/* Content */}
           <TabsContent value="canvas" className="mt-0 flex-1 min-h-0 flex flex-col overflow-hidden ui-fade-slide-in">
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <SectionErrorBoundary sectionName="canvas view">
-                <CanvasView />
-              </SectionErrorBoundary>
+            <div className="flex-1 min-h-0 flex overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <SectionErrorBoundary sectionName="canvas view">
+                  <CanvasView />
+                </SectionErrorBoundary>
+              </div>
+              <NodeInspector />
             </div>
             <div className="ui-scroll-region border-t border-hairline overflow-y-auto h-[clamp(120px,30vh,320px)]">
               <div className="ui-content-shell py-6 space-y-6">
@@ -206,10 +232,9 @@ export function WorkflowPanel() {
             ref={listScrollRegionRef}
             className="mt-0 ui-scroll-region flex-1 min-h-0 overflow-y-auto ui-fade-slide-in"
           >
-            <div className="ui-content-shell py-6 space-y-6">
-              <InputPanel />
+            <div className="ui-content-shell py-3 space-y-3">
               <SectionErrorBoundary sectionName="chain builder">
-                <ChainBuilder />
+                <ChainBuilder compact />
               </SectionErrorBoundary>
               <div ref={outputPanelRef} id="run-output-panel" className="scroll-mt-4">
                 <SectionErrorBoundary sectionName="output panel">
@@ -220,7 +245,6 @@ export function WorkflowPanel() {
           </TabsContent>
         </Tabs>
 
-        <TemplateBrowser />
         <GenerateWorkflow />
         <BatchPanel />
         <ApprovalDialog />

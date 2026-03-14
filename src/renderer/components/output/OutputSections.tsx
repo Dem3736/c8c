@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { EvaluationResult } from "@/lib/store"
 import type { LogEntry, NodeState } from "@shared/types"
 import { cn } from "@/lib/cn"
@@ -11,6 +11,8 @@ import {
   ChevronRight,
   Wrench,
   RotateCcw,
+  Search,
+  X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
@@ -37,6 +39,35 @@ const ERROR_KIND_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   queued: "waiting",
   waiting_approval: "waiting for approval",
+}
+
+const LOG_ENTRY_TYPES = ["thinking", "text", "tool_use", "tool_result", "error"] as const
+type LogEntryType = (typeof LOG_ENTRY_TYPES)[number]
+
+const LOG_TYPE_LABELS: Record<LogEntryType, string> = {
+  thinking: "Thinking",
+  text: "Text",
+  tool_use: "Tool Use",
+  tool_result: "Tool Result",
+  error: "Error",
+}
+
+function getEntrySearchText(entry: LogEntry): string {
+  switch (entry.type) {
+    case "thinking":
+    case "text":
+    case "error":
+      return entry.content
+    case "tool_use":
+      return `${entry.tool} ${JSON.stringify(entry.input)}`
+    case "tool_result":
+      return `${entry.tool} ${entry.output}`
+  }
+}
+
+function mcpServerLabel(qualifiedName: string): string {
+  const match = qualifiedName.match(/^mcp__([^_]+)__/)
+  return match ? `MCP: ${match[1]}` : "MCP"
 }
 
 function LogEntryCard({ entry }: { entry: LogEntry }) {
@@ -91,7 +122,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           <Wrench size={12} />
           <span>{toolDisplayName}</span>
-          {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0">MCP</Badge>}
+          {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0 border-accent/30 text-accent">{mcpServerLabel(entry.tool)}</Badge>}
         </button>
         {!collapsed && (
           <pre className="ui-meta-text text-muted-foreground whitespace-pre-wrap font-mono mt-1 max-h-60 overflow-y-auto ui-scroll-region">
@@ -112,7 +143,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
     const borderColor = isError
       ? "border-status-danger/50"
       : isMcp
-        ? "border-hairline"
+        ? "border-accent/30"
         : "border-status-success/50"
     const textColor = isError
       ? "text-status-danger hover:text-status-danger/80"
@@ -132,7 +163,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           <span>
             {toolDisplayName} {isError ? "failed" : "result"}
           </span>
-          {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0">MCP</Badge>}
+          {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0 border-accent/30 text-accent">{mcpServerLabel(entry.tool)}</Badge>}
         </button>
         {!collapsed && (
           <pre
@@ -246,7 +277,7 @@ export function NodesTab({
                 }
                 className={cn(
                   "ui-meta-text px-2 py-0",
-                  status === "completed" && "border-status-success/35 bg-status-success/10 text-status-success",
+                  status === "completed" && "border-status-success/30 bg-status-success/10 text-status-success",
                 )}
               >
                 {statusLabel}
@@ -307,7 +338,7 @@ export function NodesTab({
               {canRerun && (status === "completed" || status === "failed") && onRerunFrom && (
                 <button
                   type="button"
-                  className="ml-1 inline-flex h-control-xs w-control-xs items-center justify-center rounded-md border border-hairline bg-surface-1/85 text-foreground-subtle hover:bg-surface-3 hover:text-foreground ui-transition-colors ui-motion-fast"
+                  className="ml-1 inline-flex h-control-xs w-control-xs items-center justify-center rounded-md border border-hairline bg-surface-1/80 text-foreground-subtle hover:bg-surface-3 hover:text-foreground ui-transition-colors ui-motion-fast"
                   onClick={(e) => {
                     e.stopPropagation()
                     onRerunFrom(node.id)
@@ -340,6 +371,40 @@ export function LogTab({
   const prevSelectedNodeIdRef = useRef<string | null>(selectedNodeId)
   const state = selectedNodeId ? nodeStates[selectedNodeId] : null
   const log = state?.log || []
+
+  const [searchQuery, setSearchQuery] = useState("")
+  const [activeTypeFilters, setActiveTypeFilters] = useState<Set<LogEntryType>>(
+    () => new Set(LOG_ENTRY_TYPES),
+  )
+
+  // Reset search/filter when switching nodes
+  useEffect(() => {
+    setSearchQuery("")
+    setActiveTypeFilters(new Set(LOG_ENTRY_TYPES))
+  }, [selectedNodeId])
+
+  const filteredLog = useMemo(() => {
+    const query = searchQuery.toLowerCase()
+    return log.filter((entry) => {
+      if (!activeTypeFilters.has(entry.type)) return false
+      if (query && !getEntrySearchText(entry).toLowerCase().includes(query)) return false
+      return true
+    })
+  }, [log, searchQuery, activeTypeFilters])
+
+  const toggleTypeFilter = (type: LogEntryType) => {
+    setActiveTypeFilters((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }
+
+  const hasActiveFilters = searchQuery !== "" || activeTypeFilters.size !== LOG_ENTRY_TYPES.length
 
   useEffect(() => {
     prevLogLengthRef.current = log.length
@@ -383,77 +448,145 @@ export function LogTab({
   }
 
   return (
-    <div className="rounded-lg surface-soft p-3 max-h-96 overflow-y-auto ui-scroll-region space-y-1">
-      {state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0) && (
-        <div className="flex items-center gap-3 ui-meta-text text-muted-foreground bg-surface-2/50 rounded px-2 py-1.5 mb-1 font-mono">
-          <span title="Input tokens">In: {formatTokens(state.metrics.tokens_in)}</span>
-          <span title="Output tokens">Out: {formatTokens(state.metrics.tokens_out)}</span>
-          {state.metrics.cost_usd > 0 && <span title="Estimated cost">{formatCost(state.metrics.cost_usd)}</span>}
-          {Number.isFinite(state.metrics.latency_ms) && state.metrics.latency_ms >= 0 && (
-            <span title="Latency">{(state.metrics.latency_ms / 1000).toFixed(1)}s</span>
-          )}
-          {state.meta?.model_id && <span className="text-muted-foreground/60">{state.meta.model_id}</span>}
-        </div>
-      )}
-      {state?.error && (
-        <div className="ui-meta-text text-status-danger bg-status-danger/10 rounded px-2 py-1 border border-status-danger/20 mb-1">
-          <span className="font-medium">{state.errorKind ? ERROR_KIND_LABELS[state.errorKind] || state.errorKind : "Error"}:</span> {state.error}
-          {(state.retriesUsed || 0) > 0 && (
-            <span className="ml-2 text-status-warning">retry x{state.retriesUsed}</span>
-          )}
-          {state.policyApplied && (
-            <span className="ml-2 text-muted-foreground">policy: {state.policyApplied}</span>
-          )}
-        </div>
-      )}
-      {log.map((entry, i) => (
-        <LogEntryCard key={`${selectedNodeId}-${entry.type}-${i}`} entry={entry} />
-      ))}
-      {selectedNodeId && evalResults[selectedNodeId]?.length > 0 && (
-        <div className="border-t border-hairline pt-2 mt-2 space-y-2">
-          <span className="ui-meta-label text-muted-foreground">Evaluations</span>
-          {evalResults[selectedNodeId].map((er) => (
-            <div key={er.attempt} className="space-y-1.5">
-              <div
-                className={cn(
-                  "ui-meta-text font-mono px-2 py-1 rounded",
-                  er.passed
-                    ? "bg-status-success/10 text-status-success"
-                    : "bg-status-warning/10 text-status-warning",
-                )}
+    <div className="rounded-lg surface-soft p-3 space-y-2">
+      {/* Search and filter controls */}
+      {log.length > 0 && (
+        <div className="space-y-2">
+          {/* Search input */}
+          <div className="relative">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search log entries..."
+              className="w-full h-control-sm pl-8 pr-8 rounded-md border border-hairline bg-surface-2 text-body-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
               >
-                Attempt {er.attempt}: {er.score}/10 {er.passed ? "PASS" : "FAIL"} — {er.reason}
-              </div>
-              {er.criteria && er.criteria.length > 0 && (
-                <div className="px-2 space-y-1">
-                  {er.criteria.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 ui-meta-text">
-                      <span className="w-20 truncate text-muted-foreground">{c.id}</span>
-                      <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full rounded-full ui-transition-width ui-motion-standard",
-                            c.score >= 7 ? "bg-status-success" : c.score >= 4 ? "bg-status-warning" : "bg-status-danger",
-                          )}
-                          style={{ width: `${(c.score / 10) * 100}%` }}
-                        />
-                      </div>
-                      <span className="w-8 text-right font-mono text-muted-foreground">{c.score}/10</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {er.fix_instructions && (
-                <div className="px-2 py-1.5 ui-meta-text bg-surface-2 border border-hairline rounded">
-                  <span className="font-medium text-foreground-subtle">Fix: </span>
-                  <span className="text-muted-foreground">{er.fix_instructions}</span>
-                </div>
-              )}
-            </div>
-          ))}
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Type filter buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {LOG_ENTRY_TYPES.map((type) => {
+              const isActive = activeTypeFilters.has(type)
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => toggleTypeFilter(type)}
+                  className={cn(
+                    "px-2 py-0.5 rounded-md ui-meta-text border ui-transition-colors ui-motion-fast",
+                    isActive
+                      ? "bg-surface-3 border-hairline text-foreground"
+                      : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2",
+                  )}
+                  aria-pressed={isActive}
+                  aria-label={`${isActive ? "Hide" : "Show"} ${LOG_TYPE_LABELS[type]} entries`}
+                >
+                  {LOG_TYPE_LABELS[type]}
+                </button>
+              )
+            })}
+            {/* Filtered/total count */}
+            <span className="ui-meta-text text-muted-foreground ml-auto">
+              {hasActiveFilters
+                ? `${filteredLog.length}/${log.length} entries`
+                : `${log.length} entries`}
+            </span>
+          </div>
         </div>
       )}
-      <div ref={scrollRef} />
+
+      {/* Scrollable log content */}
+      <div className="max-h-96 overflow-y-auto ui-scroll-region space-y-1">
+        {state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0) && (
+          <div className="flex items-center gap-3 ui-meta-text text-muted-foreground bg-surface-2/50 rounded px-2 py-1.5 mb-1 font-mono">
+            <span title="Input tokens">In: {formatTokens(state.metrics.tokens_in)}</span>
+            <span title="Output tokens">Out: {formatTokens(state.metrics.tokens_out)}</span>
+            {state.metrics.cost_usd > 0 && <span title="Estimated cost">{formatCost(state.metrics.cost_usd)}</span>}
+            {Number.isFinite(state.metrics.latency_ms) && state.metrics.latency_ms >= 0 && (
+              <span title="Latency">{(state.metrics.latency_ms / 1000).toFixed(1)}s</span>
+            )}
+            {state.meta?.model_id && <span className="text-muted-foreground/60">{state.meta.model_id}</span>}
+          </div>
+        )}
+        {state?.error && (
+          <div className="ui-meta-text text-status-danger bg-status-danger/10 rounded px-2 py-1 border border-status-danger/20 mb-1">
+            <span className="font-medium">{state.errorKind ? ERROR_KIND_LABELS[state.errorKind] || state.errorKind : "Error"}:</span> {state.error}
+            {(state.retriesUsed || 0) > 0 && (
+              <span className="ml-2 text-status-warning">retry x{state.retriesUsed}</span>
+            )}
+            {state.policyApplied && (
+              <span className="ml-2 text-muted-foreground">policy: {state.policyApplied}</span>
+            )}
+          </div>
+        )}
+        {filteredLog.length === 0 && log.length > 0 && (
+          <div className="py-4 text-center text-body-sm text-muted-foreground">
+            No entries match the current filters
+          </div>
+        )}
+        {filteredLog.map((entry, i) => (
+          <LogEntryCard key={`${selectedNodeId}-${entry.type}-${i}`} entry={entry} />
+        ))}
+        {selectedNodeId && evalResults[selectedNodeId]?.length > 0 && (
+          <div className="border-t border-hairline pt-2 mt-2 space-y-2">
+            <span className="ui-meta-label text-muted-foreground">Evaluations</span>
+            {evalResults[selectedNodeId].map((er) => (
+              <div key={er.attempt} className="space-y-1.5">
+                <div
+                  className={cn(
+                    "ui-meta-text font-mono px-2 py-1 rounded",
+                    er.passed
+                      ? "bg-status-success/10 text-status-success"
+                      : "bg-status-warning/10 text-status-warning",
+                  )}
+                >
+                  Attempt {er.attempt}: {er.score}/10 {er.passed ? "PASS" : "FAIL"} — {er.reason}
+                </div>
+                {er.criteria && er.criteria.length > 0 && (
+                  <div className="px-2 space-y-1">
+                    {er.criteria.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2 ui-meta-text">
+                        <span className="w-20 truncate text-muted-foreground">{c.id}</span>
+                        <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full ui-transition-width ui-motion-standard",
+                              c.score >= 7 ? "bg-status-success" : c.score >= 4 ? "bg-status-warning" : "bg-status-danger",
+                            )}
+                            style={{ width: `${(c.score / 10) * 100}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-right font-mono text-muted-foreground">{c.score}/10</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {er.fix_instructions && (
+                  <div className="px-2 py-1.5 ui-meta-text bg-surface-2 border border-hairline rounded">
+                    <span className="font-medium text-foreground-subtle">Fix: </span>
+                    <span className="text-muted-foreground">{er.fix_instructions}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div ref={scrollRef} />
+      </div>
     </div>
   )
 }

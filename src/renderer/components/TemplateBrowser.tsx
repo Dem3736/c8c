@@ -160,7 +160,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       }}
     >
       <CanvasDialogContent size="xl" className="max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
-        <CanvasDialogHeader className="border-b border-hairline bg-gradient-to-b from-surface-1 to-surface-2/70">
+        <CanvasDialogHeader className="surface-depth-header">
           <DialogTitle>Workflow Templates</DialogTitle>
         </CanvasDialogHeader>
 

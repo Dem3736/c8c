@@ -8,6 +8,8 @@ import {
   runtimeNodesAtom,
   runtimeEdgesAtom,
   runtimeMetaAtom,
+  validationErrorsAtom,
+  canvasManualPositionsAtom,
 } from "@/lib/store"
 import type {
   ApprovalNodeConfig,
@@ -45,6 +47,7 @@ export interface CanvasNodeData {
   isActive: boolean
   isBranch?: boolean
   isTerminal: boolean
+  hasValidationErrors?: boolean
   [key: string]: unknown
 }
 
@@ -208,9 +211,32 @@ export function useCanvasLayout() {
   const [runtimeNodes] = useAtom(runtimeNodesAtom)
   const [runtimeEdges] = useAtom(runtimeEdgesAtom)
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
+  const [validationErrors] = useAtom(validationErrorsAtom)
+  const [manualPositions] = useAtom(canvasManualPositionsAtom)
 
-  return useMemo(
+  const layout = useMemo(
     () => computeLayout(workflow, nodeStates, activeNodeId, runtimeNodes, runtimeEdges, runtimeMeta),
     [workflow, nodeStates, activeNodeId, runtimeNodes, runtimeEdges, runtimeMeta],
   )
+
+  // Apply manual positions over Dagre, then inject validation flags
+  const finalNodes = useMemo(() => {
+    const hasManual = Object.keys(manualPositions).length > 0
+    const hasValidation = Object.keys(validationErrors).length > 0
+    if (!hasManual && !hasValidation) return layout.nodes
+    return layout.nodes.map((node) => {
+      let result = node
+      const manual = manualPositions[node.id]
+      if (manual) {
+        result = { ...result, position: manual }
+      }
+      const errors = validationErrors[node.id]
+      if (errors?.length) {
+        result = { ...result, data: { ...result.data, hasValidationErrors: errors.some((e) => e.severity === "error") } }
+      }
+      return result
+    })
+  }, [layout.nodes, manualPositions, validationErrors])
+
+  return { ...layout, nodes: finalNodes }
 }

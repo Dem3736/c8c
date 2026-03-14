@@ -79,7 +79,7 @@ export function GenerateWorkflow() {
       onOpenChange={handleDialogOpenChange}
     >
       <CanvasDialogContent className="max-w-lg" showCloseButton={false}>
-        <CanvasDialogHeader className="border-b border-hairline bg-gradient-to-b from-surface-1 to-surface-2/70">
+        <CanvasDialogHeader className="surface-depth-header">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles size={18} />
             Generate Workflow

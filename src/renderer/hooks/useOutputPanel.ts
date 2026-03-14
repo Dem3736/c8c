@@ -5,11 +5,11 @@ import {
   evalResultsAtom,
   finalContentAtom,
   nodeStatesAtom,
-  pastRunsAtom,
   reportPathAtom,
   runStatusAtom,
   runtimeMetaAtom,
   selectedNodeIdAtom,
+  workflowHistoryRunsAtom,
   workspaceAtom,
 } from "@/lib/store"
 
@@ -23,7 +23,7 @@ export function useOutputPanel() {
   const [evalResults] = useAtom(evalResultsAtom)
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
   const [reportPath] = useAtom(reportPathAtom)
-  const [pastRuns] = useAtom(pastRunsAtom)
+  const [pastRuns] = useAtom(workflowHistoryRunsAtom)
   const [workspace] = useAtom(workspaceAtom)
 
   return {

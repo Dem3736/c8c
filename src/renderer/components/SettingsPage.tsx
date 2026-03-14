@@ -11,13 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
-import { webSearchBackendAtom } from "@/lib/store"
+import { globalExecutionDefaultsAtom, webSearchBackendAtom } from "@/lib/store"
 import type { ClaudeCodeSubscriptionStatus, TelemetrySettings, UpdateInfo, UpdateEvent } from "@shared/types"
 import { Download, Loader2, RefreshCw } from "lucide-react"
+import { McpServersSection } from "@/components/McpServersSection"
 
 export function SettingsPage() {
   const [webSearchBackend, setWebSearchBackend] = useAtom(webSearchBackendAtom)
+  const [execDefaults, setExecDefaults] = useAtom(globalExecutionDefaultsAtom)
   const [subscriptionStatus, setSubscriptionStatus] = useState<ClaudeCodeSubscriptionStatus | null>(null)
   const [subscriptionStatusLoading, setSubscriptionStatusLoading] = useState(false)
   const [telemetrySettings, setTelemetrySettings] = useState<TelemetrySettings | null>(null)
@@ -278,6 +281,91 @@ export function SettingsPage() {
       )}
 
       <section className="space-y-3">
+        <SectionHeading title="Execution Defaults" />
+
+        <article className="rounded-lg surface-panel p-4 space-y-3">
+          <div>
+            <h3 className="text-body-md font-semibold">Workflow Defaults</h3>
+            <p className="text-body-sm text-muted-foreground mt-1">
+              Default values applied when creating new workflows. These do not affect existing saved workflows.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-body-sm font-medium text-foreground">Model</label>
+              <Select
+                value={execDefaults.model}
+                onValueChange={(value) => setExecDefaults((prev) => ({ ...prev, model: value }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Model</SelectLabel>
+                    <SelectItem value="sonnet">Sonnet</SelectItem>
+                    <SelectItem value="opus">Opus</SelectItem>
+                    <SelectItem value="haiku">Haiku</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="ui-meta-text text-muted-foreground">Claude model for skill nodes.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-body-sm font-medium text-foreground">Max Turns</label>
+              <Input
+                type="number"
+                min={1}
+                max={1000}
+                value={execDefaults.maxTurns}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!isNaN(v) && v >= 1) setExecDefaults((prev) => ({ ...prev, maxTurns: v }))
+                }}
+              />
+              <p className="ui-meta-text text-muted-foreground">Maximum agentic turns per skill node.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-body-sm font-medium text-foreground">Timeout (minutes)</label>
+              <Input
+                type="number"
+                min={1}
+                max={480}
+                value={execDefaults.timeout_minutes}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!isNaN(v) && v >= 1) setExecDefaults((prev) => ({ ...prev, timeout_minutes: v }))
+                }}
+              />
+              <p className="ui-meta-text text-muted-foreground">Per-node execution timeout.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-body-sm font-medium text-foreground">Max Parallel</label>
+              <Input
+                type="number"
+                min={1}
+                max={32}
+                value={execDefaults.maxParallel}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!isNaN(v) && v >= 1) setExecDefaults((prev) => ({ ...prev, maxParallel: v }))
+                }}
+              />
+              <p className="ui-meta-text text-muted-foreground">Max concurrent branches for splitter fan-out.</p>
+            </div>
+          </div>
+
+          <p className="ui-meta-text text-muted-foreground">
+            Stored locally for this app profile.
+          </p>
+        </article>
+      </section>
+
+      <section className="space-y-3">
         <SectionHeading title="Research" />
 
         <article className="rounded-lg surface-panel p-4 space-y-3">
@@ -308,6 +396,8 @@ export function SettingsPage() {
           </p>
         </article>
       </section>
+
+      <McpServersSection />
 
       <section className="space-y-3">
         <SectionHeading title="Integrations" />

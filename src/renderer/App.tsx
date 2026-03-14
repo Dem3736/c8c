@@ -8,14 +8,16 @@ import { WorkflowPanel } from "@/components/WorkflowPanel"
 import { SkillsPage } from "@/components/SkillsPage"
 import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
 import { SettingsPage } from "@/components/SettingsPage"
+import { OnboardingWizard } from "@/components/OnboardingWizard"
 import { AppStatusBar } from "@/components/AppStatusBar"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
-import { mainViewAtom, desktopRuntimeAtom, chatPanelOpenAtom, workflowDirtyAtom, cliStatusAtom } from "@/lib/store"
+import { mainViewAtom, desktopRuntimeAtom, chatPanelOpenAtom, workflowDirtyAtom, cliStatusAtom, firstLaunchAtom } from "@/lib/store"
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
 
+  if (mainView === "onboarding") return <OnboardingWizard />
   if (mainView === "skills") return <SkillsPage />
   if (mainView === "templates") return <WorkflowsTemplatesPage />
   if (mainView === "settings") return <SettingsPage />
@@ -29,7 +31,15 @@ const AppShell = memo(function AppShell() {
   const [desktopRuntime, setDesktopRuntime] = useAtom(desktopRuntimeAtom)
   const [, setCliStatus] = useAtom(cliStatusAtom)
   const workflowDirty = useAtomValue(workflowDirtyAtom)
+  const [firstLaunch] = useAtom(firstLaunchAtom)
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
+
+  // Redirect to onboarding on first launch
+  useEffect(() => {
+    if (firstLaunch) {
+      setMainView("onboarding")
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.documentElement.dataset.platform = desktopRuntime.platform
@@ -121,6 +131,9 @@ const AppShell = memo(function AppShell() {
 
   return (
     <div role="application" aria-label="c8c" className="flex h-full w-full overflow-hidden bg-background text-foreground">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:m-2">
+        Skip to main content
+      </a>
       {showDragRegion && (
         <div
           aria-hidden="true"
@@ -134,7 +147,7 @@ const AppShell = memo(function AppShell() {
         <ProjectSidebar />
       </SectionErrorBoundary>
 
-      <div className="min-w-0 min-h-0 flex-1 flex flex-col">
+      <div id="main-content" className="min-w-0 min-h-0 flex-1 flex flex-col">
         <CliBanner />
         {/* Main area — workflow editor */}
         <SectionErrorBoundary sectionName="workflow panel">

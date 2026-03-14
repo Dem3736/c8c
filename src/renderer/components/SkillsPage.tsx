@@ -28,6 +28,7 @@ import type { DiscoveredSkill, Workflow } from "@shared/types"
 import { Eye, Library, Loader2, Plus, RefreshCw, Search } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
+import { SkillDetailPanel } from "@/components/SkillDetailPanel"
 
 type LibraryAction = "installing" | "updating" | "removing"
 
@@ -191,6 +192,7 @@ export function SkillsPage() {
   const [pendingUninstall, setPendingUninstall] = useState<SkillLibrary | null>(null)
   const [previewLibrary, setPreviewLibrary] = useState<SkillLibrary | null>(null)
   const [acknowledgeBrokenRefs, setAcknowledgeBrokenRefs] = useState(false)
+  const [selectedSkill, setSelectedSkill] = useState<DiscoveredSkill | null>(null)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -494,7 +496,13 @@ export function SkillsPage() {
       </section>
 
       <section className="space-y-3">
-        <SectionHeading title="Browse & Use" meta={<Badge variant="outline">{filteredSkills.length}</Badge>} />
+        <SectionHeading title="Browse & Use" meta={
+          <Badge variant="outline">
+            {filteredSkills.length !== skills.length
+              ? `${filteredSkills.length}/${skills.length}`
+              : filteredSkills.length}
+          </Badge>
+        } />
 
         {filteredSkills.length === 0 ? (
           <div className="rounded-lg surface-panel px-4 py-8 text-body-sm text-muted-foreground">
@@ -502,8 +510,15 @@ export function SkillsPage() {
           </div>
         ) : (
           <div className="rounded-lg surface-panel divide-y divide-hairline">
-            {filteredSkills.slice(0, 30).map((skill) => (
-              <div key={`${skill.path}-${skill.name}`} className="px-3 py-2 flex items-start gap-3">
+            {filteredSkills.map((skill) => (
+              <div
+                key={`${skill.path}-${skill.name}`}
+                className="px-3 py-2 flex items-start gap-3 cursor-pointer ui-transition-colors ui-motion-fast hover:bg-surface-2/60"
+                onClick={() => setSelectedSkill(skill)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedSkill(skill) } }}
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-body-md font-medium truncate">{skill.name}</span>
@@ -524,7 +539,7 @@ export function SkillsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => addSkillToWorkflow(skill)}
+                  onClick={(e) => { e.stopPropagation(); addSkillToWorkflow(skill) }}
                   disabled={!selectedWorkflowPath}
                 >
                   Add to workflow
@@ -600,7 +615,7 @@ export function SkillsPage() {
 
           <div className="space-y-2">
             {previewLibrary?.installed && previewItems.length > 0 ? (
-              <div className="rounded-md border border-hairline bg-surface-2/65 p-2 max-h-56 overflow-y-auto ui-scroll-region space-y-1">
+              <div className="rounded-md border border-hairline bg-surface-2/60 p-2 max-h-56 overflow-y-auto ui-scroll-region space-y-1">
                 {previewItems.slice(0, 20).map((item) => (
                   <div key={item} className="ui-meta-text font-mono text-foreground-subtle">{item}</div>
                 ))}
@@ -609,7 +624,7 @@ export function SkillsPage() {
                 )}
               </div>
             ) : previewHints.length > 0 ? (
-              <div className="rounded-md border border-hairline bg-surface-2/65 p-2 space-y-1">
+              <div className="rounded-md border border-hairline bg-surface-2/60 p-2 space-y-1">
                 {previewHints.map((item) => (
                   <div key={item} className="text-body-sm text-foreground-subtle">{item}</div>
                 ))}
@@ -634,6 +649,13 @@ export function SkillsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {selectedSkill && (
+        <SkillDetailPanel
+          skill={selectedSkill}
+          onClose={() => setSelectedSkill(null)}
+        />
+      )}
     </PageShell>
   )
 }

@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { ChatMessageBubble } from "./ChatMessageBubble"
 import { cn } from "@/lib/cn"
+import { ArrowDown } from "lucide-react"
 import {
   chatScrollTopByWorkflowAtom,
   selectedWorkflowPathAtom,
@@ -16,6 +17,7 @@ interface ChatMessagesProps {
 export function ChatMessages({ messages, status }: ChatMessagesProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
+  const [showScrollIndicator, setShowScrollIndicator] = useState(false)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [chatScrollTopByWorkflow, setChatScrollTopByWorkflow] = useAtom(chatScrollTopByWorkflowAtom)
 
@@ -25,8 +27,9 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
 
     const handleScroll = () => {
       const threshold = 80
-      isNearBottomRef.current =
-        el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+      isNearBottomRef.current = nearBottom
+      setShowScrollIndicator(!nearBottom)
       if (selectedWorkflowPath) {
         setChatScrollTopByWorkflow((prev) => ({ ...prev, [selectedWorkflowPath]: el.scrollTop }))
       }
@@ -58,6 +61,8 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
       if (selectedWorkflowPath) {
         setChatScrollTopByWorkflow((prev) => ({ ...prev, [selectedWorkflowPath]: el.scrollTop }))
       }
+    } else if (messages.length > 0) {
+      setShowScrollIndicator(true)
     }
   }, [messages, selectedWorkflowPath, setChatScrollTopByWorkflow, status])
 
@@ -76,8 +81,16 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
     )
   }
 
+  const scrollToBottom = () => {
+    const el = containerRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    setShowScrollIndicator(false)
+  }
+
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto ui-scroll-region px-3 py-3 space-y-0">
+    <div className="relative flex-1 min-h-0">
+    <div ref={containerRef} className="h-full overflow-y-auto ui-scroll-region px-3 py-3 space-y-0">
       {messages.map((msg, index) => {
         const prev = messages[index - 1]
         const next = messages[index + 1]
@@ -109,6 +122,17 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
           </div>
         )
       })}
+    </div>
+    {showScrollIndicator && (
+      <button
+        type="button"
+        onClick={scrollToBottom}
+        className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-2/90 backdrop-blur-sm px-3 py-1 text-sidebar-meta text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast shadow-sm"
+      >
+        <ArrowDown size={11} />
+        New messages
+      </button>
+    )}
     </div>
   )
 }

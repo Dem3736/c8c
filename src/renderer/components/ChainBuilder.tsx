@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
 import {
@@ -40,6 +40,7 @@ import {
   CanvasDialogHeader,
   Dialog,
   DialogTitle,
+  DialogDescription,
   DialogClose,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
@@ -49,18 +50,24 @@ import {
   addEvaluatorNodeToWorkflow,
   addFanOutPatternToWorkflow,
   addSkillNodeToWorkflow,
+  isLinearChainReorderSafe,
   moveMiddleNodeBeforeTarget,
   moveMiddleNodeByDirection,
   removeNodeAndRewireWorkflow,
 } from "@/lib/workflow-mutations"
 
-export function ChainBuilder() {
+interface ChainBuilderProps {
+  compact?: boolean
+}
+
+export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
+  const isReorderSafe = isLinearChainReorderSafe(workflow)
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const undoToastIdRef = useRef<string | number | null>(null)
@@ -79,12 +86,14 @@ export function ChainBuilder() {
   }, [])
 
   // Order nodes: input first, then middle nodes in array order, then output last
-  const inputNodes = workflow.nodes.filter((n) => n.type === "input")
-  const outputNodes = workflow.nodes.filter((n) => n.type === "output")
-  const middleNodes = workflow.nodes.filter(
-    (n) => n.type !== "input" && n.type !== "output",
-  )
-  const orderedNodes = [...inputNodes, ...middleNodes, ...outputNodes]
+  const orderedNodes = useMemo(() => {
+    const inputNodes = workflow.nodes.filter((n) => n.type === "input")
+    const outputNodes = workflow.nodes.filter((n) => n.type === "output")
+    const middleNodes = workflow.nodes.filter(
+      (n) => n.type !== "input" && n.type !== "output",
+    )
+    return [...inputNodes, ...middleNodes, ...outputNodes]
+  }, [workflow.nodes])
   const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
   const contextNode = chainContextMenu
     ? workflow.nodes.find((node) => node.id === chainContextMenu.nodeId) || null
@@ -218,14 +227,25 @@ export function ChainBuilder() {
   }
 
   return (
-    <section aria-label="Skills chain editor" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
-      <p className="section-kicker">
+    <section
+      aria-label="Skills chain editor"
+      className={cn(
+        "rounded-lg surface-panel ui-fade-slide-in",
+        compact ? "p-2.5 space-y-2" : "p-4 space-y-3",
+      )}
+    >
+      <h2 className="section-kicker">
         Skills Chain
-      </p>
+      </h2>
 
       <div className="space-y-0">
-        {middleNodes.length === 0 && (
-          <div className="mb-3 rounded-lg border border-hairline bg-surface-2/90 px-3 py-2 ui-meta-text">
+        {!workflow.nodes.some((n) => n.type !== "input" && n.type !== "output") && (
+          <div
+            className={cn(
+              "rounded-lg border border-hairline bg-surface-2/90 px-3 ui-meta-text",
+              compact ? "mb-2 py-1.5" : "mb-3 py-2",
+            )}
+          >
             Build your chain by adding a Skill first. Evaluator scores output quality, Fan-out creates parallel branches.
           </div>
         )}
@@ -255,19 +275,19 @@ export function ChainBuilder() {
           >
             {/* Connector arrow between nodes */}
             {i > 0 && (
-              <div className="flex flex-col items-center py-1">
+              <div className={cn("flex flex-col items-center", compact ? "py-0.5" : "py-1")}>
                 <div className="flex flex-col items-center">
-                  <div className="w-px h-3 bg-border" />
-                  <ArrowDownIcon size={10} className="text-muted-foreground/50 -mt-0.5" />
+                  <div className={cn("w-px bg-border", compact ? "h-1.5" : "h-3")} />
+                  <ArrowDownIcon size={compact ? 8 : 10} className="text-muted-foreground/50 -mt-0.5" />
                 </div>
-                {node.type === "evaluator" && (
+                {!compact && node.type === "evaluator" && (
                   <span className="ui-meta-text text-status-warning font-mono">
                     retry loop
                   </span>
                 )}
               </div>
             )}
-            {node.type !== "input" && node.type !== "output" && (
+            {!compact && node.type !== "input" && node.type !== "output" && isReorderSafe && (
               <div className="px-1 pb-1 ui-meta-text text-muted-foreground/70">
                 Drag to reorder
               </div>
@@ -279,16 +299,17 @@ export function ChainBuilder() {
               state={nodeStates[node.id]}
               isActive={activeNodeId === node.id}
               onRemove={() => confirmRemove(node.id)}
-              onMoveUp={() => moveNode(node.id, "up")}
-              onMoveDown={() => moveNode(node.id, "down")}
+              onMoveUp={isReorderSafe ? () => moveNode(node.id, "up") : undefined}
+              onMoveDown={isReorderSafe ? () => moveNode(node.id, "down") : undefined}
               onConfigChange={(config) => updateNodeConfig(node.id, config)}
               onSelect={() => setSelectedNodeId(node.id)}
               resolveNodeLabel={getNodeDisplayLabel}
+              compact={compact}
             />
           </div>
         ))}
 
-        <div className="flex items-center gap-2 pt-2 rounded-lg control-cluster p-1">
+        <div className={cn("flex items-center gap-2 rounded-lg control-cluster p-1", compact ? "pt-1" : "pt-2")}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -305,7 +326,11 @@ export function ChainBuilder() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="w-[196px] justify-start bg-surface-1/80">
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("justify-start bg-surface-1/80", compact ? "w-[170px]" : "w-[196px]")}
+              >
                 <GitFork size={14} />
                 Add block...
               </Button>
@@ -314,15 +339,22 @@ export function ChainBuilder() {
               <DropdownMenuItem
                 disabled={!hasSkillNodes}
                 onSelect={() => handleInsertBlock("evaluator")}
+                title="Scores the previous output 1-10. Retries if below threshold."
               >
                 <BarChart3 size={13} className="mr-2" />
                 Add Evaluator
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleInsertBlock("fanout")}>
+              <DropdownMenuItem
+                onSelect={() => handleInsertBlock("fanout")}
+                title="Splits work into parallel branches, then merges results."
+              >
                 <GitFork size={13} className="mr-2" />
                 Add Fan-out (3 nodes)
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleInsertBlock("approval")}>
+              <DropdownMenuItem
+                onSelect={() => handleInsertBlock("approval")}
+                title="Pauses workflow for your review before continuing."
+              >
                 <Hand size={13} className="mr-2" />
                 Add Approval Gate
               </DropdownMenuItem>
@@ -391,6 +423,7 @@ export function ChainBuilder() {
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
             <DialogTitle>Remove node?</DialogTitle>
+            <DialogDescription>This will remove the node and its connections from the workflow.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <p className="text-body-md text-muted-foreground">

@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { AlertCircle, ChevronDown, ChevronRight, CheckCircle2, Wrench, Loader2, Bot } from "lucide-react"
+import { AlertCircle, ChevronDown, ChevronRight, CheckCircle2, Wrench, Loader2, Bot, Copy, Check } from "lucide-react"
 import { cn } from "@/lib/cn"
 import type { ChatMessageDisplay } from "@/lib/store"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
+import rehypeHighlight from "rehype-highlight"
 
 interface ChatMessageBubbleProps {
   message: ChatMessageDisplay
@@ -65,7 +66,7 @@ export function ChatMessageBubble({
 
   if (message.role === "assistant") {
     return (
-      <div className="flex gap-2">
+      <div className="group/msg flex gap-2">
         <div className="shrink-0 w-control-xs h-control-xs mt-0.5">
           {!groupedWithPrevious && (
             <div className="w-control-xs h-control-xs rounded-full bg-surface-3 flex items-center justify-center">
@@ -73,18 +74,21 @@ export function ChatMessageBubble({
             </div>
           )}
         </div>
-        <div className="max-w-[90%]">
+        <div className="max-w-[90%] relative">
           {message.streaming && !message.content ? (
             <div className="flex items-center gap-2 ui-meta-text text-muted-foreground">
               <Loader2 size={12} className="animate-spin" />
               Thinking...
             </div>
           ) : (
-            <div className="prose-c8c">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            <>
+              <div className="prose-c8c">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MARKDOWN_COMPONENTS}>
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+              <CopyButton text={message.content} />
+            </>
           )}
         </div>
       </div>
@@ -97,7 +101,7 @@ export function ChatMessageBubble({
     )
 
     return (
-      <div className="ml-8 rounded-lg border border-status-info/20 bg-status-info/5">
+      <div className="ml-8 rounded-lg border border-status-info/20 bg-status-info/10">
         <button
           type="button"
           onClick={() => setToolExpanded(!toolExpanded)}
@@ -107,7 +111,7 @@ export function ChatMessageBubble({
           )}
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md bg-status-info/15">
+            <span className="inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md bg-status-info/10">
               <Wrench size={11} />
             </span>
             <span className="min-w-0 text-left">
@@ -143,7 +147,7 @@ export function ChatMessageBubble({
         "ml-8 rounded-lg border",
         isError
           ? "border-status-danger/30 bg-status-danger/10"
-          : "border-status-success/25 bg-status-success/10",
+          : "border-status-success/20 bg-status-success/10",
       )}>
         <button
           type="button"
@@ -159,7 +163,7 @@ export function ChatMessageBubble({
           <span className="flex min-w-0 items-center gap-2">
             <span className={cn(
               "inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md",
-              isError ? "bg-status-danger/15" : "bg-status-success/15",
+              isError ? "bg-status-danger/10" : "bg-status-success/10",
             )}>
               {isError ? <AlertCircle size={11} /> : <CheckCircle2 size={11} />}
             </span>
@@ -167,7 +171,7 @@ export function ChatMessageBubble({
               <span className="block font-medium truncate">{message.toolName} result</span>
               <span className={cn(
                 "block text-sidebar-label",
-                isError ? "text-status-danger/75" : "text-status-success/75",
+                isError ? "text-status-danger/80" : "text-status-success/80",
               )}>
                 {isError ? "Error" : "Success"}
               </span>
@@ -200,4 +204,27 @@ export function ChatMessageBubble({
   }
 
   return null
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="absolute -right-1 top-0 opacity-0 group-hover/msg:opacity-100 ui-transition-opacity ui-motion-fast p-1 rounded-md hover:bg-surface-3 text-muted-foreground hover:text-foreground"
+      aria-label={copied ? "Copied" : "Copy message"}
+      title={copied ? "Copied" : "Copy"}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  )
 }

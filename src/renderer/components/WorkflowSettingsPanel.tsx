@@ -1,7 +1,8 @@
 import { useAtom } from "jotai"
-import { currentWorkflowAtom } from "@/lib/store"
+import { currentWorkflowAtom, mcpServersAtom, mainViewAtom } from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Server } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -28,7 +29,10 @@ function parseOptionalPositiveInt(value: string): number | undefined {
 
 export function WorkflowSettingsPanel() {
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [mcpServers] = useAtom(mcpServersAtom)
+  const [, setMainView] = useAtom(mainViewAtom)
   const defaults = workflow.defaults || {}
+  const enabledMcpCount = mcpServers.filter((s) => !s.disabled).length
   const updateDefaults = (patch: Partial<typeof defaults>) => {
     setWorkflow((prev) => ({
       ...prev,
@@ -41,10 +45,10 @@ export function WorkflowSettingsPanel() {
 
   return (
     <section aria-label="Workflow settings" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
-      <p className="section-kicker">Workflow Settings</p>
+      <h2 className="section-kicker">Workflow Settings</h2>
 
       <div className="w-full max-w-[620px] surface-inset-card space-y-2">
-        <p className="section-kicker">Execution Defaults</p>
+        <h3 className="section-kicker">Execution Defaults</h3>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="workflow-default-model" className="ui-meta-text text-muted-foreground">
@@ -128,7 +132,7 @@ export function WorkflowSettingsPanel() {
       </div>
 
       <div className="w-full max-w-[620px] surface-inset-card space-y-2">
-        <p className="section-kicker">Budget & Limits</p>
+        <h3 className="section-kicker">Budget & Limits</h3>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="workflow-budget-cost" className="ui-meta-text text-muted-foreground">
@@ -170,6 +174,25 @@ export function WorkflowSettingsPanel() {
         <p className="ui-meta-text text-muted-foreground">
           Limits are optional. When set, execution stops as soon as a limit is exceeded.
         </p>
+      </div>
+
+      {/* MCP status indicator */}
+      <div className="w-full max-w-[620px] flex items-center justify-between rounded-lg border border-hairline bg-surface-1/60 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Server size={14} className="text-muted-foreground" />
+          <span className="text-body-sm text-muted-foreground">
+            {enabledMcpCount > 0
+              ? `${enabledMcpCount} MCP server${enabledMcpCount !== 1 ? "s" : ""} available`
+              : "No MCP servers configured"
+            }
+          </span>
+        </div>
+        <button
+          onClick={() => setMainView("settings")}
+          className="text-body-sm text-accent hover:underline"
+        >
+          Manage
+        </button>
       </div>
     </section>
   )

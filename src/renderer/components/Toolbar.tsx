@@ -6,7 +6,7 @@ import {
   selectedProjectAtom,
   workflowsAtom,
   runStatusAtom,
-  templateBrowserOpenAtom,
+  runIdAtom,
   generateDialogOpenAtom,
   inputValueAtom,
   skillsAtom,
@@ -20,10 +20,12 @@ import {
 import {
   Save,
   Play,
+  Pause,
   Square,
   MessageSquare,
   SlidersHorizontal,
   Layers,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
@@ -51,8 +53,10 @@ import { cn } from "@/lib/cn"
 import {
   resolveWorkflowInput,
 } from "@/lib/input-type"
+import { validateWorkflow, type ValidationError } from "@/lib/validate-workflow"
 import { useToolbarActions } from "@/hooks/useToolbarActions"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
+import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { InputNodeConfig } from "@shared/types"
 import { toast } from "sonner"
 
@@ -73,16 +77,19 @@ export function Toolbar({
   const [, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
-  const [runStatus] = useAtom(runStatusAtom)
-  const setTemplateBrowserOpen = useSetAtom(templateBrowserOpenAtom)
+  const [runStatus, setRunStatus] = useAtom(runStatusAtom)
+  const [runId] = useAtom(runIdAtom)
   const setGenerateOpen = useSetAtom(generateDialogOpenAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const setBatchOpen = useSetAtom(batchDialogOpenAtom)
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [templateNameInput, setTemplateNameInput] = useState("")
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const {
     refreshProjectData,
@@ -120,13 +127,36 @@ export function Toolbar({
     setRenameDialogOpen(false)
   }
 
+  const openTemplateDialog = () => {
+    setTemplateNameInput((workflow.name || "").trim())
+    setTemplateDialogOpen(true)
+  }
+
+  const commitSaveAsTemplate = async () => {
+    const name = templateNameInput.trim()
+    if (!name) {
+      toast.error("Template name cannot be empty")
+      return
+    }
+    try {
+      const filePath = await window.api.saveAsTemplate(name, workflow)
+      setTemplateDialogOpen(false)
+      toast.success("Saved as template", { description: filePath })
+    } catch (err) {
+      toast.error("Failed to save template", { description: String(err) })
+    }
+  }
+
   const commitDelete = async () => {
     if (!workflowPath) return
     setDeleteDialogOpen(false)
     await deleteWorkflow()
   }
 
-  const isRunning = runStatus === "running"
+  const isRunning = runStatus === "running" || runStatus === "starting" || runStatus === "cancelling" || runStatus === "paused"
+  const isStarting = runStatus === "starting"
+  const isCancelling = runStatus === "cancelling"
+  const isPaused = runStatus === "paused"
   const primaryShortcutLabel = desktopRuntime.primaryModifierLabel
   const runShortcutLabel = `${primaryShortcutLabel}↵`
   const chatShortcutLabel = `${primaryShortcutLabel}⇧K`
@@ -141,12 +171,28 @@ export function Toolbar({
     required: inputConfig.required,
     defaultValue: inputConfig.defaultValue,
   })
-  const canRun = hasSkillNodes && inputValidation.valid
+  const workflowValidation = validateWorkflow(workflow)
+  const hasBlockingErrors = workflowValidation.some((e) => e.severity === "error")
+  const canRun = hasSkillNodes && inputValidation.valid && !hasBlockingErrors
   const runDisabledReason = !hasSkillNodes
     ? "Add at least one skill step to run."
     : !inputValidation.valid
       ? (inputValidation.message || "Input is required")
-      : null
+      : hasBlockingErrors
+        ? `${workflowValidation.filter((e) => e.severity === "error").length} validation error(s) — fix before running.`
+        : null
+
+  const handleRunWithValidation = async () => {
+    // Show warnings (non-blocking) as toast
+    const warnings = workflowValidation.filter((e) => e.severity === "warning")
+    if (warnings.length > 0) {
+      toast.warning(`${warnings.length} warning(s)`, {
+        description: warnings.map((w) => w.message).join(" "),
+      })
+    }
+    setValidationErrors([])
+    await onRun()
+  }
 
   const deleteLabel =
     workflowPath
@@ -169,10 +215,28 @@ export function Toolbar({
         await refreshProjectData()
         return
       case "templates":
-        setTemplateBrowserOpen(true)
+        setMainView("templates")
         return
       case "generate":
         setGenerateOpen(true)
+        return
+      case "save_as_template":
+        openTemplateDialog()
+        return
+      case "duplicate":
+        if (workflowPath) {
+          try {
+            const newPath = await window.api.duplicateWorkflow(workflowPath)
+            const loadedWorkflow = await window.api.loadWorkflow(newPath)
+            setSelectedWorkflowPath(newPath)
+            setCurrentWorkflow(loadedWorkflow)
+            setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+            await refreshProjectData()
+            toast.success("Workflow duplicated")
+          } catch (err) {
+            toast.error("Failed to duplicate workflow", { description: String(err) })
+          }
+        }
         return
       case "rename":
         openRenameDialog()
@@ -228,7 +292,7 @@ export function Toolbar({
       if (isRunning) {
         void onCancel()
       } else if (canRun) {
-        void onRun()
+        void handleRunWithValidation()
       }
     }
 
@@ -273,6 +337,9 @@ export function Toolbar({
                 <DropdownMenuItem onSelect={() => void handleActionMenu("save_as")}>
                   Save as...
                 </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleActionMenu("save_as_template")}>
+                  Save as template
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("import")}>
                   Import workflow...
                 </DropdownMenuItem>
@@ -296,6 +363,12 @@ export function Toolbar({
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Workflow</DropdownMenuLabel>
+                <DropdownMenuItem
+                  disabled={!workflowPath}
+                  onSelect={() => void handleActionMenu("duplicate")}
+                >
+                  Duplicate workflow
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={!workflowPath}
                   onSelect={() => void handleActionMenu("rename")}
@@ -354,27 +427,73 @@ export function Toolbar({
           className={cn(
             "flex items-center gap-1 rounded-lg p-1",
             isRunning
-              ? "border border-destructive/20 bg-status-danger/10 shadow-inset-highlight-subtle"
+              ? isPaused
+                ? "border border-yellow-500/20 bg-yellow-500/10 shadow-inset-highlight-subtle"
+                : "border border-destructive/20 bg-status-danger/10 shadow-inset-highlight-subtle"
               : controlGroupClass,
           )}
         >
           {isRunning ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="destructive" size="sm" onClick={() => void onCancel()}>
-                  <Square size={14} />
-                  Stop
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Stop run ({runShortcutLabel})</TooltipContent>
-            </Tooltip>
+            <>
+              {isPaused ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => {
+                        if (runId) {
+                          void window.api.resumeRun(runId)
+                          setRunStatus("running")
+                        }
+                      }}
+                    >
+                      <Play size={14} />
+                      Resume
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Resume run</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => {
+                        if (runId) {
+                          void window.api.pauseRun(runId)
+                          setRunStatus("paused")
+                        }
+                      }}
+                      disabled={isCancelling || isStarting}
+                    >
+                      <Pause size={14} />
+                      Pause
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Pause run (running nodes will finish)</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="destructive" size="sm" onClick={() => void onCancel()} disabled={isCancelling || isStarting}>
+                    {isCancelling ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                    {isCancelling ? "Stopping..." : isStarting ? "Connecting..." : "Stop"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isCancelling ? "Stopping run..." : isStarting ? "Connecting to CLI..." : `Stop run (${runShortcutLabel})`}</TooltipContent>
+              </Tooltip>
+            </>
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="default"
                   size="sm"
-                  onClick={() => void onRun()}
+                  onClick={() => void handleRunWithValidation()}
                   disabled={!canRun}
                 >
                   <Play size={14} />
@@ -389,6 +508,13 @@ export function Toolbar({
       {!isRunning && runDisabledReason && (
         <div className="px-3 py-1 ui-meta-text text-muted-foreground border-b border-hairline bg-surface-1/70">
           {runDisabledReason}
+          {hasBlockingErrors && (
+            <ul className="mt-1 list-disc list-inside">
+              {workflowValidation.filter((e) => e.severity === "error").map((e) => (
+                <li key={`${e.nodeId}-${e.field}`}>{e.message}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       <span className="sr-only">
@@ -435,6 +561,30 @@ export function Toolbar({
             <Button variant="destructive" size="sm" onClick={() => void commitDelete()}>
               Delete
             </Button>
+          </CanvasDialogFooter>
+        </CanvasDialogContent>
+      </Dialog>
+      {/* Save as template dialog */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <CanvasDialogContent showCloseButton={false}>
+          <CanvasDialogHeader>
+            <DialogTitle>Save as template</DialogTitle>
+            <DialogDescription>Enter a name for this template.</DialogDescription>
+          </CanvasDialogHeader>
+          <CanvasDialogBody>
+            <Input
+              value={templateNameInput}
+              onChange={(e) => setTemplateNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void commitSaveAsTemplate()}
+              placeholder="Template name"
+              autoFocus
+            />
+          </CanvasDialogBody>
+          <CanvasDialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button size="sm" onClick={() => void commitSaveAsTemplate()}>Save</Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>
       </Dialog>

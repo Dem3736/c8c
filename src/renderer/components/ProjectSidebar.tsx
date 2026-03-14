@@ -3,6 +3,7 @@ import { useAtom } from "jotai"
 import {
   projectsAtom,
   selectedProjectAtom,
+  expandedProjectsAtom,
   workflowsAtom,
   selectedWorkflowPathAtom,
   projectSidebarWidthAtom,
@@ -30,6 +31,8 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
@@ -111,7 +114,9 @@ export function ProjectSidebar({
   const sidebarRef = useRef<HTMLElement | null>(null)
   const [projects, setProjects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
+  const [expandedProjects, setExpandedProjects] = useAtom(expandedProjectsAtom)
   const [workflows, setWorkflows] = useAtom(workflowsAtom)
+  const [projectWorkflowsCache, setProjectWorkflowsCache] = useState<Record<string, WorkflowFile[]>>({})
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [sidebarWidth, setSidebarWidth] = useAtom(projectSidebarWidthAtom)
@@ -128,11 +133,13 @@ export function ProjectSidebar({
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<WorkflowFile | null>(null)
   const [pendingRemoveProject, setPendingRemoveProject] = useState<string | null>(null)
   const [creatingWorkflow, setCreatingWorkflow] = useState(false)
+  const [workflowSearchQuery, setWorkflowSearchQuery] = useState("")
   const [sidebarContextMenu, setSidebarContextMenu] = useState<{
     x: number
     y: number
     scope: "workflow" | "global_workflow"
     workflow: WorkflowFile
+    projectPath?: string
   } | null>(null)
   const [globalWorkflows, setGlobalWorkflows] = useState<WorkflowFile[]>([])
 
@@ -141,7 +148,7 @@ export function ProjectSidebar({
   const resetExecutionState = useExecutionReset({ clearReportPath: true, clearSelectedPastRun: true })
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const resetExecutionIfSafe = () => {
-    if (runStatus === "running") return
+    if (runStatus === "running" || runStatus === "paused") return
     resetExecutionState()
   }
 
@@ -168,6 +175,32 @@ export function ProjectSidebar({
   useEffect(() => {
     window.api.listGlobalWorkflows().then(setGlobalWorkflows).catch(() => setGlobalWorkflows([]))
   }, [])
+
+  // Auto-expand the selected project
+  useEffect(() => {
+    if (selectedProject && !expandedProjects.includes(selectedProject)) {
+      setExpandedProjects((prev) => [...prev, selectedProject])
+    }
+  }, [selectedProject]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load workflows for expanded non-selected projects
+  useEffect(() => {
+    for (const path of expandedProjects) {
+      if (path === selectedProject) continue
+      if (projectWorkflowsCache[path]) continue
+      window.api.listProjectWorkflows(path).then((wfs) => {
+        setProjectWorkflowsCache((prev) => ({ ...prev, [path]: wfs }))
+      })
+    }
+  }, [expandedProjects, selectedProject]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleProjectExpansion = (projectPath: string) => {
+    setExpandedProjects((prev) =>
+      prev.includes(projectPath)
+        ? prev.filter((p) => p !== projectPath)
+        : [...prev, projectPath],
+    )
+  }
 
   const addProject = async () => {
     if (selectedProject && !(await confirmDiscard("switch projects", workflowDirty))) {
@@ -204,6 +237,12 @@ export function ProjectSidebar({
     try {
       await window.api.removeProject(projectPath)
       setProjects((prev) => prev.filter((path) => path !== projectPath))
+      setExpandedProjects((prev) => prev.filter((p) => p !== projectPath))
+      setProjectWorkflowsCache((prev) => {
+        const next = { ...prev }
+        delete next[projectPath]
+        return next
+      })
     } catch (error) {
       toast.error(`Failed to remove project: ${String(error)}`)
       return
@@ -239,13 +278,18 @@ export function ProjectSidebar({
     setMainView("thread")
   }
 
-  const selectWorkflow = async (workflow: WorkflowFile) => {
+  const selectWorkflow = async (workflow: WorkflowFile, projectPath?: string) => {
     if (selectedWorkflowPath === workflow.path) {
       setMainView("thread")
       return
     }
     if (!(await confirmDiscard("open another workflow", workflowDirty))) {
       return
+    }
+
+    // Switch active project if clicking a workflow in a non-active project
+    if (projectPath && selectedProject !== projectPath) {
+      setSelectedProject(projectPath)
     }
 
     setMainView("thread")
@@ -284,6 +328,8 @@ export function ProjectSidebar({
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
       resetExecutionIfSafe()
       onWorkflowCreate?.(filePath)
+      // Immediately enter rename mode for the new workflow
+      setPendingRenameWorkflow({ name: loadedWorkflow.name || workflowNameFromPath, path: filePath, updatedAt: Date.now() })
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
     } finally {
@@ -446,7 +492,7 @@ export function ProjectSidebar({
         ? "bg-status-warning"
         : "bg-status-info"
   const showSelectedWorkflowProgress = (
-    runStatus === "running"
+    (runStatus === "running" || runStatus === "paused")
     && runWorkflowPath != null
     && activeRunTotalSteps > 0
   )
@@ -507,6 +553,21 @@ export function ProjectSidebar({
       || target.closest("[contenteditable=true]"),
     )
     if (isEditable) return
+
+    // F2: rename focused workflow
+    if (event.key === "F2") {
+      const focusedEl = target.closest("[data-sidebar-item]") as HTMLElement | null
+      if (focusedEl && focusedEl.dataset.workflowPath) {
+        event.preventDefault()
+        const wf = workflows.find((w) => w.path === focusedEl.dataset.workflowPath)
+          || Object.values(projectWorkflowsCache).flat().find((w) => w.path === focusedEl.dataset.workflowPath)
+        if (wf) {
+          setRenameInput(wf.name)
+          setPendingRenameWorkflow(wf)
+        }
+      }
+      return
+    }
 
     if (
       event.key !== "ArrowDown"
@@ -569,6 +630,7 @@ export function ProjectSidebar({
   return (
     <aside
       ref={sidebarRef}
+      aria-label="Project sidebar"
       style={{ width: sidebarWidth }}
       onKeyDown={handleSidebarKeyDown}
       className={cn(
@@ -646,6 +708,20 @@ export function ProjectSidebar({
         <div className="mt-2 h-px bg-hairline" />
       </div>
 
+      {/* Workflow search */}
+      {(workflows.length > 3 || Object.values(projectWorkflowsCache).some((wfs) => wfs.length > 3)) && (
+        <div className="px-3 pb-2">
+          <input
+            type="search"
+            placeholder="Search workflows..."
+            aria-label="Search workflows"
+            value={workflowSearchQuery}
+            onChange={(e) => setWorkflowSearchQuery(e.target.value)}
+            className="w-full h-control-sm rounded-md border border-hairline bg-surface-2/60 px-2 text-sidebar-item text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
+          />
+        </div>
+      )}
+
       {/* Scrollable workflow list */}
       <div className="ui-scroll-region flex-1 min-h-0 overflow-y-auto pb-2">
         {projects.length === 0 && (
@@ -662,6 +738,11 @@ export function ProjectSidebar({
 
         {projects.map((projectPath) => {
           const isSelectedProject = selectedProject === projectPath
+          const isExpanded = expandedProjects.includes(projectPath)
+          const projectWorkflows = isSelectedProject
+            ? workflows
+            : projectWorkflowsCache[projectPath] || []
+          const ChevronIcon = isExpanded ? ChevronDown : ChevronRight
 
           return (
             <div key={projectPath} className="sidebar-list-group mt-1 first:mt-0">
@@ -673,9 +754,10 @@ export function ProjectSidebar({
                     "sidebar-project-row text-left text-sidebar-label",
                     isSelectedProject ? "text-foreground" : "text-muted-foreground",
                   )}
-                  onClick={() => void selectProject(projectPath)}
+                  onClick={() => toggleProjectExpansion(projectPath)}
                   title={projectPath}
                 >
+                  <ChevronIcon size={14} className="flex-shrink-0 opacity-60" />
                   <FolderOpen size={16} className="flex-shrink-0" />
                   <span className="truncate flex-1">{folderName(projectPath)}</span>
                 </button>
@@ -694,11 +776,14 @@ export function ProjectSidebar({
                 </Tooltip>
               </div>
 
-              {isSelectedProject && (
-                <div className="mt-1 ml-8 space-y-0.5">
-                  {workflows.map((workflow) => {
+              {isExpanded && (
+                <div className="mt-1 ml-8 space-y-0.5" role="listbox" aria-label={`${folderName(projectPath)} workflows`}>
+                  {projectWorkflows.filter((w) => {
+                    if (!workflowSearchQuery.trim()) return true
+                    return w.name.toLowerCase().includes(workflowSearchQuery.trim().toLowerCase())
+                  }).map((workflow) => {
                     const isSelected = selectedWorkflowPath === workflow.path
-                    const isRunOwner = runStatus === "running" && runWorkflowPath === workflow.path
+                    const isRunOwner = (runStatus === "running" || runStatus === "paused") && runWorkflowPath === workflow.path
                     const isRunning = isRunOwner
                     const isDirty = isSelected && workflowDirty
                     const latestRun = latestRunByWorkflowPath.get(workflow.path)
@@ -711,7 +796,7 @@ export function ProjectSidebar({
                           ? "border-status-warning/50"
                           : latestRun?.status === "cancelled"
                             ? "border-muted-foreground/40"
-                            : "border-muted-foreground/35"
+                            : "border-muted-foreground/30"
                     const showLiveProgress = isRunOwner && showSelectedWorkflowProgress
                     const runningHint = isSelected ? `Running · ${activeRunPhase}` : "Running in background"
 
@@ -726,8 +811,12 @@ export function ProjectSidebar({
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            aria-current={isSelected ? "page" : undefined}
                             data-sidebar-item="true"
-                            onClick={() => void selectWorkflow(workflow)}
+                            data-workflow-path={workflow.path}
+                            onClick={() => void selectWorkflow(workflow, projectPath)}
                             onDoubleClick={(event) => openRenameWorkflowDialog(workflow, event)}
                             onContextMenu={(event) => {
                               event.preventDefault()
@@ -737,9 +826,15 @@ export function ProjectSidebar({
                                 y: event.clientY,
                                 scope: "workflow",
                                 workflow,
+                                projectPath,
                               })
                             }}
-                            className="min-w-0 flex-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-left"
+                            className={cn(
+                              "min-w-0 flex-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
+                              isSelected
+                                ? "hover:bg-transparent"
+                                : "hover:bg-surface-2/70",
+                            )}
                           >
                             {isRunning ? (
                               <Loader2 size={13} className="text-status-info animate-spin flex-shrink-0" />
@@ -809,7 +904,14 @@ export function ProjectSidebar({
 
                         {showLiveProgress && (
                           <div className="px-1.5 pb-1">
-                            <div className="sidebar-progress-track">
+                            <div
+                              className="sidebar-progress-track"
+                              role="progressbar"
+                              aria-valuenow={activeRunProgress}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-label="Workflow execution progress"
+                            >
                               <div
                                 className={cn("sidebar-progress-bar", activeRunLiveBarClass)}
                                 style={{ width: `${activeRunProgress}%` }}
@@ -901,7 +1003,7 @@ export function ProjectSidebar({
             <DropdownMenuItem
               onSelect={() => {
                 if (!sidebarContextMenu) return
-                void selectWorkflow(sidebarContextMenu.workflow)
+                void selectWorkflow(sidebarContextMenu.workflow, sidebarContextMenu.projectPath)
                 setSidebarContextMenu(null)
               }}
             >
@@ -915,6 +1017,39 @@ export function ProjectSidebar({
               }}
             >
               Rename workflow
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                if (!sidebarContextMenu) return
+                const wf = sidebarContextMenu.workflow
+                setSidebarContextMenu(null)
+                void (async () => {
+                  try {
+                    const newPath = await window.api.duplicateWorkflow(wf.path)
+                    if (sidebarContextMenu.projectPath) {
+                      const refreshed = await window.api.listProjectWorkflows(sidebarContextMenu.projectPath)
+                      if (sidebarContextMenu.projectPath === selectedProject) {
+                        setWorkflows(refreshed)
+                      } else {
+                        setProjectWorkflowsCache((prev) => ({ ...prev, [sidebarContextMenu.projectPath!]: refreshed }))
+                      }
+                    }
+                    const loaded = await window.api.loadWorkflow(newPath)
+                    if (sidebarContextMenu.projectPath && sidebarContextMenu.projectPath !== selectedProject) {
+                      setSelectedProject(sidebarContextMenu.projectPath)
+                    }
+                    setSelectedWorkflowPath(newPath)
+                    setCurrentWorkflow(loaded)
+                    setWorkflowSavedSnapshot(workflowSnapshot(loaded))
+                    setMainView("thread")
+                    toast.success("Workflow duplicated")
+                  } catch (err) {
+                    toast.error("Failed to duplicate workflow", { description: String(err) })
+                  }
+                })()
+              }}
+            >
+              Duplicate workflow
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {

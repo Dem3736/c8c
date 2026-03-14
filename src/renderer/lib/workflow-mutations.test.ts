@@ -33,17 +33,19 @@ function createWorkflow(): Workflow {
 describe("workflow edge mutations", () => {
   it("adds a valid edge and prevents duplicates", () => {
     const workflow = createWorkflow()
-    const withExtraEdge = addEdgeToWorkflow(workflow, "input-1", "output-1", "default")
-    expect(withExtraEdge.edges).toHaveLength(3)
+    const result = addEdgeToWorkflow(workflow, "input-1", "output-1", "default")
+    expect(result.workflow.edges).toHaveLength(3)
 
-    const duplicateAttempt = addEdgeToWorkflow(withExtraEdge, "input-1", "output-1", "default")
-    expect(duplicateAttempt.edges).toHaveLength(3)
+    const duplicateAttempt = addEdgeToWorkflow(result.workflow, "input-1", "output-1", "default")
+    expect(duplicateAttempt.workflow.edges).toHaveLength(3)
+    expect(duplicateAttempt.error).toBeDefined()
   })
 
   it("does not allow output -> input connections", () => {
     const workflow = createWorkflow()
-    const next = addEdgeToWorkflow(workflow, "output-1", "input-1", "default")
-    expect(next.edges).toHaveLength(2)
+    const result = addEdgeToWorkflow(workflow, "output-1", "input-1", "default")
+    expect(result.workflow.edges).toHaveLength(2)
+    expect(result.error).toBeDefined()
   })
 
   it("removes an existing edge by id", () => {
@@ -79,8 +81,9 @@ describe("workflow edge mutations", () => {
       ],
     }
 
-    const next = addEdgeToWorkflow(workflow, "skill-2", "skill-1", "default")
-    expect(next.edges).toHaveLength(3)
+    const result = addEdgeToWorkflow(workflow, "skill-2", "skill-1", "default")
+    expect(result.workflow.edges).toHaveLength(3)
+    expect(result.error).toBeDefined()
   })
 
   it("rewires removal without creating self-loops and preserves branch edge types", () => {

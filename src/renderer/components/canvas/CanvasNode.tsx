@@ -5,6 +5,7 @@ import type { CanvasNodeData } from "@/hooks/useCanvasLayout"
 import { cn } from "@/lib/cn"
 import {
   Zap,
+  AlertTriangle,
 } from "lucide-react"
 import { NODE_ACCENTS, NODE_ICONS, NODE_ICON_TONES, STATUS_STYLES } from "@/lib/node-ui-config"
 
@@ -38,11 +39,14 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
   const iconTone = NODE_ICON_TONES[data.nodeType as keyof typeof NODE_ICON_TONES] || NODE_ICON_TONES.skill
   const accent = isBranch ? "border-hairline border-dashed" : (NODE_ACCENTS[data.nodeType as keyof typeof NODE_ACCENTS] || "")
   const statusStyle = data.status ? STATUS_STYLES[data.status as keyof typeof STATUS_STYLES] || "" : ""
+  const hasValidationErrors = Boolean(data.hasValidationErrors)
   const ringStyle = data.isActive
     ? "ring-2 ring-primary/60"
-    : status === "waiting_approval"
-      ? "ring-2 ring-status-warning/50"
-      : ""
+    : hasValidationErrors
+      ? "ring-2 ring-status-danger/50"
+      : status === "waiting_approval"
+        ? "ring-2 ring-status-warning/50"
+        : ""
   const statusDotStyle = showStatusDot ? STATUS_DOT_STYLES[status] || "bg-muted-foreground" : ""
   const terminalContainerStyle = isTerminal
     ? "min-w-[156px] max-w-[198px] rounded-md border border-hairline/70 bg-surface-1/80 px-2 py-1.5 ui-elevation-inset"
@@ -89,6 +93,9 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
                   branch
                 </span>
               )}
+              {hasValidationErrors && (
+                <AlertTriangle size={11} className="text-status-danger" />
+              )}
             </div>
 
             <p className="mt-0.5 truncate text-body-sm font-medium text-foreground" title={data.label}>
@@ -115,14 +122,33 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
         )}
       </div>
 
-      {data.nodeType !== "output" && (
+      {data.nodeType === "evaluator" ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="pass"
+            style={{ top: "35%" }}
+            className="node-handle-dot ui-motion-fast !h-2.5 !w-2.5 !rounded-full !border !border-surface-1 !bg-status-success hover:!bg-status-success/80"
+            aria-label="Pass output"
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="fail"
+            style={{ top: "65%" }}
+            className="node-handle-dot ui-motion-fast !h-2.5 !w-2.5 !rounded-full !border !border-surface-1 !bg-status-danger hover:!bg-status-danger/80"
+            aria-label="Fail output"
+          />
+        </>
+      ) : data.nodeType !== "output" ? (
         <Handle
           type="source"
           position={Position.Right}
           className="node-handle-dot ui-motion-fast !h-2.5 !w-2.5 !rounded-full !border !border-surface-1 !bg-hairline hover:!bg-foreground/50"
           aria-label="Output connection"
         />
-      )}
+      ) : null}
     </>
   )
 }

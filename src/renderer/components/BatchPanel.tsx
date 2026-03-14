@@ -55,12 +55,13 @@ function csvCell(value: unknown): string {
   return text
 }
 
-function toBatchCsv(items: BatchItemResult[]): string {
+function toBatchCsv(items: BatchItemResult[], inputs?: string[]): string {
   const evalIds = Array.from(
     new Set(items.flatMap((item) => Object.keys(item.eval_scores || {}))),
   ).sort()
   const header = [
     "input_index",
+    "input_value",
     "run_id",
     "status",
     "cost_usd",
@@ -70,6 +71,7 @@ function toBatchCsv(items: BatchItemResult[]): string {
   ]
   const rows = items.map((item) => [
     item.input_index + 1,
+    inputs?.[item.input_index] ?? "",
     item.run_id,
     item.status,
     typeof item.cost_usd === "number" ? item.cost_usd.toFixed(6) : "",
@@ -105,6 +107,27 @@ export function BatchPanel() {
     .map((line) => line.trim())
     .filter(Boolean)
 
+  const failedItems = batchItems.filter((i) => i.status !== "completed")
+  const failedCount = failedItems.length
+
+  const handleRetryFailed = useCallback(() => {
+    if (failedCount === 0) return
+    const failedInputs = failedItems
+      .map((item) => inputs[item.input_index])
+      .filter((v): v is string => v != null)
+    if (failedInputs.length === 0) return
+    const workflowInputs = failedInputs.map((value) => ({
+      type: "text" as const,
+      value,
+    }))
+    setBatchStatus("idle")
+    setBatchError(null)
+    setBatchItems([])
+    setBatchSummary(null)
+    setBatchProgress({ completed: 0, total: 0, running: 0 })
+    runBatch(workflowInputs, concurrency, stopOnFailure)
+  }, [failedItems, failedCount, inputs, concurrency, stopOnFailure, runBatch, setBatchStatus, setBatchError, setBatchItems, setBatchSummary, setBatchProgress])
+
   const handleRun = useCallback(() => {
     if (inputs.length === 0) return
     const workflowInputs = inputs.map((value) => ({
@@ -132,8 +155,8 @@ export function BatchPanel() {
   const handleExportCsv = useCallback(() => {
     if (batchItems.length === 0) return
     const stamp = new Date().toISOString().replace(/[:.]/g, "-")
-    downloadText(`batch-results-${stamp}.csv`, toBatchCsv(batchItems), "text/csv;charset=utf-8")
-  }, [batchItems])
+    downloadText(`batch-results-${stamp}.csv`, toBatchCsv(batchItems, inputs), "text/csv;charset=utf-8")
+  }, [batchItems, inputs])
 
   useEffect(() => {
     if (prevOpenRef.current === open) return
@@ -236,10 +259,10 @@ export function BatchPanel() {
             </div>
             <BatchInputPreview
               inputs={inputs}
-              completedIndexes={completedInputIndexes}
+              items={batchItems}
               runningCount={batchProgress.running}
             />
-            <BatchItemList items={batchItems} />
+            <BatchItemList items={batchItems} inputs={inputs} />
           </div>
         )}
 
@@ -277,7 +300,7 @@ export function BatchPanel() {
                 Export JSON
               </Button>
             </div>
-            <BatchItemList items={batchItems} />
+            <BatchItemList items={batchItems} inputs={inputs} />
           </div>
         )}
 
@@ -291,19 +314,27 @@ export function BatchPanel() {
               Cancel
             </Button>
           ) : isDone ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                setInputText("")
-                setBatchStatus("idle")
-                setBatchError(null)
-                setBatchItems([])
-                setBatchSummary(null)
-                setBatchProgress({ completed: 0, total: 0, running: 0 })
-              }}
-            >
-              New Batch
-            </Button>
+            <>
+              {failedCount > 0 && (
+                <Button variant="outline" size="sm" onClick={handleRetryFailed}>
+                  <Play size={14} />
+                  Retry {failedCount} Failed
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={() => {
+                  setInputText("")
+                  setBatchStatus("idle")
+                  setBatchError(null)
+                  setBatchItems([])
+                  setBatchSummary(null)
+                  setBatchProgress({ completed: 0, total: 0, running: 0 })
+                }}
+              >
+                New Batch
+              </Button>
+            </>
           ) : (
             <Button
               size="sm"
@@ -347,16 +378,30 @@ function SummaryCard({
 
 function BatchInputPreview({
   inputs,
-  completedIndexes,
+  items,
   runningCount,
 }: {
   inputs: string[]
-  completedIndexes: Set<number>
+  items: BatchItemResult[]
   runningCount: number
 }) {
   if (inputs.length === 0) return null
   const previewCount = Math.min(inputs.length, 12)
   const hasHidden = inputs.length > previewCount
+
+  const statusByIndex = new Map<number, "completed" | "failed" | "running" | "waiting">()
+  for (const item of items) {
+    if (item.status === "completed") statusByIndex.set(item.input_index, "completed")
+    else if (item.status === "failed") statusByIndex.set(item.input_index, "failed")
+    else statusByIndex.set(item.input_index, "running")
+  }
+
+  const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+    completed: { bg: "bg-status-success/20", text: "text-status-success", label: "done" },
+    failed: { bg: "bg-status-danger/20", text: "text-status-danger", label: "failed" },
+    running: { bg: "bg-status-info/20", text: "text-status-info", label: "running" },
+    waiting: { bg: "bg-surface-3", text: "text-foreground-subtle", label: "waiting" },
+  }
 
   return (
     <div className="rounded-md border border-hairline bg-surface-2/70 p-2">
@@ -368,19 +413,13 @@ function BatchInputPreview({
       )}
       <div className="space-y-1 max-h-40 overflow-y-auto ui-scroll-region">
         {inputs.slice(0, previewCount).map((value, index) => {
-          const done = completedIndexes.has(index)
+          const status = statusByIndex.get(index) || "waiting"
+          const style = STATUS_STYLE[status]
           return (
             <div key={`preview-${index}-${value}`} className="flex items-center gap-2 ui-meta-text">
               <span className="text-muted-foreground w-8">#{index + 1}</span>
-              <span
-                className={cn(
-                  "rounded px-1 py-0 font-mono",
-                  done
-                    ? "bg-status-success/20 text-status-success"
-                    : "bg-surface-3 text-foreground-subtle",
-                )}
-              >
-                {done ? "done" : "waiting"}
+              <span className={cn("rounded px-1 py-0 font-mono", style.bg, style.text)}>
+                {style.label}
               </span>
               <span className="truncate text-foreground-subtle">{value}</span>
             </div>
@@ -396,49 +435,79 @@ function BatchInputPreview({
   )
 }
 
-function BatchItemList({ items }: { items: BatchItemResult[] }) {
+function BatchItemList({ items, inputs }: { items: BatchItemResult[]; inputs?: string[] }) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   if (items.length === 0) return null
   return (
-    <div className="border border-hairline rounded-md divide-y divide-hairline max-h-48 overflow-y-auto ui-scroll-region">
+    <div className="border border-hairline rounded-md divide-y divide-hairline max-h-64 overflow-y-auto ui-scroll-region">
       {items.map((item) => {
         const evalSummary = Object.entries(item.eval_scores || {})
           .map(([id, score]) => `${id}:${score}`)
           .join(" · ")
+        const isExpanded = expandedIndex === item.input_index
         return (
-          <div key={`${item.input_index}-${item.run_id}`} className="flex items-center gap-2 px-3 py-1.5 ui-meta-text">
-            <span className="text-muted-foreground w-8">#{item.input_index + 1}</span>
-            {item.status === "completed" ? (
-              <Check size={12} className="text-status-success" />
-            ) : item.status === "cancelled" || item.status === "interrupted" ? (
-              <Square size={12} className="text-status-warning" />
-            ) : (
-              <X size={12} className="text-status-danger" />
-            )}
-            <span
-              className={cn(
-                item.status === "completed" && "text-foreground",
-                item.status === "cancelled" || item.status === "interrupted"
-                  ? "text-status-warning"
-                  : item.status !== "completed" && "text-status-danger",
-              )}
+          <div key={`${item.input_index}-${item.run_id}`}>
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-1.5 ui-meta-text hover:bg-surface-2/50 ui-transition-colors ui-motion-fast text-left"
+              onClick={() => setExpandedIndex(isExpanded ? null : item.input_index)}
             >
-              {item.status === "completed"
-                ? "Passed"
-                : item.status === "cancelled" || item.status === "interrupted"
-                  ? "Cancelled"
-                  : item.error || "Failed"}
-            </span>
-            <span className="text-muted-foreground font-mono">
-              {typeof item.cost_usd === "number" ? `$${item.cost_usd.toFixed(4)}` : "n/a"}
-            </span>
-            {evalSummary && (
-              <span className="truncate text-muted-foreground" title={evalSummary}>
-                {evalSummary}
+              <span className="text-muted-foreground w-8">#{item.input_index + 1}</span>
+              {item.status === "completed" ? (
+                <Check size={12} className="text-status-success" />
+              ) : item.status === "cancelled" || item.status === "interrupted" ? (
+                <Square size={12} className="text-status-warning" />
+              ) : (
+                <X size={12} className="text-status-danger" />
+              )}
+              <span
+                className={cn(
+                  item.status === "completed" && "text-foreground",
+                  item.status === "cancelled" || item.status === "interrupted"
+                    ? "text-status-warning"
+                    : item.status !== "completed" && "text-status-danger",
+                )}
+              >
+                {item.status === "completed"
+                  ? "Passed"
+                  : item.status === "cancelled" || item.status === "interrupted"
+                    ? "Cancelled"
+                    : item.error || "Failed"}
               </span>
+              <span className="text-muted-foreground font-mono">
+                {typeof item.cost_usd === "number" ? `$${item.cost_usd.toFixed(4)}` : "n/a"}
+              </span>
+              {evalSummary && (
+                <span className="truncate text-muted-foreground" title={evalSummary}>
+                  {evalSummary}
+                </span>
+              )}
+              <span className="ml-auto text-muted-foreground">
+                {(item.duration_ms / 1000).toFixed(1)}s
+              </span>
+            </button>
+            {isExpanded && (
+              <div className="px-3 pb-2 space-y-1.5 border-t border-hairline/50 bg-surface-2/30">
+                {inputs?.[item.input_index] && (
+                  <div className="pt-1.5">
+                    <div className="ui-meta-label text-muted-foreground mb-0.5">Input</div>
+                    <pre className="ui-meta-text font-mono bg-surface-3/50 rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{inputs[item.input_index]}</pre>
+                  </div>
+                )}
+                {item.output && (
+                  <div>
+                    <div className="ui-meta-label text-muted-foreground mb-0.5">Output</div>
+                    <pre className="ui-meta-text font-mono bg-surface-3/50 rounded px-2 py-1 max-h-32 overflow-y-auto whitespace-pre-wrap">{item.output}</pre>
+                  </div>
+                )}
+                {item.error && (
+                  <div>
+                    <div className="ui-meta-label text-status-danger mb-0.5">Error</div>
+                    <pre className="ui-meta-text font-mono bg-status-danger/10 text-status-danger rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{item.error}</pre>
+                  </div>
+                )}
+              </div>
             )}
-            <span className="ml-auto text-muted-foreground">
-              {(item.duration_ms / 1000).toFixed(1)}s
-            </span>
           </div>
         )
       })}

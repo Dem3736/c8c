@@ -76,7 +76,7 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
   return (
     <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
       <CanvasDialogContent className="p-0 gap-0 max-h-[75vh] flex flex-col" showCloseButton>
-        <CanvasDialogHeader className="border-b border-hairline bg-gradient-to-b from-surface-1 to-surface-2/70">
+        <CanvasDialogHeader className="surface-depth-header">
           <DialogTitle>Add Skill</DialogTitle>
           <DialogDescription className="sr-only">
             Choose a skill to add to your workflow

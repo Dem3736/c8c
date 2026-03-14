@@ -57,7 +57,7 @@ function createUniqueEdgeId(
   return candidate
 }
 
-function wouldCreateCycle(workflow: Workflow, sourceNodeId: string, targetNodeId: string): boolean {
+export function wouldCreateCycle(workflow: Workflow, sourceNodeId: string, targetNodeId: string): boolean {
   const adjacency = new Map<string, string[]>()
   for (const edge of workflow.edges) {
     if (edge.type === "fail") continue
@@ -337,22 +337,27 @@ export function removeNodeAndRewireWorkflow(
   }
 }
 
+export interface AddEdgeResult {
+  workflow: Workflow
+  error?: string
+}
+
 export function addEdgeToWorkflow(
   workflow: Workflow,
   sourceNodeId: string,
   targetNodeId: string,
   edgeType: EdgeType = "default",
-): Workflow {
-  if (sourceNodeId === targetNodeId) return workflow
+): AddEdgeResult {
+  if (sourceNodeId === targetNodeId) return { workflow, error: "Cannot connect a node to itself." }
 
   const sourceNode = workflow.nodes.find((node) => node.id === sourceNodeId)
   const targetNode = workflow.nodes.find((node) => node.id === targetNodeId)
-  if (!sourceNode || !targetNode) return workflow
+  if (!sourceNode || !targetNode) return { workflow, error: "Source or target node not found." }
 
   // Keep graph semantics sane for common mistakes.
-  if (sourceNode.type === "output") return workflow
-  if (targetNode.type === "input") return workflow
-  if (edgeType !== "fail" && wouldCreateCycle(workflow, sourceNodeId, targetNodeId)) return workflow
+  if (sourceNode.type === "output") return { workflow, error: "Cannot connect from an output node." }
+  if (targetNode.type === "input") return { workflow, error: "Cannot connect to an input node." }
+  if (edgeType !== "fail" && wouldCreateCycle(workflow, sourceNodeId, targetNodeId)) return { workflow, error: "Cannot connect: would create a cycle." }
 
   const duplicate = workflow.edges.some(
     (edge) =>
@@ -360,19 +365,21 @@ export function addEdgeToWorkflow(
       && edge.target === targetNodeId
       && edge.type === edgeType,
   )
-  if (duplicate) return workflow
+  if (duplicate) return { workflow, error: "Cannot connect: duplicate edge." }
 
   return {
-    ...workflow,
-    edges: [
-      ...workflow.edges,
-      {
-        id: createUniqueEdgeId(workflow.edges, sourceNodeId, targetNodeId, edgeType),
-        source: sourceNodeId,
-        target: targetNodeId,
-        type: edgeType,
-      },
-    ],
+    workflow: {
+      ...workflow,
+      edges: [
+        ...workflow.edges,
+        {
+          id: createUniqueEdgeId(workflow.edges, sourceNodeId, targetNodeId, edgeType),
+          source: sourceNodeId,
+          target: targetNodeId,
+          type: edgeType,
+        },
+      ],
+    },
   }
 }
 
@@ -486,7 +493,7 @@ function rebuildLinearWorkflowWithMiddleNodes(
   }
 }
 
-function isLinearChainReorderSafe(workflow: Workflow): boolean {
+export function isLinearChainReorderSafe(workflow: Workflow): boolean {
   const inputNodes = workflow.nodes.filter((node) => node.type === "input")
   const outputNodes = workflow.nodes.filter((node) => node.type === "output")
   if (inputNodes.length !== 1 || outputNodes.length !== 1) return false
