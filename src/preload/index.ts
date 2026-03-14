@@ -249,6 +249,8 @@ contextBridge.exposeInMainWorld("api", {
   // MCP servers
   mcpListServers: (projectPath?: string) =>
     ipcRenderer.invoke("mcp:list-servers", projectPath),
+  mcpListAllServers: () =>
+    ipcRenderer.invoke("mcp:list-all-servers"),
   mcpAddServer: (server: McpServerInfo, projectPath?: string) =>
     ipcRenderer.invoke("mcp:add-server", server, projectPath),
   mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) =>
@@ -366,6 +368,7 @@ export interface C8cApi {
   onDeepLinkTemplate: (callback: (template: WorkflowTemplate) => void) => () => void
   onDeepLinkTemplateError: (callback: (err: { templateId: string; error: string }) => void) => () => void
   mcpListServers: (projectPath?: string) => Promise<McpServerInfo[]>
+  mcpListAllServers: () => Promise<McpServerInfo[]>
   mcpAddServer: (server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
   mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
   mcpRemoveServer: (name: string, scope: McpServerScope, projectPath?: string) => Promise<{ success: boolean; error?: string }>

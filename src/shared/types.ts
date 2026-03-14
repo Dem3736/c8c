@@ -500,6 +500,7 @@ export type McpServerScope = "local" | "project" | "user"
 export interface McpServerInfo {
   name: string
   scope: McpServerScope
+  projectPath?: string
   type: McpTransportType
   command?: string
   args?: string[]

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAtom } from "jotai"
-import { selectedProjectAtom, mcpServersAtom, mcpServersLoadingAtom } from "@/lib/store"
+import { mcpServersAtom, mcpServersLoadingAtom } from "@/lib/store"
 import { SectionHeading } from "@/components/ui/page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,13 +67,11 @@ interface ServerTestState {
 
 function McpServerCard({
   server,
-  projectPath,
   onEdit,
   onRemove,
   onRefresh,
 }: {
   server: McpServerInfo
-  projectPath: string | null
   onEdit: (server: McpServerInfo) => void
   onRemove: (server: McpServerInfo) => void
   onRefresh: () => void
@@ -89,7 +87,7 @@ function McpServerCard({
         server.name,
         server.scope,
         !enabled,
-        projectPath ?? undefined,
+        server.projectPath,
       )
       onRefresh()
     } finally {
@@ -103,7 +101,7 @@ function McpServerCard({
       const result = await window.api.mcpTestServer(
         server.name,
         server.scope,
-        projectPath ?? undefined,
+        server.projectPath,
       )
       setTestState({ loading: false, result })
     } catch {
@@ -453,8 +451,13 @@ function McpServerFormDialog({
 
 // ── Main Section ────────────────────────────────────────
 
+interface ServerGroup {
+  label: string
+  projectPath?: string
+  servers: McpServerInfo[]
+}
+
 export function McpServersSection() {
-  const [selectedProject] = useAtom(selectedProjectAtom)
   const [servers, setServers] = useAtom(mcpServersAtom)
   const [loading, setLoading] = useAtom(mcpServersLoadingAtom)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -463,16 +466,43 @@ export function McpServersSection() {
   const refreshServers = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await window.api.mcpListServers(selectedProject ?? undefined)
+      const result = await window.api.mcpListAllServers()
       setServers(result)
     } finally {
       setLoading(false)
     }
-  }, [selectedProject, setServers, setLoading])
+  }, [setServers, setLoading])
 
   useEffect(() => {
     void refreshServers()
   }, [refreshServers])
+
+  const groups = useMemo<ServerGroup[]>(() => {
+    const userServers = servers.filter((s) => s.scope === "user")
+    const projectServers = servers.filter((s) => s.scope === "project")
+
+    // Group project-scoped servers by projectPath
+    const byProject = new Map<string, McpServerInfo[]>()
+    for (const s of projectServers) {
+      const key = s.projectPath || "unknown"
+      const list = byProject.get(key)
+      if (list) list.push(s)
+      else byProject.set(key, [s])
+    }
+
+    const result: ServerGroup[] = []
+
+    if (userServers.length > 0) {
+      result.push({ label: "Global", servers: userServers })
+    }
+
+    for (const [projectPath, items] of byProject) {
+      const folderName = projectPath.split("/").pop() || projectPath
+      result.push({ label: folderName, projectPath, servers: items })
+    }
+
+    return result
+  }, [servers])
 
   const handleAdd = () => {
     setEditingServer(null)
@@ -485,16 +515,16 @@ export function McpServersSection() {
   }
 
   const handleRemove = async (server: McpServerInfo) => {
-    await window.api.mcpRemoveServer(server.name, server.scope, selectedProject ?? undefined)
+    await window.api.mcpRemoveServer(server.name, server.scope, server.projectPath)
     void refreshServers()
   }
 
   const handleSave = async (server: McpServerInfo, originalName?: string) => {
     let result: { success: boolean; error?: string }
     if (originalName) {
-      result = await window.api.mcpUpdateServer(originalName, server, selectedProject ?? undefined)
+      result = await window.api.mcpUpdateServer(originalName, server, server.projectPath)
     } else {
-      result = await window.api.mcpAddServer(server, selectedProject ?? undefined)
+      result = await window.api.mcpAddServer(server, server.projectPath)
     }
     if (!result.success) {
       throw new Error(result.error || "Operation failed")
@@ -503,27 +533,7 @@ export function McpServersSection() {
     void refreshServers()
   }
 
-  const localServers = servers.filter((s) => s.scope === "local")
-  const projectServers = servers.filter((s) => s.scope === "project")
-  const userServers = servers.filter((s) => s.scope === "user")
   const hasServers = servers.length > 0
-
-  const renderGroup = (label: string, items: McpServerInfo[]) =>
-    items.length > 0 ? (
-      <div className="space-y-2">
-        <p className="section-kicker">{label}</p>
-        {items.map((server) => (
-          <McpServerCard
-            key={`${server.scope}:${server.name}`}
-            server={server}
-            projectPath={selectedProject}
-            onEdit={handleEdit}
-            onRemove={handleRemove}
-            onRefresh={refreshServers}
-          />
-        ))}
-      </div>
-    ) : null
 
   return (
     <section className="space-y-3">
@@ -556,7 +566,7 @@ export function McpServersSection() {
               No MCP servers configured. Add a server to extend Claude's capabilities with external tools.
             </p>
             <p className="ui-meta-text text-muted-foreground mt-1">
-              Servers are read from <code className="inline-code">.mcp.json</code> (local), <code className="inline-code">~/.claude.json</code> per-project, and <code className="inline-code">~/.claude.json</code> global.
+              Servers are read from <code className="inline-code">~/.claude.json</code> per-project and <code className="inline-code">~/.claude.json</code> global.
             </p>
           </div>
         </article>
@@ -569,9 +579,25 @@ export function McpServersSection() {
         </article>
       )}
 
-      {renderGroup("Local", localServers)}
-      {renderGroup("Project", projectServers)}
-      {renderGroup("User", userServers)}
+      {groups.map((group) => (
+        <div key={group.label + (group.projectPath || "")} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <p className="section-kicker">{group.label}</p>
+            {group.projectPath && (
+              <span className="ui-meta-text text-muted-foreground truncate max-w-[300px]">{group.projectPath}</span>
+            )}
+          </div>
+          {group.servers.map((server) => (
+            <McpServerCard
+              key={`${server.scope}:${server.projectPath || ""}:${server.name}`}
+              server={server}
+              onEdit={handleEdit}
+              onRemove={handleRemove}
+              onRefresh={refreshServers}
+            />
+          ))}
+        </div>
+      ))}
 
       <McpServerFormDialog
         open={dialogOpen}

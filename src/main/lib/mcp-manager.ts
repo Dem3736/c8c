@@ -121,6 +121,32 @@ export async function listMcpServers(projectPath?: string): Promise<McpServerInf
   return servers
 }
 
+export async function listAllMcpServers(): Promise<McpServerInfo[]> {
+  const servers: McpServerInfo[] = []
+  const claudeConfig = await readClaudeConfig()
+  if (!claudeConfig) return servers
+
+  // User-scope (global)
+  if (claudeConfig.mcpServers) {
+    for (const [name, entry] of Object.entries(claudeConfig.mcpServers)) {
+      servers.push(entryToServerInfo(name, entry, "user"))
+    }
+  }
+
+  // Project-scope: iterate ALL projects
+  if (claudeConfig.projects) {
+    for (const [projectPath, projectConfig] of Object.entries(claudeConfig.projects)) {
+      if (projectConfig.mcpServers) {
+        for (const [name, entry] of Object.entries(projectConfig.mcpServers)) {
+          servers.push({ ...entryToServerInfo(name, entry, "project"), projectPath })
+        }
+      }
+    }
+  }
+
+  return servers
+}
+
 export async function addMcpServer(
   server: McpServerInfo,
   projectPath?: string,

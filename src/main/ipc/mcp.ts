@@ -2,6 +2,7 @@ import { ipcMain } from "electron"
 import type { McpServerInfo, McpServerScope } from "@shared/types"
 import {
   listMcpServers,
+  listAllMcpServers,
   addMcpServer,
   updateMcpServer,
   removeMcpServer,
@@ -13,6 +14,10 @@ import {
 export function registerMcpHandlers() {
   ipcMain.handle("mcp:list-servers", async (_event, projectPath?: string) => {
     return listMcpServers(projectPath)
+  })
+
+  ipcMain.handle("mcp:list-all-servers", async () => {
+    return listAllMcpServers()
   })
 
   ipcMain.handle(
