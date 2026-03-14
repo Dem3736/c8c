@@ -277,7 +277,7 @@ export async function testMcpServer(
 ): Promise<McpTestResult> {
   const start = Date.now()
   try {
-    const args = ["mcp", "get", name, "--scope", scope]
+    const args = ["mcp", "get", name]
     const cwd = (scope === "local" || scope === "project") && projectPath ? projectPath : undefined
     const { stdout } = await execClaude(args, { cwd, timeout: 30_000 })
     const latencyMs = Date.now() - start
