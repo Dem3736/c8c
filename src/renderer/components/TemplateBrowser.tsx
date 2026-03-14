@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
-import { applyWebSearchBackendPreset } from "@/lib/web-search-backend"
+import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 
 const CATEGORY_ICONS: Record<string, typeof FileText> = {
   content: FileText,
@@ -89,11 +89,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   }, [setOpen])
 
   const doApply = (previousWorkflow: unknown, templateToApply: WorkflowTemplate) => {
-    const nextWorkflow = applyWebSearchBackendPreset(
-      templateToApply.workflow,
-      templateToApply.category,
-      webSearchBackend,
-    )
+    const nextWorkflow = resolveTemplateWorkflow(templateToApply, webSearchBackend)
     const resolvedTemplate: WorkflowTemplate = {
       ...templateToApply,
       workflow: nextWorkflow,
@@ -117,11 +113,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   const applyTemplate = (templateToApply: WorkflowTemplate | null = selected ?? null) => {
     if (!templateToApply) return
     const previousWorkflow = cloneWorkflow(workflow)
-    const nextWorkflow = applyWebSearchBackendPreset(
-      templateToApply.workflow,
-      templateToApply.category,
-      webSearchBackend,
-    )
+    const nextWorkflow = resolveTemplateWorkflow(templateToApply, webSearchBackend)
     const replacingCurrentWorkflow =
       JSON.stringify(previousWorkflow) !== JSON.stringify(nextWorkflow)
     if (replacingCurrentWorkflow) {

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
+  CanvasDialogBody,
   CanvasDialogContent,
   CanvasDialogFooter,
   CanvasDialogHeader,
@@ -13,8 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   currentWorkflowAtom,
   mainViewAtom,
+  projectsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   workflowDirtyAtom,
@@ -38,7 +47,7 @@ import {
 } from "lucide-react"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
-import { applyWebSearchBackendPreset } from "@/lib/web-search-backend"
+import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 
@@ -136,13 +145,24 @@ export function WorkflowsTemplatesPage() {
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
-  const [selectedProject] = useAtom(selectedProjectAtom)
+  const [projects] = useAtom(projectsAtom)
+  const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [workflows, setWorkflows] = useAtom(workflowsAtom)
-  const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setGenerateDialogOpen] = useAtom(generateDialogOpenAtom)
+  const [targetProjectPath, setTargetProjectPath] = useState<string | null>(selectedProject)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
+
+  useEffect(() => {
+    if (!pendingTemplate) return
+    if (selectedProject && projects.includes(selectedProject)) {
+      setTargetProjectPath(selectedProject)
+      return
+    }
+    setTargetProjectPath(projects[0] ?? null)
+  }, [pendingTemplate, projects, selectedProject])
 
   const loadTemplates = useCallback(async () => {
     setLoading(true)
@@ -231,11 +251,7 @@ export function WorkflowsTemplatesPage() {
   }
 
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
-    const nextWorkflow = applyWebSearchBackendPreset(
-      template.workflow,
-      template.category,
-      webSearchBackend,
-    )
+    const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     const replacingCurrent = JSON.stringify(workflow) !== JSON.stringify(nextWorkflow)
     if (replacingCurrent) {
       setPendingTemplate(template)
@@ -246,13 +262,14 @@ export function WorkflowsTemplatesPage() {
 
   const doApplyTemplate = (template: WorkflowTemplate) => {
     const previousWorkflow = structuredClone(workflow)
-    const nextWorkflow = applyWebSearchBackendPreset(
-      template.workflow,
-      template.category,
-      webSearchBackend,
-    )
+    const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     setWorkflow(nextWorkflow)
-    setSelectedWorkflowPath(null)
+    if (selectedWorkflowPath && nextWorkflow.name.trim()) {
+      const nextName = nextWorkflow.name.trim()
+      setWorkflows((prev) =>
+        prev.map((item) => (item.path === selectedWorkflowPath ? { ...item, name: nextName, updatedAt: Date.now() } : item)),
+      )
+    }
     setMainView("thread")
     setPendingTemplate(null)
     toast.success(`Template "${template.name}" applied`, {
@@ -263,23 +280,21 @@ export function WorkflowsTemplatesPage() {
     })
   }
 
-  const doCreateFromTemplate = async (template: WorkflowTemplate) => {
-    if (!selectedProject) return
-    const nextWorkflow = applyWebSearchBackendPreset(
-      template.workflow,
-      template.category,
-      webSearchBackend,
-    )
-    const existingNames = new Set(workflows.map((item) => item.name.toLowerCase()))
-    let name = template.name.toLowerCase().replace(/\s+/g, "-")
-    if (existingNames.has(name)) {
-      let index = 2
-      while (existingNames.has(`${name}-${index}`)) index += 1
-      name = `${name}-${index}`
-    }
+  const doCreateFromTemplate = async (template: WorkflowTemplate, projectPath: string) => {
+    const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     try {
-      const filePath = await window.api.createWorkflow(selectedProject, name, nextWorkflow)
-      setWorkflows((prev) => [{ name, path: filePath, updatedAt: Date.now() }, ...prev])
+      const existingWorkflows = await window.api.listProjectWorkflows(projectPath)
+      const existingNames = new Set(existingWorkflows.map((item) => item.name.toLowerCase()))
+      let name = template.name.toLowerCase().replace(/\s+/g, "-")
+      if (existingNames.has(name)) {
+        let index = 2
+        while (existingNames.has(`${name}-${index}`)) index += 1
+        name = `${name}-${index}`
+      }
+      const filePath = await window.api.createWorkflow(projectPath, name, nextWorkflow)
+      const refreshed = await window.api.listProjectWorkflows(projectPath)
+      setWorkflows(refreshed)
+      setSelectedProject(projectPath)
       setSelectedWorkflowPath(filePath)
       setWorkflow(nextWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow))
@@ -480,7 +495,7 @@ export function WorkflowsTemplatesPage() {
                 key={template.id}
                 template={template}
                 onUse={confirmApplyTemplate}
-                disabled={!selectedProject}
+                disabled={projects.length === 0}
               />
             ))}
           </div>
@@ -495,16 +510,47 @@ export function WorkflowsTemplatesPage() {
               How would you like to use &ldquo;{pendingTemplate?.name}&rdquo;?
             </DialogDescription>
           </CanvasDialogHeader>
+          <CanvasDialogBody className="space-y-2">
+            {projects.length > 0 ? (
+              <div className="space-y-1">
+                <p className="ui-meta-text text-muted-foreground">Create in project</p>
+                <Select
+                  value={targetProjectPath ?? ""}
+                  onValueChange={(value) => setTargetProjectPath(value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((projectPath) => {
+                      const projectName = projectPath.split(/[\\/]/).pop() || projectPath
+                      return (
+                        <SelectItem key={projectPath} value={projectPath}>
+                          {projectName}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <p className="text-body-sm text-muted-foreground">
+                Add a project in sidebar to create a workflow file from this template.
+              </p>
+            )}
+          </CanvasDialogBody>
           <CanvasDialogFooter>
             <DialogClose asChild>
               <Button variant="ghost" size="sm">Cancel</Button>
             </DialogClose>
-            {selectedProject && (
-              <Button variant="outline" size="sm" onClick={() => pendingTemplate && void doCreateFromTemplate(pendingTemplate)}>
-                Create new
-              </Button>
-            )}
-            <Button size="sm" onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}>
+            <Button
+              size="sm"
+              disabled={!targetProjectPath}
+              onClick={() => pendingTemplate && targetProjectPath && void doCreateFromTemplate(pendingTemplate, targetProjectPath)}
+            >
+              Create in project
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}>
               Replace current
             </Button>
           </CanvasDialogFooter>

@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react"
+import { memo, useEffect, useState } from "react"
 import { Provider as JotaiProvider } from "jotai"
 import { useAtom, useAtomValue } from "jotai"
 import { Toaster } from "sonner"
@@ -22,10 +22,15 @@ import {
   deepLinkPendingTemplateAtom,
   currentWorkflowAtom,
   webSearchBackendAtom,
+  projectsAtom,
+  selectedProjectAtom,
+  workflowsAtom,
+  workflowSavedSnapshotAtom,
   selectedWorkflowPathAtom,
 } from "@/lib/store"
 import {
   Dialog,
+  CanvasDialogBody,
   CanvasDialogContent,
   CanvasDialogFooter,
   CanvasDialogHeader,
@@ -33,10 +38,18 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { applyWebSearchBackendPreset } from "@/lib/web-search-backend"
+import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
+import { workflowSnapshot } from "@/lib/workflow-snapshot"
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
@@ -59,7 +72,12 @@ const AppShell = memo(function AppShell() {
   const [deepLinkTemplate, setDeepLinkTemplate] = useAtom(deepLinkPendingTemplateAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
+  const [projects] = useAtom(projectsAtom)
+  const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
+  const [, setWorkflows] = useAtom(workflowsAtom)
+  const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [deepLinkTargetProject, setDeepLinkTargetProject] = useState<string | null>(selectedProject)
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
 
   // Redirect to onboarding on first launch
@@ -171,14 +189,19 @@ const AppShell = memo(function AppShell() {
     return () => window.removeEventListener("beforeunload", handler)
   }, [workflowDirty])
 
+  useEffect(() => {
+    if (!deepLinkTemplate) return
+    if (selectedProject && projects.includes(selectedProject)) {
+      setDeepLinkTargetProject(selectedProject)
+      return
+    }
+    setDeepLinkTargetProject(projects[0] ?? null)
+  }, [deepLinkTemplate, projects, selectedProject])
+
   const applyDeepLinkTemplate = () => {
     if (!deepLinkTemplate) return
     const previousWorkflow = structuredClone(workflow)
-    const nextWorkflow = applyWebSearchBackendPreset(
-      deepLinkTemplate.workflow,
-      deepLinkTemplate.category,
-      webSearchBackend,
-    )
+    const nextWorkflow = resolveTemplateWorkflow(deepLinkTemplate, webSearchBackend)
     setWorkflow(nextWorkflow)
     setSelectedWorkflowPath(null)
     setMainView("thread")
@@ -189,6 +212,35 @@ const AppShell = memo(function AppShell() {
         onClick: () => setWorkflow(previousWorkflow),
       },
     })
+  }
+
+  const createDeepLinkTemplate = async () => {
+    if (!deepLinkTemplate || !deepLinkTargetProject) return
+    const nextWorkflow = resolveTemplateWorkflow(deepLinkTemplate, webSearchBackend)
+    try {
+      const existingWorkflows = await window.api.listProjectWorkflows(deepLinkTargetProject)
+      const existingNames = new Set(existingWorkflows.map((item) => item.name.toLowerCase()))
+      let name = deepLinkTemplate.name.toLowerCase().replace(/\s+/g, "-")
+      if (existingNames.has(name)) {
+        let index = 2
+        while (existingNames.has(`${name}-${index}`)) index += 1
+        name = `${name}-${index}`
+      }
+
+      const filePath = await window.api.createWorkflow(deepLinkTargetProject, name, nextWorkflow)
+      const loadedWorkflow = await window.api.loadWorkflow(filePath)
+      const refreshed = await window.api.listProjectWorkflows(deepLinkTargetProject)
+      setWorkflows(refreshed)
+      setSelectedProject(deepLinkTargetProject)
+      setSelectedWorkflowPath(filePath)
+      setWorkflow(loadedWorkflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      setMainView("thread")
+      setDeepLinkTemplate(null)
+      toast.success(`Created "${name}" from template`)
+    } catch (error) {
+      toast.error(`Failed to create workflow: ${String(error)}`)
+    }
   }
 
   const nodeCount = deepLinkTemplate?.workflow.nodes.length ?? 0
@@ -233,7 +285,7 @@ const AppShell = memo(function AppShell() {
             </DialogDescription>
           </CanvasDialogHeader>
           {deepLinkTemplate && (
-            <div className="space-y-2 px-1">
+            <CanvasDialogBody className="space-y-2">
               {deepLinkTemplate.description && (
                 <p className="text-body-sm text-muted-foreground">{deepLinkTemplate.description}</p>
               )}
@@ -243,14 +295,48 @@ const AppShell = memo(function AppShell() {
                   {nodeCount} node{nodeCount === 1 ? "" : "s"} · {edgeCount} edge{edgeCount === 1 ? "" : "s"}
                 </span>
               </div>
-            </div>
+              {projects.length > 0 ? (
+                <div className="space-y-1">
+                  <p className="ui-meta-text text-muted-foreground">Create in project</p>
+                  <Select
+                    value={deepLinkTargetProject ?? ""}
+                    onValueChange={(value) => setDeepLinkTargetProject(value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((projectPath) => {
+                        const projectName = projectPath.split(/[\\/]/).pop() || projectPath
+                        return (
+                          <SelectItem key={projectPath} value={projectPath}>
+                            {projectName}
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <p className="text-body-sm text-muted-foreground">
+                  Add a project in sidebar to create a workflow file from this template.
+                </p>
+              )}
+            </CanvasDialogBody>
           )}
           <CanvasDialogFooter>
             <DialogClose asChild>
               <Button variant="ghost" size="sm">Cancel</Button>
             </DialogClose>
-            <Button size="sm" onClick={applyDeepLinkTemplate}>
-              Use Template
+            <Button
+              size="sm"
+              disabled={!deepLinkTargetProject}
+              onClick={() => void createDeepLinkTemplate()}
+            >
+              Create in project
+            </Button>
+            <Button variant="outline" size="sm" onClick={applyDeepLinkTemplate}>
+              Replace current
             </Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>
