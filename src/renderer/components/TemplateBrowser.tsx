@@ -17,48 +17,15 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/cn"
-import {
-  FileText,
-  Code,
-  Search,
-  Megaphone,
-  Layers,
-} from "lucide-react"
+import { Layers } from "lucide-react"
 import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
-
-const CATEGORY_ICONS: Record<string, typeof FileText> = {
-  content: FileText,
-  code: Code,
-  research: Search,
-  marketing: Megaphone,
-  general: Layers,
-}
-
-const CATEGORY_COLORS: Record<string, string> = {
-  content: "text-status-info",
-  code: "text-status-success",
-  research: "text-foreground-subtle",
-  marketing: "text-status-warning",
-  general: "text-muted-foreground",
-}
+import { STAGE_META } from "@/lib/template-stages"
 
 interface TemplateBrowserProps {
   onApply?: (template: WorkflowTemplate, previousWorkflow: unknown) => void
   initialTemplates?: WorkflowTemplate[]
-}
-
-function workflowSummary(template: WorkflowTemplate) {
-  const w = template.workflow
-  const skills = w.nodes.filter((n) => n.type === "skill").length
-  const evaluators = w.nodes.filter((n) => n.type === "evaluator").length
-  const splitters = w.nodes.filter((n) => n.type === "splitter").length
-  const parts: string[] = []
-  if (skills) parts.push(`${skills} skill${skills > 1 ? "s" : ""}`)
-  if (evaluators) parts.push(`${evaluators} evaluator${evaluators > 1 ? "s" : ""}`)
-  if (splitters) parts.push("fan-out")
-  return parts.join(" · ")
 }
 
 export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserProps = {}) {
@@ -175,7 +142,6 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
               </div>
             )}
             {templates.map((template) => {
-              const Icon = CATEGORY_ICONS[template.category] || Layers
               const isSelected = selectedId === template.id
               return (
                 <Button
@@ -198,30 +164,17 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   }}
                 >
                   <div className="flex items-start gap-3">
-                    <Icon size={18} className={cn("mt-0.5 flex-shrink-0", CATEGORY_COLORS[template.category] ?? "text-muted-foreground")} />
+                    <span className="text-lg mt-0.5 flex-shrink-0" aria-hidden>{template.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <div className="ui-badge-row">
-                        <span className="text-body-md font-medium truncate">{template.name}</span>
-                        <Badge
-                          className="px-2 py-0"
-                          variant="outline"
-                        >
-                          {template.category}
+                        <span className="text-body-md font-medium truncate">{template.headline}</span>
+                        <Badge className="px-2 py-0" variant="outline">
+                          {STAGE_META[template.stage].label}
                         </Badge>
                       </div>
                       <p className="ui-meta-text mt-1">
-                        {template.description}
+                        {template.how}
                       </p>
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        <span className="ui-meta-text font-mono">
-                          {workflowSummary(template)}
-                        </span>
-                        {(template.tags ?? []).map((tag) => (
-                          <Badge key={tag} variant="outline" className="px-2 py-0">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
                     </div>
                   </div>
                 </Button>
@@ -232,7 +185,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
           <div className="rounded-lg surface-soft p-3 overflow-y-auto ui-scroll-region min-h-[180px]">
             {!selected ? (
               <p className="text-body-md text-muted-foreground">
-                Select a template to preview nodes and structure before applying.
+                Select a template to preview details before applying.
               </p>
             ) : (
               <div className="space-y-3">
@@ -243,24 +196,24 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </p>
                 </div>
 
-                <div className="ui-meta-text font-mono">
-                  {workflowSummary(selected) || "input · output"}
+                <div className="space-y-2">
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">You provide</span>
+                    <p className="text-body-sm">{selected.input}</p>
+                  </div>
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">You get</span>
+                    <p className="text-body-sm">{selected.output}</p>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  {selected.workflow.nodes.map((node) => {
-                    const label =
-                      node.type === "skill"
-                        ? node.config.skillRef
-                        : node.type
-
-                    return (
-                      <div key={node.id} className="flex items-center gap-2 rounded-md border border-hairline bg-surface-1/80 px-2 py-1 text-body-sm">
-                        <span className="font-medium capitalize">{node.type}</span>
-                        <span className="text-muted-foreground truncate">{label}</span>
-                      </div>
-                    )
-                  })}
+                <div>
+                  <span className="ui-meta-label text-muted-foreground">How it works</span>
+                  <ol className="list-decimal list-inside space-y-1 mt-1">
+                    {selected.steps.map((step, i) => (
+                      <li key={i} className="text-body-sm">{step}</li>
+                    ))}
+                  </ol>
                 </div>
               </div>
             )}

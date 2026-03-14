@@ -35,52 +35,50 @@ import {
 } from "@/lib/store"
 import { toast } from "sonner"
 import {
-  Code,
-  FileText,
-  Layers,
   Loader2,
-  Megaphone,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
+  X,
 } from "lucide-react"
-import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
+import { PageHeader, PageShell } from "@/components/ui/page-shell"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
-
-const CATEGORY_ICONS: Record<string, typeof Layers> = {
-  content: FileText,
-  code: Code,
-  research: Search,
-  marketing: Megaphone,
-  general: Layers,
-}
-const MAX_VISIBLE_TAG_FILTERS = 24
-
-function formatFacetLabel(value: string): string {
-  return value
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-    .join(" ")
-}
-
-function workflowSummary(template: WorkflowTemplate) {
-  const workflow = template.workflow
-  const skills = workflow.nodes.filter((node) => node.type === "skill").length
-  const evaluators = workflow.nodes.filter((node) => node.type === "evaluator").length
-  const splitters = workflow.nodes.filter((node) => node.type === "splitter").length
-  const parts: string[] = []
-  if (skills > 0) parts.push(`${skills} skill${skills === 1 ? "" : "s"}`)
-  if (evaluators > 0) parts.push(`${evaluators} evaluator${evaluators === 1 ? "" : "s"}`)
-  if (splitters > 0) parts.push("fan-out")
-  return parts.join(" · ")
-}
+import { STAGE_ORDER, STAGE_META } from "@/lib/template-stages"
+import type { WorkflowTemplateStage } from "@shared/types"
 
 function TemplateCard({
+  template,
+  isSelected,
+  onSelect,
+}: {
+  template: WorkflowTemplate
+  isSelected: boolean
+  onSelect: (template: WorkflowTemplate) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(template)}
+      className={`ui-interactive-card rounded-lg surface-panel p-4 flex items-start gap-3 text-left ui-transition-colors ui-motion-fast ${
+        isSelected ? "ring-2 ring-foreground/20 bg-surface-3" : ""
+      }`}
+    >
+      <span className="text-xl flex-shrink-0 mt-0.5" aria-hidden>{template.emoji}</span>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-body-md font-semibold">{template.headline}</h3>
+        <p className="text-body-sm text-muted-foreground mt-0.5 line-clamp-2">
+          {template.how}
+        </p>
+      </div>
+    </button>
+  )
+}
+
+function TemplateDetailPanel({
   template,
   onUse,
   disabled,
@@ -89,49 +87,47 @@ function TemplateCard({
   onUse: (template: WorkflowTemplate) => void
   disabled?: boolean
 }) {
-  const Icon = CATEGORY_ICONS[template.category] ?? Layers
-  const extraTagCount = template.tags.length - 2
-
   return (
-    <article className="ui-interactive-card rounded-lg surface-panel p-4 flex flex-col gap-3">
-      <div className="flex items-start gap-3">
-        <div className="h-control-lg w-control-lg rounded-lg border border-border bg-surface-2 flex items-center justify-center">
-          <Icon size={17} className="text-muted-foreground" />
+    <aside className="w-[320px] flex-shrink-0 rounded-lg surface-panel p-4 overflow-y-auto ui-scroll-region space-y-4">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-xl" aria-hidden>{template.emoji}</span>
+          <h3 className="text-body-md font-semibold">{template.name}</h3>
         </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-body-md font-semibold truncate">{template.name}</h3>
-          <p className="text-body-sm text-muted-foreground line-clamp-2">
+        <Badge variant="outline" className="mt-2">
+          {STAGE_META[template.stage].label}
+        </Badge>
+        {template.description && (
+          <p className="text-body-sm text-muted-foreground mt-2">
             {template.description}
           </p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant="outline" className="capitalize">
-          {template.category}
-        </Badge>
-        {template.tags.slice(0, 2).map((tag) => (
-          <Badge key={tag} variant="secondary">
-            {tag}
-          </Badge>
-        ))}
-        {extraTagCount > 0 && (
-          <Badge variant="secondary">
-            +{extraTagCount}
-          </Badge>
         )}
       </div>
 
-      <div className="ui-meta-text text-muted-foreground font-mono">
-        {workflowSummary(template) || "input · output"}
+      <div className="space-y-3">
+        <div>
+          <span className="ui-meta-label text-muted-foreground">You provide</span>
+          <p className="text-body-sm mt-0.5">{template.input}</p>
+        </div>
+        <div>
+          <span className="ui-meta-label text-muted-foreground">You get</span>
+          <p className="text-body-sm mt-0.5">{template.output}</p>
+        </div>
       </div>
 
-      <div className="mt-auto">
-        <Button variant="outline" size="sm" onClick={() => onUse(template)} disabled={disabled}>
-          Use template
-        </Button>
+      <div>
+        <span className="ui-meta-label text-muted-foreground">How it works</span>
+        <ol className="list-decimal list-inside space-y-1 mt-1">
+          {template.steps.map((step, i) => (
+            <li key={i} className="text-body-sm">{step}</li>
+          ))}
+        </ol>
       </div>
-    </article>
+
+      <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
+        Use template
+      </Button>
+    </aside>
   )
 }
 
@@ -139,8 +135,8 @@ export function WorkflowsTemplatesPage() {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState("")
-  const [activeCategory, setActiveCategory] = useState<string>("all")
-  const [activeTags, setActiveTags] = useState<string[]>([])
+  const [activeStage, setActiveStage] = useState<WorkflowTemplateStage | "all">("all")
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
@@ -184,70 +180,40 @@ export function WorkflowsTemplatesPage() {
     const q = query.trim().toLowerCase()
     if (!q) return templates
     return templates.filter((template) =>
-      `${template.name} ${template.description} ${template.category} ${template.tags.join(" ")}`
+      `${template.name} ${template.description} ${template.headline} ${template.how} ${template.stage}`
         .toLowerCase()
         .includes(q),
     )
   }, [query, templates])
 
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const template of searchFilteredTemplates) {
-      counts.set(template.category, (counts.get(template.category) ?? 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  }, [searchFilteredTemplates])
+  const filteredTemplates = useMemo(() => {
+    if (activeStage === "all") return searchFilteredTemplates
+    return searchFilteredTemplates.filter((template) => template.stage === activeStage)
+  }, [activeStage, searchFilteredTemplates])
 
-  useEffect(() => {
-    if (activeCategory === "all") return
-    const stillAvailable = categoryCounts.some(([category]) => category === activeCategory)
-    if (!stillAvailable) {
-      setActiveCategory("all")
-    }
-  }, [activeCategory, categoryCounts])
-
-  const categoryFilteredTemplates = useMemo(() => {
-    if (activeCategory === "all") return searchFilteredTemplates
-    return searchFilteredTemplates.filter((template) => template.category === activeCategory)
-  }, [activeCategory, searchFilteredTemplates])
-
-  const tagCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const template of categoryFilteredTemplates) {
-      for (const tag of template.tags) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1)
-      }
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  }, [categoryFilteredTemplates])
-
-  useEffect(() => {
-    const availableTags = new Set(tagCounts.map(([tag]) => tag))
-    setActiveTags((prev) => prev.filter((tag) => availableTags.has(tag)))
-  }, [tagCounts])
-
-  const visibleTagFilters = useMemo(
-    () => tagCounts.slice(0, MAX_VISIBLE_TAG_FILTERS),
-    [tagCounts],
+  const selectedTemplate = useMemo(
+    () => filteredTemplates.find((t) => t.id === selectedTemplateId) ?? null,
+    [filteredTemplates, selectedTemplateId],
   )
 
-  const filteredTemplates = useMemo(() => {
-    if (activeTags.length === 0) return categoryFilteredTemplates
-    return categoryFilteredTemplates.filter((template) => activeTags.every((tag) => template.tags.includes(tag)))
-  }, [activeTags, categoryFilteredTemplates])
+  // Group templates by stage for the "all" view
+  const groupedTemplates = useMemo(() => {
+    if (activeStage !== "all") return null
+    const groups: { stage: WorkflowTemplateStage; templates: WorkflowTemplate[] }[] = []
+    for (const stage of STAGE_ORDER) {
+      const stageTemplates = filteredTemplates.filter((t) => t.stage === stage)
+      if (stageTemplates.length > 0) {
+        groups.push({ stage, templates: stageTemplates })
+      }
+    }
+    return groups
+  }, [activeStage, filteredTemplates])
 
-  const hasActiveFilters = activeCategory !== "all" || activeTags.length > 0 || query.trim().length > 0
-
-  const toggleTagFilter = (tag: string) => {
-    setActiveTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]))
-  }
+  const hasActiveFilters = activeStage !== "all" || query.trim().length > 0
 
   const clearFilters = () => {
     setQuery("")
-    setActiveCategory("all")
-    setActiveTags([])
+    setActiveStage("all")
   }
 
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
@@ -337,6 +303,19 @@ export function WorkflowsTemplatesPage() {
     }
   }
 
+  const renderTemplateGrid = (items: WorkflowTemplate[]) => (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {items.map((template) => (
+        <TemplateCard
+          key={template.id}
+          template={template}
+          isSelected={selectedTemplateId === template.id}
+          onSelect={(t) => setSelectedTemplateId(t.id)}
+        />
+      ))}
+    </div>
+  )
+
   return (
     <PageShell>
       <PageHeader
@@ -395,111 +374,85 @@ export function WorkflowsTemplatesPage() {
         }
       />
 
-      <section className="space-y-3" aria-busy={loading} aria-live="polite">
-        <SectionHeading
-          title="Template Catalog"
-          meta={<Badge variant="outline">{filteredTemplates.length}</Badge>}
-        />
-        <div className="rounded-lg surface-panel p-3 space-y-3">
-          <div className="space-y-2">
-            <div className="ui-meta-text text-muted-foreground">Category</div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={activeCategory === "all" ? "secondary" : "outline"}
-                size="xs"
-                onClick={() => setActiveCategory("all")}
-                aria-pressed={activeCategory === "all"}
-              >
-                All ({searchFilteredTemplates.length})
-              </Button>
-              {categoryCounts.map(([category, count]) => (
-                <Button
-                  key={category}
-                  variant={activeCategory === category ? "secondary" : "outline"}
-                  size="xs"
-                  onClick={() => setActiveCategory(category)}
-                  aria-pressed={activeCategory === category}
-                  className="capitalize"
-                >
-                  {formatFacetLabel(category)} ({count})
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="ui-meta-text text-muted-foreground">Tags</div>
-            {visibleTagFilters.length === 0 ? (
-              <p className="text-body-sm text-muted-foreground">No tags available for this category filter.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {visibleTagFilters.map(([tag, count]) => (
-                  <Button
-                    key={tag}
-                    variant={activeTags.includes(tag) ? "secondary" : "outline"}
-                    size="xs"
-                    onClick={() => toggleTagFilter(tag)}
-                    aria-pressed={activeTags.includes(tag)}
-                  >
-                    {tag} ({count})
-                  </Button>
-                ))}
-              </div>
-            )}
-            {tagCounts.length > visibleTagFilters.length && (
-              <p className="text-body-sm text-muted-foreground">
-                Showing top {visibleTagFilters.length} tags by template count.
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            <div className="ui-meta-text text-muted-foreground">
-              {filteredTemplates.length} result{filteredTemplates.length === 1 ? "" : "s"}
-            </div>
-            <Button variant="ghost" size="xs" onClick={clearFilters} disabled={!hasActiveFilters}>
-              Clear filters
+      <section aria-busy={loading} aria-live="polite">
+        {/* Stage tabs */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <Button
+            variant={activeStage === "all" ? "secondary" : "outline"}
+            size="xs"
+            onClick={() => setActiveStage("all")}
+            aria-pressed={activeStage === "all"}
+          >
+            All
+          </Button>
+          {STAGE_ORDER.map((stage) => (
+            <Button
+              key={stage}
+              variant={activeStage === stage ? "secondary" : "outline"}
+              size="xs"
+              onClick={() => setActiveStage(stage)}
+              aria-pressed={activeStage === stage}
+            >
+              {STAGE_META[stage].label}
             </Button>
-          </div>
+          ))}
+          {hasActiveFilters && (
+            <Button variant="ghost" size="xs" onClick={clearFilters}>
+              <X size={12} />
+              Clear
+            </Button>
+          )}
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, idx) => (
-              <article
-                key={`skeleton-${idx}`}
-                className="rounded-lg surface-panel p-4 flex flex-col gap-3 animate-pulse"
-                aria-hidden="true"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="h-control-lg w-control-lg rounded-lg bg-surface-2" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="h-4 w-2/3 rounded bg-surface-2" />
-                    <div className="h-3 w-full rounded bg-surface-2" />
+        <div className="flex gap-4">
+          {/* Main grid */}
+          <div className="flex-1 min-w-0">
+            {loading ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <div
+                    key={`skeleton-${idx}`}
+                    className="rounded-lg surface-panel p-4 flex items-start gap-3 animate-pulse"
+                    aria-hidden="true"
+                  >
+                    <div className="h-6 w-6 rounded bg-surface-2 flex-shrink-0" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-2/3 rounded bg-surface-2" />
+                      <div className="h-3 w-full rounded bg-surface-2" />
+                    </div>
                   </div>
-                </div>
-                <div className="h-4 w-1/2 rounded bg-surface-2" />
-                <div className="h-3 w-3/4 rounded bg-surface-2" />
-                <div className="h-8 w-28 rounded bg-surface-2 mt-auto" />
-              </article>
-            ))}
+                ))}
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="rounded-lg surface-panel px-4 py-8 text-body-sm text-muted-foreground text-center">
+                No templates match this filter.
+              </div>
+            ) : groupedTemplates ? (
+              <div className="space-y-6">
+                {groupedTemplates.map(({ stage, templates: stageTemplates }) => (
+                  <div key={stage}>
+                    <div className="mb-2">
+                      <h3 className="text-body-md font-semibold">{STAGE_META[stage].label}</h3>
+                      <p className="ui-meta-text text-muted-foreground">{STAGE_META[stage].description}</p>
+                    </div>
+                    {renderTemplateGrid(stageTemplates)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              renderTemplateGrid(filteredTemplates)
+            )}
           </div>
-        ) : filteredTemplates.length === 0 ? (
-          <div className="rounded-lg surface-panel px-4 py-8 text-body-sm text-muted-foreground">
-            No templates match this filter. Clear search or pick another category.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filteredTemplates.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                onUse={confirmApplyTemplate}
-                disabled={projects.length === 0}
-              />
-            ))}
-          </div>
-        )}
+
+          {/* Side panel */}
+          {selectedTemplate && (
+            <TemplateDetailPanel
+              template={selectedTemplate}
+              onUse={confirmApplyTemplate}
+              disabled={projects.length === 0}
+            />
+          )}
+        </div>
       </section>
 
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
