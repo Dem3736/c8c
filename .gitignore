@@ -18,6 +18,8 @@ docs/
 # Playwright
 .playwright-cli/
 
+tasks/
+
 # Temp/scratch files
 *.chat.json
 *.chain
