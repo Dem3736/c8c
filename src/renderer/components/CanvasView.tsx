@@ -66,6 +66,14 @@ interface CanvasViewProps {
   onAddSkill?: (skill: DiscoveredSkill) => void
 }
 
+function areStringArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
 export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {}) {
   const { nodes, edges } = useCanvasLayout()
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
@@ -255,6 +263,20 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     }
   }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow])
 
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: Array<{ id: string }>; edges: Array<{ id: string }> }) => {
+      const nextNodeIds = selectedNodes.map((node) => node.id)
+      setSelectedNodeIds((prev) => (areStringArraysEqual(prev, nextNodeIds) ? prev : nextNodeIds))
+
+      const nextSelectedNodeId = selectedNodes[0]?.id ?? null
+      const nextSelectedEdgeId = nextSelectedNodeId ? null : selectedEdges[0]?.id ?? null
+
+      setSelectedNodeId((prev) => (prev === nextSelectedNodeId ? prev : nextSelectedNodeId))
+      setSelectedEdgeId((prev) => (prev === nextSelectedEdgeId ? prev : nextSelectedEdgeId))
+    },
+    [setSelectedNodeId],
+  )
+
   const isValidConnection = useCallback(
     (connection: Connection | { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => {
       if (!connection.source || !connection.target) return false
@@ -365,23 +387,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           setSelectedEdgeId(null)
         }}
         selectionOnDrag
-        onSelectionChange={({ nodes: selectedNodes, edges: selectedEdges }) => {
-          setSelectedNodeIds(selectedNodes.map((n) => n.id))
-          const firstSelectedNode = selectedNodes[0]
-          const firstSelectedEdge = selectedEdges[0]
-          if (firstSelectedNode) {
-            setSelectedNodeId(firstSelectedNode.id)
-            setSelectedEdgeId(null)
-            return
-          }
-          if (firstSelectedEdge) {
-            setSelectedNodeId(null)
-            setSelectedEdgeId(firstSelectedEdge.id)
-            return
-          }
-          setSelectedNodeId(null)
-          setSelectedEdgeId(null)
-        }}
+        onSelectionChange={handleSelectionChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         connectionLineStyle={CONNECTION_LINE_STYLE}
