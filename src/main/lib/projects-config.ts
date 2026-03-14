@@ -1,4 +1,5 @@
 import { app } from "electron"
+import { existsSync } from "node:fs"
 import { mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
@@ -8,6 +9,11 @@ import { logWarn } from "./structured-log"
 export interface ProjectsConfig {
   projects: string[]
   lastSelectedProject?: string
+}
+
+export interface ProjectsConfigResult extends ProjectsConfig {
+  /** Number of project paths removed because the directory no longer exists. */
+  removedCount: number
 }
 
 function resolveHomeDir(): string {
@@ -24,17 +30,35 @@ export function projectsConfigPath(): string {
   return join(resolveHomeDir(), ".c8c", "config.json")
 }
 
-export async function loadProjectsConfig(): Promise<ProjectsConfig> {
+export async function loadProjectsConfig(): Promise<ProjectsConfigResult> {
   try {
     const data = await readFile(projectsConfigPath(), "utf-8")
     const parsed = JSON.parse(data) as Partial<ProjectsConfig>
-    const projects = Array.isArray(parsed.projects)
+    const allProjects = Array.isArray(parsed.projects)
       ? parsed.projects.filter((value): value is string => typeof value === "string").map((value) => resolve(value))
       : []
-    const lastSelectedProject = typeof parsed.lastSelectedProject === "string"
+
+    const projects = allProjects.filter((p) => existsSync(p))
+    const removedCount = allProjects.length - projects.length
+
+    let lastSelectedProject = typeof parsed.lastSelectedProject === "string"
       ? resolve(parsed.lastSelectedProject)
       : undefined
-    return { projects, lastSelectedProject }
+
+    // Clear lastSelectedProject if its directory was removed
+    if (lastSelectedProject && !existsSync(lastSelectedProject)) {
+      lastSelectedProject = undefined
+    }
+
+    if (removedCount > 0) {
+      logWarn("projects-config", "removed_missing_dirs", {
+        removedCount,
+        path: projectsConfigPath(),
+      })
+      await saveProjectsConfig({ projects, lastSelectedProject })
+    }
+
+    return { projects, lastSelectedProject, removedCount }
   } catch (error) {
     const errorCode = typeof error === "object" && error && "code" in error
       ? String((error as { code?: string }).code)
@@ -42,7 +66,7 @@ export async function loadProjectsConfig(): Promise<ProjectsConfig> {
     if (errorCode !== "ENOENT") {
       logWarn("projects-config", "load_failed", { error: String(error), path: projectsConfigPath() })
     }
-    return { projects: [] }
+    return { projects: [], removedCount: 0 }
   }
 }
 

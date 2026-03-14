@@ -220,6 +220,6 @@ export async function recoverRuntimeState(roots?: string[]): Promise<RuntimeReco
     }
   }
 
-  logInfo("run-recovery", "startup_recovery_summary", summary)
+  logInfo("run-recovery", "startup_recovery_summary", { ...summary })
   return summary
 }

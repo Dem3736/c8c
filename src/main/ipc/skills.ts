@@ -7,9 +7,9 @@ import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usa
 import { logError, logInfo } from "../lib/structured-log"
 import { writeFileAtomic } from "../lib/atomic-write"
 import type { DiscoveredSkill, Workflow } from "@shared/types"
-import { mkdir, access } from "node:fs/promises"
+import { mkdir, access, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
-import { allowedProjectRoots } from "../lib/security-paths"
+import { allowedProjectRoots, allowedOpenPathRoots, assertWithinRoots } from "../lib/security-paths"
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -60,12 +60,12 @@ export function registerSkillsHandlers() {
           const merged: DiscoveredSkill[] = []
 
           for (const skill of projectSkills) {
-            const key = `${skill.type}:${skill.name}`
+            const key = `${skill.type}:${skill.category}:${skill.name}`
             seen.add(key)
             merged.push(skill)
           }
           for (const skill of librarySkills) {
-            const key = `${skill.type}:${skill.name}`
+            const key = `${skill.type}:${skill.category}:${skill.name}`
             if (!seen.has(key)) {
               seen.add(key)
               merged.push(skill)
@@ -200,4 +200,14 @@ Describe what this skill should do.
     })
     return filePath
   })
+
+  ipcMain.handle(
+    "skills:read-content",
+    async (_e, filePath: string): Promise<string> => {
+      const resolvedPath = resolve(filePath)
+      const roots = await allowedOpenPathRoots()
+      assertWithinRoots(resolvedPath, roots, "Skill file path")
+      return readFile(resolvedPath, "utf-8")
+    },
+  )
 }

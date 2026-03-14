@@ -3,10 +3,10 @@ import type { DiscoveredSkill } from "@shared/types"
 
 const ipcHandlers = new Map<string, (...args: unknown[]) => unknown>()
 
-const scanAllSkillsMock = vi.fn<() => Promise<DiscoveredSkill[]>>()
-const scanAllLibrariesMock = vi.fn<() => Promise<DiscoveredSkill[]>>()
-const allowedProjectRootsMock = vi.fn<() => Promise<string[]>>()
-const trackTelemetryEventMock = vi.fn<() => Promise<void>>(() => Promise.resolve())
+const scanAllSkillsMock = vi.fn<(...args: unknown[]) => Promise<DiscoveredSkill[]>>()
+const scanAllLibrariesMock = vi.fn<(...args: unknown[]) => Promise<DiscoveredSkill[]>>()
+const allowedProjectRootsMock = vi.fn<(...args: unknown[]) => Promise<string[]>>()
+const trackTelemetryEventMock = vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve())
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -125,9 +125,11 @@ describe("skills IPC scan lock", () => {
     const [firstResult, secondResult] = await Promise.all([firstScan, secondScan])
 
     expect(firstResult).toEqual(secondResult)
-    expect(firstResult).toHaveLength(3)
+    // With category-aware dedup, "writer" in "content" and "writer" in "library" are distinct
+    expect(firstResult).toHaveLength(4)
     expect(firstResult[0]?.path).toBe(projectSkillA.path)
     expect(firstResult[1]?.path).toBe(projectSkillB.path)
-    expect(firstResult[2]?.path).toBe(librarySkillUnique.path)
+    expect(firstResult[2]?.path).toBe(librarySkillDuplicate.path)
+    expect(firstResult[3]?.path).toBe(librarySkillUnique.path)
   })
 })

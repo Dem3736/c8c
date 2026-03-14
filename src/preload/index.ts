@@ -9,6 +9,10 @@ import type {
   DesktopRuntimeInfo,
   DiscoveredSkill,
   GenerationProgress,
+  McpServerInfo,
+  McpServerScope,
+  McpTestResult,
+  McpToolInfo,
   RunResult,
   SkillLibrary,
   UpdateEvent,
@@ -81,6 +85,7 @@ contextBridge.exposeInMainWorld("api", {
     availableSkills: Pick<DiscoveredSkill, "name" | "category">[],
     projectPath: string,
   ) => ipcRenderer.invoke("skills:scaffold", workflow, availableSkills, projectPath),
+  readSkillContent: (path: string) => ipcRenderer.invoke("skills:read-content", path),
 
   // Workflows
   listProjectWorkflows: (projectPath: string) =>
@@ -96,6 +101,7 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("workflows:create", projectPath, name, chain),
   renameWorkflow: (filePath: string, nextName: string) =>
     ipcRenderer.invoke("workflows:rename", filePath, nextName),
+  duplicateWorkflow: (filePath: string) => ipcRenderer.invoke("workflows:duplicate", filePath),
   deleteWorkflow: (filePath: string) => ipcRenderer.invoke("workflows:delete", filePath),
 
   // Executor
@@ -108,6 +114,8 @@ contextBridge.exposeInMainWorld("api", {
   ) =>
     ipcRenderer.invoke("executor:run", chain, input, projectPath, workflowPath, webSearchBackend),
   cancelRun: (runId: string) => ipcRenderer.invoke("executor:cancel", runId),
+  pauseRun: (runId: string) => ipcRenderer.invoke("run:pause", runId),
+  resumeRun: (runId: string) => ipcRenderer.invoke("run:resume", runId),
   rerunFrom: (
     fromNodeId: string,
     workflow: Workflow,
@@ -152,6 +160,8 @@ contextBridge.exposeInMainWorld("api", {
 
   // Templates
   listTemplates: () => ipcRenderer.invoke("templates:list"),
+  saveAsTemplate: (name: string, workflow: Workflow) =>
+    ipcRenderer.invoke("templates:save-user", name, workflow),
   generateWorkflow: (
     description: string,
     availableSkills: Pick<DiscoveredSkill, "name" | "category" | "description">[],
@@ -229,6 +239,22 @@ contextBridge.exposeInMainWorld("api", {
   // Generate progress listener
   onGenerateProgress: (callback: (progress: GenerationProgress) => void) =>
     subscribeIpcChannel<GenerationProgress>("generate:progress", callback),
+
+  // MCP servers
+  mcpListServers: (projectPath?: string) =>
+    ipcRenderer.invoke("mcp:list-servers", projectPath),
+  mcpAddServer: (server: McpServerInfo, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:add-server", server, projectPath),
+  mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:update-server", name, server, projectPath),
+  mcpRemoveServer: (name: string, scope: McpServerScope, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:remove-server", name, scope, projectPath),
+  mcpToggleServer: (name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:toggle-server", name, scope, disabled, projectPath),
+  mcpTestServer: (name: string, scope: McpServerScope, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:test-server", name, scope, projectPath),
+  mcpDiscoverTools: (serverName?: string, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:discover-tools", serverName, projectPath),
 })
 
 // Type declaration
@@ -246,6 +272,7 @@ export interface C8cApi {
     availableSkills: Pick<DiscoveredSkill, "name" | "category">[],
     projectPath: string,
   ) => Promise<Workflow>
+  readSkillContent: (path: string) => Promise<string>
   listProjectWorkflows: (projectPath: string) => Promise<WorkflowFile[]>
   listGlobalWorkflows: () => Promise<WorkflowFile[]>
   loadWorkflow: (filePath: string) => Promise<Workflow>
@@ -254,12 +281,14 @@ export interface C8cApi {
   openWorkflowFile: () => Promise<{ filePath: string; chain: Workflow } | null>
   createWorkflow: (projectPath: string, name: string, chain: Workflow) => Promise<string>
   renameWorkflow: (filePath: string, nextName: string) => Promise<string>
+  duplicateWorkflow: (filePath: string) => Promise<string>
   deleteWorkflow: (filePath: string) => Promise<void>
   listLibraries: () => Promise<SkillLibrary[]>
   installLibrary: (id: string) => Promise<boolean>
   removeLibrary: (id: string) => Promise<boolean>
   scanLibraries: () => Promise<DiscoveredSkill[]>
   listTemplates: () => Promise<WorkflowTemplate[]>
+  saveAsTemplate: (name: string, workflow: Workflow) => Promise<string>
   generateWorkflow: (
     description: string,
     availableSkills: Pick<DiscoveredSkill, "name" | "category" | "description">[],
@@ -289,6 +318,8 @@ export interface C8cApi {
     webSearchBackend?: "builtin" | "exa",
   ) => Promise<string | { error: string } | null>
   cancelRun: (runId: string) => Promise<boolean>
+  pauseRun: (runId: string) => Promise<boolean>
+  resumeRun: (runId: string) => Promise<boolean>
   rerunFrom: (
     fromNodeId: string,
     workflow: Workflow,
@@ -326,6 +357,13 @@ export interface C8cApi {
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void
   onWorkflowEvent: (callback: (event: WorkflowEvent) => void) => () => void
   onGenerateProgress: (callback: (progress: GenerationProgress) => void) => () => void
+  mcpListServers: (projectPath?: string) => Promise<McpServerInfo[]>
+  mcpAddServer: (server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpRemoveServer: (name: string, scope: McpServerScope, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpToggleServer: (name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpTestServer: (name: string, scope: McpServerScope, projectPath?: string) => Promise<McpTestResult>
+  mcpDiscoverTools: (serverName?: string, projectPath?: string) => Promise<McpToolInfo[]>
 }
 
 declare global {

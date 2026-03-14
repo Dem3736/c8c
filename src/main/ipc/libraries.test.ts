@@ -7,7 +7,7 @@ const getLibrariesMock = vi.fn()
 const installLibraryMock = vi.fn()
 const removeLibraryMock = vi.fn()
 const scanAllLibrariesMock = vi.fn()
-const trackTelemetryEventMock = vi.fn<() => Promise<void>>(() => Promise.resolve())
+const trackTelemetryEventMock = vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve())
 
 const PREDEFINED_LIBRARIES = [
   {

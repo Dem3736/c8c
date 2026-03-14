@@ -122,7 +122,7 @@ export async function scanAllSkills(projectPath: string): Promise<DiscoveredSkil
   const seen = new Set<string>()
   const merged: DiscoveredSkill[] = []
   for (const skill of [...projectSkills, ...userSkills]) {
-    const key = `${skill.type}:${skill.name}`
+    const key = `${skill.type}:${skill.category}:${skill.name}`
     if (!seen.has(key)) {
       seen.add(key)
       merged.push(skill)

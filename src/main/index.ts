@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  Notification,
   screen,
   shell,
   type BrowserWindowConstructorOptions,
@@ -20,6 +21,7 @@ import {
   setDesktopRuntimeWindowProvider,
 } from "./ipc/system"
 import { registerChatHandlers } from "./ipc/chat"
+import { registerMcpHandlers } from "./ipc/mcp"
 import {
   flushTelemetryService,
   initTelemetryService,
@@ -177,6 +179,63 @@ function isSafeExternalUrl(rawUrl: string): boolean {
   }
 }
 
+// ── OS Notifications for workflow events ──────────────
+
+function handleWorkflowNotification(
+  window: BrowserWindow,
+  event: Record<string, unknown>,
+): void {
+  // Only notify when the window is not focused
+  if (window.isFocused()) return
+
+  const eventType = event.type as string
+
+  if (eventType === "run-done") {
+    const status = event.status as string
+    if (status === "completed") {
+      const notification = new Notification({
+        title: "c8c",
+        body: "Workflow completed",
+      })
+      notification.on("click", () => {
+        window.show()
+        window.focus()
+      })
+      notification.show()
+
+      if (process.platform === "darwin" && app.dock) {
+        app.dock.bounce("informational")
+      }
+    } else if (status === "failed" || status === "interrupted") {
+      const notification = new Notification({
+        title: "c8c",
+        body: "Workflow failed",
+      })
+      notification.on("click", () => {
+        window.show()
+        window.focus()
+      })
+      notification.show()
+    }
+  } else if (eventType === "approval-requested") {
+    const nodeId = event.nodeId as string
+    const notification = new Notification({
+      title: "c8c",
+      body: `Approval needed: ${nodeId}`,
+    })
+    notification.on("click", () => {
+      window.show()
+      window.focus()
+    })
+    notification.show()
+
+    window.flashFrame(true)
+    if (process.platform === "darwin" && app.dock) {
+      app.dock.bounce("critical")
+    }
+  }
+}
+
 function createWindow() {
   const isMac = process.platform === "darwin"
   void loadWindowState().then((savedState) => {
@@ -206,6 +265,16 @@ function createWindow() {
 
     mainWindow = new BrowserWindow(windowOptions)
     const window = mainWindow
+
+    // Wrap webContents.send to intercept workflow events for OS notifications
+    const originalSend = window.webContents.send.bind(window.webContents)
+    window.webContents.send = (channel: string, ...args: unknown[]) => {
+      if (channel === "workflow:event" && args[0] && typeof args[0] === "object") {
+        handleWorkflowNotification(window, args[0] as Record<string, unknown>)
+      }
+      return originalSend(channel, ...args)
+    }
+
     const emitRuntime = () => emitDesktopRuntimeUpdate(window)
     let persistTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -341,6 +410,7 @@ app.whenReady().then(async () => {
     ["templates", registerTemplateHandlers],
     ["system", registerSystemHandlers],
     ["chat", registerChatHandlers],
+    ["mcp", registerMcpHandlers],
   ] as const
 
   for (const [name, register] of handlers) {

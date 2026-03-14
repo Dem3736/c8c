@@ -254,6 +254,30 @@ export function registerWorkflowsHandlers() {
     },
   )
 
+  ipcMain.handle("workflows:duplicate", async (_e, filePath: string) => {
+    const safeFilePath = await assertWorkflowFilePath(filePath)
+    const dir = dirname(safeFilePath)
+    const extension = extname(safeFilePath).toLowerCase() as ".chain" | ".yaml" | ".yml"
+
+    if (extension === ".chain") {
+      const workflow = await loadChain(safeFilePath)
+      const originalName = workflow.name || basename(safeFilePath, extension)
+      const copyName = `${originalName}-copy`
+      const copyStem = toWorkflowFileStem(copyName)
+      const destPath = await uniqueWorkflowPath(dir, copyStem, extension)
+      await saveChain(destPath, { ...workflow, name: copyName })
+      return destPath
+    } else {
+      const legacy = await loadChainYaml(safeFilePath)
+      const originalName = basename(safeFilePath).replace(/\.(yaml|yml)$/, "")
+      const copyName = `${originalName}-copy`
+      const copyStem = toWorkflowFileStem(copyName)
+      const destPath = await uniqueWorkflowPath(dir, copyStem, extension)
+      await saveChainYaml(destPath, legacy)
+      return destPath
+    }
+  })
+
   ipcMain.handle("workflows:delete", async (_e, filePath: string) => {
     const { unlink } = await import("node:fs/promises")
     const safeFilePath = await assertWorkflowFilePath(filePath)

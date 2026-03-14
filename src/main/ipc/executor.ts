@@ -3,6 +3,8 @@ import {
   runWorkflow,
   rerunFromNode,
   cancelWorkflowRun,
+  pauseWorkflowRun,
+  resumeWorkflowRun,
   resolveApproval,
   continueRunFromWorkspace,
 } from "../lib/workflow-runner"
@@ -10,6 +12,7 @@ import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { scanAllSkills } from "../lib/skill-scanner"
+import { getClaudeCodeSubscriptionStatus } from "../lib/claude-subscription"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import { readdir, readFile } from "node:fs/promises"
@@ -162,6 +165,20 @@ export function registerExecutorHandlers() {
         return { error: "A workflow is already running" }
       }
 
+      // Pre-run CLI availability check
+      try {
+        const cliStatus = await getClaudeCodeSubscriptionStatus()
+        if (!cliStatus.cliInstalled) {
+          return { error: "cli_unavailable:Claude CLI is not installed. Install it with: npm install -g @anthropic-ai/claude-code" }
+        }
+        if (!cliStatus.loggedIn) {
+          return { error: "cli_unavailable:Claude CLI is not authenticated. Run `claude login` in your terminal." }
+        }
+      } catch (err) {
+        logWarn("executor-ipc", "cli_precheck_failed", { error: errorMessage(err) })
+        // Don't block on check failure — let the run attempt proceed
+      }
+
       let errors: string[]
       try {
         errors = validateWorkflow(workflow)
@@ -224,6 +241,14 @@ export function registerExecutorHandlers() {
 
   ipcMain.handle("executor:cancel", async (_e, runId: string) => {
     return cancelWorkflowRun(runId)
+  })
+
+  ipcMain.handle("run:pause", async (_e, runId: string) => {
+    return pauseWorkflowRun(runId)
+  })
+
+  ipcMain.handle("run:resume", async (_e, runId: string) => {
+    return resumeWorkflowRun(runId)
   })
 
   ipcMain.handle(

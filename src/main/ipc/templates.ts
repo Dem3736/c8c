@@ -8,7 +8,11 @@ import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import type { DiscoveredSkill, GenerationProgress, Workflow, WorkflowTemplate } from "@shared/types"
 import { allowedProjectRoots } from "../lib/security-paths"
-import { resolve } from "node:path"
+import { resolve, join } from "node:path"
+import { mkdir } from "node:fs/promises"
+import { homedir } from "node:os"
+import { saveChain } from "../lib/chain-io"
+import { toWorkflowFileStem } from "@shared/workflow-name"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
 
 const activeGenerateControllers = new Map<number, AbortController>()
@@ -50,6 +54,19 @@ export function registerTemplateHandlers() {
   ipcMain.handle("templates:list", async (): Promise<WorkflowTemplate[]> => {
     return getBuiltinTemplates()
   })
+
+  ipcMain.handle(
+    "templates:save-user",
+    async (_event, name: string, workflow: Workflow): Promise<string> => {
+      const dir = join(homedir(), ".c8c", "user-templates")
+      await mkdir(dir, { recursive: true })
+      const stem = toWorkflowFileStem(name) || "template"
+      const filePath = join(dir, `${stem}.chain`)
+      await saveChain(filePath, { ...workflow, name })
+      logInfo("templates-ipc", "user_template_saved", { name, filePath })
+      return filePath
+    },
+  )
 
   ipcMain.handle("templates:cancel-generate", async (event) => {
     const senderId = event.sender.id

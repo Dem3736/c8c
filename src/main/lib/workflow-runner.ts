@@ -59,6 +59,44 @@ import type {
 
 const activeRuns = new Map<string, AbortController>()
 
+// Pause/resume support — stores a resolver that the dispatch loop awaits when paused
+const pausedRuns = new Map<string, { paused: boolean; resume: (() => void) | null }>()
+
+export function pauseWorkflowRun(runId: string): boolean {
+  const state = pausedRuns.get(runId)
+  if (!state) return false
+  if (state.paused) return true // already paused
+  state.paused = true
+  return true
+}
+
+export function resumeWorkflowRun(runId: string): boolean {
+  const state = pausedRuns.get(runId)
+  if (!state) return false
+  if (!state.paused) return true // already running
+  state.paused = false
+  if (state.resume) {
+    state.resume()
+    state.resume = null
+  }
+  return true
+}
+
+function waitIfPaused(runId: string, signal: AbortSignal): Promise<void> {
+  const state = pausedRuns.get(runId)
+  if (!state || !state.paused) return Promise.resolve()
+  if (signal.aborted) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    state.resume = resolve
+    // If the run is cancelled while paused, unblock
+    const onAbort = () => {
+      state.resume = null
+      resolve()
+    }
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
 const RETRYABLE_ERROR_KINDS: ErrorKind[] = ["tool", "model", "timeout", "unknown"]
 
 export interface WorkflowRunSummary {
@@ -718,10 +756,29 @@ export function resolveApproval(runId: string, nodeId: string, approved: boolean
   return false
 }
 
-function waitForApproval(runId: string, nodeId: string): Promise<{ approved: boolean; editedContent?: string }> {
-  return new Promise((resolve) => {
+function waitForApproval(
+  runId: string,
+  nodeId: string,
+  timeoutMinutes?: number,
+  timeoutAction: "auto_approve" | "auto_reject" | "skip" = "auto_reject",
+): Promise<{ approved: boolean; editedContent?: string; timedOut?: boolean }> {
+  const approvalPromise = new Promise<{ approved: boolean; editedContent?: string; timedOut?: boolean }>((resolve) => {
     pendingApprovals.set(`${runId}:${nodeId}`, { resolve })
   })
+
+  const minutes = timeoutMinutes ?? 60
+  if (minutes <= 0) return approvalPromise
+
+  const timeoutPromise = new Promise<{ approved: boolean; editedContent?: string; timedOut?: boolean }>((resolve) => {
+    setTimeout(() => {
+      // Clean up the pending approval so resolveApproval won't fire after timeout
+      pendingApprovals.delete(`${runId}:${nodeId}`)
+      const approved = timeoutAction === "auto_approve"
+      resolve({ approved, timedOut: true })
+    }, minutes * 60_000)
+  })
+
+  return Promise.race([approvalPromise, timeoutPromise])
 }
 
 export function cancelWorkflowRun(runId: string): boolean {
@@ -746,6 +803,7 @@ export async function runWorkflow(
 ): Promise<WorkflowRunSummary> {
   const controller = new AbortController()
   activeRuns.set(runId, controller)
+  pausedRuns.set(runId, { paused: false, resume: null })
 
   const onWindowClosed = () => controller.abort()
   window.on("closed", onWindowClosed)
@@ -1129,7 +1187,8 @@ export async function runWorkflow(
 
             const evalResult = parseEvaluatorOutput(state.log)
             if (!evalResult) {
-              throw new Error("Evaluator output parse failed (expected JSON with numeric score)")
+              const rawExcerpt = (state.log ?? "").slice(0, 500)
+              throw new Error(`Evaluator output parse failed. Expected JSON with numeric 'score' field. Actual output: ${rawExcerpt}`)
             }
             const score = evalResult.score
             const reason = evalResult.reason
@@ -1500,8 +1559,28 @@ export async function runWorkflow(
               allowEdit: approvalConfig.allow_edit,
             })
 
-            // Wait for user decision
-            const decision = await waitForApproval(runId, node.id)
+            // Wait for user decision (with optional timeout)
+            const decision = await waitForApproval(
+              runId,
+              node.id,
+              approvalConfig.timeout_minutes,
+              approvalConfig.timeout_action ?? "auto_reject",
+            )
+
+            if (decision.timedOut) {
+              const action = approvalConfig.timeout_action ?? "auto_reject"
+              const minutes = approvalConfig.timeout_minutes ?? 60
+              send({
+                type: "node-log",
+                runId,
+                nodeId: node.id,
+                entry: {
+                  type: "text",
+                  content: `Approval timed out after ${minutes} minutes. Auto-${action.replace("auto_", "")} applied.\n`,
+                  timestamp: Date.now(),
+                },
+              })
+            }
 
             if (decision.approved) {
               const finalContent = decision.editedContent ?? incomingContent
@@ -1510,8 +1589,10 @@ export async function runWorkflow(
               // Rejected — fail the node
               state.status = "failed"
               state.completedAt = Date.now()
-              state.error = "Rejected by user"
-              send({ type: "node-error", runId, nodeId: node.id, error: "Rejected by user" })
+              state.error = decision.timedOut
+                ? `Approval timed out (${approvalConfig.timeout_action ?? "auto_reject"})`
+                : "Rejected by user"
+              send({ type: "node-error", runId, nodeId: node.id, error: state.error })
               return
             }
             break
@@ -1657,6 +1738,10 @@ export async function runWorkflow(
     let lastProgressAt = Date.now()
 
     while (!controller.signal.aborted) {
+      // If paused, wait until resumed (or cancelled)
+      await waitIfPaused(runId, controller.signal)
+      if (controller.signal.aborted) break
+
       const readyNodes = findReadyNodes(runtimeWorkflow, nodeStates, activatedEdges)
       const newReady = readyNodes.filter((n) => !runningPromises.has(n.id))
 
@@ -1701,7 +1786,24 @@ export async function runWorkflow(
           lastProgressAt = Date.now()
         }
         if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
-          console.error(`[workflow-runner] stall detected: no progress for ${STALL_TIMEOUT_MS}ms, aborting`)
+          // Identify stalled nodes and emit descriptive errors before aborting
+          for (const stalledNodeId of runningPromises.keys()) {
+            const stalledNode = runtimeWorkflow.nodes.find((n) => n.id === stalledNodeId)
+            const stalledState = nodeStates[stalledNodeId]
+            if (stalledNode && stalledState) {
+              const nodeLabel = stalledNode.type === "skill"
+                ? (stalledNode.config as SkillNodeConfig).skillRef || "skill"
+                : stalledNode.type
+              const elapsedMs = stalledState.startedAt ? Date.now() - stalledState.startedAt : Date.now() - lastProgressAt
+              const elapsedMinutes = Math.round(elapsedMs / 60_000)
+              const stallError = `Node '${nodeLabel}' (${stalledNode.type}) stopped responding after ${elapsedMinutes} minutes. Run was stopped.`
+              console.error(`[workflow-runner] stall detected: ${stallError}`)
+              stalledState.status = "failed"
+              stalledState.completedAt = Date.now()
+              stalledState.error = stallError
+              send({ type: "node-error", runId, nodeId: stalledNodeId, error: stallError })
+            }
+          }
           controller.abort()
         }
       }
@@ -1821,6 +1923,7 @@ export async function runWorkflow(
     await finalizeRunPidManifest(workspace, runId, "run", manifestStatus === "interrupted" ? fallbackStatus : manifestStatus)
     resolvePendingApprovalsForRun(runId, false)
     activeRuns.delete(runId)
+    pausedRuns.delete(runId)
     try {
       window.removeListener("closed", onWindowClosed)
     } catch (error) {
@@ -1864,6 +1967,7 @@ export async function rerunFromNode(
 
   const controller = new AbortController()
   activeRuns.set(runId, controller)
+  pausedRuns.set(runId, { paused: false, resume: null })
 
   const onWindowClosed = () => controller.abort()
   window.on("closed", onWindowClosed)
@@ -2213,7 +2317,8 @@ export async function rerunFromNode(
 
             const evalResult = parseEvaluatorOutput(state.log)
             if (!evalResult) {
-              throw new Error("Evaluator output parse failed (expected JSON with numeric score)")
+              const rawExcerpt = (state.log ?? "").slice(0, 500)
+              throw new Error(`Evaluator output parse failed. Expected JSON with numeric 'score' field. Actual output: ${rawExcerpt}`)
             }
             const score = evalResult.score
             const reason = evalResult.reason
@@ -2537,8 +2642,28 @@ export async function rerunFromNode(
               allowEdit: approvalConfig.allow_edit,
             })
 
-            // Wait for user decision
-            const decision = await waitForApproval(runId, node.id)
+            // Wait for user decision (with optional timeout)
+            const decision = await waitForApproval(
+              runId,
+              node.id,
+              approvalConfig.timeout_minutes,
+              approvalConfig.timeout_action ?? "auto_reject",
+            )
+
+            if (decision.timedOut) {
+              const action = approvalConfig.timeout_action ?? "auto_reject"
+              const minutes = approvalConfig.timeout_minutes ?? 60
+              send({
+                type: "node-log",
+                runId,
+                nodeId: node.id,
+                entry: {
+                  type: "text",
+                  content: `Approval timed out after ${minutes} minutes. Auto-${action.replace("auto_", "")} applied.\n`,
+                  timestamp: Date.now(),
+                },
+              })
+            }
 
             if (decision.approved) {
               const finalContent = decision.editedContent ?? incomingContent
@@ -2547,8 +2672,10 @@ export async function rerunFromNode(
               // Rejected — fail the node
               state.status = "failed"
               state.completedAt = Date.now()
-              state.error = "Rejected by user"
-              send({ type: "node-error", runId, nodeId: node.id, error: "Rejected by user" })
+              state.error = decision.timedOut
+                ? `Approval timed out (${approvalConfig.timeout_action ?? "auto_reject"})`
+                : "Rejected by user"
+              send({ type: "node-error", runId, nodeId: node.id, error: state.error })
               return
             }
             break
@@ -2682,6 +2809,10 @@ export async function rerunFromNode(
     let activeSplitterNodeId: string | null = null
 
     while (!controller.signal.aborted) {
+      // If paused, wait until resumed (or cancelled)
+      await waitIfPaused(runId, controller.signal)
+      if (controller.signal.aborted) break
+
       const readyNodes = findReadyNodes(runtimeWorkflow, nodeStates, activatedEdges)
       const newReady = readyNodes.filter((n) => !runningPromises.has(n.id))
 
@@ -2793,6 +2924,7 @@ export async function rerunFromNode(
     await finalizeRunPidManifest(workspace, runId, "rerun", manifestStatus === "interrupted" ? fallbackStatus : manifestStatus)
     resolvePendingApprovalsForRun(runId, false)
     activeRuns.delete(runId)
+    pausedRuns.delete(runId)
     try {
       window.removeListener("closed", onWindowClosed)
     } catch (error) {

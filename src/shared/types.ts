@@ -69,6 +69,8 @@ export interface ApprovalNodeConfig {
   message?: string
   show_content: boolean
   allow_edit: boolean
+  timeout_minutes?: number
+  timeout_action?: "auto_approve" | "auto_reject" | "skip"
   runtime?: NodeRuntimeConfig
 }
 
@@ -338,6 +340,7 @@ export interface BatchItemResult {
   cost_usd: number
   duration_ms: number
   error?: string
+  output?: string
 }
 
 export interface BatchSummary {
@@ -487,4 +490,36 @@ export interface SkillCategoryNode {
   count: number
   children: SkillCategoryNode[]
   skills?: Array<{ name: string; description: string; skillRef: string }>
+}
+
+// ── MCP (Model Context Protocol) ────────────────────────
+
+export type McpTransportType = "stdio" | "http" | "sse"
+export type McpServerScope = "local" | "project" | "user"
+
+export interface McpServerInfo {
+  name: string
+  scope: McpServerScope
+  type: McpTransportType
+  command?: string
+  args?: string[]
+  url?: string
+  env?: Record<string, string>
+  headers?: Record<string, string>
+  disabled?: boolean
+  autoApprove?: string[]
+}
+
+export interface McpToolInfo {
+  name: string
+  serverName: string
+  qualifiedName: string
+  description?: string
+}
+
+export interface McpTestResult {
+  healthy: boolean
+  tools: McpToolInfo[]
+  error?: string
+  latencyMs: number
 }

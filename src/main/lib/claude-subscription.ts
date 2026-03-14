@@ -1,9 +1,7 @@
 import { execFile as execFileCb } from "node:child_process"
-import { existsSync } from "node:fs"
-import { homedir } from "node:os"
-import { delimiter, join } from "node:path"
 import { promisify } from "node:util"
 import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
+import { findClaudeExecutable, buildClaudeEnv } from "./claude-cli"
 
 const execFile = promisify(execFileCb)
 
@@ -67,85 +65,6 @@ function inferHasSubscription(parsed: ParsedAuthPayload): boolean {
   return false
 }
 
-function buildExtendedPath(existingPath: string | undefined): string {
-  const home = homedir()
-  const extras = [
-    `${home}/.local/bin`,
-    `${home}/.claude/local`,
-    `${home}/.claude/local/node_modules/.bin`,
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-  ]
-
-  if (process.platform === "win32") {
-    extras.push(`${home}\\AppData\\Roaming\\npm`)
-  }
-
-  const merged = [...extras, ...(existingPath ? [existingPath] : [])]
-  return [...new Set(merged.filter(Boolean))].join(delimiter)
-}
-
-function buildClaudeStatusEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {}
-  const passthroughKeys = [
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "USERPROFILE",
-    "SHELL",
-    "TMPDIR",
-    "TMP",
-    "TEMP",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "SystemRoot",
-    "SYSTEMROOT",
-    "ComSpec",
-    "COMSPEC",
-    "APPDATA",
-    "LOCALAPPDATA",
-  ]
-
-  for (const key of passthroughKeys) {
-    const value = process.env[key]
-    if (value) env[key] = value
-  }
-
-  env.PATH = buildExtendedPath(process.env.PATH)
-  return env
-}
-
-function findClaudeExecutable(): string | null {
-  const configured = process.env.CLAUDE_PATH
-  if (configured && existsSync(configured)) return configured
-
-  const home = homedir()
-  const candidates = [
-    join(home, ".local", "bin", "claude"),
-    join(home, ".claude", "local", "node_modules", ".bin", "claude"),
-    join(home, ".claude", "local", "claude"),
-    "/opt/homebrew/bin/claude",
-    "/usr/local/bin/claude",
-    "/usr/bin/claude",
-  ]
-
-  if (process.platform === "win32") {
-    candidates.push(
-      join(home, "AppData", "Roaming", "npm", "claude.cmd"),
-      join(home, "AppData", "Roaming", "npm", "claude"),
-    )
-  }
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate
-  }
-
-  return null
-}
-
 function statusFromError(errorMessage: string, cliInstalled: boolean): ClaudeCodeSubscriptionStatus {
   return {
     checkedAt: Date.now(),
@@ -178,7 +97,7 @@ export function parseClaudeAuthStatus(raw: string): ParsedClaudeAuthStatus | nul
 export async function getClaudeCodeSubscriptionStatus(): Promise<ClaudeCodeSubscriptionStatus> {
   const executable = findClaudeExecutable() || "claude"
   const explicitExecutableFound = executable !== "claude"
-  const env = buildClaudeStatusEnv()
+  const env = buildClaudeEnv()
 
   try {
     const { stdout } = await execFile(executable, [...CLAUDE_STATUS_ARGS], {
