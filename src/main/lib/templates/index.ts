@@ -19,6 +19,7 @@ import fullStackCodeAuditRaw from "./full-stack-code-audit.yaml?raw"
 import landingPageGeneratorRaw from "./landing-page-generator.yaml?raw"
 import ctoProductSpecRaw from "./cto-product-spec.yaml?raw"
 import impeccableUIPipelineRaw from "./impeccable-ui-pipeline.yaml?raw"
+import indispensableJtbdPipelineRaw from "./indispensable-jtbd-pipeline.yaml?raw"
 
 interface FlatTemplate {
   id: string
@@ -63,6 +64,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(landingPageGeneratorRaw),
   parseTemplate(ctoProductSpecRaw),
   parseTemplate(impeccableUIPipelineRaw),
+  parseTemplate(indispensableJtbdPipelineRaw),
 ]
 
 export function getBuiltinTemplates(): WorkflowTemplate[] {
