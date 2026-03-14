@@ -1,4 +1,5 @@
 import { spawnClaude, type ClaudeSpawnOptions, type ClaudeSpawnResult } from "@claude-tools/runner"
+import { execSync } from "node:child_process"
 import { mkdtemp, mkdir, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, dirname, basename } from "node:path"
@@ -55,6 +56,7 @@ import type {
   NodeOnErrorPolicy,
   NodeRuntimeConfig,
   NodeRetryBackoff,
+  PermissionMode,
 } from "@shared/types"
 
 const activeRuns = new Map<string, AbortController>()
@@ -1056,15 +1058,37 @@ export async function runWorkflow(
               )
             }
 
+            // Resolve effective permission mode: node override → workflow default → "edit"
+            const effectivePermissionMode: PermissionMode =
+              config.permissionMode ?? workflow.defaults?.permissionMode ?? "edit"
+
             // Merge allowed/disallowed tools from node config and workflow defaults
             const mergedAllowed = [...new Set([
               ...(workflow.defaults?.allowedTools || []),
               ...(config.allowedTools || []),
             ])]
+            const planDisallowed = effectivePermissionMode === "plan"
+              ? ["Edit", "Write", "NotebookEdit"]
+              : []
             const mergedDisallowed = [...new Set([
               ...(workflow.defaults?.disallowedTools || []),
               ...(config.disallowedTools || []),
+              ...planDisallowed,
             ])]
+
+            // Snapshot git state before running (edit mode only)
+            let preRunDiffStat = ""
+            const isGitRepo = effectivePermissionMode === "edit" && (() => {
+              try {
+                execSync("git rev-parse --is-inside-work-tree", { cwd: workdir, stdio: "pipe" })
+                return true
+              } catch { return false }
+            })()
+            if (isGitRepo) {
+              try {
+                preRunDiffStat = execSync("git diff --stat", { cwd: workdir, encoding: "utf-8" })
+              } catch { /* non-critical */ }
+            }
 
             const result = await spawnClaudeTracked({
               workdir,
@@ -1111,6 +1135,25 @@ export async function runWorkflow(
             }
 
             updateSkillMetricsAndMeta()
+
+            // Capture git diff after node execution (edit mode only)
+            if (isGitRepo) {
+              try {
+                const postRunDiff = execSync("git diff", { cwd: workdir, encoding: "utf-8" })
+                if (postRunDiff.trim()) {
+                  const fileLines = execSync("git diff --name-only", { cwd: workdir, encoding: "utf-8" })
+                  const files = fileLines.trim().split("\n").filter(Boolean)
+                  const diffEntry = {
+                    type: "diff" as const,
+                    content: postRunDiff,
+                    files,
+                    timestamp: Date.now(),
+                  }
+                  state.log.push(diffEntry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry: diffEntry })
+                }
+              } catch { /* non-critical */ }
+            }
 
             if (!result.success && !controller.signal.aborted) {
               const detail = result.exitCode === null
@@ -2205,8 +2248,13 @@ export async function rerunFromNode(
               )
             }
 
+            const retryPermissionMode: PermissionMode =
+              config.permissionMode ?? workflow.defaults?.permissionMode ?? "edit"
             const mergedAllowed = [...new Set([...(workflow.defaults?.allowedTools || []), ...(config.allowedTools || [])])]
-            const mergedDisallowed = [...new Set([...(workflow.defaults?.disallowedTools || []), ...(config.disallowedTools || [])])]
+            const retryPlanDisallowed = retryPermissionMode === "plan"
+              ? ["Edit", "Write", "NotebookEdit"]
+              : []
+            const mergedDisallowed = [...new Set([...(workflow.defaults?.disallowedTools || []), ...(config.disallowedTools || []), ...retryPlanDisallowed])]
 
             const result = await spawnClaudeTracked({
               workdir,
