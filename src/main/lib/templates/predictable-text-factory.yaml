@@ -1,0 +1,148 @@
+id: predictable-text-factory
+category: content
+tags:
+  - factory
+  - decomposition
+  - quality-gate
+  - iteration
+  - fan-out
+version: 1
+name: Predictable Text Factory
+description: Plan sections, process each section independently, run section-level and final quality gates, iterate until pass
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 45
+  maxParallel: 6
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: planner-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: factory/text-planner
+      prompt: "Turn the source text into a production plan. Define 5-10 sections in strict order. For each section include:
+        section_id, objective, must_keep_facts, constraints, and done_criteria. Output as structured markdown so each
+        section can be executed independently."
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 600
+      y: 200
+    config:
+      strategy: "Split the plan into independent section tasks. Each task must include full local context: section_id,
+        objective, required facts, constraints, done_criteria, and section order index."
+      maxBranches: 10
+  - id: section-writer-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: factory/section-writer
+      prompt: Produce ONE final draft for this section only. Respect objective and constraints exactly, preserve required
+        facts, avoid adding unsupported claims, and keep the section self-contained.
+  - id: section-evaluator-1
+    type: evaluator
+    position:
+      x: 1200
+      y: 200
+    config:
+      criteria: "Gate each section with infostyle + slop-check. Score 1-10 on: (1) requirement adherence (objective +
+        constraints), (2) factual integrity (all required facts preserved, no invented claims), (3) infostyle discipline
+        (facts, no buzzwords/manipulation, no padding), (4) slop risk (generic AI phrasing, fake confidence, weak
+        causality, low detail density). Hard fail if verdict is probable_slop or infostyle bans are violated. Return
+        specific sentence-level rewrite instructions."
+      threshold: 8
+      maxRetries: 3
+      retryFrom: section-writer-1
+      skillRefs:
+        - infostyle
+        - slop-check
+  - id: merger-1
+    type: merger
+    position:
+      x: 1500
+      y: 200
+    config:
+      strategy: concatenate
+      prompt: Assemble passed sections in original order without rewriting content. Keep section boundaries explicit.
+  - id: integrator-1
+    type: skill
+    position:
+      x: 1800
+      y: 200
+    config:
+      skillRef: factory/text-integrator
+      prompt: "Integrate assembled sections into one coherent text. Only do cross-section normalization: transitions,
+        terminology consistency, duplicate removal, and ordering. Do not drop required facts."
+  - id: final-evaluator-1
+    type: evaluator
+    position:
+      x: 2100
+      y: 200
+    config:
+      criteria: "Final gate: check if the document is publishable (not slop). Score 1-10 on: (1) coherence across sections,
+        (2) consistency of terminology and claims, (3) infostyle quality end-to-end (facts/utility, no manipulative
+        fluff), (4) slop-check verdict across the whole text (clean/good/acceptable/probable_slop). PASS only if text is
+        clean or good and requires no manual structural rewrites."
+      threshold: 8
+      maxRetries: 2
+      retryFrom: planner-1
+      skillRefs:
+        - infostyle
+        - slop-check
+  - id: output-1
+    type: output
+    position:
+      x: 2400
+      y: 200
+    config: {}
+edges:
+  - id: e-input-planner
+    source: input-1
+    target: planner-1
+    type: default
+  - id: e-planner-splitter
+    source: planner-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-section-writer
+    source: splitter-1
+    target: section-writer-1
+    type: default
+  - id: e-section-writer-eval
+    source: section-writer-1
+    target: section-evaluator-1
+    type: default
+  - id: e-section-eval-merger
+    source: section-evaluator-1
+    target: merger-1
+    type: pass
+  - id: e-section-eval-writer
+    source: section-evaluator-1
+    target: section-writer-1
+    type: fail
+  - id: e-merger-integrator
+    source: merger-1
+    target: integrator-1
+    type: default
+  - id: e-integrator-final-eval
+    source: integrator-1
+    target: final-evaluator-1
+    type: default
+  - id: e-final-eval-output
+    source: final-evaluator-1
+    target: output-1
+    type: pass
+  - id: e-final-eval-planner
+    source: final-evaluator-1
+    target: planner-1
+    type: fail

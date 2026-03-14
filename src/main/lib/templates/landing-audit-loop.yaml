@@ -1,0 +1,96 @@
+id: landing-audit-loop
+category: marketing
+tags:
+  - landing
+  - audit
+  - JTBD
+  - loop
+  - conversion
+version: 1
+name: Landing Page Audit Loop
+description: Analyze a landing page using JTBD framework, evaluate visual design, rewrite copy, iterate until quality threshold met
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: validator-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: landing-validator
+      prompt: "Analyze this landing page against Jobs-To-Be-Done framework. Evaluate: Does the hero address the primary job?
+        Are features framed as outcomes? Is the CTA aligned with the user's desired progress? Score each section."
+  - id: visual-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: visual-analyzer
+      prompt: "Analyze the visual design and UX of this landing page. Evaluate: visual hierarchy, readability, trust signals,
+        mobile responsiveness, CTA visibility. Provide specific improvement recommendations."
+  - id: rewriter-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: landing-rewriter
+      prompt: "Based on the JTBD analysis and visual audit feedback, rewrite the landing page copy. Focus on: clear value
+        proposition, outcome-focused features, compelling CTA, social proof integration."
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1200
+      y: 200
+    config:
+      criteria: "Use infostyle + slop-check gate for landing copy. Score 1-10 on: JTBD alignment (does copy address real
+        jobs?), conversion clarity (is the path to action obvious?), infostyle quality (facts/utility over emotional
+        manipulation), and slop risk (generic AI phrasing, weak causality, filler). Return concrete rewrite instructions
+        for failing sections."
+      threshold: 8
+      maxRetries: 3
+      retryFrom: validator-1
+      skillRefs:
+        - infostyle
+        - slop-check
+  - id: output-1
+    type: output
+    position:
+      x: 1500
+      y: 200
+    config: {}
+edges:
+  - id: e-input-validator
+    source: input-1
+    target: validator-1
+    type: default
+  - id: e-validator-visual
+    source: validator-1
+    target: visual-1
+    type: default
+  - id: e-visual-rewriter
+    source: visual-1
+    target: rewriter-1
+    type: default
+  - id: e-rewriter-evaluator
+    source: rewriter-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-validator
+    source: evaluator-1
+    target: validator-1
+    type: fail

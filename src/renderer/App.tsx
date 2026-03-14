@@ -12,7 +12,31 @@ import { OnboardingWizard } from "@/components/OnboardingWizard"
 import { AppStatusBar } from "@/components/AppStatusBar"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
-import { mainViewAtom, desktopRuntimeAtom, chatPanelOpenAtom, workflowDirtyAtom, cliStatusAtom, firstLaunchAtom } from "@/lib/store"
+import {
+  mainViewAtom,
+  desktopRuntimeAtom,
+  chatPanelOpenAtom,
+  workflowDirtyAtom,
+  cliStatusAtom,
+  firstLaunchAtom,
+  deepLinkPendingTemplateAtom,
+  currentWorkflowAtom,
+  webSearchBackendAtom,
+  selectedWorkflowPathAtom,
+} from "@/lib/store"
+import {
+  Dialog,
+  CanvasDialogContent,
+  CanvasDialogFooter,
+  CanvasDialogHeader,
+  DialogClose,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
+import { applyWebSearchBackendPreset } from "@/lib/web-search-backend"
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
@@ -32,6 +56,10 @@ const AppShell = memo(function AppShell() {
   const [, setCliStatus] = useAtom(cliStatusAtom)
   const workflowDirty = useAtomValue(workflowDirtyAtom)
   const [firstLaunch] = useAtom(firstLaunchAtom)
+  const [deepLinkTemplate, setDeepLinkTemplate] = useAtom(deepLinkPendingTemplateAtom)
+  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [webSearchBackend] = useAtom(webSearchBackendAtom)
+  const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
 
   // Redirect to onboarding on first launch
@@ -120,6 +148,20 @@ const AppShell = memo(function AppShell() {
     window.api.getClaudeCodeSubscriptionStatus().then(setCliStatus).catch(() => {})
   }, [setCliStatus])
 
+  // Deep link protocol subscription
+  useEffect(() => {
+    const unsubTemplate = window.api.onDeepLinkTemplate((template) => {
+      setDeepLinkTemplate(template)
+    })
+    const unsubError = window.api.onDeepLinkTemplateError((err) => {
+      toast.error(`Failed to load template "${err.templateId}": ${err.error}`)
+    })
+    return () => {
+      unsubTemplate()
+      unsubError()
+    }
+  }, [setDeepLinkTemplate])
+
   useEffect(() => {
     if (!workflowDirty) return
     const handler = (e: BeforeUnloadEvent) => {
@@ -128,6 +170,29 @@ const AppShell = memo(function AppShell() {
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
   }, [workflowDirty])
+
+  const applyDeepLinkTemplate = () => {
+    if (!deepLinkTemplate) return
+    const previousWorkflow = structuredClone(workflow)
+    const nextWorkflow = applyWebSearchBackendPreset(
+      deepLinkTemplate.workflow,
+      deepLinkTemplate.category,
+      webSearchBackend,
+    )
+    setWorkflow(nextWorkflow)
+    setSelectedWorkflowPath(null)
+    setMainView("thread")
+    setDeepLinkTemplate(null)
+    toast.success(`Template "${deepLinkTemplate.name}" applied`, {
+      action: {
+        label: "Undo",
+        onClick: () => setWorkflow(previousWorkflow),
+      },
+    })
+  }
+
+  const nodeCount = deepLinkTemplate?.workflow.nodes.length ?? 0
+  const edgeCount = deepLinkTemplate?.workflow.edges.length ?? 0
 
   return (
     <div role="application" aria-label="c8c" className="flex h-full w-full overflow-hidden bg-background text-foreground">
@@ -157,6 +222,39 @@ const AppShell = memo(function AppShell() {
           <AppStatusBar />
         </SectionErrorBoundary>
       </div>
+
+      {/* Deep link template confirmation */}
+      <Dialog open={deepLinkTemplate !== null} onOpenChange={(open) => !open && setDeepLinkTemplate(null)}>
+        <CanvasDialogContent showCloseButton={false}>
+          <CanvasDialogHeader>
+            <DialogTitle>Template from c8c Hub</DialogTitle>
+            <DialogDescription>
+              Do you want to use &ldquo;{deepLinkTemplate?.name}&rdquo;?
+            </DialogDescription>
+          </CanvasDialogHeader>
+          {deepLinkTemplate && (
+            <div className="space-y-2 px-1">
+              {deepLinkTemplate.description && (
+                <p className="text-body-sm text-muted-foreground">{deepLinkTemplate.description}</p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className="capitalize">{deepLinkTemplate.category}</Badge>
+                <span className="ui-meta-text text-muted-foreground">
+                  {nodeCount} node{nodeCount === 1 ? "" : "s"} · {edgeCount} edge{edgeCount === 1 ? "" : "s"}
+                </span>
+              </div>
+            </div>
+          )}
+          <CanvasDialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button size="sm" onClick={applyDeepLinkTemplate}>
+              Use Template
+            </Button>
+          </CanvasDialogFooter>
+        </CanvasDialogContent>
+      </Dialog>
     </div>
   )
 })

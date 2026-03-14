@@ -1,0 +1,96 @@
+id: competitor-ad-intelligence
+category: research
+tags:
+  - competitive
+  - ads
+  - fan-out
+  - analysis
+version: 1
+name: Competitor Ad Intelligence
+description: Split competitors, extract ad strategies in parallel, synthesize findings, develop counter-positioning,
+  create presentation
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 300
+      y: 200
+    config:
+      strategy: Split input into individual competitor companies to analyze. Each should be one company URL or name.
+  - id: extractor-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: composio/competitive-ads-extractor
+      prompt: "Extract and analyze this competitor's ads: messaging, problems they target, creative approaches, CTAs, and
+        positioning."
+  - id: merger-1
+    type: merger
+    position:
+      x: 900
+      y: 200
+    config:
+      strategy: summarize
+      prompt: Synthesize all competitor analyses into a strategic competitive overview. Identify messaging gaps, overused
+        angles, and differentiation opportunities.
+  - id: strategist-1
+    type: skill
+    position:
+      x: 1200
+      y: 200
+    config:
+      skillRef: marketing/Growth Hacker
+      prompt: Based on the competitive analysis, develop a counter-positioning strategy. Identify underserved angles,
+        messaging opportunities, and campaign ideas that exploit competitor gaps.
+  - id: pptx-1
+    type: skill
+    position:
+      x: 1500
+      y: 200
+    config:
+      skillRef: anthropic/pptx
+      prompt: "Create a competitive intelligence presentation with: executive summary slide, per-competitor breakdown, gap
+        analysis, and recommended strategy."
+  - id: output-1
+    type: output
+    position:
+      x: 1800
+      y: 200
+    config: {}
+edges:
+  - id: e-input-splitter
+    source: input-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-extractor
+    source: splitter-1
+    target: extractor-1
+    type: default
+  - id: e-extractor-merger
+    source: extractor-1
+    target: merger-1
+    type: default
+  - id: e-merger-strategist
+    source: merger-1
+    target: strategist-1
+    type: default
+  - id: e-strategist-pptx
+    source: strategist-1
+    target: pptx-1
+    type: default
+  - id: e-pptx-output
+    source: pptx-1
+    target: output-1
+    type: default

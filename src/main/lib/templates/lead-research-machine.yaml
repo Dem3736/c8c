@@ -1,0 +1,82 @@
+id: lead-research-machine
+category: marketing
+tags:
+  - leads
+  - research
+  - fan-out
+  - outbound
+version: 1
+name: Lead Research Machine
+description: Research a market vertical, fan out into segments, find leads in parallel, compile a prioritized list
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: research-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: gtm/market-research
+      prompt: Research this market vertical. Find key pain points, buying triggers, and decision-maker profiles.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 600
+      y: 200
+    config:
+      strategy: Identify 4-6 distinct market segments to research leads in. Each segment should target different company types
+        or buyer personas.
+  - id: lead-finder-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: composio/lead-research-assistant
+      prompt: Find high-quality leads for this segment. Research companies, find decision makers, provide contact info and
+        personalization hooks.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1200
+      y: 200
+    config:
+      strategy: summarize
+      prompt: Compile all leads into a prioritized list. Group by segment, include research quality scores, and highlight top
+        10 highest-potential leads.
+  - id: output-1
+    type: output
+    position:
+      x: 1500
+      y: 200
+    config: {}
+edges:
+  - id: e-input-research
+    source: input-1
+    target: research-1
+    type: default
+  - id: e-research-splitter
+    source: research-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-leadfinder
+    source: splitter-1
+    target: lead-finder-1
+    type: default
+  - id: e-leadfinder-merger
+    source: lead-finder-1
+    target: merger-1
+    type: default
+  - id: e-merger-output
+    source: merger-1
+    target: output-1
+    type: default

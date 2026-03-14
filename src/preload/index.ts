@@ -240,6 +240,12 @@ contextBridge.exposeInMainWorld("api", {
   onGenerateProgress: (callback: (progress: GenerationProgress) => void) =>
     subscribeIpcChannel<GenerationProgress>("generate:progress", callback),
 
+  // Deep link (c8c:// protocol)
+  onDeepLinkTemplate: (callback: (template: WorkflowTemplate) => void) =>
+    subscribeIpcChannel<WorkflowTemplate>("template:deep-link", callback),
+  onDeepLinkTemplateError: (callback: (err: { templateId: string; error: string }) => void) =>
+    subscribeIpcChannel<{ templateId: string; error: string }>("template:deep-link-error", callback),
+
   // MCP servers
   mcpListServers: (projectPath?: string) =>
     ipcRenderer.invoke("mcp:list-servers", projectPath),
@@ -357,6 +363,8 @@ export interface C8cApi {
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void
   onWorkflowEvent: (callback: (event: WorkflowEvent) => void) => () => void
   onGenerateProgress: (callback: (progress: GenerationProgress) => void) => () => void
+  onDeepLinkTemplate: (callback: (template: WorkflowTemplate) => void) => () => void
+  onDeepLinkTemplateError: (callback: (err: { templateId: string; error: string }) => void) => () => void
   mcpListServers: (projectPath?: string) => Promise<McpServerInfo[]>
   mcpAddServer: (server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
   mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>

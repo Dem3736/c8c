@@ -7,7 +7,7 @@ import {
   type BrowserWindowConstructorOptions,
   type Rectangle,
 } from "electron"
-import { join } from "path"
+import { join, resolve } from "path"
 import { readFile, mkdir } from "node:fs/promises"
 import { registerIpcHandlers } from "./ipc/projects"
 import { registerSkillsHandlers } from "./ipc/skills"
@@ -30,10 +30,24 @@ import {
 import { initUpdater, shutdownUpdater } from "./lib/updater"
 import { recoverRuntimeState } from "./lib/run-recovery"
 import { writeFileAtomic } from "./lib/atomic-write"
+import { fetchRemoteTemplate } from "./lib/templates/remote"
 
 app.name = "c8c"
 
+// ── Protocol registration ─────────────────────────────
+if (!app.isPackaged && process.argv[1]) {
+  app.setAsDefaultProtocolClient("c8c", process.execPath, [resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient("c8c")
+}
+
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+}
+
 let mainWindow: BrowserWindow | null = null
+let pendingDeepLinkUrl: string | null = null
 const processStartedAt = Date.now()
 
 interface PersistedWindowState {
@@ -236,6 +250,73 @@ function handleWorkflowNotification(
   }
 }
 
+// ── Deep link handling ─────────────────────────────────
+
+const TEMPLATE_ID_RE = /^\/([a-zA-Z0-9_-]+)$/
+
+async function handleDeepLink(rawUrl: string): Promise<void> {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    console.warn("[main] malformed deep link URL:", rawUrl)
+    return
+  }
+
+  if (parsed.protocol !== "c8c:" || parsed.hostname !== "hub") {
+    console.warn("[main] unsupported deep link:", rawUrl)
+    return
+  }
+
+  const match = parsed.pathname.match(TEMPLATE_ID_RE)
+  if (!match) {
+    console.warn("[main] invalid template id in deep link:", parsed.pathname)
+    return
+  }
+
+  const templateId = match[1]
+  const window = mainWindow
+
+  if (!window || window.isDestroyed()) {
+    console.warn("[main] no window available for deep link")
+    return
+  }
+
+  try {
+    const template = await fetchRemoteTemplate(templateId)
+    window.webContents.send("template:deep-link", template)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    window.webContents.send("template:deep-link-error", { templateId, error: message })
+  }
+
+  window.show()
+  window.focus()
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.bounce("informational")
+  }
+}
+
+// macOS: open-url fires before whenReady on cold launch
+app.on("open-url", (event, url) => {
+  event.preventDefault()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    void handleDeepLink(url)
+  } else {
+    pendingDeepLinkUrl = url
+  }
+})
+
+// Windows/Linux: second instance receives URL via argv
+app.on("second-instance", (_event, argv) => {
+  const url = argv.find((arg) => arg.startsWith("c8c://"))
+  if (url) void handleDeepLink(url)
+  if (mainWindow) {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+})
+
 function createWindow() {
   const isMac = process.platform === "darwin"
   void loadWindowState().then((savedState) => {
@@ -336,7 +417,13 @@ function createWindow() {
       emitRuntime()
     })
 
-    window.webContents.on("did-finish-load", emitRuntime)
+    window.webContents.on("did-finish-load", () => {
+      emitRuntime()
+      if (pendingDeepLinkUrl) {
+        void handleDeepLink(pendingDeepLinkUrl)
+        pendingDeepLinkUrl = null
+      }
+    })
 
     window.on("resize", schedulePersist)
     window.on("move", schedulePersist)

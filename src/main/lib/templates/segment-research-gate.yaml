@@ -1,0 +1,92 @@
+id: segment-research-gate
+category: research
+tags:
+  - segments
+  - fan-out
+  - scoring
+  - quality-gate
+version: 1
+name: Segment Research with Quality Gate
+description: Generate segment hypotheses, research each in parallel with signal grounding, score and filter by quality gate
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 300
+      y: 200
+    config:
+      strategy: "Identify 6-10 distinct market segments or user personas. For each, define: name, primary job-to-be-done, key
+        triggers, and initial hypothesis about their needs."
+      maxBranches: 8
+  - id: researcher-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: segment-researcher
+      prompt: "Research this market segment deeply. Find: real user signals (complaints, requests, workarounds), quantitative
+        data (market size, growth), competitive landscape, and unmet needs. Grade source quality (S=primary, A=expert,
+        B=aggregator, C=promotional, D=content farm)."
+  - id: merger-1
+    type: merger
+    position:
+      x: 900
+      y: 200
+    config:
+      strategy: summarize
+      prompt: "Compile all segment research into a scored summary. For each segment: confidence score (1-10), signal count,
+        source quality distribution, key findings. Rank segments by research confidence."
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1200
+      y: 200
+    config:
+      criteria: "Score 1-10 the overall research quality: signal diversity (multiple source types?), grounding depth (real
+        evidence vs speculation?), segment differentiation (are segments truly distinct?), actionability (can we act on
+        findings?)"
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
+  - id: output-1
+    type: output
+    position:
+      x: 1500
+      y: 200
+    config: {}
+edges:
+  - id: e-input-splitter
+    source: input-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-researcher
+    source: splitter-1
+    target: researcher-1
+    type: default
+  - id: e-researcher-merger
+    source: researcher-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-splitter
+    source: evaluator-1
+    target: splitter-1
+    type: fail

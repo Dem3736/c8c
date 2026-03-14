@@ -1,0 +1,179 @@
+id: landing-page-generator
+category: marketing
+tags:
+  - landing
+  - copywriting
+  - fan-out
+  - quality-gate
+  - infostyle
+version: 1
+name: Landing Page Generator
+description: Build landing page copy block-by-block with per-block quality loops, then assemble with cross-block QC
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 45
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: architect-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: ajbtd/landing-architect
+      prompt: "Build the information architecture for this landing page. Define 6-8 blocks in logical order: hero, situation,
+        value_prop, mechanism, evidence, objections, pricing, faq. For each block specify: goal, key_message,
+        data_sources from the input. Focus on information arc — facts first, no emotional manipulation. Validate logic
+        coherence between blocks."
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 600
+      y: 200
+    config:
+      strategy: Split the landing page skeleton into individual blocks. Each block becomes a self-contained writing task with
+        its goal, key_message, data_sources, and position in the overall arc. Include the full skeleton context so each
+        writer knows what comes before and after their block.
+      maxBranches: 8
+  - id: block-writer-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: ajbtd/landing-copywriter
+      prompt: |-
+        Write this landing page block following infostyle rules strictly:
+        - Every sentence informs or helps decide (no padding)
+        - Facts over emotion: no 'уникальный', 'инновационный', 'революционный'
+        - Numbers with units and sources
+        - No rhetorical questions, no 'Представь:', no intimate 2nd person
+        - No emotion diagnosis ('anxiety исчезает'), no false empathy ('Мы понимаем')
+        - Headlines = verb + measurable result
+        - Third person by default
+        - Each number appears in exactly ONE block across the whole landing
+
+        Output the block as structured JSON with block_id and elements array.
+  - id: block-eval-1
+    type: evaluator
+    position:
+      x: 1200
+      y: 200
+    config:
+      criteria: >-
+        Evaluate this landing page block on two dimensions:
+
+
+        **Infostyle (weight 60%):** Score 1-10. Every sentence must inform or help decide. Check: no buzzwords
+        (уникальный, инновационный, революционный, трансформация, синергия), no rhetorical questions, no 'Представь:',
+        no emotion diagnosis, no intimate 2nd person, no false empathy, no urgency manipulation, no vague authority.
+        Headlines must be verb + measurable result. Numbers need units + sources. No padding sentences.
+
+
+        **Slop detection (weight 40%):** Score 1-10 (10=clean, 1=pure slop). Check: no template-like AI phrasing ('в
+        конечном итоге', 'стоит отметить', 'важно понимать', 'ключевой момент'), no generic filler, no fake authority,
+        no weak causality ('because it matters'), no sales theater. Text should feel hand-written with specific details,
+        not generated.
+
+
+        Final score = infostyle * 0.6 + slop * 0.4. Provide specific sentence-level flags with fix hints.
+      threshold: 8
+      maxRetries: 3
+      retryFrom: block-writer-1
+      skillRefs:
+        - infostyle
+        - slop-check
+  - id: merger-1
+    type: merger
+    position:
+      x: 1500
+      y: 200
+    config:
+      strategy: concatenate
+      prompt: |-
+        Assemble all blocks in skeleton order. Perform cross-block QC:
+        - Number deduplication: each number appears in exactly ONE block
+        - No question marks outside FAQ block
+        - No emoji anywhere
+        - Consistent terminology across blocks
+        - Grounding: every claim traces to input data
+        - Smooth transitions between blocks
+
+        Output the assembled landing page copy with block headers. Flag any cross-block issues found.
+  - id: final-eval-1
+    type: evaluator
+    position:
+      x: 1800
+      y: 200
+    config:
+      criteria: >-
+        Evaluate the assembled landing page as a whole (infostyle + slop-check gate):
+
+
+        1. **Information arc** (1-10): Does the page flow logically from problem → solution → proof → action? Does each
+        block build on the previous?
+
+        2. **Cross-block consistency** (1-10): Are numbers deduplicated? Is terminology consistent? Do transitions work?
+
+        3. **Conversion clarity** (1-10): Is the path to action obvious? Is the CTA aligned with the value proposition?
+
+        4. **Slop-free infostyle quality** (1-10): Factual, respectful, utility-first language with no manipulative
+        fluff or AI filler patterns.
+
+
+        Final score = average of all 4. Treat probable_slop as fail and provide concrete rewrite instructions by block.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: architect-1
+      skillRefs:
+        - infostyle
+        - slop-check
+  - id: output-1
+    type: output
+    position:
+      x: 2100
+      y: 200
+    config: {}
+edges:
+  - id: e-input-architect
+    source: input-1
+    target: architect-1
+    type: default
+  - id: e-architect-splitter
+    source: architect-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-writer
+    source: splitter-1
+    target: block-writer-1
+    type: default
+  - id: e-writer-eval
+    source: block-writer-1
+    target: block-eval-1
+    type: default
+  - id: e-eval-merger
+    source: block-eval-1
+    target: merger-1
+    type: pass
+  - id: e-eval-writer
+    source: block-eval-1
+    target: block-writer-1
+    type: fail
+  - id: e-merger-finaleval
+    source: merger-1
+    target: final-eval-1
+    type: default
+  - id: e-finaleval-output
+    source: final-eval-1
+    target: output-1
+    type: pass
+  - id: e-finaleval-architect
+    source: final-eval-1
+    target: architect-1
+    type: fail

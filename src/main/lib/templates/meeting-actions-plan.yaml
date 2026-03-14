@@ -1,0 +1,106 @@
+id: meeting-actions-plan
+category: general
+tags:
+  - meetings
+  - actions
+  - fan-out
+  - productivity
+version: 1
+name: Meeting → Actions → Plan
+description: Analyze meeting transcript, extract action items, prioritize and plan each in parallel, compile into a project document
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: analyzer-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: composio/meeting-insights-analyzer
+      prompt: Analyze this meeting transcript. Identify key decisions, action items, unresolved questions, and behavioral
+        patterns.
+  - id: summarizer-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: support/Executive Summary Generator
+      prompt: "Create a concise executive summary of the meeting: key outcomes, decisions made, and strategic implications."
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 900
+      y: 200
+    config:
+      strategy: Extract each distinct action item as a separate task to be prioritized and planned.
+  - id: pm-1
+    type: skill
+    position:
+      x: 1200
+      y: 200
+    config:
+      skillRef: project-management/Senior Project Manager
+      prompt: "For this action item: estimate effort, assign priority (P0-P3), suggest owner based on meeting context, define
+        acceptance criteria, and set a deadline."
+  - id: merger-1
+    type: merger
+    position:
+      x: 1500
+      y: 200
+    config:
+      strategy: concatenate
+      prompt: Compile all action items into a structured project plan. Sort by priority, group by owner, include timeline.
+  - id: docx-1
+    type: skill
+    position:
+      x: 1800
+      y: 200
+    config:
+      skillRef: anthropic/docx
+      prompt: "Create a professional meeting summary document with: executive summary, decisions log, prioritized action plan
+        table, and next steps."
+  - id: output-1
+    type: output
+    position:
+      x: 2100
+      y: 200
+    config: {}
+edges:
+  - id: e-input-analyzer
+    source: input-1
+    target: analyzer-1
+    type: default
+  - id: e-analyzer-summarizer
+    source: analyzer-1
+    target: summarizer-1
+    type: default
+  - id: e-summarizer-splitter
+    source: summarizer-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-pm
+    source: splitter-1
+    target: pm-1
+    type: default
+  - id: e-pm-merger
+    source: pm-1
+    target: merger-1
+    type: default
+  - id: e-merger-docx
+    source: merger-1
+    target: docx-1
+    type: default
+  - id: e-docx-output
+    source: docx-1
+    target: output-1
+    type: default

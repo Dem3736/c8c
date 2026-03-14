@@ -1,0 +1,105 @@
+id: full-stack-code-audit
+category: code
+tags:
+  - audit
+  - security
+  - fan-out
+  - code-review
+version: 1
+name: Full-Stack Code Audit
+description: Split codebase into audit areas, review security/quality/architecture/tests in parallel, synthesize
+  findings, create audit report
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 300
+      y: 200
+    config:
+      strategy: "Create 4 audit focus areas: Security (vulnerabilities, auth, input validation), Code Quality (patterns,
+        naming, complexity), Architecture (structure, dependencies, scalability), Test Coverage (missing tests, quality
+        of assertions)."
+      maxBranches: 4
+  - id: auditor-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: dev/code-reviewer
+      prompt: Perform a deep audit of this codebase focused on the assigned area. Find specific issues with file paths and
+        line numbers. Rate severity (critical/high/medium/low). Provide fix recommendations.
+  - id: merger-1
+    type: merger
+    position:
+      x: 900
+      y: 200
+    config:
+      strategy: summarize
+      prompt: Synthesize all audit findings into a comprehensive report. Organize by severity, include executive summary with
+        overall health score, and prioritize remediation roadmap.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1200
+      y: 200
+    config:
+      criteria: "Score 1-10: finding specificity (exact file/line refs?), severity accuracy (proportional ratings?),
+        remediation quality (actionable fixes?), and coverage breadth (all areas examined?)."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
+  - id: pptx-1
+    type: skill
+    position:
+      x: 1500
+      y: 200
+    config:
+      skillRef: anthropic/pptx
+      prompt: "Create an audit report presentation: overall health score slide, findings by category, top 10 critical issues,
+        and remediation roadmap with estimated effort."
+  - id: output-1
+    type: output
+    position:
+      x: 1800
+      y: 200
+    config: {}
+edges:
+  - id: e-input-splitter
+    source: input-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-auditor
+    source: splitter-1
+    target: auditor-1
+    type: default
+  - id: e-auditor-merger
+    source: auditor-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-pptx
+    source: evaluator-1
+    target: pptx-1
+    type: pass
+  - id: e-evaluator-splitter
+    source: evaluator-1
+    target: splitter-1
+    type: fail
+  - id: e-pptx-output
+    source: pptx-1
+    target: output-1
+    type: default

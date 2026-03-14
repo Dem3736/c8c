@@ -79,6 +79,14 @@
     "files": [
       "out/**/*"
     ],
+    "protocols": [
+      {
+        "name": "c8c Protocol",
+        "schemes": [
+          "c8c"
+        ]
+      }
+    ],
     "publish": {
       "provider": "github"
     },

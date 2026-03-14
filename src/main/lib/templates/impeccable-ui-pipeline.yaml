@@ -1,0 +1,147 @@
+id: impeccable-ui-pipeline
+category: code
+tags:
+  - ui
+  - design
+  - audit
+  - polish
+  - quality
+  - impeccable
+  - a11y
+  - performance
+version: 1
+name: Impeccable UI Pipeline
+description: Audit a frontend feature, then systematically normalize, harden, clarify, optimize, and polish it with
+  quality-gate evaluation loop
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 45
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: audit-1
+    type: skill
+    position:
+      x: 250
+      y: 200
+    config:
+      skillRef: impeccable/audit
+      prompt: "Run a comprehensive UI quality audit. Check: accessibility (contrast, ARIA, keyboard, semantics), performance
+        (layout thrashing, expensive animations, bundle), theming (hard-coded colors, dark mode), responsive (fixed
+        widths, touch targets, overflow), and anti-patterns (AI slop tells). Output a structured report with severity
+        ratings. DO NOT fix anything — document issues only."
+  - id: normalize-1
+    type: skill
+    position:
+      x: 500
+      y: 200
+    config:
+      skillRef: impeccable/normalize
+      prompt: Using the audit report, systematically align this feature with the project's design system. Replace hard-coded
+        values with design tokens, swap custom components for design system equivalents, fix typography/color/spacing
+        inconsistencies, and ensure motion/interaction patterns match established conventions.
+  - id: harden-1
+    type: skill
+    position:
+      x: 750
+      y: 200
+    config:
+      skillRef: impeccable/harden
+      prompt: Strengthen the interface against real-world usage. Handle extreme inputs (long text, empty, emoji, RTL, CJK),
+        network errors (offline, timeout, 4xx/5xx), missing data (empty states, loading states), concurrent operations
+        (double-submit), and ensure keyboard navigation, screen reader support, and prefers-reduced-motion.
+  - id: clarify-1
+    type: skill
+    position:
+      x: 1000
+      y: 200
+    config:
+      skillRef: impeccable/clarify
+      prompt: Improve all interface text for clarity. Fix error messages (explain + suggest fix), form labels (specific, not
+        generic), button text (verb + noun), empty states (guide to action), help text (add value, not repeat label),
+        and confirmation dialogs (state consequences). Be concise, active voice, human.
+  - id: optimize-1
+    type: skill
+    position:
+      x: 1250
+      y: 200
+    config:
+      skillRef: impeccable/optimize
+      prompt: Fix performance issues found in audit. Optimize images (modern formats, lazy loading, srcset), reduce JS bundle
+        (code split, tree shake, lazy imports), improve CSS (remove unused, critical inline), fix rendering (avoid
+        layout thrashing, use transform/opacity for animations, virtual scroll for long lists), and ensure Core Web
+        Vitals targets (LCP < 2.5s, INP < 200ms, CLS < 0.1).
+  - id: polish-1
+    type: skill
+    position:
+      x: 1500
+      y: 200
+    config:
+      skillRef: impeccable/polish
+      prompt: "Final quality pass. Check: pixel-perfect alignment to grid, consistent spacing with design tokens, typography
+        hierarchy, ALL interaction states (default/hover/focus/active/disabled/loading/error/success), smooth
+        transitions (150-300ms, ease-out-quart), consistent copy/capitalization, icon consistency, form labels,
+        error/loading/empty states, touch targets (44px), WCAG contrast, keyboard navigation, no console errors, no
+        layout shift, clean code (no TODOs, console.logs, commented code)."
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1750
+      y: 200
+    config:
+      criteria: "Evaluate the refined UI across 6 dimensions (score 1-10 each): 1) A11y — WCAG AA compliance, keyboard nav,
+        screen reader support; 2) Design system — token usage, component consistency; 3) Copy clarity — error messages,
+        labels, empty states; 4) Performance — no layout thrashing, optimized assets, smooth animations; 5) Interaction
+        completeness — all states implemented; 6) Polish — alignment, spacing, transitions, code cleanliness. Provide
+        specific fix instructions for any dimension below 7."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: normalize-1
+  - id: output-1
+    type: output
+    position:
+      x: 2000
+      y: 200
+    config: {}
+edges:
+  - id: e-input-audit
+    source: input-1
+    target: audit-1
+    type: default
+  - id: e-audit-normalize
+    source: audit-1
+    target: normalize-1
+    type: default
+  - id: e-normalize-harden
+    source: normalize-1
+    target: harden-1
+    type: default
+  - id: e-harden-clarify
+    source: harden-1
+    target: clarify-1
+    type: default
+  - id: e-clarify-optimize
+    source: clarify-1
+    target: optimize-1
+    type: default
+  - id: e-optimize-polish
+    source: optimize-1
+    target: polish-1
+    type: default
+  - id: e-polish-evaluator
+    source: polish-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-normalize
+    source: evaluator-1
+    target: normalize-1
+    type: fail

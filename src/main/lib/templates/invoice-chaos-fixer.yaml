@@ -1,0 +1,103 @@
+id: invoice-chaos-fixer
+category: general
+tags:
+  - invoices
+  - finance
+  - documents
+  - automation
+version: 1
+name: Invoice Chaos Fixer
+description: Organize invoices, extract data from PDFs, create expense spreadsheet, detect anomalies, evaluate completeness
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: organizer-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: composio/invoice-organizer
+      prompt: Scan this folder of invoices and receipts. Identify each document, extract key info (vendor, amount, date,
+        category), rename files consistently.
+  - id: pdf-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: anthropic/pdf
+      prompt: "Extract structured data from all PDF invoices: vendor name, invoice number, date, line items, totals, tax
+        amounts, and payment terms."
+  - id: xlsx-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: anthropic/xlsx
+      prompt: "Create a comprehensive expense spreadsheet with columns: Date, Vendor, Category, Amount, Tax, Total, Payment
+        Status. Add a summary sheet with totals by category and month."
+  - id: finance-1
+    type: skill
+    position:
+      x: 1200
+      y: 200
+    config:
+      skillRef: support/Finance Tracker
+      prompt: "Review the expense data for anomalies: duplicate charges, unusual amounts, missing categories, tax deduction
+        opportunities. Provide a financial summary."
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1500
+      y: 200
+    config:
+      criteria: "Score 1-10 on: data completeness (all invoices captured?), categorization accuracy, spreadsheet usability,
+        and anomaly detection thoroughness."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: organizer-1
+  - id: output-1
+    type: output
+    position:
+      x: 1800
+      y: 200
+    config: {}
+edges:
+  - id: e-input-organizer
+    source: input-1
+    target: organizer-1
+    type: default
+  - id: e-organizer-pdf
+    source: organizer-1
+    target: pdf-1
+    type: default
+  - id: e-pdf-xlsx
+    source: pdf-1
+    target: xlsx-1
+    type: default
+  - id: e-xlsx-finance
+    source: xlsx-1
+    target: finance-1
+    type: default
+  - id: e-finance-evaluator
+    source: finance-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-organizer
+    source: evaluator-1
+    target: organizer-1
+    type: fail

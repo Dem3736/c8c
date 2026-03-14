@@ -1,0 +1,101 @@
+id: content-repurposing-factory
+category: content
+tags:
+  - content
+  - social
+  - fan-out
+  - repurposing
+version: 1
+name: Content Repurposing Factory
+description: Analyze content, fan out into platform-specific rewrites, compile all versions, evaluate quality
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: analyzer-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: marketing/Content Creator
+      prompt: Analyze this content. Extract key ideas, main argument, supporting data, and quotable moments. Identify the core
+        message.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 600
+      y: 200
+    config:
+      strategy: "Split into 4 platform-specific content tasks: Twitter thread, LinkedIn post, Instagram caption, and email
+        newsletter intro. Each should be a self-contained rewriting task."
+  - id: writer-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: marketing/Social Media Strategist
+      prompt: Adapt the content for this specific platform. Match the platform's tone, format, and best practices. Make it
+        native, not just reformatted.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1200
+      y: 200
+    config:
+      strategy: concatenate
+      prompt: Compile all platform versions with clear headers. Include character counts and posting recommendations.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1500
+      y: 200
+    config:
+      criteria: "Score 1-10 on: platform-native tone (not generic AI), consistency of core message across versions,
+        actionability (clear CTAs), and engagement potential."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: analyzer-1
+  - id: output-1
+    type: output
+    position:
+      x: 1800
+      y: 200
+    config: {}
+edges:
+  - id: e-input-analyzer
+    source: input-1
+    target: analyzer-1
+    type: default
+  - id: e-analyzer-splitter
+    source: analyzer-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-writer
+    source: splitter-1
+    target: writer-1
+    type: default
+  - id: e-writer-merger
+    source: writer-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-analyzer
+    source: evaluator-1
+    target: analyzer-1
+    type: fail

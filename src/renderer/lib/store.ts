@@ -302,6 +302,10 @@ export const batchProgressAtom = atom<{ completed: number; total: number; runnin
   running: 0,
 })
 
+// ── Deep Link Templates ─────────────────────────────────
+
+export const deepLinkPendingTemplateAtom = atom<WorkflowTemplate | null>(null)
+
 // ── MCP Servers ─────────────────────────────────────────
 
 export const mcpServersAtom = atom<McpServerInfo[]>([])

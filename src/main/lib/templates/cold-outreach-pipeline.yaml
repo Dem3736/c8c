@@ -1,0 +1,113 @@
+id: cold-outreach-pipeline
+category: marketing
+tags:
+  - outbound
+  - email
+  - sales
+  - pipeline
+version: 1
+name: Cold Outreach Pipeline
+description: Build company context, generate pain hypotheses, craft email templates, generate personalized emails,
+  simulate buyer response, evaluate quality
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: context-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: gtm/context-building
+      prompt: "Build a complete company context: product info, ICP, value props, competitive advantages, proof points."
+  - id: hypotheses-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: gtm/hypothesis-building
+      prompt: Generate 5-8 testable pain hypotheses from the company context. Focus on specific, provable pains the ICP faces.
+  - id: email-prompt-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: gtm/email-prompt-building
+      prompt: Create a self-contained email prompt template for cold outreach. Include voice rules, personalization tokens,
+        and campaign angle.
+  - id: email-gen-1
+    type: skill
+    position:
+      x: 1200
+      y: 200
+    config:
+      skillRef: gtm/email-generation
+      prompt: Generate 5 personalized cold emails using the template. Each should feel hand-written, not templated.
+  - id: simulator-1
+    type: skill
+    position:
+      x: 1500
+      y: 200
+    config:
+      skillRef: gtm/email-response-simulation
+      prompt: Simulate a skeptical buyer reading each email. Score reply likelihood, identify objections, suggest improvements.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1800
+      y: 200
+    config:
+      criteria: "Score 1-10: personalization depth (not just name-swaps), pain relevance (does it hit real problems?), CTA
+        clarity, and spam-filter safety."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: email-prompt-1
+  - id: output-1
+    type: output
+    position:
+      x: 2100
+      y: 200
+    config: {}
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-hypotheses
+    source: context-1
+    target: hypotheses-1
+    type: default
+  - id: e-hypotheses-emailprompt
+    source: hypotheses-1
+    target: email-prompt-1
+    type: default
+  - id: e-emailprompt-emailgen
+    source: email-prompt-1
+    target: email-gen-1
+    type: default
+  - id: e-emailgen-simulator
+    source: email-gen-1
+    target: simulator-1
+    type: default
+  - id: e-simulator-evaluator
+    source: simulator-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-emailprompt
+    source: evaluator-1
+    target: email-prompt-1
+    type: fail

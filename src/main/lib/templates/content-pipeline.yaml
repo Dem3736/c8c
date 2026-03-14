@@ -1,0 +1,91 @@
+id: content-pipeline
+category: content
+tags:
+  - content
+  - strategy
+  - report
+  - marketing
+  - loop
+version: 1
+name: Content Pipeline
+description: Develop product strategy, generate comprehensive report, create marketing artifacts, evaluate quality
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: strategist-1
+    type: skill
+    position:
+      x: 300
+      y: 200
+    config:
+      skillRef: strategist
+      prompt: "Develop a product strategy based on the input. Cover: positioning, key differentiators, target audience
+        messaging, feature prioritization, and go-to-market approach."
+  - id: report-1
+    type: skill
+    position:
+      x: 600
+      y: 200
+    config:
+      skillRef: report-generator
+      prompt: "Generate a comprehensive report synthesizing the strategy. Include: executive summary, market analysis,
+        strategic recommendations, implementation roadmap, and risk assessment."
+  - id: marketing-1
+    type: skill
+    position:
+      x: 900
+      y: 200
+    config:
+      skillRef: marketing-generator
+      prompt: "Create marketing artifacts from the strategy and report: positioning statements, value propositions, messaging
+        framework for each target segment, and content ideas matrix."
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1200
+      y: 200
+    config:
+      criteria: "Score 1-10 on: strategic coherence (does everything align?), market grounding (based on real data?),
+        actionability (clear next steps?), completeness (no major gaps?)"
+      threshold: 7
+      maxRetries: 2
+      retryFrom: strategist-1
+  - id: output-1
+    type: output
+    position:
+      x: 1500
+      y: 200
+    config: {}
+edges:
+  - id: e-input-strategist
+    source: input-1
+    target: strategist-1
+    type: default
+  - id: e-strategist-report
+    source: strategist-1
+    target: report-1
+    type: default
+  - id: e-report-marketing
+    source: report-1
+    target: marketing-1
+    type: default
+  - id: e-marketing-evaluator
+    source: marketing-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-strategist
+    source: evaluator-1
+    target: strategist-1
+    type: fail
