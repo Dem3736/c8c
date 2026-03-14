@@ -41,6 +41,7 @@ export function buildGeneratorPrompt(
       "Generate a valid JSON workflow with nodes (input, skill, evaluator, splitter, merger, output) and edges (default, pass, fail).",
       "Always start with input, end with output. Use evaluator for quality loops, splitter+merger for parallel processing.",
       "If a workflow uses splitter, add a pre-split analysis skill before splitter to produce a structured split-ready list/document; splitter only decomposes that prepared artifact.",
+      "If a skill needs external websites/URLs/domains, include config.allowedTools with at least ['WebFetch','WebSearch'] unless explicitly blocked.",
       "For text/landing generation workflows, prefer evaluator rewrite loops ('check slop or not -> rewrite') and set evaluator skillRefs to ['infostyle','slop-check'].",
     )
   }

@@ -21,7 +21,8 @@ A workflow is a directed graph with nodes and edges:
     "model": "sonnet",
     "maxTurns": 60,
     "timeout_minutes": 30,
-    "maxParallel": 8
+    "maxParallel": 8,
+    "permissionMode": "edit"
   },
   "nodes": [...],
   "edges": [...]
@@ -45,7 +46,9 @@ Runs a Claude agent/skill. The main work block.
   "position": { "x": 300, "y": 200 },
   "config": {
     "skillRef": "category/skill-name",
-    "prompt": "Detailed instruction for this step"
+    "prompt": "Detailed instruction for this step",
+    "allowedTools": ["WebFetch", "WebSearch"],
+    "permissionMode": "edit"
   }
 }
 ```
@@ -162,6 +165,8 @@ input -> splitter -> skill -> merger -> evaluator -> output
 11. Write detailed, specific prompts for skill nodes
 12. Write multi-criteria rubrics for evaluators
 13. For text generation and landing copy workflows, use an evaluator rewrite loop ("check if slop or not -> rewrite") with retryFrom pointing to the writer node and evaluator config skillRefs set to ["infostyle", "slop-check"]
+14. If a skill needs external websites/URLs/domains, set that skill node's `config.allowedTools` to include at least `["WebFetch", "WebSearch"]` unless explicitly disallowed
+15. Set defaults.permissionMode based on workflow purpose: "plan" for analysis/review/audit workflows, "edit" for generation/rewrite/refactoring workflows. Individual skill nodes can override with config.permissionMode.
 
 ## Output
 

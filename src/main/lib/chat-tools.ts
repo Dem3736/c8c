@@ -411,7 +411,7 @@ Parameters:
 Insert a new node into the workflow with optional auto-wiring.
 Parameters:
 - node (required): Node object with at minimum { type, config }
-  - For skill nodes: config needs { skillRef, prompt }
+  - For skill nodes: config needs { skillRef, prompt } and may include { allowedTools[], disallowedTools[], permissionMode? }; permissionMode overrides workflow default for this node ("plan" or "edit"). For external web tasks include allowedTools with at least ["WebFetch", "WebSearch"] unless blocked
   - For evaluator nodes: config needs { criteria, threshold, maxRetries } and can optionally include { retryFrom, skillRefs[] }
   - For splitter nodes: config needs { strategy } — strategy is a natural-language hint describing HOW to decompose the input (e.g. "Each item is an independent task. Create one subtask per item preserving all details."). It is NOT a keyword — write a clear sentence explaining the decomposition logic for this specific use case.
   - For merger nodes: config needs { strategy }
@@ -443,7 +443,8 @@ Parameters:
 ### set_defaults
 Update workflow-level defaults.
 Parameters:
-- defaults (required): Partial defaults object { model?, maxTurns?, maxParallel?, timeout_minutes? }
+- defaults (required): Partial defaults object { model?, maxTurns?, maxParallel?, timeout_minutes?, allowedTools?, disallowedTools?, permissionMode? }
+  - permissionMode: "plan" (read-only, no file edits) or "edit" (can modify files). Default: "edit"
 
 ### search_skills
 Fuzzy search available skills by query.
