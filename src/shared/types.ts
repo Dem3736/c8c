@@ -29,13 +29,15 @@ export interface NodeRuntimeConfig {
   execution?: NodeExecutionPolicy
 }
 
+export type PermissionMode = "plan" | "edit"
+
 export interface SkillNodeConfig {
   skillRef: string
   prompt: string
   model?: "sonnet" | "opus" | "haiku"
   outputMode?: "auto" | "stdout" | "content_file"
   maxTurns?: number
-  mode?: "analyze" | "rewrite" | "both"
+  permissionMode?: PermissionMode
   skillPaths?: string[]
   allowedTools?: string[]
   disallowedTools?: string[]
@@ -133,6 +135,7 @@ export interface WorkflowDefaults {
   timeout_minutes?: number
   allowedTools?: string[]
   disallowedTools?: string[]
+  permissionMode?: PermissionMode
   budget_tokens?: number
   budget_cost_usd?: number
   stop_on?: Array<"budget_exceeded" | "mandatory_node_failed">
@@ -177,19 +180,25 @@ export interface SkillLibrary {
   installed: boolean
 }
 
-export type WorkflowTemplateCategory =
+export type WorkflowTemplateStage =
+  | "research"
+  | "strategy"
   | "content"
   | "code"
-  | "research"
-  | "marketing"
-  | "general"
+  | "outreach"
+  | "operations"
 
 export interface WorkflowTemplate {
   id: string
   name: string
   description: string
-  category: WorkflowTemplateCategory
-  tags: string[]
+  stage: WorkflowTemplateStage
+  emoji: string
+  headline: string
+  how: string
+  input: string
+  output: string
+  steps: string[]
   workflow: Workflow
 }
 
@@ -274,6 +283,7 @@ export type LogEntry =
   | { type: "tool_use"; tool: string; input: Record<string, unknown>; timestamp: number }
   | { type: "tool_result"; tool: string; output: string; status: "success" | "error"; timestamp: number }
   | { type: "error"; content: string; timestamp: number }
+  | { type: "diff"; content: string; files: string[]; timestamp: number }
 
 // ── IPC Events ──────────────────────────────────────────
 

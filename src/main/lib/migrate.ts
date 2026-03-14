@@ -37,10 +37,15 @@ export function yamlToChain(legacy: LegacyChain, name: string): Workflow {
   let prevId = inputId
   legacy.steps.forEach((step, i) => {
     const nodeId = `skill-${step.key}`
+    const permissionMode = step.mode === "analyze"
+      ? "plan" as const
+      : step.mode === "rewrite" || step.mode === "both"
+        ? "edit" as const
+        : undefined
     const config: SkillNodeConfig = {
       skillRef: step.agent,
       prompt: step.prompt,
-      ...(step.mode && { mode: step.mode }),
+      ...(permissionMode && { permissionMode }),
       ...(step.model && { model: step.model as "sonnet" | "opus" | "haiku" }),
       ...(step.maxTurns && { maxTurns: step.maxTurns }),
       ...(step.skillPaths && { skillPaths: step.skillPaths }),

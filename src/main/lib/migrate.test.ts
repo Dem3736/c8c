@@ -33,7 +33,7 @@ describe("yamlToChain", () => {
     expect(output).toBeDefined()
     expect((skill.config as any).skillRef).toBe("marketing/writer")
     expect((skill.config as any).prompt).toBe("Write copy")
-    expect((skill.config as any).mode).toBe("rewrite")
+    expect((skill.config as any).permissionMode).toBe("edit")
     expect((skill.config as any).skillPaths).toEqual(["/path/to/writer.md"])
   })
 
