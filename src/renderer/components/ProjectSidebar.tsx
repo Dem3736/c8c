@@ -799,6 +799,10 @@ export function ProjectSidebar({
                             : "border-muted-foreground/30"
                     const showLiveProgress = isRunOwner && showSelectedWorkflowProgress
                     const runningHint = isSelected ? `Running · ${activeRunPhase}` : "Running in background"
+                    const currentWorkflowName = currentWorkflow.name.trim()
+                    const displayWorkflowName = isSelected && currentWorkflowName
+                      ? currentWorkflowName
+                      : workflow.name
 
                     return (
                       <div
@@ -846,7 +850,7 @@ export function ProjectSidebar({
                               isSelected ? "text-foreground" : "text-foreground-subtle",
                             )}
                             >
-                              {workflow.name}
+                              {displayWorkflowName}
                             </span>
                             {isDirty && (
                               <span className="inline-flex items-center rounded-sm border border-status-warning/40 bg-status-warning/10 px-1 py-0 text-sidebar-meta text-status-warning">
@@ -869,7 +873,7 @@ export function ProjectSidebar({
                                   type="button"
                                   className="ui-icon-button ui-transition-colors ui-motion-fast"
                                   onClick={(event) => openRenameWorkflowDialog(workflow, event)}
-                                  aria-label={`Rename ${workflow.name}`}
+                                  aria-label={`Rename ${displayWorkflowName}`}
                                 >
                                   <Pencil size={12} />
                                 </button>
@@ -883,7 +887,7 @@ export function ProjectSidebar({
                                   type="button"
                                   className="ui-icon-button hover:bg-status-danger/20 hover:text-status-danger ui-transition-colors ui-motion-fast"
                                   onClick={(event) => openDeleteWorkflowDialog(workflow, event)}
-                                  aria-label={`Delete ${workflow.name}`}
+                                  aria-label={`Delete ${displayWorkflowName}`}
                                 >
                                   <Trash2 size={12} />
                                 </button>

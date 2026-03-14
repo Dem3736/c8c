@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import {
   currentWorkflowAtom,
@@ -200,6 +200,15 @@ export function Toolbar({
       : "this workflow"
   const controlGroupClass = "control-cluster flex items-center gap-1 rounded-lg p-1"
 
+  const handlePrimarySave = useCallback(async () => {
+    if (!workflowDirty) return
+    if (workflowPath) {
+      await save()
+      return
+    }
+    await saveAs()
+  }, [save, saveAs, workflowDirty, workflowPath])
+
   const handleActionMenu = async (value: string) => {
     switch (value) {
       case "save_as":
@@ -281,8 +290,8 @@ export function Toolbar({
       if (key === "s") {
         if (isEditable) return
         event.preventDefault()
-        if (workflowPath && workflowDirty) {
-          void save()
+        if (workflowDirty) {
+          void handlePrimarySave()
         }
         return
       }
@@ -300,7 +309,7 @@ export function Toolbar({
     return () => {
       window.removeEventListener("keydown", handler)
     }
-  }, [canRun, desktopRuntime.primaryModifierKey, isRunning, onCancel, onRun, save, setChatOpen, setMainView, workflowDirty, workflowPath])
+  }, [canRun, desktopRuntime.primaryModifierKey, handlePrimarySave, isRunning, onCancel, onRun, setChatOpen, setMainView, workflowDirty])
 
   return (
     <>
@@ -312,8 +321,8 @@ export function Toolbar({
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                onClick={save}
-                disabled={!workflowPath || !workflowDirty}
+                onClick={() => void handlePrimarySave()}
+                disabled={!workflowDirty}
               >
                 <Save size={14} />
                 {workflowDirty ? "Save*" : "Save"}
