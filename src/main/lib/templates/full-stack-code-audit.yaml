@@ -1,10 +1,14 @@
 id: full-stack-code-audit
-category: code
-tags:
-  - audit
-  - security
-  - fan-out
-  - code-review
+stage: code
+emoji: "\U0001F6E1"
+headline: Audit a codebase across security, quality, and architecture
+how: Splits codebase into audit areas, reviews each in parallel, synthesizes findings, and creates an audit report
+input: A codebase path or repository
+output: Comprehensive audit report covering security, quality, architecture, and test coverage
+steps:
+  - Split codebase into audit areas (security, quality, architecture, tests)
+  - Review each area in parallel
+  - Synthesize findings into a prioritized audit report
 version: 1
 name: Full-Stack Code Audit
 description: Split codebase into audit areas, review security/quality/architecture/tests in parallel, synthesize

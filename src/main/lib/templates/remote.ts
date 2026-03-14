@@ -1,18 +1,19 @@
 import { net } from "electron"
 import YAML from "yaml"
-import type { WorkflowTemplate, WorkflowTemplateCategory } from "@shared/types"
+import type { WorkflowTemplate, WorkflowTemplateStage } from "@shared/types"
 import { parseTemplate } from "./index"
 
 const HUB_BASE_URL = "https://c8c.app/hub/"
 const MAX_BODY_SIZE = 512 * 1024 // 512 KB
 const FETCH_TIMEOUT_MS = 10_000
 
-const VALID_CATEGORIES: WorkflowTemplateCategory[] = [
+const VALID_STAGES: WorkflowTemplateStage[] = [
+  "research",
+  "strategy",
   "content",
   "code",
-  "research",
-  "marketing",
-  "general",
+  "outreach",
+  "operations",
 ]
 
 export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowTemplate> {
@@ -57,12 +58,16 @@ export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowT
     throw new Error("Invalid template format")
   }
 
-  const { id, name, version, nodes, edges, category } = parsed
+  const { id, name, version, nodes, edges, stage, emoji, headline, steps } = parsed
   if (!id || !name || !version || !Array.isArray(nodes) || !Array.isArray(edges)) {
     throw new Error("Invalid template format")
   }
 
-  if (typeof category !== "string" || !VALID_CATEGORIES.includes(category as WorkflowTemplateCategory)) {
+  if (typeof stage !== "string" || !VALID_STAGES.includes(stage as WorkflowTemplateStage)) {
+    throw new Error("Invalid template format")
+  }
+
+  if (!emoji || !headline || !Array.isArray(steps) || steps.length === 0) {
     throw new Error("Invalid template format")
   }
 

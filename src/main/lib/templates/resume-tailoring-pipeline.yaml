@@ -1,10 +1,15 @@
 id: resume-tailoring-pipeline
-category: general
-tags:
-  - resume
-  - job
-  - documents
-  - quality-gate
+stage: outreach
+emoji: "\U0001F4C4"
+headline: Tailor your resume for any job posting
+how: Extracts resume content, tailors for the target job, evaluates ATS compatibility and impact, and formats as professional document
+input: Your resume and a target job posting
+output: Tailored resume optimized for ATS and specific job requirements
+steps:
+  - Extract resume content from PDF
+  - Tailor content for target job requirements
+  - Evaluate ATS compatibility and impact
+  - Format as professional document
 version: 1
 name: Resume Tailoring Pipeline
 description: Extract resume from PDF, tailor for target job, evaluate ATS compatibility and impact, format as professional document

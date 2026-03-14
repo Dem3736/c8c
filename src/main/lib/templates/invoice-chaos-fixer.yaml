@@ -1,10 +1,15 @@
 id: invoice-chaos-fixer
-category: general
-tags:
-  - invoices
-  - finance
-  - documents
-  - automation
+stage: operations
+emoji: "\U0001F9FE"
+headline: Organize messy invoices into clean expense data
+how: Organizes invoices, extracts data from PDFs, creates expense spreadsheet, detects anomalies, and evaluates completeness
+input: A folder of invoice PDFs or images
+output: Clean expense spreadsheet with anomaly flags and completeness report
+steps:
+  - Organize and categorize invoice files
+  - Extract structured data from each invoice
+  - Create expense spreadsheet and detect anomalies
+  - Evaluate data completeness
 version: 1
 name: Invoice Chaos Fixer
 description: Organize invoices, extract data from PDFs, create expense spreadsheet, detect anomalies, evaluate completeness

@@ -1,11 +1,15 @@
 id: predictable-text-factory
-category: content
-tags:
-  - factory
-  - decomposition
-  - quality-gate
-  - iteration
-  - fan-out
+stage: content
+emoji: "\U0001F3ED"
+headline: Produce long-form content with section-level quality gates
+how: Plans sections, processes each independently, runs section-level and final quality gates, iterates until pass
+input: A content brief or outline with target structure
+output: Polished long-form document with each section quality-checked
+steps:
+  - Plan document sections from the brief
+  - Write each section independently in parallel
+  - Run section-level quality gates
+  - Run final document-wide quality gate
 version: 1
 name: Predictable Text Factory
 description: Plan sections, process each section independently, run section-level and final quality gates, iterate until pass

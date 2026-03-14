@@ -1,10 +1,14 @@
 id: segment-research-gate
-category: research
-tags:
-  - segments
-  - fan-out
-  - scoring
-  - quality-gate
+stage: research
+emoji: "\U0001F3AF"
+headline: Validate market segments with evidence
+how: Generates segment hypotheses, researches each in parallel with signal grounding, then scores and filters by quality gate
+input: A market or product area to segment
+output: Scored and validated segment list with evidence and quality ratings
+steps:
+  - Generate segment hypotheses from market data
+  - Research each segment in parallel with signal grounding
+  - Score and filter segments through quality gate
 version: 1
 name: Segment Research with Quality Gate
 description: Generate segment hypotheses, research each in parallel with signal grounding, score and filter by quality gate

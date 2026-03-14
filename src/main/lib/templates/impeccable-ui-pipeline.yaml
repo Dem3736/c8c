@@ -1,14 +1,15 @@
 id: impeccable-ui-pipeline
-category: code
-tags:
-  - ui
-  - design
-  - audit
-  - polish
-  - quality
-  - impeccable
-  - a11y
-  - performance
+stage: code
+emoji: "\U00002728"
+headline: Polish a UI feature from audit to ship-ready
+how: Audits a frontend feature, then systematically normalizes, hardens, clarifies, optimizes, and polishes it
+input: A frontend feature or component to improve
+output: Ship-ready UI with accessibility, performance, and polish checks passed
+steps:
+  - Audit the feature for design and code issues
+  - Normalize, harden, and clarify the implementation
+  - Optimize performance and polish details
+  - Run quality-gate evaluation loop
 version: 1
 name: Impeccable UI Pipeline
 description: Audit a frontend feature, then systematically normalize, harden, clarify, optimize, and polish it with

@@ -77,7 +77,7 @@ describe("applyWebSearchBackendPreset", () => {
 
   it("does not change non-research templates", () => {
     const workflow = makeWorkflow()
-    const next = applyWebSearchBackendPreset(workflow, "marketing", "exa")
+    const next = applyWebSearchBackendPreset(workflow, "content", "exa")
     expect(next).toEqual(workflow)
   })
 })
@@ -87,7 +87,7 @@ describe("resolveTemplateWorkflow", () => {
     const workflow = { ...makeWorkflow(), name: "new-workflow" }
     const next = resolveTemplateWorkflow({
       name: "Deep Research",
-      category: "research",
+      stage: "research",
       workflow,
     }, "builtin")
 

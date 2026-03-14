@@ -1,10 +1,14 @@
 id: competitor-ad-intelligence
-category: research
-tags:
-  - competitive
-  - ads
-  - fan-out
-  - analysis
+stage: research
+emoji: "\U0001F4CA"
+headline: Decode competitor advertising strategies
+how: Splits competitors, extracts ad strategies in parallel, synthesizes findings, and develops counter-positioning
+input: A list of competitors or a market to analyze
+output: Competitive intelligence report with counter-positioning recommendations
+steps:
+  - Split competitors into parallel research tracks
+  - Extract ad strategies and messaging patterns
+  - Synthesize findings and develop counter-positioning
 version: 1
 name: Competitor Ad Intelligence
 description: Split competitors, extract ad strategies in parallel, synthesize findings, develop counter-positioning,

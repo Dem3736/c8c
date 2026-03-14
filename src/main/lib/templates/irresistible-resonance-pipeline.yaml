@@ -1,0 +1,161 @@
+id: irresistible-resonance-pipeline
+stage: strategy
+emoji: "\U0001F4A1"
+headline: Craft messaging that resonates at every awareness level
+how: Extracts signal from product data, maps audience awareness stages, sharpens messaging, and generates awareness-matched headlines
+input: Product data, landing pages, or marketing copy
+output: Awareness-stage-matched headlines and sharpened messaging framework
+steps:
+  - Extract signal and strip noise from product data
+  - Map audience awareness stages
+  - Sharpen messaging for each stage
+  - Generate and amplify awareness-matched headlines
+version: 1
+name: Irresistible Resonance Pipeline
+description: Extract signal from product data, strip noise, map audience awareness, sharpen messaging,
+  generate awareness-matched headlines, and amplify — with quality-gate evaluation loop
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 45
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: extract-signal-1
+    type: skill
+    position:
+      x: 250
+      y: 200
+    config:
+      skillRef: irresistible/extract-signal
+      prompt: "Extract the core transformation signal from the provided material. Take JTBD data,
+        product descriptions, user feedback, or existing marketing copy and produce a structured
+        signal statement: who → from (current state) → to (desired state) → mechanism (how).
+        Run each signal through 5 filters: swap test (could a competitor say this?), so-what
+        test (does this matter?), proof test (can we back this up?), specificity test (are there
+        numbers?), honesty test (is this true?). Output primary and secondary signals with
+        evidence tiers."
+  - id: find-noise-1
+    type: skill
+    position:
+      x: 500
+      y: 200
+    config:
+      skillRef: irresistible/find-noise
+      prompt: "Scan the input material and extracted signals for noise. Classify noise into categories:
+        slop words, swap-passers (claims any competitor could make), vague benefits, empty openers,
+        feature-first language, unearned claims, filler sentences, and awareness-level mismatches.
+        Score each instance by severity. Calculate an overall noise ratio. For every noise instance,
+        suggest a specific fix grounded in the extracted signal."
+  - id: map-awareness-1
+    type: skill
+    position:
+      x: 750
+      y: 200
+    config:
+      skillRef: irresistible/map-awareness
+      prompt: "Map audience awareness levels for this product. Classify the target audience by channel
+        and their typical awareness level (unaware → problem-aware → solution-aware → product-aware
+        → most-aware). Classify the current messaging by what awareness level it addresses.
+        Identify mismatches where messaging doesn't match audience readiness. Map the full
+        awareness journey and flag gaps where people are being lost."
+  - id: sharpen-1
+    type: skill
+    position:
+      x: 1000
+      y: 200
+    config:
+      skillRef: irresistible/sharpen
+      prompt: "Rewrite the messaging to be specific and resonant. Remove all generic language identified
+        as noise. Connect every claim to the extracted signal. Add numbers and measurable outcomes
+        where possible. Match each piece of copy to its target awareness level from the awareness
+        map. Assess and improve: signal connection, specificity, audience fit, competitive angle,
+        voice consistency, and slop score. Provide before/after comparison with reasoning."
+  - id: headline-1
+    type: skill
+    position:
+      x: 1250
+      y: 200
+    config:
+      skillRef: irresistible/headline
+      prompt: "Generate awareness-level-matched headlines using the sharpened messaging and signal.
+        Create 3 headline variants for each awareness level: Level 1 (unaware) — name the problem;
+        Level 2 (problem-aware) — validate and quantify; Level 3 (solution-aware) — differentiate
+        the approach; Level 4 (product-aware) — prove it works; Level 5 (most-aware) — make the
+        offer. Every headline must be specific, pass the swap test, and be free of slop."
+  - id: amplify-1
+    type: skill
+    position:
+      x: 1500
+      y: 200
+    config:
+      skillRef: irresistible/amplify
+      prompt: "Increase signal strength across all messaging. Remove hedging and weak qualifiers.
+        Use stronger verbs, sharper contrast, and specificity boosts. Only amplify grounded claims —
+        never inflate unearned ones. Apply techniques: remove hedging, strengthen verbs, add
+        personal stake, use provocative reframing where appropriate, and amplify social proof.
+        Run a volume check to ensure all claims remain honest and provable."
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1750
+      y: 200
+    config:
+      criteria: "Evaluate the resonance pipeline output across 6 dimensions (score 1-10 each):
+        1) Signal clarity — is the transformation specific, provable, and swap-test-proof?
+        2) Noise ratio — is the copy free of slop, vague claims, and filler?
+        3) Awareness matching — does each piece of copy match its target awareness level?
+        4) Headline quality — are headlines specific, level-appropriate, and compelling?
+        5) Messaging specificity — numbers, evidence, concrete mechanisms over abstractions?
+        6) Amplification integrity — bolder without dishonest inflation?
+        Provide specific fix instructions for any dimension below 7."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: sharpen-1
+  - id: output-1
+    type: output
+    position:
+      x: 2000
+      y: 200
+    config: {}
+edges:
+  - id: e-input-extract-signal
+    source: input-1
+    target: extract-signal-1
+    type: default
+  - id: e-extract-signal-find-noise
+    source: extract-signal-1
+    target: find-noise-1
+    type: default
+  - id: e-find-noise-map-awareness
+    source: find-noise-1
+    target: map-awareness-1
+    type: default
+  - id: e-map-awareness-sharpen
+    source: map-awareness-1
+    target: sharpen-1
+    type: default
+  - id: e-sharpen-headline
+    source: sharpen-1
+    target: headline-1
+    type: default
+  - id: e-headline-amplify
+    source: headline-1
+    target: amplify-1
+    type: default
+  - id: e-amplify-evaluator
+    source: amplify-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-sharpen
+    source: evaluator-1
+    target: sharpen-1
+    type: fail

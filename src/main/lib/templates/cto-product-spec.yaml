@@ -1,11 +1,15 @@
 id: cto-product-spec
-category: code
-tags:
-  - cto
-  - stack
-  - architecture
-  - product-spec
-  - fan-out
+stage: strategy
+emoji: "\U0001F4DD"
+headline: Go from idea to CTO-grade product spec
+how: Generates a comprehensive product specification from idea to modular implementation details with architecture decisions
+input: A product idea or feature concept
+output: Complete product spec with architecture, stack decisions, and implementation modules
+steps:
+  - Analyze the idea and define product requirements
+  - Design system architecture and choose stack
+  - Break down into implementation modules
+  - Generate CTO-grade specification document
 version: 1
 name: CTO Product Spec
 description: Generate a CTO-grade product specification from idea to modular implementation details

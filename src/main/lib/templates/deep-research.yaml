@@ -1,12 +1,14 @@
 id: deep-research
-category: research
-tags:
-  - research
-  - planning
-  - kac
-  - fan-out
-  - parallel
-  - synthesis
+stage: research
+emoji: "\U0001F50D"
+headline: Research any topic from multiple angles
+how: Decomposes a topic into lenses, investigates each in parallel, then synthesizes a comprehensive report
+input: A topic or research question
+output: Structured research report with executive summary, findings per angle, and actionable conclusions
+steps:
+  - Decompose topic into 4-6 research lenses with key questions
+  - Fan out parallel investigation per lens
+  - Synthesize findings into a comprehensive report
 version: 1
 name: Deep Research
 description: Plan a topic via multi-angle decomposition and KAC, investigate each aspect in parallel, synthesize into a

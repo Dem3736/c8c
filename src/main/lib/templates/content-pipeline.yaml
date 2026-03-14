@@ -1,11 +1,15 @@
 id: content-pipeline
-category: content
-tags:
-  - content
-  - strategy
-  - report
-  - marketing
-  - loop
+stage: content
+emoji: "\U0001F4F0"
+headline: Strategy → report → marketing artifacts in one pass
+how: Develops product strategy, generates a comprehensive report, creates marketing artifacts, and evaluates quality
+input: Product or feature brief
+output: Strategy report plus marketing artifacts (positioning, messaging, content ideas)
+steps:
+  - Develop product strategy and positioning
+  - Generate comprehensive strategy report
+  - Create marketing artifacts from the strategy
+  - Evaluate quality and iterate if needed
 version: 1
 name: Content Pipeline
 description: Develop product strategy, generate comprehensive report, create marketing artifacts, evaluate quality

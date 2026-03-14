@@ -1,10 +1,14 @@
 id: lead-research-machine
-category: marketing
-tags:
-  - leads
-  - research
-  - fan-out
-  - outbound
+stage: research
+emoji: "\U0001F50E"
+headline: Find and prioritize leads in any vertical
+how: Researches a market vertical, fans out into segments, finds leads in parallel, and compiles a prioritized list
+input: A market vertical or industry to prospect
+output: Prioritized lead list with company profiles and outreach angles
+steps:
+  - Research the market vertical and identify segments
+  - Fan out to find leads per segment in parallel
+  - Compile and prioritize the final lead list
 version: 1
 name: Lead Research Machine
 description: Research a market vertical, fan out into segments, find leads in parallel, compile a prioritized list

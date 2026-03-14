@@ -1,4 +1,4 @@
-import type { Workflow, WorkflowTemplate, WorkflowTemplateCategory } from "@shared/types"
+import type { Workflow, WorkflowTemplate, WorkflowTemplateStage } from "@shared/types"
 import { cloneWorkflow } from "./workflow-graph-utils"
 
 export type WebSearchBackend = "builtin" | "exa"
@@ -31,11 +31,11 @@ function removeTools(
  */
 export function applyWebSearchBackendPreset(
   workflow: Workflow,
-  category: WorkflowTemplateCategory,
+  stage: WorkflowTemplateStage,
   backend: WebSearchBackend,
 ): Workflow {
   const next = cloneWorkflow(workflow)
-  if (category !== "research") return next
+  if (stage !== "research") return next
 
   next.defaults = { ...(next.defaults || {}) }
 
@@ -62,10 +62,10 @@ export function applyWebSearchBackendPreset(
 }
 
 export function resolveTemplateWorkflow(
-  template: Pick<WorkflowTemplate, "workflow" | "category" | "name">,
+  template: Pick<WorkflowTemplate, "workflow" | "stage" | "name">,
   backend: WebSearchBackend,
 ): Workflow {
-  const nextWorkflow = applyWebSearchBackendPreset(template.workflow, template.category, backend)
+  const nextWorkflow = applyWebSearchBackendPreset(template.workflow, template.stage, backend)
   const templateName = template.name.trim()
   if (templateName) {
     nextWorkflow.name = templateName

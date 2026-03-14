@@ -1,10 +1,14 @@
 id: meeting-actions-plan
-category: general
-tags:
-  - meetings
-  - actions
-  - fan-out
-  - productivity
+stage: operations
+emoji: "\U0001F4CB"
+headline: Turn meeting transcripts into action plans
+how: Analyzes meeting transcript, extracts action items, prioritizes and plans each in parallel, and compiles into a project document
+input: A meeting transcript or recording notes
+output: Structured action plan with owners, priorities, and deadlines
+steps:
+  - Analyze meeting transcript and extract action items
+  - Prioritize and plan each action item in parallel
+  - Compile into a project planning document
 version: 1
 name: Meeting → Actions → Plan
 description: Analyze meeting transcript, extract action items, prioritize and plan each in parallel, compile into a project document

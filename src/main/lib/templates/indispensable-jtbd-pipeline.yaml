@@ -1,13 +1,15 @@
 id: indispensable-jtbd-pipeline
-category: marketing
-tags:
-  - jtbd
-  - product
-  - positioning
-  - messaging
-  - strategy
-  - indispensable
-  - segments
+stage: strategy
+emoji: "\U0001F48E"
+headline: Turn raw product data into JTBD positioning
+how: Extracts jobs, segments users, scores opportunities, distills strategy, sharpens positioning, and clarifies messaging
+input: Product descriptions, user feedback, reviews, or support tickets
+output: Focused JTBD strategy with positioning statements and rewritten messaging
+steps:
+  - Extract structured job stories from raw material
+  - Map segments and score opportunities
+  - Distill to core job, segment, and value delta
+  - Sharpen positioning and clarify messaging
 version: 1
 name: Indispensable JTBD Pipeline
 description: Extract jobs from raw product data, segment users, score opportunities, distill to

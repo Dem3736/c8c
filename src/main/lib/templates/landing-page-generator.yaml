@@ -1,11 +1,14 @@
 id: landing-page-generator
-category: marketing
-tags:
-  - landing
-  - copywriting
-  - fan-out
-  - quality-gate
-  - infostyle
+stage: content
+emoji: "\U0001F680"
+headline: Build landing page copy block-by-block with quality loops
+how: Constructs landing page copy section by section with per-block quality loops, then assembles with cross-block QC
+input: Product info, target audience, and value proposition
+output: Complete landing page copy with hero, features, social proof, and CTAs
+steps:
+  - Define page structure and key blocks
+  - Generate copy for each block with quality loops
+  - Assemble and run cross-block quality check
 version: 1
 name: Landing Page Generator
 description: Build landing page copy block-by-block with per-block quality loops, then assemble with cross-block QC

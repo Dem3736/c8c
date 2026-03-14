@@ -1,11 +1,14 @@
 id: landing-audit-loop
-category: marketing
-tags:
-  - landing
-  - audit
-  - JTBD
-  - loop
-  - conversion
+stage: content
+emoji: "\U0001F50D"
+headline: Audit and rewrite a landing page through JTBD lens
+how: Analyzes a landing page using JTBD framework, evaluates visual design, rewrites copy, and iterates until quality threshold met
+input: A landing page URL or copy text
+output: Rewritten landing page copy with JTBD-aligned messaging
+steps:
+  - Analyze existing landing page through JTBD framework
+  - Evaluate visual design and copy effectiveness
+  - Rewrite copy and iterate until quality threshold met
 version: 1
 name: Landing Page Audit Loop
 description: Analyze a landing page using JTBD framework, evaluate visual design, rewrite copy, iterate until quality threshold met

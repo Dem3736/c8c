@@ -368,7 +368,7 @@ export function useChainExecution() {
     const looksResearch = isResearchLikeWorkflow(workflow as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
       workflow,
-      looksResearch ? "research" : "general",
+      looksResearch ? "research" : "operations",
       webSearchBackend,
     )
     try {
@@ -457,7 +457,7 @@ export function useChainExecution() {
     const looksResearch = isResearchLikeWorkflow(workflow as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
       workflow,
-      looksResearch ? "research" : "general",
+      looksResearch ? "research" : "operations",
       webSearchBackend,
     )
 
@@ -541,7 +541,7 @@ export function useChainExecution() {
     const looksResearch = isResearchLikeWorkflow(workflowForRun as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
       workflowForRun,
-      looksResearch ? "research" : "general",
+      looksResearch ? "research" : "operations",
       webSearchBackend,
     )
 

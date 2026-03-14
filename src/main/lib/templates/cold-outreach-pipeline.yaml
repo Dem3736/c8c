@@ -1,10 +1,15 @@
 id: cold-outreach-pipeline
-category: marketing
-tags:
-  - outbound
-  - email
-  - sales
-  - pipeline
+stage: outreach
+emoji: "\U0001F4E7"
+headline: Generate personalized cold emails that get replies
+how: Builds company context, generates pain hypotheses, crafts templates, generates personalized emails, and simulates buyer response
+input: Target company or prospect information
+output: Personalized cold email sequences with buyer-response simulation
+steps:
+  - Build company context and generate pain hypotheses
+  - Craft email templates from pain points
+  - Generate personalized emails and simulate buyer response
+  - Evaluate email quality
 version: 1
 name: Cold Outreach Pipeline
 description: Build company context, generate pain hypotheses, craft email templates, generate personalized emails,

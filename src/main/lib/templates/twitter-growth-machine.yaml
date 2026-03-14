@@ -1,10 +1,14 @@
 id: twitter-growth-machine
-category: marketing
-tags:
-  - twitter
-  - growth
-  - fan-out
-  - optimization
+stage: outreach
+emoji: "\U0001F426"
+headline: Generate algorithm-optimized tweets from trending topics
+how: Researches trending topics, generates multiple tweet angles, optimizes each for algorithm, selects the best, and evaluates quality
+input: A niche, brand voice, or topic area
+output: Optimized tweet batch ready to post
+steps:
+  - Research trending topics in your niche
+  - Generate multiple tweet angles in parallel
+  - Optimize each for the algorithm and select the best
 version: 1
 name: Twitter Growth Machine
 description: Research trending topics, generate multiple tweet angles, optimize each for algorithm, select the best,

@@ -1,5 +1,5 @@
 import YAML from "yaml"
-import type { Workflow, WorkflowTemplate, WorkflowTemplateCategory } from "@shared/types"
+import type { Workflow, WorkflowTemplate, WorkflowTemplateStage } from "@shared/types"
 
 import deepResearchRaw from "./deep-research.yaml?raw"
 import landingAuditLoopRaw from "./landing-audit-loop.yaml?raw"
@@ -20,11 +20,17 @@ import landingPageGeneratorRaw from "./landing-page-generator.yaml?raw"
 import ctoProductSpecRaw from "./cto-product-spec.yaml?raw"
 import impeccableUIPipelineRaw from "./impeccable-ui-pipeline.yaml?raw"
 import indispensableJtbdPipelineRaw from "./indispensable-jtbd-pipeline.yaml?raw"
+import irresistibleResonancePipelineRaw from "./irresistible-resonance-pipeline.yaml?raw"
 
 interface FlatTemplate {
   id: string
-  category: WorkflowTemplateCategory
-  tags: string[]
+  stage: WorkflowTemplateStage
+  emoji: string
+  headline: string
+  how: string
+  input: string
+  output: string
+  steps: string[]
   version: number
   name: string
   description?: string
@@ -34,13 +40,18 @@ interface FlatTemplate {
 }
 
 export function parseTemplate(raw: string): WorkflowTemplate {
-  const { id, category, tags, ...workflow } = YAML.parse(raw) as FlatTemplate
+  const { id, stage, emoji, headline, how, input, output, steps, ...workflow } = YAML.parse(raw) as FlatTemplate
   return {
     id,
     name: workflow.name,
     description: workflow.description ?? "",
-    category,
-    tags,
+    stage,
+    emoji,
+    headline,
+    how,
+    input,
+    output,
+    steps,
     workflow,
   }
 }
@@ -65,6 +76,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(ctoProductSpecRaw),
   parseTemplate(impeccableUIPipelineRaw),
   parseTemplate(indispensableJtbdPipelineRaw),
+  parseTemplate(irresistibleResonancePipelineRaw),
 ]
 
 export function getBuiltinTemplates(): WorkflowTemplate[] {
