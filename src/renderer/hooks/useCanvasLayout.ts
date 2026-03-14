@@ -48,6 +48,7 @@ export interface CanvasNodeData {
   isBranch?: boolean
   isTerminal: boolean
   hasValidationErrors?: boolean
+  permissionModeOverride?: "plan" | "edit"
   [key: string]: unknown
 }
 
@@ -167,6 +168,9 @@ export function computeLayout(
         isActive: node.id === activeNodeId,
         isBranch: !!meta,
         isTerminal,
+        permissionModeOverride: node.type === "skill"
+          ? (node.config as SkillNodeConfig).permissionMode
+          : undefined,
       },
     }
   })

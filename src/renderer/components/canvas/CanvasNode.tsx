@@ -6,6 +6,8 @@ import { cn } from "@/lib/cn"
 import {
   Zap,
   AlertTriangle,
+  Eye,
+  Pencil,
 } from "lucide-react"
 import { NODE_ACCENTS, NODE_ICONS, NODE_ICON_TONES, STATUS_STYLES } from "@/lib/node-ui-config"
 
@@ -95,6 +97,16 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
               )}
               {hasValidationErrors && (
                 <AlertTriangle size={11} className="text-status-danger" />
+              )}
+              {data.permissionModeOverride === "plan" && (
+                <span className="inline-flex items-center gap-0.5 rounded-sm border border-hairline px-1 py-0 ui-meta-text text-muted-foreground bg-surface-1/80" title="Plan mode (read-only)">
+                  <Eye size={9} />
+                </span>
+              )}
+              {data.permissionModeOverride === "edit" && (
+                <span className="inline-flex items-center gap-0.5 rounded-sm border border-status-warning/30 px-1 py-0 ui-meta-text text-status-warning bg-status-warning/10" title="Edit mode override">
+                  <Pencil size={9} />
+                </span>
               )}
             </div>
 

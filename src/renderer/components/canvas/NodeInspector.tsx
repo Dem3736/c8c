@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { McpToolPicker } from "@/components/ui/mcp-tool-picker"
 import { NODE_ICONS, NODE_LABELS } from "@/lib/node-ui-config"
 
 type AnyNodeConfig =
@@ -363,6 +364,41 @@ function SkillFields({
             <SelectItem value="content_file">content.md</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Label htmlFor={`insp-perm-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Mode</Label>
+        <Select
+          value={config.permissionMode || "__inherit__"}
+          onValueChange={(v) => onChange({ ...config, permissionMode: v === "__inherit__" ? undefined : v as "plan" | "edit" })}
+        >
+          <SelectTrigger id={`insp-perm-mode-${nodeId}`} className="flex-1 h-control-md text-body-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__inherit__">Inherit from workflow</SelectItem>
+            <SelectItem value="plan">Plan (read-only)</SelectItem>
+            <SelectItem value="edit">Edit (can modify files)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="rounded-md border border-hairline bg-surface-1/80 px-2 py-2 space-y-2">
+        <p className="ui-meta-label text-muted-foreground">Tool Access</p>
+        <McpToolPicker
+          nodeId={`${nodeId}-insp-allowed`}
+          label="Allowed Tools"
+          values={config.allowedTools || []}
+          onChange={(next) => onChange({ ...config, allowedTools: next })}
+          placeholder="e.g. WebFetch"
+        />
+        <McpToolPicker
+          nodeId={`${nodeId}-insp-blocked`}
+          label="Blocked Tools"
+          values={config.disallowedTools || []}
+          onChange={(next) => onChange({ ...config, disallowedTools: next })}
+          placeholder="e.g. Edit"
+        />
       </div>
     </>
   )

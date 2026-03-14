@@ -23,6 +23,8 @@ import {
   X,
   Plus,
   Zap,
+  Eye,
+  Pencil,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import {
@@ -183,7 +185,10 @@ export function NodeCard({
       >
         <Button
           type="button"
-          onClick={onSelect}
+          onClick={() => {
+            onSelect()
+            if (isExpandable) setExpanded((prev) => !prev)
+          }}
           variant="ghost"
           size="auto"
           className={cn(
@@ -243,6 +248,22 @@ export function NodeCard({
               <p className={previewTextClass}>
                 {approvalConfig.message || "Manual approval gate"}
               </p>
+            )}
+            {isSkill && skillConfig?.permissionMode && (
+              <div className={cn("ui-badge-row", compact ? "pt-0" : "pt-0.5")}>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "px-1.5 py-0 ui-meta-text gap-1",
+                    skillConfig.permissionMode === "plan"
+                      ? "text-muted-foreground"
+                      : "text-status-warning border-status-warning/30",
+                  )}
+                >
+                  {skillConfig.permissionMode === "plan" ? <Eye size={10} /> : <Pencil size={10} />}
+                  {skillConfig.permissionMode === "plan" ? "Plan" : "Edit"}
+                </Badge>
+              </div>
             )}
             {showStatusBadge && (
               <div className={cn("ui-badge-row", compact ? "pt-0" : "pt-0.5")}>

@@ -26,7 +26,10 @@ import {
   SlidersHorizontal,
   Layers,
   Loader2,
+  Eye,
+  Pencil,
 } from "lucide-react"
+import type { PermissionMode } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import {
@@ -429,6 +432,55 @@ export function Toolbar({
         </Tooltip>
 
         <div className="flex-1" />
+
+        {/* Permission mode toggle */}
+        {(() => {
+          const mode: PermissionMode = workflow.defaults?.permissionMode ?? "edit"
+          const setMode = (next: PermissionMode) => {
+            setCurrentWorkflow((prev) => ({
+              ...prev,
+              defaults: { ...prev.defaults, permissionMode: next },
+            }))
+          }
+          return (
+            <div
+              role="radiogroup"
+              aria-label="Permission mode"
+              className="flex items-center rounded-lg border border-hairline bg-surface-2/60 p-0.5"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "plan"}
+                onClick={() => setMode("plan")}
+                className={cn(
+                  "flex items-center gap-1 px-2 h-control-sm rounded-md text-body-sm ui-pressable ui-motion-fast",
+                  mode === "plan"
+                    ? "bg-surface-1 shadow-sm text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Eye size={13} />
+                Plan
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "edit"}
+                onClick={() => setMode("edit")}
+                className={cn(
+                  "flex items-center gap-1 px-2 h-control-sm rounded-md text-body-sm ui-pressable ui-motion-fast",
+                  mode === "edit"
+                    ? "bg-surface-1 shadow-sm text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Pencil size={13} />
+                Edit
+              </button>
+            </div>
+          )
+        })()}
 
         <div
           role="group"
