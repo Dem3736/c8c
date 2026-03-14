@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Search,
   X,
+  FileCode2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
@@ -41,7 +42,7 @@ const STATUS_LABELS: Record<string, string> = {
   waiting_approval: "waiting for approval",
 }
 
-const LOG_ENTRY_TYPES = ["thinking", "text", "tool_use", "tool_result", "error"] as const
+const LOG_ENTRY_TYPES = ["thinking", "text", "tool_use", "tool_result", "error", "diff"] as const
 type LogEntryType = (typeof LOG_ENTRY_TYPES)[number]
 
 const LOG_TYPE_LABELS: Record<LogEntryType, string> = {
@@ -50,6 +51,7 @@ const LOG_TYPE_LABELS: Record<LogEntryType, string> = {
   tool_use: "Tool Use",
   tool_result: "Tool Result",
   error: "Error",
+  diff: "Diff",
 }
 
 function getEntrySearchText(entry: LogEntry): string {
@@ -62,6 +64,8 @@ function getEntrySearchText(entry: LogEntry): string {
       return `${entry.tool} ${JSON.stringify(entry.input)}`
     case "tool_result":
       return `${entry.tool} ${entry.output}`
+    case "diff":
+      return `${entry.files.join(" ")} ${entry.content}`
   }
 }
 
@@ -185,6 +189,51 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
         <pre className="ui-meta-text text-status-danger whitespace-pre-wrap font-mono">
           {entry.content}
         </pre>
+      </div>
+    )
+  }
+
+  if (entry.type === "diff") {
+    return (
+      <div className="border-l-2 border-accent/40 pl-3 py-1">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand diff" : "Collapse diff"}
+          className="flex items-center gap-2 ui-meta-label text-foreground-subtle hover:text-foreground ui-pressable"
+        >
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          <FileCode2 size={12} />
+          <span>{entry.files.length} file{entry.files.length !== 1 ? "s" : ""} changed</span>
+        </button>
+        {!collapsed && (
+          <>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {entry.files.map((file) => (
+                <span key={file} className="inline-flex items-center rounded-sm border border-hairline px-1.5 py-0 ui-meta-text text-muted-foreground bg-surface-1/80 font-mono">
+                  {file}
+                </span>
+              ))}
+            </div>
+            <pre className="ui-meta-text whitespace-pre-wrap font-mono mt-2 max-h-80 overflow-y-auto ui-scroll-region">
+              {entry.content.split("\n").map((line, i) => {
+                const color = line.startsWith("+") && !line.startsWith("+++")
+                  ? "text-status-success"
+                  : line.startsWith("-") && !line.startsWith("---")
+                    ? "text-status-danger"
+                    : line.startsWith("@@")
+                      ? "text-accent"
+                      : "text-muted-foreground"
+                return (
+                  <span key={i} className={color}>
+                    {line}
+                    {"\n"}
+                  </span>
+                )
+              })}
+            </pre>
+          </>
+        )}
       </div>
     )
   }
