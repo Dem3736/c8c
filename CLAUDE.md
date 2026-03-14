@@ -103,7 +103,7 @@ Use these for sidebar elements — not generic `text-body-sm` or `ui-meta-text`:
 
 ### Custom utility classes (in globals.css)
 
-- `.surface-panel`, `.surface-elevated`, `.surface-soft`, `.surface-inset-card` — layered surface styles
+- `.surface-panel`, `.surface-elevated`, `.surface-soft`, `.surface-inset-card`, `.surface-depth-header` — layered surface styles
 - `.surface-danger-soft`, `.surface-warning-soft` — soft severity surfaces
 - `.section-kicker`, `.ui-title-text`, `.ui-body-text`, `.ui-meta-text`, `.ui-meta-label`, `.ui-body-text-medium` — content typography
 - `.ui-motion-fast`, `.ui-motion-standard` — transition duration shortcuts

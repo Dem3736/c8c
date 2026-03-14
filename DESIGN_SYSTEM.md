@@ -186,11 +186,14 @@ Two shadow levels combining inset highlight + hairline outline + drop shadow:
 |-------|-------|
 | `--elevation-base` | Cards, panels, surfaces |
 | `--elevation-overlay` | Dialogs, popovers, hover-lifted cards |
+| `--inset-highlight` | Button/control inset highlight (swaps for dark mode) |
+| `--inset-highlight-strong` | Stronger inset highlight for outline buttons |
 
 Applied via:
 - `.surface-panel` — base elevation on surface-1
 - `.surface-elevated` — overlay elevation on surface-1
 - `.surface-soft` — semi-transparent base elevation
+- `.surface-depth-header` — surface-1→surface-2 gradient with hairline bottom border (dialog headers)
 
 ## Motion
 
