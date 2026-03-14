@@ -37,35 +37,14 @@ import {
   Activity,
 } from "lucide-react"
 
-// ── Server Card ─────────────────────────────────────────
-
-function TransportBadge({ type }: { type: McpTransportType }) {
-  return (
-    <Badge variant="outline" className="text-[10px] font-medium uppercase tracking-wide">
-      {type}
-    </Badge>
-  )
-}
-
-function ScopeBadge({ scope }: { scope: McpServerScope }) {
-  const styles: Record<McpServerScope, string> = {
-    local: "text-[10px] border-status-success/30 text-status-success bg-status-success/10",
-    project: "text-[10px] border-status-info/30 text-status-info bg-status-info/10",
-    user: "text-[10px] border-muted-foreground/30 text-muted-foreground",
-  }
-  return (
-    <Badge variant="outline" className={styles[scope]}>
-      {scope}
-    </Badge>
-  )
-}
+// ── Compact Server Row ──────────────────────────────────
 
 interface ServerTestState {
   loading: boolean
   result: McpTestResult | null
 }
 
-function McpServerCard({
+function McpServerRow({
   server,
   onEdit,
   onRemove,
@@ -112,106 +91,116 @@ function McpServerCard({
     }
   }
 
-  const transportDetail = server.type === "stdio"
+  const transportSummary = server.type === "stdio"
     ? [server.command, ...(server.args || [])].filter(Boolean).join(" ")
     : server.url || ""
 
   return (
-    <article className="rounded-lg surface-panel p-4 space-y-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <Server size={14} className="text-muted-foreground shrink-0" />
-          <span className="text-body-md font-semibold truncate">{server.name}</span>
-          <TransportBadge type={server.type} />
-          <ScopeBadge scope={server.scope} />
-          {server.disabled && (
-            <Badge variant="outline" className="text-[10px] border-status-warning/30 text-status-warning bg-status-warning/10">
-              disabled
-            </Badge>
-          )}
+    <div className="group">
+      {/* Main compact row */}
+      <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-surface-2/50 -mx-2">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+
+        <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>
+          {server.name}
+        </span>
+
+        <Badge variant="outline" className="text-[10px] font-medium uppercase tracking-wide shrink-0">
+          {server.type}
+        </Badge>
+
+        <span className="ui-meta-text text-muted-foreground truncate hidden sm:inline">
+          {transportSummary}
+        </span>
+
+        {testState.result && (
+          <span className="shrink-0">
+            {testState.result.healthy
+              ? <Check size={12} className="text-status-success" />
+              : <AlertCircle size={12} className="text-status-danger" />
+            }
+          </span>
+        )}
+
+        <span className="flex-1" />
+
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 ui-motion-fast">
+          <button
+            onClick={handleTest}
+            disabled={testState.loading}
+            className="p-1 text-muted-foreground hover:text-foreground rounded"
+            title="Test connection"
+          >
+            {testState.loading ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
+          </button>
+          <button onClick={() => onEdit(server)} className="p-1 text-muted-foreground hover:text-foreground rounded" title="Edit">
+            <Pencil size={12} />
+          </button>
+          <button onClick={() => onRemove(server)} className="p-1 text-muted-foreground hover:text-status-danger rounded" title="Remove">
+            <Trash2 size={12} />
+          </button>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Switch
-            checked={!server.disabled}
-            disabled={toggling}
-            aria-label={`Toggle ${server.name}`}
-            onCheckedChange={handleToggle}
-          />
-          <Button variant="ghost" size="sm" onClick={handleTest} disabled={testState.loading}>
-            {testState.loading ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
-            Test
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onEdit(server)}>
-            <Pencil size={14} />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onRemove(server)}>
-            <Trash2 size={14} />
-          </Button>
-        </div>
+        <Switch
+          checked={!server.disabled}
+          disabled={toggling}
+          aria-label={`Toggle ${server.name}`}
+          onCheckedChange={handleToggle}
+          className="shrink-0 scale-[0.8]"
+        />
       </div>
 
-      {/* Transport detail (collapsible) */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 ui-meta-text text-muted-foreground hover:text-foreground"
-      >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span className="truncate max-w-[400px]">{transportDetail || "No transport configured"}</span>
-      </button>
-
+      {/* Expanded detail */}
       {expanded && (
-        <div className="pl-4 space-y-1 ui-meta-text text-muted-foreground">
-          {server.type === "stdio" && (
-            <>
-              <p>Command: <span className="text-foreground font-mono">{server.command || "n/a"}</span></p>
-              {server.args?.length ? (
-                <p>Args: <span className="text-foreground font-mono">{server.args.join(" ")}</span></p>
-              ) : null}
-            </>
-          )}
-          {(server.type === "http" || server.type === "sse") && (
-            <p>URL: <span className="text-foreground font-mono">{server.url || "n/a"}</span></p>
-          )}
-          {server.env && Object.keys(server.env).length > 0 && (
-            <p>Env: <span className="text-foreground font-mono">{Object.keys(server.env).join(", ")}</span></p>
-          )}
-        </div>
-      )}
+        <div className="pl-7 pr-2 pb-2 space-y-1">
+          <div className="ui-meta-text text-muted-foreground space-y-0.5">
+            {server.type === "stdio" && (
+              <>
+                <p>Command: <span className="text-foreground font-mono">{server.command || "n/a"}</span></p>
+                {server.args?.length ? (
+                  <p>Args: <span className="text-foreground font-mono">{server.args.join(" ")}</span></p>
+                ) : null}
+              </>
+            )}
+            {(server.type === "http" || server.type === "sse") && (
+              <p>URL: <span className="text-foreground font-mono">{server.url || "n/a"}</span></p>
+            )}
+            {server.env && Object.keys(server.env).length > 0 && (
+              <p>Env: <span className="text-foreground font-mono">{Object.keys(server.env).join(", ")}</span></p>
+            )}
+          </div>
 
-      {/* Test result */}
-      {testState.result && (
-        <div className="pl-4 space-y-1">
-          {testState.result.healthy ? (
-            <div className="flex items-center gap-1.5">
-              <Check size={14} className="text-status-success" />
-              <span className="text-body-sm text-status-success">
-                Healthy ({testState.result.tools.length} tool{testState.result.tools.length !== 1 ? "s" : ""})
-              </span>
-              <span className="ui-meta-text text-muted-foreground ml-1">{testState.result.latencyMs}ms</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <AlertCircle size={14} className="text-status-danger" />
-              <span className="text-body-sm text-status-danger">
-                {testState.result.error || "Connection failed"}
-              </span>
-            </div>
-          )}
-
-          {testState.result.healthy && testState.result.tools.length > 0 && (
+          {testState.result && (
             <div className="space-y-0.5 mt-1">
-              {testState.result.tools.map((tool) => (
-                <p key={tool.qualifiedName} className="ui-meta-text text-muted-foreground">
-                  <span className="text-foreground font-mono">{tool.name}</span>
-                  {tool.description ? ` — ${tool.description}` : ""}
+              {testState.result.healthy ? (
+                <p className="ui-meta-text text-status-success">
+                  Healthy — {testState.result.tools.length} tool{testState.result.tools.length !== 1 ? "s" : ""} ({testState.result.latencyMs}ms)
                 </p>
-              ))}
+              ) : (
+                <p className="ui-meta-text text-status-danger">
+                  {testState.result.error || "Connection failed"}
+                </p>
+              )}
+              {testState.result.healthy && testState.result.tools.length > 0 && (
+                <div className="space-y-0.5">
+                  {testState.result.tools.map((tool) => (
+                    <p key={tool.qualifiedName} className="ui-meta-text text-muted-foreground">
+                      <span className="text-foreground font-mono">{tool.name}</span>
+                      {tool.description ? ` — ${tool.description}` : ""}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-    </article>
+    </div>
   )
 }
 
@@ -449,6 +438,66 @@ function McpServerFormDialog({
   )
 }
 
+// ── Collapsible Group ────────────────────────────────────
+
+const COLLAPSED_LIMIT = 4
+
+function ServerGroupSection({
+  group,
+  onEdit,
+  onRemove,
+  onRefresh,
+}: {
+  group: ServerGroup
+  onEdit: (server: McpServerInfo) => void
+  onRemove: (server: McpServerInfo) => void
+  onRefresh: () => void
+}) {
+  const [groupOpen, setGroupOpen] = useState(true)
+  const [showAll, setShowAll] = useState(false)
+
+  const visible = showAll ? group.servers : group.servers.slice(0, COLLAPSED_LIMIT)
+  const hiddenCount = group.servers.length - COLLAPSED_LIMIT
+
+  return (
+    <div className="space-y-0.5">
+      <button
+        onClick={() => setGroupOpen(!groupOpen)}
+        className="flex items-center gap-1.5 w-full text-left"
+      >
+        {groupOpen ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
+        <span className="section-kicker">{group.label}</span>
+        <Badge variant="outline" className="text-[10px] text-muted-foreground">{group.servers.length}</Badge>
+        {group.projectPath && (
+          <span className="ui-meta-text text-muted-foreground truncate max-w-[250px] ml-1">{group.projectPath}</span>
+        )}
+      </button>
+
+      {groupOpen && (
+        <div className="pl-1">
+          {visible.map((server) => (
+            <McpServerRow
+              key={`${server.scope}:${server.projectPath || ""}:${server.name}`}
+              server={server}
+              onEdit={onEdit}
+              onRemove={onRemove}
+              onRefresh={onRefresh}
+            />
+          ))}
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="ui-meta-text text-muted-foreground hover:text-foreground py-1 pl-7"
+            >
+              {showAll ? "Show less" : `Show ${hiddenCount} more...`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Section ────────────────────────────────────────
 
 interface ServerGroup {
@@ -579,25 +628,19 @@ export function McpServersSection() {
         </article>
       )}
 
-      {groups.map((group) => (
-        <div key={group.label + (group.projectPath || "")} className="space-y-2">
-          <div className="flex items-center gap-2">
-            <p className="section-kicker">{group.label}</p>
-            {group.projectPath && (
-              <span className="ui-meta-text text-muted-foreground truncate max-w-[300px]">{group.projectPath}</span>
-            )}
-          </div>
-          {group.servers.map((server) => (
-            <McpServerCard
-              key={`${server.scope}:${server.projectPath || ""}:${server.name}`}
-              server={server}
+      {hasServers && (
+        <div className="rounded-lg surface-panel p-3 space-y-2">
+          {groups.map((group) => (
+            <ServerGroupSection
+              key={group.label + (group.projectPath || "")}
+              group={group}
               onEdit={handleEdit}
               onRemove={handleRemove}
               onRefresh={refreshServers}
             />
           ))}
         </div>
-      ))}
+      )}
 
       <McpServerFormDialog
         open={dialogOpen}
