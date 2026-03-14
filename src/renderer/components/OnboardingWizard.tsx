@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAtom } from "jotai"
 import { Button } from "@/components/ui/button"
-import { firstLaunchAtom, mainViewAtom, selectedProjectAtom } from "@/lib/store"
+import {
+  chatPanelOpenAtom,
+  firstLaunchAtom,
+  mainViewAtom,
+  selectedProjectAtom,
+} from "@/lib/store"
 import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
 import {
   CheckCircle2,
@@ -10,18 +15,25 @@ import {
   FolderOpen,
   ArrowRight,
   ArrowLeft,
+  Search,
+  Pencil,
+  FileText,
   LayoutTemplate,
-  Workflow,
   Terminal,
+  Bot,
 } from "lucide-react"
+
+type JobChoice = "analyze" | "generate" | "content"
 
 const TOTAL_STEPS = 4
 
 export function OnboardingWizard() {
   const [step, setStep] = useState(1)
+  const [selectedJob, setSelectedJob] = useState<JobChoice | null>(null)
   const [, setFirstLaunch] = useAtom(firstLaunchAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setSelectedProject] = useAtom(selectedProjectAtom)
+  const [, setChatPanelOpen] = useAtom(chatPanelOpenAtom)
 
   const skip = useCallback(() => {
     setFirstLaunch(false)
@@ -35,6 +47,17 @@ export function OnboardingWizard() {
   const prev = useCallback(() => {
     if (step > 1) setStep((s) => s - 1)
   }, [step])
+
+  const openAgent = useCallback(() => {
+    setFirstLaunch(false)
+    setMainView("thread")
+    setChatPanelOpen(true)
+  }, [setFirstLaunch, setMainView, setChatPanelOpen])
+
+  const goTemplates = useCallback(() => {
+    setFirstLaunch(false)
+    setMainView("templates")
+  }, [setFirstLaunch, setMainView])
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-[var(--titlebar-height)]">
@@ -59,13 +82,16 @@ export function OnboardingWizard() {
 
           {/* Step content */}
           <div className="rounded-lg surface-panel p-8 space-y-6">
-            {step === 1 && <StepWhatIsC8c />}
-            {step === 2 && <StepCheckCli />}
-            {step === 3 && <StepOpenProject onProjectAdded={setSelectedProject} />}
-            {step === 4 && <StepCreateWorkflow onFinish={skip} onGoTemplates={() => {
-              setFirstLaunch(false)
-              setMainView("templates")
-            }} />}
+            {step === 1 && <StepCheckCli />}
+            {step === 2 && <StepOpenProject onProjectAdded={setSelectedProject} />}
+            {step === 3 && <StepPickJob selectedJob={selectedJob} onSelect={setSelectedJob} />}
+            {step === 4 && (
+              <StepActivateAgent
+                selectedJob={selectedJob}
+                onOpenAgent={openAgent}
+                onGoTemplates={goTemplates}
+              />
+            )}
           </div>
 
           {/* Navigation */}
@@ -101,41 +127,7 @@ export function OnboardingWizard() {
   )
 }
 
-/* ── Step 1: What is c8c ─────────────────────────────────── */
-
-function StepWhatIsC8c() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
-          <Workflow size={20} className="text-foreground" />
-        </div>
-        <h2 className="text-title-md text-foreground">Welcome to c8c</h2>
-      </div>
-      <p className="text-body-md text-muted-foreground leading-relaxed">
-        c8c (cybernetic) is a visual workflow builder for the Claude CLI.
-        Like Apple Shortcuts, but for Claude -- give input, pick a chain of
-        skills, and get processed output.
-      </p>
-      <ul className="space-y-2 text-body-sm text-muted-foreground">
-        <li className="flex items-start gap-2">
-          <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-foreground/40 shrink-0" />
-          Build directed graphs of skill nodes that execute via the Claude CLI
-        </li>
-        <li className="flex items-start gap-2">
-          <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-foreground/40 shrink-0" />
-          Use evaluators, splitters, and approval gates to control flow
-        </li>
-        <li className="flex items-start gap-2">
-          <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-foreground/40 shrink-0" />
-          Start from templates or build your own workflows from scratch
-        </li>
-      </ul>
-    </div>
-  )
-}
-
-/* ── Step 2: Check CLI ───────────────────────────────────── */
+/* ── Step 1: Check CLI ───────────────────────────────────── */
 
 function StepCheckCli() {
   const [status, setStatus] = useState<ClaudeCodeSubscriptionStatus | null>(null)
@@ -230,7 +222,7 @@ function StepCheckCli() {
   )
 }
 
-/* ── Step 3: Open a project ──────────────────────────────── */
+/* ── Step 2: Open a project ──────────────────────────────── */
 
 function StepOpenProject({
   onProjectAdded,
@@ -295,37 +287,149 @@ function StepOpenProject({
   )
 }
 
-/* ── Step 4: Create your first workflow ──────────────────── */
+/* ── Step 3: What will you build? (JTBD) ─────────────────── */
 
-function StepCreateWorkflow({
-  onFinish,
-  onGoTemplates,
+const JOB_CARDS: { id: JobChoice; icon: typeof Search; title: string; description: string; mode: string }[] = [
+  {
+    id: "analyze",
+    icon: Search,
+    title: "Analyze & review",
+    description: "Code review, audits, docs",
+    mode: "Plan mode (read-only)",
+  },
+  {
+    id: "generate",
+    icon: Pencil,
+    title: "Generate & refactor",
+    description: "Write code, tests, refactor",
+    mode: "Edit mode (can modify)",
+  },
+  {
+    id: "content",
+    icon: FileText,
+    title: "Content pipelines",
+    description: "Blog posts, landing pages",
+    mode: "Multi-step generation",
+  },
+]
+
+function StepPickJob({
+  selectedJob,
+  onSelect,
 }: {
-  onFinish: () => void
-  onGoTemplates: () => void
+  selectedJob: JobChoice | null
+  onSelect: (job: JobChoice) => void
 }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
-          <LayoutTemplate size={20} className="text-foreground" />
+          <Bot size={20} className="text-foreground" />
         </div>
-        <h2 className="text-title-md text-foreground">Create your first workflow</h2>
+        <h2 className="text-title-md text-foreground">What will you build?</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
-        Start from a pre-built template to see how workflows are structured, or
-        jump straight to the editor and build from scratch.
+        Pick your primary use case. This helps us show relevant examples.
       </p>
 
+      <div className="flex flex-col gap-3" role="radiogroup">
+        {JOB_CARDS.map((card) => {
+          const Icon = card.icon
+          const selected = selectedJob === card.id
+          return (
+            <button
+              key={card.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onSelect(card.id)}
+              className={`flex items-start gap-3 rounded-lg p-3 text-left ui-pressable transition-colors ${
+                selected
+                  ? "surface-panel border border-primary bg-primary/5"
+                  : "surface-panel border border-transparent hover:border-muted-foreground/20"
+              }`}
+            >
+              <div className={`flex items-center justify-center w-8 h-8 rounded-md shrink-0 ${
+                selected ? "bg-primary/10" : "bg-surface-2"
+              }`}>
+                <Icon size={16} className={selected ? "text-primary" : "text-muted-foreground"} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-body-sm font-medium text-foreground">{card.title}</div>
+                <div className="ui-meta-text text-muted-foreground">{card.description}</div>
+                <div className="ui-meta-text text-muted-foreground/60 mt-0.5">{card.mode}</div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <p className="ui-meta-text text-muted-foreground">
+        You can always change this later in the toolbar.
+      </p>
+    </div>
+  )
+}
+
+/* ── Step 4: Start with the Agent ────────────────────────── */
+
+const EXAMPLE_PROMPTS: Record<JobChoice, string> = {
+  analyze: "Review this codebase for security vulnerabilities",
+  generate: "Refactor all React class components to hooks",
+  content: "Generate a blog post series from research notes",
+}
+
+function StepActivateAgent({
+  selectedJob,
+  onOpenAgent,
+  onGoTemplates,
+}: {
+  selectedJob: JobChoice | null
+  onOpenAgent: () => void
+  onGoTemplates: () => void
+}) {
+  const examplePrompt = selectedJob
+    ? EXAMPLE_PROMPTS[selectedJob]
+    : EXAMPLE_PROMPTS.generate
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
+          <Bot size={20} className="text-foreground" />
+        </div>
+        <h2 className="text-title-md text-foreground">Describe what you need</h2>
+      </div>
+      <p className="text-body-md text-muted-foreground">
+        The fastest way to build a workflow -- open the Agent and describe your
+        task. It will find the right skills and set everything up.
+      </p>
+
+      <div className="rounded-lg bg-surface-2 p-3 space-y-2">
+        <div className="ui-meta-text text-muted-foreground/60 flex items-center gap-1.5">
+          Agent <code className="inline-code text-[10px]">&#8984;&#8679;K</code>
+        </div>
+        <p className="text-body-sm font-mono text-foreground/80">
+          {examplePrompt}
+        </p>
+      </div>
+
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="button" variant="default" size="sm" onClick={onGoTemplates}>
+        <Button type="button" variant="default" size="sm" onClick={onOpenAgent}>
+          <Bot size={14} />
+          Open the Agent
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
           <LayoutTemplate size={14} />
           Browse templates
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onFinish}>
-          Start from scratch
-        </Button>
       </div>
+
+      <p className="ui-meta-text text-muted-foreground">
+        <code className="inline-code text-[10px]">&#8984;Enter</code> to run
+        {" "}&middot;{" "}
+        <code className="inline-code text-[10px]">&#8984;S</code> to save
+      </p>
     </div>
   )
 }

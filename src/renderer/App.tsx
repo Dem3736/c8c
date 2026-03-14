@@ -50,6 +50,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { STAGE_META } from "@/lib/template-stages"
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
@@ -290,7 +291,7 @@ const AppShell = memo(function AppShell() {
                 <p className="text-body-sm text-muted-foreground">{deepLinkTemplate.description}</p>
               )}
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className="capitalize">{deepLinkTemplate.category}</Badge>
+                <Badge variant="outline">{STAGE_META[deepLinkTemplate.stage].label}</Badge>
                 <span className="ui-meta-text text-muted-foreground">
                   {nodeCount} node{nodeCount === 1 ? "" : "s"} · {edgeCount} edge{edgeCount === 1 ? "" : "s"}
                 </span>
