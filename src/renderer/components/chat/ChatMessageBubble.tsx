@@ -2,6 +2,7 @@ import { useState } from "react"
 import { AlertCircle, ChevronDown, ChevronRight, CheckCircle2, Wrench, Loader2, Bot, Copy, Check } from "lucide-react"
 import { cn } from "@/lib/cn"
 import type { ChatMessageDisplay } from "@/lib/store"
+import { isToolResultError, summarizeToolCall, summarizeToolResult } from "@/lib/chat-tool-summary"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -96,12 +97,13 @@ export function ChatMessageBubble({
   }
 
   if (message.role === "tool_call") {
+    const summary = summarizeToolCall(message.toolName, message.toolInput)
     const preview = compactPreview(
-      message.toolInput ? JSON.stringify(message.toolInput) : undefined,
+      summary.preview || (!summary.detail && message.toolInput ? JSON.stringify(message.toolInput) : undefined),
     )
 
     return (
-      <div className="ml-8 rounded-lg border border-status-info/20 bg-status-info/10">
+      <div className="ml-8 rounded-lg surface-info-soft">
         <button
           type="button"
           onClick={() => setToolExpanded(!toolExpanded)}
@@ -110,16 +112,18 @@ export function ChatMessageBubble({
             "ui-meta-text text-status-info ui-transition-colors ui-motion-fast hover:bg-status-info/10",
           )}
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md bg-status-info/10">
-              <Wrench size={11} />
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-control-xs w-control-xs shrink-0 items-center justify-center rounded-md bg-status-info/10">
+                <Wrench size={11} />
+              </span>
+              <span className="min-w-0 text-left">
+                <span className="block font-medium truncate">{summary.title}</span>
+                <span className="block ui-meta-text text-muted-foreground truncate">
+                  {summary.detail || "Running tool"}
+                </span>
+              </span>
             </span>
-            <span className="min-w-0 text-left">
-              <span className="block font-medium truncate">{message.toolName || "tool"}</span>
-              <span className="block text-sidebar-label text-muted-foreground">Running tool</span>
-            </span>
-          </span>
-          {toolExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {toolExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
 
         {!toolExpanded && preview && (
@@ -139,8 +143,9 @@ export function ChatMessageBubble({
 
   if (message.role === "tool_result") {
     const body = message.toolError || message.toolOutput || message.content
-    const preview = compactPreview(body)
-    const isError = Boolean(message.toolError)
+    const isError = isToolResultError(body, message.toolError)
+    const summary = summarizeToolResult(message.toolName, body, { isError })
+    const preview = compactPreview(summary.preview || (!summary.detail ? body : undefined))
 
     return (
       <div className={cn(
@@ -168,12 +173,12 @@ export function ChatMessageBubble({
               {isError ? <AlertCircle size={11} /> : <CheckCircle2 size={11} />}
             </span>
             <span className="min-w-0 text-left">
-              <span className="block font-medium truncate">{message.toolName} result</span>
+              <span className="block font-medium truncate">{summary.title}</span>
               <span className={cn(
-                "block text-sidebar-label",
+                "block ui-meta-text truncate",
                 isError ? "text-status-danger/80" : "text-status-success/80",
               )}>
-                {isError ? "Error" : "Success"}
+                {summary.detail || (isError ? "Error" : "Success")}
               </span>
             </span>
           </span>

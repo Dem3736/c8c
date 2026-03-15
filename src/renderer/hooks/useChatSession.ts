@@ -13,6 +13,7 @@ import {
 } from "@/lib/store"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { Workflow } from "@shared/types"
+import { sanitizeAssistantText } from "@shared/chat-output"
 import { toast } from "sonner"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
@@ -113,10 +114,11 @@ export function useChatSession() {
           setActiveToolName(null)
           setMessages((prev) => {
             const last = prev[prev.length - 1]
+            const displayContent = sanitizeAssistantText(streamingTextRef.current, { streaming: true })
             if (last && last.role === "assistant" && last.streaming) {
               return [
                 ...prev.slice(0, -1),
-                { ...last, content: streamingTextRef.current },
+                { ...last, content: displayContent },
               ]
             }
             return prev
@@ -227,16 +229,20 @@ export function useChatSession() {
 
         case "message-complete": {
           streamingTextRef.current = ""
+          const content = sanitizeAssistantText(event.message.content)
           setMessages((prev) => {
             const filtered = prev.filter(
               (m) => !(m.role === "assistant" && m.streaming),
             )
+            if (!content.trim()) {
+              return filtered
+            }
             return [
               ...filtered,
               {
                 id: event.message.id,
                 role: "assistant",
-                content: event.message.content,
+                content,
                 timestamp: event.message.timestamp,
               },
             ]
@@ -302,17 +308,27 @@ export function useChatSession() {
       if (historyRequestRef.current !== requestId) return
       if (conversation && conversation.messages.length > 0) {
         setMessages(
-          conversation.messages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp,
-            toolName: m.toolName,
-            toolInput: m.toolInput,
-            toolCallId: m.toolCallId,
-            toolOutput: m.toolOutput,
-            toolError: m.toolError,
-          })),
+          conversation.messages.flatMap((m) => {
+            const content = m.role === "assistant"
+              ? sanitizeAssistantText(m.content)
+              : m.content
+
+            if (m.role === "assistant" && !content.trim()) {
+              return []
+            }
+
+            return [{
+              id: m.id,
+              role: m.role,
+              content,
+              timestamp: m.timestamp,
+              toolName: m.toolName,
+              toolInput: m.toolInput,
+              toolCallId: m.toolCallId,
+              toolOutput: m.toolOutput,
+              toolError: m.toolError,
+            }]
+          }),
         )
       } else {
         setMessages([])

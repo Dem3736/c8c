@@ -20,6 +20,20 @@ describe("sanitizeAssistantText", () => {
     expect(cleaned).toBe("Сначала поищу навыки.\n\nГотово.")
   })
 
+  it("removes singular tool_result blocks and dangling closing tags", () => {
+    const raw = `Нашёл категорию.
+
+</tool_result>
+<tool_result call_id="b2">Category: uncategorized (2 skills)
+Skills:
+  - uncategorized/new-skill: No description</tool_result>
+
+Продолжаю.`
+
+    const cleaned = sanitizeAssistantText(raw)
+    expect(cleaned).toBe("Нашёл категорию.\n\nПродолжаю.")
+  })
+
   it("removes fenced JSON tool calls", () => {
     const raw = `Добавляю узел.
 \`\`\`json
@@ -38,6 +52,15 @@ describe("sanitizeAssistantText", () => {
 
     const cleaned = sanitizeAssistantText(raw)
     expect(cleaned).toBe("Делаю шаг.\n\nГотово.")
+  })
+
+  it("hides partial tool chatter while streaming", () => {
+    const raw = `Сначала ищу навыки.
+\`\`\`json
+{"tool":"browse_category","call_id":"b2","input":{"path":"uncategorized"}}`
+
+    const cleaned = sanitizeAssistantText(raw, { streaming: true })
+    expect(cleaned).toBe("Сначала ищу навыки.")
   })
 })
 

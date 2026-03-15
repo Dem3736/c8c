@@ -315,13 +315,15 @@ async function finalizeConversationTurn(
   window: BrowserWindow | null,
   sessionId: string,
 ): Promise<void> {
-  conversation.messages.push(assistantMessage)
+  if (assistantMessage.content.trim()) {
+    conversation.messages.push(assistantMessage)
 
-  sendChatEvent(window, {
-    type: "message-complete",
-    sessionId,
-    message: assistantMessage,
-  })
+    sendChatEvent(window, {
+      type: "message-complete",
+      sessionId,
+      message: assistantMessage,
+    })
+  }
 
   const MAX_STORED_MESSAGES = 200
   if (conversation.messages.length > MAX_STORED_MESSAGES) {
