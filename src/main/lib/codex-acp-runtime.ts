@@ -101,7 +101,7 @@ interface CodexAcpAuthSelection {
   apiKeyConfigured: boolean
   authMethod: "chatgpt" | "api_key"
   accountLabel: string
-  authMethodId?: "chatgpt" | "codex-api-key"
+  authMethodId?: "codex-api-key"
 }
 
 function isWithinRoot(candidatePath: string, rootPath: string): boolean {
@@ -501,8 +501,24 @@ function resolveCodexAcpAuthSelection(
     apiKeyConfigured: false,
     authMethod: "chatgpt",
     accountLabel: "ChatGPT subscription",
-    authMethodId: "chatgpt",
   }
+}
+
+function buildCodexAcpProcessEnv(
+  env: NodeJS.ProcessEnv,
+  authSelection: CodexAcpAuthSelection,
+): Record<string, string> {
+  const filtered = Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  )
+
+  if (authSelection.authMethod === "api_key") {
+    return filtered
+  }
+
+  delete filtered.CODEX_API_KEY
+  delete filtered.OPENAI_API_KEY
+  return filtered
 }
 
 function buildCodexToolPolicyPrefix(options: AgentRunOptions): string {
@@ -764,9 +780,7 @@ export async function probeCodexAcpAuthStatus(): Promise<ProviderAuthStatus> {
   const authSelection = resolveCodexAcpAuthSelection(apiKey)
   const provider = createACPProvider({
     command: resolveCodexAcpBinaryPath(),
-    env: Object.fromEntries(
-      Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-    ),
+    env: buildCodexAcpProcessEnv(env, authSelection),
     authMethodId: authSelection.authMethodId,
     session: {
       cwd: homedir(),
@@ -833,9 +847,7 @@ export async function createCodexAcpExecutionHandle(
   const mcpServers = await resolveCodexAcpMcpServers(options.workdir, options.mcpConfigPath)
   const provider = createACPProvider({
     command: resolveCodexAcpBinaryPath(),
-    env: Object.fromEntries(
-      Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-    ),
+    env: buildCodexAcpProcessEnv(env, authSelection),
     authMethodId: authSelection.authMethodId,
     session: {
       cwd: options.workdir,

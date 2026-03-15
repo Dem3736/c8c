@@ -169,7 +169,7 @@ describe("createCodexAcpExecutionHandle", () => {
       apiKeyConfigured: false,
     })
     expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
-      authMethodId: "chatgpt",
+      authMethodId: undefined,
       session: expect.objectContaining({
         mcpServers: [],
       }),
@@ -194,7 +194,11 @@ describe("createCodexAcpExecutionHandle", () => {
       accountLabel: "ChatGPT subscription",
     })
     expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
-      authMethodId: "chatgpt",
+      authMethodId: undefined,
+      env: expect.not.objectContaining({
+        OPENAI_API_KEY: "ambient-openai-key",
+        CODEX_API_KEY: "ambient-codex-key",
+      }),
     }))
   })
 
