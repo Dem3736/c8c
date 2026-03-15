@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { expandSplitter, type RuntimeWorkflow } from "./runtime-graph"
+import { collapseSplitterExpansion, expandSplitter, RuntimeGraphError, type RuntimeWorkflow } from "./runtime-graph"
 import { isRunComplete } from "./graph-engine"
 import type { Workflow, NodeState } from "@shared/types"
 
@@ -101,19 +101,10 @@ describe("expandSplitter", () => {
     expect(result.runtimeMeta[runtimeSkill.id].totalBranches).toBe(1)
   })
 
-  it("falls back to single branch with empty subtasks", () => {
+  it("fails fast on empty subtasks", () => {
     const subtasks: { key: string; content: string }[] = []
 
-    // expandSplitter should still work — the runner guards against empty subtasks
-    // before calling expandSplitter, but expandSplitter itself should handle it gracefully
-    const result = expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", subtasks)
-
-    // With 0 subtasks, no runtime copies are created
-    const runtimeSkills = result.nodes.filter((n) => n.id.startsWith("skill-tpl::"))
-    expect(runtimeSkills).toHaveLength(0)
-
-    // Template node is still removed
-    expect(result.nodes.find((n) => n.id === "skill-tpl")).toBeUndefined()
+    expect(() => expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", subtasks)).toThrow(RuntimeGraphError)
   })
 
   it("respects maxBranches limit", () => {
@@ -284,10 +275,43 @@ describe("expandSplitter", () => {
     expect(result.edges.find((e) => e.source === "skill-b::s1" && e.target === "merger-1")).toBeDefined()
     expect(result.edges.find((e) => e.source === "skill-b::s2" && e.target === "merger-1")).toBeDefined()
 
-    // runtimeMeta only on entry nodes (skill-a), not skill-b
+    // runtimeMeta is present for all runtime clones
     expect(result.runtimeMeta["skill-a::s1"]).toBeDefined()
     expect(result.runtimeMeta["skill-a::s1"].subtaskContent).toBe("Subtask 1")
-    expect(result.runtimeMeta["skill-b::s1"]).toBeUndefined()
+    expect(result.runtimeMeta["skill-b::s1"]).toBeDefined()
+  })
+
+  it("sanitizes unsafe subtask keys", () => {
+    const result = expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", [
+      { key: "Hero Section!", content: "Hero" },
+    ])
+
+    expect(result.nodes.find((node) => node.id === "skill-tpl::hero-section")).toBeDefined()
+    expect(result.runtimeMeta["skill-tpl::hero-section"]?.subtaskKey).toBe("hero-section")
+  })
+
+  it("fails on duplicate normalized subtask keys", () => {
+    expect(() =>
+      expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", [
+        { key: "Hero", content: "A" },
+        { key: "hero!", content: "B" },
+      ]),
+    ).toThrow(RuntimeGraphError)
+  })
+
+  it("collapses runtime expansion without mutating the original runtime workflow object", () => {
+    const expanded = expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", [
+      { key: "hero", content: "Hero" },
+      { key: "pricing", content: "Pricing" },
+    ])
+    const originalNodeIds = expanded.nodes.map((node) => node.id)
+
+    const collapsed = collapseSplitterExpansion(expanded, FAN_OUT_WORKFLOW, "splitter-1")
+
+    expect(expanded.nodes.map((node) => node.id)).toEqual(originalNodeIds)
+    expect(collapsed.removedIds.has("skill-tpl::hero")).toBe(true)
+    expect(collapsed.workflow.nodes.find((node) => node.id === "skill-tpl")).toBeDefined()
+    expect(collapsed.workflow.nodes.find((node) => node.id === "skill-tpl::hero")).toBeUndefined()
   })
 })
 

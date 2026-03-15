@@ -1,5 +1,7 @@
 import { BrowserWindow } from "electron"
 import { cancelWorkflowRun, runWorkflow } from "./workflow-runner"
+import { ensureBatchWorkspace, logBatchPersistenceFailure, persistBatchState, type PersistedBatchState } from "./batch-state"
+import { logInfo, logWarn } from "./structured-log"
 import type {
   Workflow,
   WorkflowInput,
@@ -10,7 +12,24 @@ import type {
 
 const activeBatches = new Map<string, AbortController>()
 const activeBatchRuns = new Map<string, Set<string>>()
+const activeBatchSnapshots = new Map<string, ActiveBatchSnapshot>()
 const DEFAULT_BATCH_ITEM_TIMEOUT_MS = 5 * 60 * 1000
+const MAX_BATCH_CONCURRENCY = 10
+
+export interface ActiveBatchSnapshot {
+  batchId: string
+  workflowName: string
+  workflowPath?: string
+  projectPath?: string
+  workspace: string
+  total: number
+  completed: number
+  running: number
+  concurrency: number
+  stopOnFailure: boolean
+  startedAt: number
+  items: BatchItemResult[]
+}
 
 function send(window: BrowserWindow, event: BatchEvent) {
   if (!window.isDestroyed()) {
@@ -28,18 +47,74 @@ export async function runBatch(
   projectPath?: string,
   workflowPath?: string,
 ): Promise<void> {
+  const requestedConcurrency = Number.isFinite(concurrency) ? Math.floor(concurrency) : concurrency
+  const effectiveConcurrency = Number.isFinite(requestedConcurrency) && requestedConcurrency >= 1
+    ? Math.max(1, Math.min(MAX_BATCH_CONCURRENCY, requestedConcurrency))
+    : requestedConcurrency
   const controller = new AbortController()
   activeBatches.set(batchId, controller)
   activeBatchRuns.set(batchId, new Set<string>())
+  const startedAt = Date.now()
+  const workspace = await ensureBatchWorkspace(batchId, projectPath)
+  const items: BatchItemResult[] = []
+  activeBatchSnapshots.set(batchId, {
+    batchId,
+    workflowName: workflow.name,
+    workflowPath,
+    projectPath,
+    workspace,
+    total: inputs.length,
+    completed: 0,
+    running: 0,
+    concurrency: Number.isFinite(effectiveConcurrency) ? effectiveConcurrency : concurrency,
+    stopOnFailure,
+    startedAt,
+    items,
+  })
+
+  const persistSnapshot = async (status: PersistedBatchState["status"], error?: string) => {
+    const snapshot = activeBatchSnapshots.get(batchId)
+    if (!snapshot) return
+    try {
+      await persistBatchState(snapshot.workspace, {
+        batchId: snapshot.batchId,
+        workflowName: snapshot.workflowName,
+        workflowPath: snapshot.workflowPath,
+        projectPath: snapshot.projectPath,
+        total: snapshot.total,
+        completed: snapshot.completed,
+        running: snapshot.running,
+        concurrency: snapshot.concurrency,
+        stopOnFailure: snapshot.stopOnFailure,
+        startedAt: snapshot.startedAt,
+        updatedAt: Date.now(),
+        status,
+        items: snapshot.items,
+        error,
+      })
+    } catch (persistError) {
+      logBatchPersistenceFailure(batchId, persistError)
+    }
+  }
+
+  await persistSnapshot("running")
 
   try {
-    if (!Number.isFinite(concurrency) || concurrency < 1) {
+    if (!Number.isFinite(effectiveConcurrency) || effectiveConcurrency < 1) {
       send(window, {
         type: "batch-error",
         batchId,
         error: "Batch concurrency must be at least 1.",
       })
       return
+    }
+    if (effectiveConcurrency !== concurrency) {
+      logWarn("batch-runner", "batch_concurrency_clamped", {
+        batchId,
+        requestedConcurrency: concurrency,
+        effectiveConcurrency,
+        maxConcurrency: MAX_BATCH_CONCURRENCY,
+      })
     }
     if (inputs.length === 0) {
       send(window, {
@@ -58,7 +133,6 @@ export async function runBatch(
       return
     }
 
-    const items: BatchItemResult[] = []
     let completed = 0
     let running = 0
     let stopped = false
@@ -67,6 +141,12 @@ export async function runBatch(
     let queueIdx = 0
 
     const emitProgress = () => {
+      const snapshot = activeBatchSnapshots.get(batchId)
+      if (snapshot) {
+        snapshot.completed = completed
+        snapshot.running = running
+      }
+      void persistSnapshot("running")
       send(window, {
         type: "batch-progress",
         batchId,
@@ -124,7 +204,13 @@ export async function runBatch(
         }
       } catch (err) {
         if (timedOut) {
-          runPromise.catch(() => undefined)
+          runPromise.catch((error) => {
+            logWarn("batch-runner", "timed_out_run_error_swallowed", {
+              batchId,
+              runId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          })
         }
         return {
           input_index: index,
@@ -133,8 +219,8 @@ export async function runBatch(
           eval_scores: {},
           cost_usd: 0,
           duration_ms: Date.now() - startedAt,
-          error: String(err),
-          }
+          error: err instanceof Error ? err.message : String(err),
+        }
       } finally {
         controller.signal.removeEventListener("abort", abortRun)
         batchRuns?.delete(runId)
@@ -147,7 +233,16 @@ export async function runBatch(
     // Pool-based concurrency
     const workers: Promise<void>[] = []
 
-    for (let i = 0; i < Math.min(concurrency, inputs.length); i++) {
+    logInfo("batch-runner", "batch_started", {
+      batchId,
+      totalInputs: inputs.length,
+      concurrency: effectiveConcurrency,
+      stopOnFailure,
+      workflowPath: workflowPath || null,
+      projectPath: projectPath || null,
+    })
+
+    for (let i = 0; i < Math.min(effectiveConcurrency, inputs.length); i++) {
       workers.push(
         (async () => {
           while (queueIdx < queue.length && !stopped && !controller.signal.aborted) {
@@ -161,6 +256,7 @@ export async function runBatch(
             items.push(result)
             completed++
             running--
+            items.sort((left, right) => left.input_index - right.input_index)
 
             send(window, { type: "batch-item-done", batchId, item: result })
             emitProgress()
@@ -197,15 +293,22 @@ export async function runBatch(
     }
 
     send(window, { type: "batch-done", batchId, summary, items })
+    await persistSnapshot(controller.signal.aborted ? "cancelled" : "completed")
   } catch (err) {
+    logWarn("batch-runner", "batch_failed", {
+      batchId,
+      error: err instanceof Error ? err.message : String(err),
+    })
     send(window, {
       type: "batch-error",
       batchId,
       error: String(err),
     })
+    await persistSnapshot("failed", err instanceof Error ? err.message : String(err))
   } finally {
     activeBatches.delete(batchId)
     activeBatchRuns.delete(batchId)
+    activeBatchSnapshots.delete(batchId)
   }
 }
 
@@ -221,7 +324,38 @@ export function cancelBatch(batchId: string): boolean {
     }
     activeBatches.delete(batchId)
     activeBatchRuns.delete(batchId)
+    const snapshot = activeBatchSnapshots.get(batchId)
+    if (snapshot) {
+      snapshot.running = 0
+      void persistBatchState(snapshot.workspace, {
+        batchId: snapshot.batchId,
+        workflowName: snapshot.workflowName,
+        workflowPath: snapshot.workflowPath,
+        projectPath: snapshot.projectPath,
+        total: snapshot.total,
+        completed: snapshot.completed,
+        running: 0,
+        concurrency: snapshot.concurrency,
+        stopOnFailure: snapshot.stopOnFailure,
+        startedAt: snapshot.startedAt,
+        updatedAt: Date.now(),
+        status: "cancelled",
+        items: snapshot.items,
+      }).catch((error) => {
+        logBatchPersistenceFailure(batchId, error)
+      })
+    }
+    activeBatchSnapshots.delete(batchId)
     return true
   }
   return false
+}
+
+export function getActiveBatchSnapshot(batchId: string): ActiveBatchSnapshot | null {
+  const snapshot = activeBatchSnapshots.get(batchId)
+  if (!snapshot) return null
+  return {
+    ...snapshot,
+    items: snapshot.items.map((item) => ({ ...item })),
+  }
 }

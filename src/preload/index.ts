@@ -46,8 +46,9 @@ function subscribeIpcChannel<T>(channel: string, callback: (payload: T) => void)
       for (const subscriber of currentSubscribers) {
         try {
           subscriber(payload)
-        } catch {
+        } catch (error) {
           // Never let one renderer callback break channel delivery.
+          console.warn("[preload] subscriber error", { channel, error: String(error) })
         }
       }
     }
@@ -154,6 +155,7 @@ const api: C8cApi = {
   listRuns: (projectPath: string) => ipcRenderer.invoke("executor:list-runs", projectPath),
   loadRunResult: (workspace: string) => ipcRenderer.invoke("executor:load-run-result", workspace),
   openReport: (reportPath: string) => ipcRenderer.invoke("executor:open-report", reportPath),
+  getActiveExecutions: () => ipcRenderer.invoke("executor:get-active-executions"),
 
   // Libraries
   listLibraries: () => ipcRenderer.invoke("libraries:list"),

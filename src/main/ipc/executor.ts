@@ -7,16 +7,24 @@ import {
   resumeWorkflowRun,
   resolveApproval,
   continueRunFromWorkspace,
+  getWorkflowRunSnapshot,
 } from "../lib/workflow-runner"
 import { validateWorkflow } from "../lib/graph-engine"
-import { runBatch, cancelBatch } from "../lib/batch-runner"
+import { runBatch, cancelBatch, getActiveBatchSnapshot } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { scanAllSkills } from "../lib/skill-scanner"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
-import type { Workflow, WorkflowInput, RunResult } from "@shared/types"
+import type {
+  ActiveBatchRun,
+  ActiveExecutionSnapshot,
+  ActiveWorkflowRun,
+  Workflow,
+  WorkflowInput,
+  RunResult,
+} from "@shared/types"
 import { allowedProjectRoots, allowedReportRoots, assertWithinRoots } from "../lib/security-paths"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
 import {
@@ -71,6 +79,55 @@ function bindWindowLifecycle(window: BrowserWindow): void {
     windowLifecycleBindings.delete(window.id)
     cancelActiveWindowExecution(window.id)
   })
+}
+
+async function getActiveExecutionsForWindow(windowId: number): Promise<ActiveExecutionSnapshot[]> {
+  const executions = activeWindowExecutions.get(windowId)
+  if (!executions || executions.size === 0) return []
+
+  const snapshots: Array<ActiveExecutionSnapshot | null> = await Promise.all(Array.from(executions).map(async (executionId) => {
+    if (executionId.startsWith("batch:")) {
+      const batchId = executionId.slice("batch:".length)
+      const snapshot = getActiveBatchSnapshot(batchId)
+      if (!snapshot) return null
+      const batchSnapshot: ActiveBatchRun = {
+        kind: "batch" as const,
+        batchId: snapshot.batchId,
+        workflowName: snapshot.workflowName,
+        workflowPath: snapshot.workflowPath || null,
+        projectPath: snapshot.projectPath || null,
+        total: snapshot.total,
+        completed: snapshot.completed,
+        running: snapshot.running,
+        concurrency: snapshot.concurrency,
+        stopOnFailure: snapshot.stopOnFailure,
+        startedAt: snapshot.startedAt,
+        items: snapshot.items,
+      }
+      return batchSnapshot
+    }
+
+    const snapshot = await getWorkflowRunSnapshot(executionId)
+    if (!snapshot?.manifest || !snapshot.state) return null
+    const runSnapshot: ActiveWorkflowRun = {
+      kind: "run" as const,
+      runId: executionId,
+      workflowName: snapshot.manifest.workflowName,
+      workflowPath: snapshot.manifest.workflowPath || null,
+      projectPath: null,
+      workspace: snapshot.workspace,
+      status: snapshot.paused ? "paused" : "running",
+      startedAt: snapshot.manifest.startedAt,
+      updatedAt: snapshot.manifest.updatedAt,
+      nodeStates: snapshot.state.nodeStates,
+      runtimeNodes: snapshot.state.runtimeNodes || [],
+      runtimeEdges: snapshot.state.runtimeEdges || [],
+      runtimeMeta: snapshot.state.runtimeMeta || {},
+    }
+    return runSnapshot
+  }))
+
+  return snapshots.filter((snapshot): snapshot is ActiveExecutionSnapshot => snapshot !== null)
 }
 
 function resolveWindowFromEvent(event: IpcMainInvokeEvent): BrowserWindow | null {
@@ -218,7 +275,12 @@ export function registerExecutorHandlers() {
               status: "failed",
             })
           }
-        } catch { /* window destroyed between check and send */ }
+        } catch (sendError) {
+          logWarn("executor-ipc", "run_failure_event_send_failed", {
+            runId,
+            error: errorMessage(sendError),
+          })
+        }
       }).finally(() => releaseWindowExecution(window.id, runId))
 
       return runId
@@ -227,6 +289,12 @@ export function registerExecutorHandlers() {
 
   ipcMain.handle("executor:cancel", async (_e, runId: string) => {
     return cancelWorkflowRun(runId)
+  })
+
+  ipcMain.handle("executor:get-active-executions", async (event) => {
+    const window = resolveWindowFromEvent(event)
+    if (!window) return []
+    return getActiveExecutionsForWindow(window.id)
   })
 
   ipcMain.handle("run:pause", async (_e, runId: string) => {
@@ -309,7 +377,12 @@ export function registerExecutorHandlers() {
               status: "failed",
             })
           }
-        } catch { /* window destroyed between check and send */ }
+        } catch (sendError) {
+          logWarn("executor-ipc", "rerun_failure_event_send_failed", {
+            runId,
+            error: errorMessage(sendError),
+          })
+        }
       }).finally(() => releaseWindowExecution(window.id, runId))
 
       return runId
@@ -386,7 +459,12 @@ export function registerExecutorHandlers() {
               status: "failed",
             })
           }
-        } catch { /* window destroyed between check and send */ }
+        } catch (sendError) {
+          logWarn("executor-ipc", "continue_failure_event_send_failed", {
+            runId,
+            error: errorMessage(sendError),
+          })
+        }
       }).finally(() => releaseWindowExecution(window.id, runId))
 
       return runId
@@ -508,17 +586,22 @@ export function registerExecutorHandlers() {
 
       runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
         .catch((err) => {
-          const errorMessage = String(err)
-          logError("executor-ipc", "batch_unhandled_failure", { batchId, error: errorMessage })
+          const batchErrorMessage = String(err)
+          logError("executor-ipc", "batch_unhandled_failure", { batchId, error: batchErrorMessage })
           try {
             if (!window.isDestroyed()) {
               window.webContents.send("batch:event", {
                 type: "batch-error",
                 batchId,
-                error: errorMessage,
+                error: batchErrorMessage,
               })
             }
-          } catch { /* window destroyed between check and send */ }
+          } catch (sendError) {
+            logWarn("executor-ipc", "batch_failure_event_send_failed", {
+              batchId,
+              error: errorMessage(sendError),
+            })
+          }
         })
         .finally(() => releaseWindowExecution(window.id, executionId))
 

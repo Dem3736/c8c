@@ -1,0 +1,32 @@
+{
+  "name": "@c8c/workflow-cli",
+  "version": "0.1.0",
+  "description": "CLI for running c8c workflows on top of @c8c/workflow-runner",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "c8c-workflow": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.14.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.45",
+    "@c8c/workflow-runner": "workspace:*",
+    "@claude-tools/runner": "workspace:*",
+    "@mcpc-tech/acp-ai-provider": "^0.2.8",
+    "@zed-industries/codex-acp": "^0.10.0",
+    "ai": "^6.0.14",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.50",
+    "typescript": "^5.4.5"
+  }
+}

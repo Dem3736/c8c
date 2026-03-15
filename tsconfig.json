@@ -14,12 +14,16 @@
     "noEmit": true,
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "paths": {
       "@/*": ["./src/renderer/*"],
-      "@shared/*": ["./src/shared/*"]
+      "@shared/*": ["./src/shared/*"],
+      "@c8c/workflow-runner": ["./packages/workflow-runner/src/index.ts"],
+      "@c8c/workflow-runner/*": ["./packages/workflow-runner/src/*"],
+      "@c8c/workflow-cli": ["./packages/workflow-cli/src/index.ts"],
+      "@c8c/workflow-cli/*": ["./packages/workflow-cli/src/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "packages/workflow-runner/src/**/*", "packages/workflow-cli/src/**/*"],
   "exclude": ["node_modules", "dist", "release", "out"]
 }

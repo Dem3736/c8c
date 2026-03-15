@@ -3,6 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "workspaces": [
+    "packages/*",
     "packages/shared-claude-tools/packages/*"
   ],
   "description": "Open-source skill operations for Claude Code",
@@ -27,6 +28,7 @@
     "package:mac": "electron-builder --mac"
   },
   "dependencies": {
+    "@c8c/workflow-runner": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "^0.2.45",
     "@claude-tools/mcp-search-proxy": "workspace:*",
     "@claude-tools/runner": "workspace:*",

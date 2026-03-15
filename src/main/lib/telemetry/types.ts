@@ -16,6 +16,7 @@ export type TelemetryEventName =
   | "update_check_started"
   | "update_check_result"
   | "runtime_recovery_completed"
+  | "batch_recovery_completed"
 
 export type TelemetryPropertyValue = string | number | boolean | null
 

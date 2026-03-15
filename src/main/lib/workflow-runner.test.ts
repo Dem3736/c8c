@@ -101,6 +101,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 vi.mock("node:fs/promises", () => ({
   mkdtemp: vi.fn(() => Promise.resolve("/tmp/test-ws")),
   writeFile: vi.fn(() => Promise.resolve()),
+  appendFile: vi.fn(() => Promise.resolve()),
   rename: vi.fn(() => Promise.resolve()),
   unlink: vi.fn(() => Promise.resolve()),
   mkdir: vi.fn(() => Promise.resolve()),
@@ -260,6 +261,7 @@ describe("workflow-runner evaluator loop", () => {
     events = []
     mockWindow = {
       isDestroyed: () => false,
+      isFocused: () => true,
       on: vi.fn(),
       removeListener: vi.fn(),
       webContents: {
@@ -602,6 +604,7 @@ describe("workflow-runner splitter recovery", () => {
     events = []
     mockWindow = {
       isDestroyed: () => false,
+      isFocused: () => true,
       on: vi.fn(),
       removeListener: vi.fn(),
       webContents: {
@@ -815,6 +818,7 @@ describe("workflow-runner runtime error policies", () => {
     events = []
     mockWindow = {
       isDestroyed: () => false,
+      isFocused: () => true,
       on: vi.fn(),
       removeListener: vi.fn(),
       webContents: {
@@ -984,6 +988,7 @@ describe("workflow-runner rerun evaluator behavior", () => {
     events = []
     mockWindow = {
       isDestroyed: () => false,
+      isFocused: () => true,
       on: vi.fn(),
       removeListener: vi.fn(),
       webContents: {

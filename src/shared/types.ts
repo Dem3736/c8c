@@ -491,6 +491,39 @@ export type BatchEvent =
   | { type: "batch-error"; batchId: string; error: string }
   | { type: "batch-done"; batchId: string; summary: BatchSummary; items: BatchItemResult[] }
 
+export interface ActiveWorkflowRun {
+  kind: "run"
+  runId: string
+  workflowName: string
+  workflowPath: string | null
+  projectPath: string | null
+  workspace: string
+  status: "running" | "paused"
+  startedAt: number
+  updatedAt: number
+  nodeStates: Record<string, NodeState>
+  runtimeNodes: WorkflowNode[]
+  runtimeEdges: WorkflowEdge[]
+  runtimeMeta: WorkflowRuntimeMeta
+}
+
+export interface ActiveBatchRun {
+  kind: "batch"
+  batchId: string
+  workflowName: string
+  workflowPath: string | null
+  projectPath: string | null
+  total: number
+  completed: number
+  running: number
+  concurrency: number
+  stopOnFailure: boolean
+  startedAt: number
+  items: BatchItemResult[]
+}
+
+export type ActiveExecutionSnapshot = ActiveWorkflowRun | ActiveBatchRun
+
 export interface IpcError {
   code:
     | "NOT_FOUND"

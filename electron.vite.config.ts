@@ -43,11 +43,12 @@ export default defineConfig(({ mode }) => {
       resolve: {
         alias: {
           "@shared": resolve(__dirname, "src/shared"),
+          "@c8c/workflow-runner": resolve(__dirname, "packages/workflow-runner/src/index.ts"),
         },
       },
       plugins: [
         externalizeDepsPlugin({
-          exclude: ["gray-matter", "@claude-tools/runner", "yaml"],
+          exclude: ["@c8c/workflow-runner", "gray-matter", "@claude-tools/runner", "yaml"],
         }),
       ],
       build: {
@@ -92,6 +93,8 @@ export default defineConfig(({ mode }) => {
         alias: {
           "@": resolve(__dirname, "src/renderer"),
           "@shared": resolve(__dirname, "src/shared"),
+          "@c8c/workflow-runner": resolve(__dirname, "packages/workflow-runner/src/index.ts"),
+          "@c8c/workflow-runner/schema": resolve(__dirname, "packages/workflow-runner/src/schema.ts"),
         },
       },
       build: {

@@ -12,7 +12,9 @@ import {
   initTelemetryService,
   trackTelemetryEvent,
 } from "./lib/telemetry/service"
+import { logInfo, logWarn } from "./lib/structured-log"
 import { initUpdater, shutdownUpdater } from "./lib/updater"
+import { recoverBatchStates } from "./lib/batch-state"
 import { recoverRuntimeState } from "./lib/run-recovery"
 import {
   configureDeepLinkProtocol,
@@ -42,6 +44,8 @@ if (!gotTheLock) {
 let mainWindow: BrowserWindow | null = null
 let pendingDeepLinkUrl: string | null = null
 const processStartedAt = Date.now()
+let isCreatingWindow = false
+let quitFlushStarted = false
 
 function isSafeExternalUrl(rawUrl: string): boolean {
   try {
@@ -74,6 +78,8 @@ app.on("second-instance", (_event, argv) => {
 
 function createWindow() {
   const isMac = process.platform === "darwin"
+  if (mainWindow || isCreatingWindow) return
+  isCreatingWindow = true
   void loadWindowState().then((savedState) => {
     if (mainWindow) return
     const saved = normalizeWindowState(savedState)
@@ -199,6 +205,12 @@ function createWindow() {
       screen.off("display-metrics-changed", onDisplayChanged)
       mainWindow = null
     })
+  }).catch((error) => {
+    logWarn("main", "create_window_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }).finally(() => {
+    isCreatingWindow = false
   })
 }
 
@@ -206,14 +218,20 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin" && app.dock) {
     try {
       app.dock.setIcon(join(__dirname, "../../build/icon.png"))
-    } catch { /* icon missing in dev is fine */ }
+    } catch (error) {
+      logWarn("main", "dock_icon_set_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   try {
     await initTelemetryService()
     await trackTelemetryEvent("app_started")
   } catch (error) {
-    console.error("[main] telemetry init failed:", error)
+    logWarn("main", "telemetry_init_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 
   try {
@@ -228,13 +246,28 @@ app.whenReady().then(async () => {
       orphan_pids_failed: recovery.orphanPidsFailed,
     })
   } catch (error) {
-    console.error("[main] runtime recovery failed:", error)
+    logWarn("main", "runtime_recovery_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 
-  console.log("[main] app ready, registering IPC handlers...")
+  try {
+    const batchRecovery = await recoverBatchStates()
+    await trackTelemetryEvent("batch_recovery_completed", {
+      roots: batchRecovery.roots,
+      workspaces: batchRecovery.workspaces,
+      interrupted: batchRecovery.interrupted,
+    })
+  } catch (error) {
+    logWarn("main", "batch_recovery_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+
+  logInfo("main", "register_handlers_started")
   registerMainHandlers(() => mainWindow)
 
-  console.log("[main] all handlers registered, creating window...")
+  logInfo("main", "register_handlers_completed")
   createWindow()
   if (app.isPackaged) {
     initUpdater()
@@ -242,7 +275,9 @@ app.whenReady().then(async () => {
   try {
     await trackTelemetryEvent("app_ready", { startup_ms: Date.now() - processStartedAt })
   } catch (error) {
-    console.error("[main] telemetry app_ready failed:", error)
+    logWarn("main", "telemetry_app_ready_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 
   app.on("activate", () => {
@@ -250,10 +285,23 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
   shutdownUpdater()
-  void trackTelemetryEvent("app_quit", { uptime_ms: Date.now() - processStartedAt })
-  void flushTelemetryService()
+  if (quitFlushStarted) return
+  quitFlushStarted = true
+  event.preventDefault()
+  void (async () => {
+    try {
+      await trackTelemetryEvent("app_quit", { uptime_ms: Date.now() - processStartedAt })
+      await flushTelemetryService()
+    } catch (error) {
+      logWarn("main", "telemetry_quit_flush_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      app.quit()
+    }
+  })()
 })
 
 app.on("window-all-closed", () => {

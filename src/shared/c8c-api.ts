@@ -1,4 +1,5 @@
 import type {
+  ActiveExecutionSnapshot,
   BatchEvent,
   ChatConversation,
   ChatEvent,
@@ -108,6 +109,7 @@ export interface C8cApi {
   listRuns: (projectPath: string) => Promise<RunResult[]>
   loadRunResult: (workspace: string) => Promise<(RunResult & { reportContent: string }) | null>
   openReport: (reportPath: string) => Promise<string>
+  getActiveExecutions: () => Promise<ActiveExecutionSnapshot[]>
   chatSendMessage: (
     workflowPath: string,
     message: string,

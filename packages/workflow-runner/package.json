@@ -1,0 +1,33 @@
+{
+  "name": "@c8c/workflow-runner",
+  "version": "0.1.0",
+  "description": "Headless workflow runner package for c8c",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
+    },
+    "./provider-metadata": {
+      "types": "./dist/provider-metadata.d.ts",
+      "import": "./dist/provider-metadata.js"
+    }
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.50",
+    "typescript": "^5.4.5"
+  }
+}

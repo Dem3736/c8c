@@ -24,24 +24,55 @@ export interface RuntimeWorkflow extends Workflow {
   runtimeMeta: Record<string, RuntimeNodeMeta>
 }
 
+export class RuntimeGraphError extends Error {
+  constructor(
+    readonly code:
+      | "SPLITTER_NOT_FOUND"
+      | "NO_SPLITTER_OUTGOING_EDGE"
+      | "NO_MERGER"
+      | "NO_TEMPLATE_NODES"
+      | "NO_RESOLVABLE_TEMPLATE_NODES"
+      | "EMPTY_SUBTASKS"
+      | "DUPLICATE_SUBTASK_KEY",
+    message: string,
+  ) {
+    super(message)
+    this.name = "RuntimeGraphError"
+  }
+}
+
+function sanitizeSubtaskKey(key: string, index: number): string {
+  const normalized = key
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return normalized || `branch-${index + 1}`
+}
+
+function currentRuntimeMeta(workflow: Workflow): Record<string, RuntimeNodeMeta> {
+  const maybeRuntime = workflow as Partial<RuntimeWorkflow>
+  return maybeRuntime.runtimeMeta ? { ...maybeRuntime.runtimeMeta } : {}
+}
+
 /**
  * Collapses a previous splitter expansion, restoring the original template
  * nodes and edges from the original workflow definition.
- * Returns the set of removed clone node IDs (for state cleanup by caller).
  */
 export function collapseSplitterExpansion(
   runtimeWorkflow: RuntimeWorkflow,
   originalWorkflow: Workflow,
   splitterId: string,
-): Set<string> {
+): { workflow: RuntimeWorkflow; removedIds: Set<string> } {
   const removedIds = new Set<string>()
 
   // Check if the splitter has been expanded (outgoing edges point to clones)
   const splitterOutEdges = runtimeWorkflow.edges.filter(
     (e) => e.source === splitterId && e.type === "default",
   )
-  if (splitterOutEdges.length === 0) return removedIds
-  if (!splitterOutEdges[0].target.includes("::")) return removedIds
+  if (splitterOutEdges.length === 0 || !splitterOutEdges[0].target.includes("::")) {
+    return { workflow: runtimeWorkflow, removedIds }
+  }
 
   // BFS to find all runtime clone nodes and the merger
   let mergerId: string | undefined
@@ -62,17 +93,18 @@ export function collapseSplitterExpansion(
     }
   }
 
-  if (!mergerId || removedIds.size === 0) return removedIds
+  if (!mergerId || removedIds.size === 0) return { workflow: runtimeWorkflow, removedIds }
 
   // Remove clone nodes and edges touching them
-  runtimeWorkflow.nodes = runtimeWorkflow.nodes.filter((n) => !removedIds.has(n.id))
-  runtimeWorkflow.edges = runtimeWorkflow.edges.filter(
+  const nextNodes = runtimeWorkflow.nodes.filter((n) => !removedIds.has(n.id))
+  const nextEdges = runtimeWorkflow.edges.filter(
     (e) => !removedIds.has(e.source) && !removedIds.has(e.target),
   )
+  const nextRuntimeMeta = currentRuntimeMeta(runtimeWorkflow)
 
   // Clean up runtime metadata for clones
   for (const id of removedIds) {
-    delete runtimeWorkflow.runtimeMeta[id]
+    delete nextRuntimeMeta[id]
   }
 
   // Restore original template nodes from the original workflow via BFS
@@ -94,28 +126,37 @@ export function collapseSplitterExpansion(
     }
   }
 
-  // Add original template nodes back
+  const restoredNodes = [...nextNodes]
   for (const tplId of origTemplateIds) {
     const origNode = originalWorkflow.nodes.find((n) => n.id === tplId)
-    if (origNode && !runtimeWorkflow.nodes.some((n) => n.id === tplId)) {
-      runtimeWorkflow.nodes.push({ ...origNode })
+    if (origNode && !restoredNodes.some((n) => n.id === tplId)) {
+      restoredNodes.push({ ...origNode })
     }
   }
 
   // Restore original edges (splitter→template, template→template, template→merger)
+  const restoredEdges = [...nextEdges]
   for (const origEdge of originalWorkflow.edges) {
     if (
       (origEdge.source === splitterId && origTemplateIds.has(origEdge.target)) ||
       (origTemplateIds.has(origEdge.source) && origTemplateIds.has(origEdge.target)) ||
       (origTemplateIds.has(origEdge.source) && origEdge.target === mergerId)
     ) {
-      if (!runtimeWorkflow.edges.some((e) => e.id === origEdge.id)) {
-        runtimeWorkflow.edges.push({ ...origEdge })
+      if (!restoredEdges.some((e) => e.id === origEdge.id)) {
+        restoredEdges.push({ ...origEdge })
       }
     }
   }
 
-  return removedIds
+  return {
+    workflow: {
+      ...runtimeWorkflow,
+      nodes: restoredNodes,
+      edges: restoredEdges,
+      runtimeMeta: nextRuntimeMeta,
+    },
+    removedIds,
+  }
 }
 
 export function expandSplitter(
@@ -125,20 +166,39 @@ export function expandSplitter(
 ): RuntimeWorkflow {
   const splitterNode = workflow.nodes.find((n) => n.id === splitterId)
   if (!splitterNode || splitterNode.type !== "splitter") {
-    throw new Error(`Node "${splitterId}" is not a splitter`)
+    throw new RuntimeGraphError("SPLITTER_NOT_FOUND", `Node "${splitterId}" is not a splitter`)
   }
 
   const config = splitterNode.config as SplitterNodeConfig
   const maxBranches = config.maxBranches || 8
+  if (subtasks.length === 0) {
+    throw new RuntimeGraphError("EMPTY_SUBTASKS", `Splitter "${splitterId}" produced no subtasks`)
+  }
 
-  const limitedSubtasks = subtasks.slice(0, maxBranches)
+  const limitedSubtasks = subtasks.slice(0, maxBranches).map((subtask, index) => ({
+    ...subtask,
+    key: sanitizeSubtaskKey(subtask.key, index),
+  }))
+  const subtaskKeys = new Set<string>()
+  for (const subtask of limitedSubtasks) {
+    if (subtaskKeys.has(subtask.key)) {
+      throw new RuntimeGraphError(
+        "DUPLICATE_SUBTASK_KEY",
+        `Splitter "${splitterId}" produced duplicate subtask key "${subtask.key}"`,
+      )
+    }
+    subtaskKeys.add(subtask.key)
+  }
 
   // Find all outgoing default edges from splitter
   const splitterOutEdges = workflow.edges.filter(
     (e) => e.source === splitterId && e.type === "default",
   )
   if (splitterOutEdges.length === 0) {
-    throw new Error(`Splitter "${splitterId}" has no outgoing default edge`)
+    throw new RuntimeGraphError(
+      "NO_SPLITTER_OUTGOING_EDGE",
+      `Splitter "${splitterId}" has no outgoing default edge`,
+    )
   }
 
   // BFS to discover all template nodes between splitter and merger
@@ -162,17 +222,23 @@ export function expandSplitter(
   }
 
   if (!mergerId) {
-    throw new Error(`No merger found downstream of splitter "${splitterId}"`)
+    throw new RuntimeGraphError("NO_MERGER", `No merger found downstream of splitter "${splitterId}"`)
   }
   if (templateIds.size === 0) {
-    throw new Error(`No template nodes found between splitter "${splitterId}" and merger`)
+    throw new RuntimeGraphError(
+      "NO_TEMPLATE_NODES",
+      `No template nodes found between splitter "${splitterId}" and merger`,
+    )
   }
 
   const resolvedTemplateIds = Array.from(templateIds).filter((tplId) =>
     workflow.nodes.some((node) => node.id === tplId),
   )
   if (resolvedTemplateIds.length === 0) {
-    throw new Error(`Splitter "${splitterId}" expansion failed: no resolvable template nodes`)
+    throw new RuntimeGraphError(
+      "NO_RESOLVABLE_TEMPLATE_NODES",
+      `Splitter "${splitterId}" expansion failed: no resolvable template nodes`,
+    )
   }
 
   // Internal edges: both endpoints in template set
@@ -190,7 +256,7 @@ export function expandSplitter(
   )
 
   // Build runtime nodes and edges
-  const runtimeMeta: Record<string, RuntimeNodeMeta> = {}
+  const runtimeMeta: Record<string, RuntimeNodeMeta> = currentRuntimeMeta(workflow)
   const runtimeNodes: WorkflowNode[] = []
   const runtimeEdges: WorkflowEdge[] = []
 
@@ -223,16 +289,13 @@ export function expandSplitter(
         },
       } as WorkflowNode)
 
-      // Store runtimeMeta for entry-point nodes
-      if (entryIds.has(tplId)) {
-        runtimeMeta[runtimeId] = {
-          subtaskContent: subtask.content,
-          subtaskKey: subtask.key,
-          branchIndex: i,
-          totalBranches: limitedSubtasks.length,
-          splitterId,
-          templateId: tplId,
-        }
+      runtimeMeta[runtimeId] = {
+        subtaskContent: subtask.content,
+        subtaskKey: subtask.key,
+        branchIndex: i,
+        totalBranches: limitedSubtasks.length,
+        splitterId,
+        templateId: tplId,
       }
     }
 

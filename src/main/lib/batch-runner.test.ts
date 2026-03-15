@@ -214,6 +214,34 @@ describe("batch-runner", () => {
     }
   })
 
+  it("clamps excessive concurrency to the batch maximum", async () => {
+    let active = 0
+    let maxActive = 0
+
+    mockRunWorkflow.mockImplementation(async () => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      active -= 1
+      return {
+        status: "completed",
+        evalScores: {},
+        totalCost: 0,
+        durationMs: 10,
+      }
+    })
+
+    const { runBatch } = await import("./batch-runner")
+    const inputs: WorkflowInput[] = Array.from({ length: 20 }, (_, index) => ({
+      type: "text",
+      value: `Item ${index}`,
+    }))
+
+    await runBatch("batch-clamped", TEST_WORKFLOW, inputs, 50, false, mockWindow)
+
+    expect(maxActive).toBeLessThanOrEqual(10)
+  })
+
   it("emits batch-error when workflow contains approval nodes", async () => {
     mockRunWorkflow.mockResolvedValue({
       status: "completed",

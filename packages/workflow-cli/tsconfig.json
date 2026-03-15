@@ -1,0 +1,17 @@
+{
+  "extends": "../shared-claude-tools/tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "baseUrl": "../..",
+    "paths": {
+      "@c8c/workflow-runner": ["packages/workflow-runner/src/index.ts"],
+      "@c8c/workflow-runner/*": ["packages/workflow-runner/src/*"],
+      "@shared/*": ["src/shared/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
