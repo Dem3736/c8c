@@ -136,18 +136,17 @@ export function registerTemplateHandlers() {
             prompt,
             model,
             maxTurns: 30,
-            systemPrompts: providerId === "codex"
+            systemPrompts: [
+              "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
+            ],
+            mcpConfigPath,
+            disableBuiltInTools: providerId === "claude",
+            disableSlashCommands: providerId === "claude",
+            extraArgs: providerId === "codex"
               ? [
-                  "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
+                  ...buildProviderExtraArgs("codex", mcpConfigPath),
                 ]
-              : [],
-            extraArgs: providerId === "claude"
-              ? [
-                  ...buildProviderExtraArgs("claude", mcpConfigPath),
-                  "--disable-slash-commands",
-                  "--tools", "",
-                ]
-              : buildProviderExtraArgs("codex", mcpConfigPath),
+              : undefined,
             timeout: 300_000,
             abortSignal,
           })

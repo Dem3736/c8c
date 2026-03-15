@@ -82,6 +82,9 @@ export interface AgentRunOptions {
   disallowedTools?: string[]
   settingSources?: string[]
   addDirs?: string[]
+  mcpConfigPath?: string
+  disableBuiltInTools?: boolean
+  disableSlashCommands?: boolean
   extraArgs?: string[]
   extraEnv?: Record<string, string>
   timeout?: number

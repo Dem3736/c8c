@@ -179,15 +179,11 @@ async function runTurn(
     prompt,
     model: providerModel,
     maxTurns: 1,
-    systemPrompts: providerId === "codex" ? [systemPrompt] : [],
-    extraArgs: providerId === "claude"
-      ? [
-          ...buildProviderExtraArgs("claude", mcpConfigPath),
-          "--disable-slash-commands",
-          "--tools", "",
-          "--system-prompt", systemPrompt,
-        ]
-      : buildProviderExtraArgs("codex", mcpConfigPath),
+    systemPrompts: [systemPrompt],
+    mcpConfigPath,
+    disableBuiltInTools: providerId === "claude",
+    disableSlashCommands: providerId === "claude",
+    extraArgs: providerId === "codex" ? buildProviderExtraArgs("codex", mcpConfigPath) : undefined,
     timeout: 120_000,
     abortSignal,
   })

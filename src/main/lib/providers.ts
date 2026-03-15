@@ -26,6 +26,7 @@ import {
   createCodexJsonNormalizerState,
   normalizeCodexJsonLine,
 } from "./codex-json-normalizer"
+import { buildProviderExtraArgs } from "./mcp-config"
 import { getCodexApiKey, getProviderSettings } from "./provider-settings"
 import {
   addMcpServer,
@@ -60,8 +61,19 @@ function normalizeCliText(text: string): string {
 }
 
 function toClaudeSpawnOptions(options: AgentRunOptions): ClaudeSpawnOptions {
+  const legacyExtraArgs = [
+    ...buildProviderExtraArgs("claude", options.mcpConfigPath),
+    ...(options.disableSlashCommands ? ["--disable-slash-commands"] : []),
+    ...(options.disableBuiltInTools ? ["--tools", ""] : []),
+    ...(options.systemPrompts?.length
+      ? ["--append-system-prompt", options.systemPrompts.join("\n\n")]
+      : []),
+    ...(options.extraArgs || []),
+  ]
+
   return {
     ...options,
+    extraArgs: legacyExtraArgs,
     onStdout: options.onStdout ? (data) => options.onStdout?.(data) : undefined,
     onStderr: options.onStderr ? (data) => options.onStderr?.(data) : undefined,
   }

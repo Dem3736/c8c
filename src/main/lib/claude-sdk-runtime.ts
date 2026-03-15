@@ -332,6 +332,14 @@ export async function createClaudeSdkExecutionHandle(
     const startedAt = Date.now()
     try {
       const permission = resolveClaudePermissionMode(options)
+      const mcpConfigPath = options.mcpConfigPath || parsedArgs.mcpConfigPath
+      const tools = options.disableBuiltInTools
+        ? []
+        : parsedArgs.tools
+      const extraArgs = {
+        ...(options.disableSlashCommands ? { "disable-slash-commands": null } : {}),
+        ...parsedArgs.extraArgs,
+      }
       const sdkOptions: ClaudeSdkOptions = {
         abortController: sdkAbortController,
         cwd: options.workdir,
@@ -342,12 +350,12 @@ export async function createClaudeSdkExecutionHandle(
         },
         model: options.model,
         maxTurns: options.maxTurns,
-        tools: parsedArgs.tools,
+        tools,
         allowedTools: options.allowedTools,
         disallowedTools: options.disallowedTools,
-        extraArgs: Object.keys(parsedArgs.extraArgs).length > 0 ? parsedArgs.extraArgs : undefined,
+        extraArgs: Object.keys(extraArgs).length > 0 ? extraArgs : undefined,
         additionalDirectories: options.addDirs,
-        mcpServers: buildClaudeSdkMcpServers(parsedArgs.mcpConfigPath),
+        mcpServers: buildClaudeSdkMcpServers(mcpConfigPath),
         pathToClaudeCodeExecutable: resolveClaudeExecutablePath(),
         permissionMode: permission.permissionMode,
         allowDangerouslySkipPermissions: permission.allowDangerouslySkipPermissions,

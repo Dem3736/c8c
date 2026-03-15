@@ -996,7 +996,7 @@ export async function runWorkflow(
   const getProviderExtraArgs = (providerId: ProviderId): string[] => {
     const cached = providerExtraArgsCache.get(providerId)
     if (cached) return cached
-    const next = buildProviderExtraArgs(providerId, mcpConfigPath)
+    const next = providerId === "codex" ? buildProviderExtraArgs(providerId, mcpConfigPath) : []
     providerExtraArgsCache.set(providerId, next)
     return next
   }
@@ -1244,7 +1244,8 @@ export async function runWorkflow(
               maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 60,
               permissionMode: "acceptEdits",
               executionMode: effectivePermissionMode,
-              extraArgs: getProviderExtraArgs(nodeProviderId),
+              mcpConfigPath,
+              extraArgs: nodeProviderId === "codex" ? getProviderExtraArgs(nodeProviderId) : undefined,
               addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
@@ -1342,7 +1343,9 @@ export async function runWorkflow(
               model: evalModel,
               maxTurns: 1,
               executionMode: workflow.defaults?.permissionMode,
-              extraArgs: [...getProviderExtraArgs(evalProviderId), "--tools", ""],
+              mcpConfigPath,
+              disableBuiltInTools: evalProviderId === "claude",
+              extraArgs: evalProviderId === "codex" ? getProviderExtraArgs(evalProviderId) : undefined,
               addDirs: [],
               abortSignal: controller.signal,
               timeout: 120_000,
@@ -1512,7 +1515,11 @@ export async function runWorkflow(
                 model: splitterModel,
                 maxTurns: 1,
                 executionMode: workflow.defaults?.permissionMode,
-                extraArgs: [...getProviderExtraArgs(splitterProviderId), "--tools", ""],
+                mcpConfigPath,
+                disableBuiltInTools: splitterProviderId === "claude",
+                extraArgs: splitterProviderId === "codex"
+                  ? getProviderExtraArgs(splitterProviderId)
+                  : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 2 * 60 * 1000,
@@ -1746,7 +1753,9 @@ export async function runWorkflow(
                 model: mergerModel,
                 maxTurns: 20,
                 executionMode: workflow.defaults?.permissionMode,
-                extraArgs: [...getProviderExtraArgs(mergerProviderId), "--tools", ""],
+                mcpConfigPath,
+                disableBuiltInTools: mergerProviderId === "claude",
+                extraArgs: mergerProviderId === "codex" ? getProviderExtraArgs(mergerProviderId) : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 10 * 60 * 1000,
@@ -2308,7 +2317,7 @@ export async function rerunFromNode(
   const getProviderExtraArgs = (providerId: ProviderId): string[] => {
     const cached = providerExtraArgsCache.get(providerId)
     if (cached) return cached
-    const next = buildProviderExtraArgs(providerId, mcpConfigPath)
+    const next = providerId === "codex" ? buildProviderExtraArgs(providerId, mcpConfigPath) : []
     providerExtraArgsCache.set(providerId, next)
     return next
   }
@@ -2499,7 +2508,8 @@ export async function rerunFromNode(
               maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 60,
               permissionMode: "acceptEdits",
               executionMode: retryPermissionMode,
-              extraArgs: getProviderExtraArgs(nodeProviderId),
+              mcpConfigPath,
+              extraArgs: nodeProviderId === "codex" ? getProviderExtraArgs(nodeProviderId) : undefined,
               addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
@@ -2568,7 +2578,9 @@ export async function rerunFromNode(
               model: evalModel,
               maxTurns: 1,
               executionMode: workflow.defaults?.permissionMode,
-              extraArgs: [...getProviderExtraArgs(evalProviderId), "--tools", ""],
+              mcpConfigPath,
+              disableBuiltInTools: evalProviderId === "claude",
+              extraArgs: evalProviderId === "codex" ? getProviderExtraArgs(evalProviderId) : undefined,
               addDirs: [],
               abortSignal: controller.signal,
               timeout: 120_000,
@@ -2672,7 +2684,11 @@ export async function rerunFromNode(
                 model: splitterModel,
                 maxTurns: 1,
                 executionMode: workflow.defaults?.permissionMode,
-                extraArgs: [...getProviderExtraArgs(splitterProviderId), "--tools", ""],
+                mcpConfigPath,
+                disableBuiltInTools: splitterProviderId === "claude",
+                extraArgs: splitterProviderId === "codex"
+                  ? getProviderExtraArgs(splitterProviderId)
+                  : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 2 * 60 * 1000,
@@ -2906,7 +2922,9 @@ export async function rerunFromNode(
                 model: mergerModel,
                 maxTurns: 20,
                 executionMode: workflow.defaults?.permissionMode,
-                extraArgs: [...getProviderExtraArgs(mergerProviderId), "--tools", ""],
+                mcpConfigPath,
+                disableBuiltInTools: mergerProviderId === "claude",
+                extraArgs: mergerProviderId === "codex" ? getProviderExtraArgs(mergerProviderId) : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 10 * 60 * 1000,

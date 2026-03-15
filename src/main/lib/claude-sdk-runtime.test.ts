@@ -107,14 +107,10 @@ describe("createClaudeSdkExecutionHandle", () => {
       prompt: "Say hello",
       maxTurns: 1,
       settingSources: ["project"],
-      extraArgs: [
-        "--mcp-config=/tmp/.mcp.json",
-        "--disable-slash-commands",
-        "--tools",
-        "",
-        "--system-prompt",
-        "Custom system prompt",
-      ],
+      mcpConfigPath: "/tmp/.mcp.json",
+      disableSlashCommands: true,
+      disableBuiltInTools: true,
+      systemPrompts: ["Custom system prompt"],
     })
 
     const entries: string[] = []
@@ -144,7 +140,11 @@ describe("createClaudeSdkExecutionHandle", () => {
       options: {
         tools: [],
         settingSources: ["project"],
-        systemPrompt: "Custom system prompt",
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: "Custom system prompt",
+        },
         extraArgs: {
           "disable-slash-commands": null,
         },
