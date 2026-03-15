@@ -2,6 +2,8 @@ node_modules/
 out/
 dist/
 release/
+resources/bin/**
+!resources/bin/.gitkeep
 *.log
 .DS_Store
 .worktrees/

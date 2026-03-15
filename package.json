@@ -19,6 +19,8 @@
     "pretest": "npm run build:shared",
     "test": "vitest run",
     "test:watch": "vitest",
+    "codex:download": "node scripts/download-codex-binary.mjs --version=0.114.0",
+    "codex:download:all": "node scripts/download-codex-binary.mjs --version=0.114.0 --all",
     "prepackage": "npm run build:shared",
     "package": "electron-builder --dir",
     "prepackage:mac": "npm run build:shared",
@@ -29,7 +31,7 @@
     "@claude-tools/mcp-search-proxy": "workspace:*",
     "@claude-tools/runner": "workspace:*",
     "@dagrejs/dagre": "^2.0.4",
-    "@mcpc-tech/acp-ai-provider": "^0.2.4",
+    "@mcpc-tech/acp-ai-provider": "^0.2.8",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -82,6 +84,21 @@
     },
     "files": [
       "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/bin/${platform}-${arch}",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk/**/*",
+      "node_modules/@zed-industries/codex-acp/**/*",
+      "node_modules/@zed-industries/codex-acp-*/**/*"
     ],
     "protocols": [
       {

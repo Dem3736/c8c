@@ -14,9 +14,40 @@ export interface ExecCodexResult {
   stderr: string
 }
 
+function bundledCodexBinaryName(): string {
+  return process.platform === "win32" ? "codex.exe" : "codex"
+}
+
+function bundledCodexResourceDirs(): string[] {
+  const dirs: string[] = []
+
+  if (process.resourcesPath) {
+    dirs.push(join(process.resourcesPath, "bin"))
+  }
+
+  dirs.push(join(process.cwd(), "resources", "bin", `${process.platform}-${process.arch}`))
+  return [...new Set(dirs)]
+}
+
+export function findBundledCodexExecutable(): string | null {
+  const binaryName = bundledCodexBinaryName()
+
+  for (const directory of bundledCodexResourceDirs()) {
+    const candidate = join(directory, binaryName)
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
 export function buildCodexPath(existingPath: string | undefined): string {
   const home = homedir()
+  const bundledCodexPath = findBundledCodexExecutable()
+  const bundledDir = bundledCodexPath ? join(bundledCodexPath, "..") : undefined
   const extras = [
+    bundledDir,
     `${home}/.local/bin`,
     `${home}/.nvm/versions/node/current/bin`,
     `${home}/.cargo/bin`,
@@ -96,11 +127,16 @@ export async function getCodexShellEnv(): Promise<Record<string, string>> {
 export async function buildCodexEnv(
   extraEnv?: Record<string, string>,
 ): Promise<NodeJS.ProcessEnv> {
+  const bundledCodexPath = findBundledCodexExecutable()
   const env: NodeJS.ProcessEnv = {
     ...collectStringEnv(process.env),
     ...(await getCodexShellEnv()),
     PATH: buildCodexPath(process.env.PATH),
     ...extraEnv,
+  }
+
+  if (bundledCodexPath && !env.CODEX_PATH) {
+    env.CODEX_PATH = bundledCodexPath
   }
 
   const codexApiKey = await getCodexApiKey()
@@ -114,6 +150,9 @@ export async function buildCodexEnv(
 export function findCodexExecutable(): string | null {
   const configured = process.env.CODEX_PATH
   if (configured && existsSync(configured)) return configured
+
+  const bundled = findBundledCodexExecutable()
+  if (bundled) return bundled
 
   const home = homedir()
   const candidates = [
