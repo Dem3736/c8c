@@ -31,6 +31,7 @@ export interface NodeRuntimeConfig {
 
 export type PermissionMode = "plan" | "edit"
 export type ProviderId = "claude" | "codex"
+export type AgentExecutionBackend = "claude_sdk" | "claude_cli" | "codex_acp" | "codex_exec"
 export type SafetyProfile =
   | "safe_readonly"
   | "workspace_auto"
@@ -112,6 +113,7 @@ export interface AgentUsage {
 export interface AgentExecutionSummary extends AgentRunResult {
   error?: string | null
   providerSessionId?: string | null
+  backend?: AgentExecutionBackend
 }
 
 export type AgentExecutionEvent =
@@ -125,6 +127,7 @@ export type AgentExecutionEvent =
 
 export interface AgentExecutionHandle {
   provider: ProviderId
+  backend?: AgentExecutionBackend
   events: AsyncIterable<AgentExecutionEvent>
   abort(): void
   done: Promise<AgentExecutionSummary>
@@ -352,6 +355,7 @@ export interface NodeMeta {
   model_id: string
   prompt_hash: string
   skill_ref?: string
+  backend?: AgentExecutionBackend
 }
 
 export interface NodeState {

@@ -39,6 +39,11 @@ interface CodexToolDescriptor {
   isMcp: boolean
 }
 
+export interface CodexAcpSupportResult {
+  supported: boolean
+  reason?: string
+}
+
 class AsyncEventQueue<T> implements AsyncIterable<T> {
   private items: T[] = []
   private resolvers: Array<(result: IteratorResult<T>) => void> = []
@@ -380,18 +385,44 @@ function usageFromPart(part: any): { inputTokens: number; outputTokens: number }
   }
 }
 
+export function canUseCodexAcpExecution(
+  options: Pick<AgentRunOptions, "addDirs" | "executionMode" | "safetyProfile">,
+  configuredProfile: NonNullable<AgentRunOptions["safetyProfile"]>,
+): CodexAcpSupportResult {
+  const resolvedSafetyProfile = resolveSafetyProfile(
+    options.executionMode,
+    options.safetyProfile || configuredProfile,
+  )
+
+  if (resolvedSafetyProfile !== "workspace_auto" && resolvedSafetyProfile !== "safe_readonly") {
+    return {
+      supported: false,
+      reason: `unsupported safety profile ${resolvedSafetyProfile}`,
+    }
+  }
+
+  if ((options.addDirs?.length || 0) > 0) {
+    return {
+      supported: false,
+      reason: "additional directories are not supported by ACP sessions",
+    }
+  }
+
+  return { supported: true }
+}
+
 export async function createCodexAcpExecutionHandle(
   options: AgentRunOptions,
 ): Promise<AgentExecutionHandle> {
   const settings = await getProviderSettings()
+  const support = canUseCodexAcpExecution(options, settings.safetyProfile)
+  if (!support.supported) {
+    throw new Error(`Codex ACP unsupported: ${support.reason}`)
+  }
   const resolvedSafetyProfile = resolveSafetyProfile(
     options.executionMode,
     options.safetyProfile || settings.safetyProfile,
   )
-
-  if (resolvedSafetyProfile !== "workspace_auto" && resolvedSafetyProfile !== "safe_readonly") {
-    throw new Error(`Codex ACP does not support safety profile ${resolvedSafetyProfile}`)
-  }
 
   const apiKey = await getCodexApiKey()
   const env = await buildCodexEnv(options.extraEnv)
@@ -492,6 +523,7 @@ export async function createCodexAcpExecutionHandle(
         durationMs: Date.now() - startedAt,
         error: success ? null : lastError || `Codex ACP finished with reason: ${resolvedFinishReason}`,
         providerSessionId: sessionId,
+        backend: "codex_acp",
       }
       queue.push({ type: "finish", summary })
       return summary
@@ -506,6 +538,7 @@ export async function createCodexAcpExecutionHandle(
         durationMs: Date.now() - startedAt,
         error: aborted ? "Execution aborted." : errorMessage(error),
         providerSessionId: sessionId,
+        backend: "codex_acp",
       }
       queue.push({ type: "error", text: summary.error || "Codex ACP query failed." })
       queue.push({ type: "finish", summary })
@@ -521,6 +554,7 @@ export async function createCodexAcpExecutionHandle(
 
   return {
     provider: "codex",
+    backend: "codex_acp",
     events: queue,
     abort: () => {
       onAbort()

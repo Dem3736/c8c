@@ -132,6 +132,7 @@ describe("createClaudeSdkExecutionHandle", () => {
       success: true,
       exitCode: 0,
       providerSessionId: "session-1",
+      backend: "claude_sdk",
     })
 
     expect(queryMock).toHaveBeenCalledTimes(1)

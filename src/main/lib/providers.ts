@@ -19,7 +19,7 @@ import { resolveSafetyProfile } from "@shared/provider-metadata"
 import { spawnClaude, type ClaudeSpawnOptions } from "@claude-tools/runner"
 import { createLegacyExecutionHandle } from "./agent-execution"
 import { createClaudeSdkExecutionHandle } from "./claude-sdk-runtime"
-import { createCodexAcpExecutionHandle } from "./codex-acp-runtime"
+import { canUseCodexAcpExecution, createCodexAcpExecutionHandle } from "./codex-acp-runtime"
 import { getClaudeCodeSubscriptionStatus } from "./claude-subscription"
 import { execClaude, findClaudeExecutable } from "./claude-cli"
 import { buildCodexEnv, execCodex, findCodexExecutable } from "./codex-cli"
@@ -346,7 +346,7 @@ class ClaudeAgentProvider implements AgentProvider {
     try {
       return await createClaudeSdkExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, options, this.runInteractive.bind(this))
+      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runInteractive.bind(this))
     }
   }
 
@@ -354,7 +354,7 @@ class ClaudeAgentProvider implements AgentProvider {
     try {
       return await createClaudeSdkExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, options, this.runTask.bind(this))
+      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runTask.bind(this))
     }
   }
 
@@ -417,18 +417,30 @@ class CodexAgentProvider implements AgentProvider {
   }
 
   async executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    const settings = await getProviderSettings()
+    const support = canUseCodexAcpExecution(options, settings.safetyProfile)
+    if (!support.supported) {
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runInteractive.bind(this))
+    }
+
     try {
       return await createCodexAcpExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, options, this.runInteractive.bind(this))
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runInteractive.bind(this))
     }
   }
 
   async executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    const settings = await getProviderSettings()
+    const support = canUseCodexAcpExecution(options, settings.safetyProfile)
+    if (!support.supported) {
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runTask.bind(this))
+    }
+
     try {
       return await createCodexAcpExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, options, this.runTask.bind(this))
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runTask.bind(this))
     }
   }
 

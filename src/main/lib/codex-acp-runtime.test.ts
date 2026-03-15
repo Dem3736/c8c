@@ -31,7 +31,32 @@ vi.mock("./codex-cli", () => ({
 }))
 
 import { drainExecutionHandle } from "./agent-execution"
-import { createCodexAcpExecutionHandle } from "./codex-acp-runtime"
+import {
+  canUseCodexAcpExecution,
+  createCodexAcpExecutionHandle,
+} from "./codex-acp-runtime"
+
+describe("canUseCodexAcpExecution", () => {
+  it("rejects additional directories because ACP sessions cannot express them", () => {
+    expect(canUseCodexAcpExecution({
+      addDirs: ["/tmp/extra"],
+      executionMode: "edit",
+    }, "workspace_auto")).toEqual({
+      supported: false,
+      reason: "additional directories are not supported by ACP sessions",
+    })
+  })
+
+  it("rejects unsupported safety profiles", () => {
+    expect(canUseCodexAcpExecution({
+      executionMode: "edit",
+      safetyProfile: "dangerous",
+    }, "workspace_auto")).toEqual({
+      supported: false,
+      reason: "unsupported safety profile dangerous",
+    })
+  })
+})
 
 describe("createCodexAcpExecutionHandle", () => {
   beforeEach(() => {
@@ -119,6 +144,7 @@ describe("createCodexAcpExecutionHandle", () => {
       success: true,
       exitCode: 0,
       providerSessionId: "codex-session-1",
+      backend: "codex_acp",
     })
     expect(languageModelMock).toHaveBeenCalledWith("gpt-5-codex", undefined)
     expect(cleanupMock).toHaveBeenCalled()

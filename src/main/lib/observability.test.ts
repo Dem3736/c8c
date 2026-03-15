@@ -130,9 +130,10 @@ describe("buildNodeMeta", () => {
   })
 
   it("includes skill_ref when provided", () => {
-    const meta = buildNodeMeta("Write content", "opus", "marketing/writer")
+    const meta = buildNodeMeta("Write content", "opus", "marketing/writer", "claude_sdk")
     expect(meta.model_id).toBe("opus")
     expect(meta.skill_ref).toBe("marketing/writer")
+    expect(meta.backend).toBe("claude_sdk")
   })
 
   it("produces deterministic hash for same prompt", () => {

@@ -263,6 +263,7 @@ function buildSummaryFromResult(
     aborted,
     durationMs: result.duration_ms,
     providerSessionId: sessionId,
+    backend: "claude_sdk" as const,
   }
 
   if (result.subtype === "success") {
@@ -427,6 +428,7 @@ export async function createClaudeSdkExecutionHandle(
         durationMs: Date.now() - startedAt,
         error: sdkAbortController.signal.aborted ? "Execution aborted." : "Claude SDK query finished without a result message.",
         providerSessionId: sessionId,
+        backend: "claude_sdk",
       }
       queue.push({ type: "error", text: summary.error || "Claude SDK query failed." })
       queue.push({ type: "finish", summary })
@@ -442,6 +444,7 @@ export async function createClaudeSdkExecutionHandle(
         durationMs: Date.now() - startedAt,
         error: aborted ? "Execution aborted." : errorMessage(error),
         providerSessionId: sessionId,
+        backend: "claude_sdk",
       }
       queue.push({ type: "error", text: summary.error || "Claude SDK query failed." })
       queue.push({ type: "finish", summary })
@@ -457,6 +460,7 @@ export async function createClaudeSdkExecutionHandle(
 
   return {
     provider: "claude",
+    backend: "claude_sdk",
     events: queue,
     abort: () => {
       if (!sdkAbortController.signal.aborted) {

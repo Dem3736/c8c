@@ -69,10 +69,16 @@ export function collectMetrics(logParser: LogParser, startedAt: number): NodeMet
   }
 }
 
-export function buildNodeMeta(prompt: string, model: string, skillRef?: string): NodeMeta {
+export function buildNodeMeta(
+  prompt: string,
+  model: string,
+  skillRef?: string,
+  backend?: NodeMeta["backend"],
+): NodeMeta {
   return {
     model_id: model,
     prompt_hash: createHash("sha256").update(prompt).digest("hex").slice(0, 16),
     ...(skillRef ? { skill_ref: skillRef } : {}),
+    ...(backend ? { backend } : {}),
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  AgentExecutionBackend,
   AgentExecutionEvent,
   AgentExecutionHandle,
   AgentExecutionSummary,
@@ -87,6 +88,7 @@ function emitUsageIfChanged(
 }
 
 function buildErrorSummary(
+  backend: AgentExecutionBackend,
   pid: number | undefined,
   startedAt: number,
   aborted: boolean,
@@ -102,6 +104,7 @@ function buildErrorSummary(
     pid,
     error: errorMessage(error),
     providerSessionId: null,
+    backend,
   }
 }
 
@@ -140,6 +143,7 @@ function withMergedAbortSignal(
 
 export function createLegacyExecutionHandle(
   provider: ProviderId,
+  backend: AgentExecutionBackend,
   options: AgentRunOptions,
   runner: (options: AgentRunOptions) => Promise<AgentRunResult>,
 ): AgentExecutionHandle {
@@ -184,6 +188,7 @@ export function createLegacyExecutionHandle(
       pid: spawnedPid ?? result.pid,
       error: null,
       providerSessionId: null,
+      backend,
     }
     queue.push({ type: "finish", summary })
     queue.close()
@@ -197,6 +202,7 @@ export function createLegacyExecutionHandle(
     emitUsageIfChanged(parser, queue, lastUsage)
 
     const summary = buildErrorSummary(
+      backend,
       spawnedPid,
       startedAt,
       mergedAbort.signal.aborted,
@@ -211,6 +217,7 @@ export function createLegacyExecutionHandle(
 
   return {
     provider,
+    backend,
     events: queue,
     abort: mergedAbort.abort,
     done,
@@ -262,5 +269,6 @@ export async function startLegacyProviderExecution(
   const runner = mode === "task"
     ? provider.runTask.bind(provider)
     : provider.runInteractive.bind(provider)
-  return createLegacyExecutionHandle(provider.id, options, runner)
+  const backend = provider.id === "codex" ? "codex_exec" : "claude_cli"
+  return createLegacyExecutionHandle(provider.id, backend, options, runner)
 }

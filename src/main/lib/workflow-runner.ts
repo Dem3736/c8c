@@ -972,6 +972,7 @@ export async function runWorkflow(
         const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
         void trackTelemetryEvent("workflow_node_finished", {
           provider: nodeProvider,
+          backend: state.meta?.backend ?? null,
           node_type: node.type,
           status: state.status,
           duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
@@ -1178,12 +1179,13 @@ export async function runWorkflow(
               config.prompt,
             ].join("\n"))
             const skillModel = workflow.defaults?.model || getDefaultModelForProvider(nodeProviderId)
+            let skillBackend: AgentExecutionSummary["backend"]
 
             const updateSkillMetricsAndMeta = () => {
               const metrics = collectMetrics(logParser, state.startedAt!)
               metrics.cost_usd = estimateCost(skillModel, metrics.tokens_in, metrics.tokens_out)
               state.metrics = metrics
-              state.meta = buildNodeMeta(prompt, skillModel, config.skillRef)
+              state.meta = buildNodeMeta(prompt, skillModel, config.skillRef, skillBackend)
             }
 
             recoverOutputOnError = async () => {
@@ -1277,6 +1279,7 @@ export async function runWorkflow(
                 send({ type: "node-log", runId, nodeId: node.id, entry })
               },
             })
+            skillBackend = result.backend
 
             // Flush remaining buffer
             const remaining = logParser.flush()
@@ -1387,7 +1390,7 @@ export async function runWorkflow(
             const evalMetrics = collectMetrics(logParser, state.startedAt!)
             evalMetrics.cost_usd = estimateCost(evalModel, evalMetrics.tokens_in, evalMetrics.tokens_out)
             state.metrics = evalMetrics
-            state.meta = buildNodeMeta(evalPrompt, evalModel)
+            state.meta = buildNodeMeta(evalPrompt, evalModel, undefined, evalSpawnResult.backend)
 
             const evalResult = parseEvaluatorOutput(state.log)
             if (!evalResult) {
@@ -1500,6 +1503,7 @@ export async function runWorkflow(
             const splitterModel = workflow.defaults?.model || getDefaultModelForProvider(splitterProviderId)
             const maxBranches = splitterConfig.maxBranches || 8
             const splitterPrompts: string[] = []
+            let splitterBackend: AgentExecutionSummary["backend"]
             let totalTokensIn = 0
             let totalTokensOut = 0
             let totalCostUsd = 0
@@ -1569,6 +1573,7 @@ export async function runWorkflow(
                 state.log.push(entry)
                 send({ type: "node-log", runId, nodeId: node.id, entry })
               }
+              splitterBackend = result.backend
               return logParser.textContent
             }
 
@@ -1645,7 +1650,12 @@ export async function runWorkflow(
               cost_usd: totalCostUsd,
               latency_ms: Date.now() - state.startedAt!,
             }
-            state.meta = buildNodeMeta(splitterPrompts.join("\n\n--- RETRY ---\n\n"), splitterModel)
+            state.meta = buildNodeMeta(
+              splitterPrompts.join("\n\n--- RETRY ---\n\n"),
+              splitterModel,
+              undefined,
+              splitterBackend,
+            )
 
             // If this is a re-expansion (evaluator retry), collapse previous clones first
             const removedCloneIds = collapseSplitterExpansion(runtimeWorkflow, workflow, node.id)
@@ -1797,7 +1807,7 @@ export async function runWorkflow(
               const mergerMetrics = collectMetrics(logParser, state.startedAt!)
               mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
               state.metrics = mergerMetrics
-              state.meta = buildNodeMeta(mergePrompt, mergerModel)
+              state.meta = buildNodeMeta(mergePrompt, mergerModel, undefined, result.backend)
 
               output = { content: logParser.textContent, metadata: { source: node.id } }
             }
@@ -2263,6 +2273,7 @@ export async function rerunFromNode(
         const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
         void trackTelemetryEvent("workflow_node_finished", {
           provider: nodeProvider,
+          backend: state.meta?.backend ?? null,
           node_type: node.type,
           status: state.status,
           duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
@@ -2468,12 +2479,13 @@ export async function rerunFromNode(
               config.prompt,
             ].join("\n"))
             const skillModel = workflow.defaults?.model || getDefaultModelForProvider(nodeProviderId)
+            let skillBackend: AgentExecutionSummary["backend"]
 
             const updateSkillMetricsAndMeta = () => {
               const metrics = collectMetrics(logParser, state.startedAt!)
               metrics.cost_usd = estimateCost(skillModel, metrics.tokens_in, metrics.tokens_out)
               state.metrics = metrics
-              state.meta = buildNodeMeta(prompt, skillModel, config.skillRef)
+              state.meta = buildNodeMeta(prompt, skillModel, config.skillRef, skillBackend)
             }
 
             recoverOutputOnError = async () => {
@@ -2537,6 +2549,7 @@ export async function rerunFromNode(
                 send({ type: "node-log", runId, nodeId: node.id, entry })
               },
             })
+            skillBackend = result.backend
 
             for (const entry of logParser.flush()) {
               state.log.push(entry)
@@ -2620,7 +2633,7 @@ export async function rerunFromNode(
             const evalMetrics = collectMetrics(logParser, state.startedAt!)
             evalMetrics.cost_usd = estimateCost(evalModel, evalMetrics.tokens_in, evalMetrics.tokens_out)
             state.metrics = evalMetrics
-            state.meta = buildNodeMeta(evalPrompt, evalModel)
+            state.meta = buildNodeMeta(evalPrompt, evalModel, undefined, evalSpawnResult.backend)
 
             const evalResult = parseEvaluatorOutput(state.log)
             if (!evalResult) {
@@ -2669,6 +2682,7 @@ export async function rerunFromNode(
             const splitterModel = workflow.defaults?.model || getDefaultModelForProvider(splitterProviderId)
             const maxBranches = splitterConfig.maxBranches || 8
             const splitterPrompts: string[] = []
+            let splitterBackend: AgentExecutionSummary["backend"]
             let totalTokensIn = 0
             let totalTokensOut = 0
             let totalCostUsd = 0
@@ -2738,6 +2752,7 @@ export async function rerunFromNode(
                 state.log.push(entry)
                 send({ type: "node-log", runId, nodeId: node.id, entry })
               }
+              splitterBackend = result.backend
               return logParser.textContent
             }
 
@@ -2814,7 +2829,12 @@ export async function rerunFromNode(
               cost_usd: totalCostUsd,
               latency_ms: Date.now() - state.startedAt!,
             }
-            state.meta = buildNodeMeta(splitterPrompts.join("\n\n--- RETRY ---\n\n"), splitterModel)
+            state.meta = buildNodeMeta(
+              splitterPrompts.join("\n\n--- RETRY ---\n\n"),
+              splitterModel,
+              undefined,
+              splitterBackend,
+            )
 
             // If this is a re-expansion (evaluator retry), collapse previous clones first
             const removedCloneIds = collapseSplitterExpansion(runtimeWorkflow, workflow, node.id)
@@ -2966,7 +2986,7 @@ export async function rerunFromNode(
               const mergerMetrics = collectMetrics(logParser, state.startedAt!)
               mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
               state.metrics = mergerMetrics
-              state.meta = buildNodeMeta(mergePrompt, mergerModel)
+              state.meta = buildNodeMeta(mergePrompt, mergerModel, undefined, result.backend)
 
               output = { content: logParser.textContent, metadata: { source: node.id } }
             }
