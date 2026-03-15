@@ -213,6 +213,27 @@ function resolveClaudePermissionMode(
   }
 }
 
+function buildClaudeToolPermissionHandler(
+  options: AgentRunOptions,
+): ClaudeSdkOptions["canUseTool"] {
+  const disallowedTools = new Set(options.disallowedTools || [])
+  if (disallowedTools.size === 0) return undefined
+
+  return async (toolName, input) => {
+    if (disallowedTools.has(toolName)) {
+      return {
+        behavior: "deny",
+        message: `${toolName} is blocked for this run.`,
+      }
+    }
+
+    return {
+      behavior: "allow",
+      updatedInput: input,
+    }
+  }
+}
+
 function buildSystemPrompt(
   options: AgentRunOptions,
   parsedArgs: ParsedClaudeSdkLegacyArgs,
@@ -354,6 +375,7 @@ export async function createClaudeSdkExecutionHandle(
         tools,
         allowedTools: options.allowedTools,
         disallowedTools: options.disallowedTools,
+        canUseTool: buildClaudeToolPermissionHandler(options),
         extraArgs: Object.keys(extraArgs).length > 0 ? extraArgs : undefined,
         additionalDirectories: options.addDirs,
         mcpServers: buildClaudeSdkMcpServers(mcpConfigPath),

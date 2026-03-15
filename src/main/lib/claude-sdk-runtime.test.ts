@@ -111,6 +111,7 @@ describe("createClaudeSdkExecutionHandle", () => {
       disableSlashCommands: true,
       disableBuiltInTools: true,
       systemPrompts: ["Custom system prompt"],
+      disallowedTools: ["Edit"],
     })
 
     const entries: string[] = []
@@ -152,6 +153,18 @@ describe("createClaudeSdkExecutionHandle", () => {
         persistSession: false,
         includePartialMessages: true,
       },
+    })
+
+    const canUseTool = queryMock.mock.calls[0]?.[0]?.options?.canUseTool
+    expect(canUseTool).toBeTypeOf("function")
+    await expect(canUseTool?.("Edit", { file_path: "content.md" }, {
+      signal: new AbortController().signal,
+      hook_event_name: "PermissionRequest",
+      tool_name: "Edit",
+      tool_input: { file_path: "content.md" },
+    })).resolves.toEqual({
+      behavior: "deny",
+      message: "Edit is blocked for this run.",
     })
   })
 })

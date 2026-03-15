@@ -37,13 +37,24 @@ import {
 } from "./codex-acp-runtime"
 
 describe("canUseCodexAcpExecution", () => {
-  it("rejects additional directories because ACP sessions cannot express them", () => {
+  it("allows additional directories that already sit under the working directory", () => {
     expect(canUseCodexAcpExecution({
+      workdir: "/tmp/project",
+      addDirs: ["/tmp/project/.claude/skills"],
+      executionMode: "edit",
+    }, "workspace_auto")).toEqual({
+      supported: true,
+    })
+  })
+
+  it("rejects additional directories outside the working directory", () => {
+    expect(canUseCodexAcpExecution({
+      workdir: "/tmp/project",
       addDirs: ["/tmp/extra"],
       executionMode: "edit",
     }, "workspace_auto")).toEqual({
       supported: false,
-      reason: "additional directories are not supported by ACP sessions",
+      reason: "additional directories outside the working directory are not supported by ACP sessions",
     })
   })
 

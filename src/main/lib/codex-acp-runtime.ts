@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs"
 import { createRequire } from "node:module"
-import { dirname, sep } from "node:path"
+import { dirname, isAbsolute, resolve, sep } from "node:path"
 import { createACPProvider, ACP_PROVIDER_AGENT_DYNAMIC_TOOL_NAME } from "@mcpc-tech/acp-ai-provider"
 import type { EnvVariable, HttpHeader, McpServer } from "@agentclientprotocol/sdk"
 import { streamText } from "ai"
@@ -37,6 +37,12 @@ interface CodexToolDescriptor {
   canonicalToolName: string
   detail: string
   isMcp: boolean
+}
+
+function isWithinRoot(candidatePath: string, rootPath: string): boolean {
+  const candidate = resolve(candidatePath)
+  const root = resolve(rootPath)
+  return candidate === root || candidate.startsWith(`${root}${sep}`)
 }
 
 export interface CodexAcpSupportResult {
@@ -386,7 +392,7 @@ function usageFromPart(part: any): { inputTokens: number; outputTokens: number }
 }
 
 export function canUseCodexAcpExecution(
-  options: Pick<AgentRunOptions, "addDirs" | "executionMode" | "safetyProfile">,
+  options: Pick<AgentRunOptions, "addDirs" | "executionMode" | "safetyProfile"> & { workdir?: string },
   configuredProfile: NonNullable<AgentRunOptions["safetyProfile"]>,
 ): CodexAcpSupportResult {
   const resolvedSafetyProfile = resolveSafetyProfile(
@@ -401,10 +407,25 @@ export function canUseCodexAcpExecution(
     }
   }
 
-  if ((options.addDirs?.length || 0) > 0) {
-    return {
-      supported: false,
-      reason: "additional directories are not supported by ACP sessions",
+  const addDirs = options.addDirs || []
+  if (addDirs.length > 0) {
+    if (!options.workdir) {
+      return {
+        supported: false,
+        reason: "additional directories require a working directory for ACP sessions",
+      }
+    }
+
+    const hasExternalDirectory = addDirs.some((dir) => {
+      const resolvedDir = isAbsolute(dir) ? dir : resolve(options.workdir!, dir)
+      return !isWithinRoot(resolvedDir, options.workdir!)
+    })
+
+    if (hasExternalDirectory) {
+      return {
+        supported: false,
+        reason: "additional directories outside the working directory are not supported by ACP sessions",
+      }
     }
   }
 
