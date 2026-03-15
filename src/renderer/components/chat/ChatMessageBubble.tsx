@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { AlertCircle, ChevronDown, ChevronRight, CheckCircle2, Wrench, Loader2, Bot, Copy, Check } from "lucide-react"
+import { AlertCircle, ChevronRight, CheckCircle2, Wrench, Loader2, Bot, Copy, Check } from "lucide-react"
 import { cn } from "@/lib/cn"
 import type { ChatMessageDisplay } from "@/lib/store"
 import { isToolResultError, summarizeToolCall, summarizeToolResult } from "@/lib/chat-tool-summary"
@@ -67,7 +67,7 @@ export function ChatMessageBubble({
 
   if (message.role === "assistant") {
     return (
-      <div className="group/msg flex gap-2">
+      <div className="group group/msg flex gap-2">
         <div className="shrink-0 w-control-xs h-control-xs mt-0.5">
           {!groupedWithPrevious && (
             <div className="w-control-xs h-control-xs rounded-full bg-surface-3 flex items-center justify-center">
@@ -108,7 +108,7 @@ export function ChatMessageBubble({
           type="button"
           onClick={() => setToolExpanded(!toolExpanded)}
           className={cn(
-            "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg",
+            "ui-pressable w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg",
             "ui-meta-text text-status-info ui-transition-colors ui-motion-fast hover:bg-status-info/10",
           )}
         >
@@ -123,7 +123,13 @@ export function ChatMessageBubble({
                 </span>
               </span>
             </span>
-            {toolExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              toolExpanded && "rotate-90",
+            )}
+          />
         </button>
 
         {!toolExpanded && preview && (
@@ -158,7 +164,7 @@ export function ChatMessageBubble({
           type="button"
           onClick={() => setToolExpanded(!toolExpanded)}
           className={cn(
-            "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg",
+            "ui-pressable w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg",
             "ui-meta-text ui-transition-colors ui-motion-fast",
             isError
               ? "text-status-danger hover:bg-status-danger/10"
@@ -182,7 +188,13 @@ export function ChatMessageBubble({
               </span>
             </span>
           </span>
-          {toolExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              toolExpanded && "rotate-90",
+            )}
+          />
         </button>
 
         {!toolExpanded && preview && (
@@ -225,7 +237,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="ui-icon-button absolute -right-1 top-0 opacity-0 group-hover/msg:opacity-100 ui-transition-opacity ui-motion-fast"
+      className="ui-icon-button ui-reveal-trailing absolute -right-1 top-0"
       aria-label={copied ? "Copied" : "Copy message"}
       title={copied ? "Copied" : "Copy"}
     >

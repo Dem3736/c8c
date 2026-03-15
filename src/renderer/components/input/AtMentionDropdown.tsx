@@ -85,7 +85,7 @@ export function AtMentionDropdown({
                 />
                 <span className="truncate">{file.relativePath}</span>
                 {alreadyAdded && (
-                  <span className="ml-auto text-[10px] text-muted-foreground flex-shrink-0">
+                  <span className="ml-auto ui-meta-text text-muted-foreground flex-shrink-0">
                     Added
                   </span>
                 )}

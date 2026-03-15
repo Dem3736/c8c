@@ -69,7 +69,7 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
-        <div className="text-muted-foreground">
+        <div className="ui-empty-state rounded-lg surface-soft px-8 text-muted-foreground">
           <p className="text-body-md font-medium mb-1">Agent</p>
           <p className="ui-meta-text leading-relaxed">
             Ask me to add skills, build pipelines,
@@ -127,7 +127,7 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
       <button
         type="button"
         onClick={scrollToBottom}
-        className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 surface-elevated inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sidebar-meta text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+        className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 surface-elevated inline-flex items-center gap-1.5 rounded-full px-3 py-1 ui-meta-text text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
       >
         <ArrowDown size={11} />
         New messages
