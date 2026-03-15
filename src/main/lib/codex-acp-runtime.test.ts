@@ -272,15 +272,17 @@ describe("createCodexAcpExecutionHandle", () => {
           type: "tool-call",
           toolCallId: "tool-1",
           toolName: "acp.acp_provider_agent_dynamic_tool",
-          input: {
+          input: JSON.stringify({
+            toolCallId: "tool-1",
             toolName: "Read file.txt",
             args: {},
-          },
+          }),
         }
         yield {
           type: "tool-result",
           toolCallId: "tool-1",
-          output: { ok: true },
+          toolName: "acp.acp_provider_agent_dynamic_tool",
+          result: { ok: true },
         }
         yield {
           type: "finish-step",

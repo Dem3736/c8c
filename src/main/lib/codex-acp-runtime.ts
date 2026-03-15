@@ -159,6 +159,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
+function parseCodexJsonValue(value: unknown): unknown {
+  if (typeof value !== "string") return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return value
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -653,9 +666,7 @@ function mapStreamPartToLogEntry(
 
   if (part.type === "tool-call") {
     const rawToolName = typeof part.toolName === "string" ? part.toolName : "unknown"
-    const rawInput = rawToolName === ACP_PROVIDER_AGENT_DYNAMIC_TOOL_NAME && isRecord(part.input)
-      ? part.input
-      : part.input
+    const rawInput = parseCodexJsonValue(part.input)
     const actualToolName = rawToolName === ACP_PROVIDER_AGENT_DYNAMIC_TOOL_NAME
       && isRecord(rawInput)
       && typeof rawInput.toolName === "string"
@@ -678,15 +689,15 @@ function mapStreamPartToLogEntry(
   }
 
   if (part.type === "tool-result" || part.type === "tool-error") {
-    const toolName = typeof part.toolName === "string"
-      ? part.toolName
-      : typeof part.toolCallId === "string"
-        ? toolNamesById.get(part.toolCallId) || "unknown"
+    const toolName = typeof part.toolCallId === "string" && toolNamesById.has(part.toolCallId)
+      ? toolNamesById.get(part.toolCallId) || "unknown"
+      : typeof part.toolName === "string"
+        ? part.toolName
         : "unknown"
     return {
       type: "tool_result",
       tool: toolName,
-      output: stringifyOutput(part.output ?? part.errorText ?? part.error),
+      output: stringifyOutput(part.output ?? part.result ?? part.errorText ?? part.error),
       status: part.type === "tool-error" ? "error" : "success",
       timestamp,
     }
