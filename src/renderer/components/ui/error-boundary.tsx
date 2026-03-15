@@ -42,12 +42,12 @@ export class SectionErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex h-full min-h-[140px] flex-col items-center justify-center gap-3 rounded-lg border border-hairline bg-surface-1 p-4 text-center">
-          <AlertCircle className="h-8 w-8 text-muted-foreground" />
+        <div className="surface-danger-soft flex h-full min-h-[140px] flex-col items-center justify-center gap-3 rounded-lg p-4 text-center">
+          <AlertCircle className="h-8 w-8 text-status-danger" />
           <p className="text-body-md font-medium text-foreground">
             Failed to render {this.props.sectionName || "section"}
           </p>
-          <p className="max-w-[380px] ui-meta-text">
+          <p className="max-w-[380px] ui-meta-text text-status-danger/90">
             {this.state.error?.message || "An unexpected UI error occurred."}
           </p>
           <Button variant="outline" size="sm" onClick={this.handleReset}>

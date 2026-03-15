@@ -11,23 +11,25 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border border-primary/90 bg-primary !text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))] shadow-[inset_0_1px_0_hsl(var(--primary-foreground)/0.2),0_0_0_1px_hsl(var(--hairline)/0.24)] hover:bg-primary/90 hover:border-primary active:!text-primary-foreground active:[-webkit-text-fill-color:hsl(var(--primary-foreground))] disabled:bg-primary/70 disabled:border-primary/70 disabled:!text-primary-foreground disabled:[-webkit-text-fill-color:hsl(var(--primary-foreground))] disabled:shadow-none",
+          "border border-primary/90 bg-primary !text-primary-foreground [-webkit-text-fill-color:hsl(var(--primary-foreground))] shadow-[inset_0_1px_0_hsl(var(--primary-foreground)/0.2),0_0_0_1px_hsl(var(--hairline)/0.24)] hover:bg-primary/90 hover:border-primary active:bg-primary/82 active:border-primary/85 active:!text-primary-foreground active:[-webkit-text-fill-color:hsl(var(--primary-foreground))] disabled:bg-primary/70 disabled:border-primary/70 disabled:!text-primary-foreground disabled:[-webkit-text-fill-color:hsl(var(--primary-foreground))] disabled:shadow-none",
         destructive:
-          "border border-destructive/80 bg-destructive !text-destructive-foreground [-webkit-text-fill-color:hsl(var(--destructive-foreground))] shadow-[inset_0_1px_0_hsl(var(--destructive-foreground)/0.18),0_0_0_1px_hsl(var(--hairline)/0.24)] hover:bg-destructive/90 active:!text-destructive-foreground active:[-webkit-text-fill-color:hsl(var(--destructive-foreground))] disabled:bg-destructive/70 disabled:border-destructive/70 disabled:!text-destructive-foreground disabled:[-webkit-text-fill-color:hsl(var(--destructive-foreground))] disabled:shadow-none",
+          "border border-destructive/80 bg-destructive !text-destructive-foreground [-webkit-text-fill-color:hsl(var(--destructive-foreground))] shadow-[inset_0_1px_0_hsl(var(--destructive-foreground)/0.18),0_0_0_1px_hsl(var(--hairline)/0.24)] hover:bg-destructive/90 active:bg-destructive/82 active:border-destructive/85 active:!text-destructive-foreground active:[-webkit-text-fill-color:hsl(var(--destructive-foreground))] disabled:bg-destructive/70 disabled:border-destructive/70 disabled:!text-destructive-foreground disabled:[-webkit-text-fill-color:hsl(var(--destructive-foreground))] disabled:shadow-none",
         outline:
-          "border border-border bg-surface-1 text-foreground shadow-[inset_0_1px_0_var(--inset-highlight-strong),0_0_0_1px_hsl(var(--hairline)/0.2)] hover:bg-surface-2 hover:border-hairline active:bg-surface-2 active:text-foreground active:border-hairline disabled:border-border/80 disabled:bg-surface-2/80 disabled:text-disabled disabled:shadow-none",
+          "border border-border bg-surface-1 text-foreground shadow-[inset_0_1px_0_var(--inset-highlight-strong),0_0_0_1px_hsl(var(--hairline)/0.2)] hover:bg-surface-2 hover:border-hairline active:bg-surface-3 active:text-foreground active:border-hairline disabled:border-border/80 disabled:bg-surface-2/80 disabled:text-disabled disabled:shadow-none",
         secondary:
-          "border border-border bg-surface-2 text-secondary-foreground shadow-[inset_0_1px_0_var(--inset-highlight)] hover:bg-surface-3 active:bg-surface-3 active:text-secondary-foreground active:border-border disabled:border-border/70 disabled:bg-surface-3/80 disabled:text-disabled disabled:shadow-none",
+          "border border-border bg-surface-2 text-secondary-foreground shadow-[inset_0_1px_0_var(--inset-highlight)] hover:bg-surface-3 active:bg-surface-3/95 active:text-secondary-foreground active:border-border disabled:border-border/70 disabled:bg-surface-3/80 disabled:text-disabled disabled:shadow-none",
         ghost:
-          "border border-transparent text-muted-foreground hover:bg-surface-3 hover:text-foreground hover:border-hairline/70 active:bg-surface-3 active:text-foreground active:border-hairline/70 active:scale-[0.99] disabled:text-disabled disabled:bg-transparent disabled:border-transparent",
+          "border border-transparent text-muted-foreground hover:bg-surface-3 hover:text-foreground hover:border-hairline/70 active:bg-surface-3/95 active:text-foreground active:border-hairline/70 active:scale-[0.985] disabled:text-disabled disabled:bg-transparent disabled:border-transparent",
         link: "text-primary underline-offset-4 hover:underline active:text-primary disabled:text-disabled disabled:no-underline",
       },
       size: {
+        bare: "h-auto rounded-md p-0 text-body-sm",
         auto: "h-auto rounded-md px-3 py-2 text-body-sm",
         xs: "h-control-xs rounded-md px-2 text-body-sm",
         sm: "h-control-sm rounded-md px-3 text-body-sm",
         default: "h-control-md rounded-md px-3",
         lg: "h-control-lg rounded-md px-4",
+        "icon-xs": "h-control-xs w-control-xs rounded-md",
         icon: "h-control-sm w-control-sm rounded-md",
       },
     },

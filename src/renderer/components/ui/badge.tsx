@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/cn"
 
 const badgeVariants = cva(
-  "inline-flex w-fit max-w-full shrink-0 items-center justify-center gap-1 overflow-hidden text-ellipsis rounded-md border px-2 py-0 text-label-xs align-middle whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 [&_svg]:shrink-0",
+  "inline-flex w-fit max-w-full shrink-0 items-center justify-center overflow-hidden text-ellipsis border align-middle whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -19,9 +19,15 @@ const badgeVariants = cva(
         warning: "border-status-warning/30 bg-status-warning/10 text-status-warning",
         info: "border-status-info/30 bg-status-info/10 text-status-info",
       },
+      size: {
+        default: "gap-1 rounded-md px-2 py-0 text-label-xs",
+        compact: "gap-0.5 rounded-md px-1.5 py-0 text-label-xs",
+        pill: "gap-1 rounded-full px-2.5 py-0.5 text-label-xs",
+      },
     },
     defaultVariants: {
       variant: "default",
+      size: "default",
     },
   },
 )
@@ -30,9 +36,9 @@ export interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+function Badge({ className, variant, size, ...props }: BadgeProps) {
   return (
-    <span className={cn(badgeVariants({ variant }), className)} {...props} />
+    <span className={cn(badgeVariants({ variant, size }), className)} {...props} />
   )
 }
 

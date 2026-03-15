@@ -28,7 +28,7 @@ export function PageHeader({
   actions,
 }: {
   title: string
-  subtitle: string
+  subtitle?: string
   actions?: ReactNode
 }) {
   return (
@@ -37,14 +37,41 @@ export function PageHeader({
         <h1 className="ui-title-text text-foreground">
           {title}
         </h1>
-        <p className="mt-2 text-body-md text-muted-foreground">{subtitle}</p>
+        {subtitle ? (
+          <p className="mt-2 text-body-md text-muted-foreground">{subtitle}</p>
+        ) : null}
       </div>
       {actions ? (
-        <div className="control-cluster flex items-center gap-2 rounded-lg p-1">
+        <div className="flex flex-wrap items-center gap-2">
           {actions}
         </div>
       ) : null}
     </header>
+  )
+}
+
+export function PageHero({
+  icon,
+  title,
+  children,
+  className,
+}: {
+  icon?: ReactNode
+  title: string
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <section
+      className={cn(
+        "mx-auto flex w-full max-w-[720px] flex-col items-center text-center",
+        className,
+      )}
+    >
+      {icon ? <div className="text-foreground">{icon}</div> : null}
+      <h2 className="mt-6 ui-title-text text-foreground">{title}</h2>
+      {children ? <div className="mt-2 w-full">{children}</div> : null}
+    </section>
   )
 }
 

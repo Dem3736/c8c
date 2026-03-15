@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-[var(--overlay-scrim)]",
+      "fixed inset-0 z-50 ui-overlay-scrim",
       "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
@@ -42,7 +42,7 @@ const DialogContent = React.forwardRef<
     <DialogPortal>
       <DialogPrimitive.Overlay
         className={cn(
-          "fixed inset-0 z-50 bg-[var(--overlay-scrim)]",
+          "fixed inset-0 z-50 ui-overlay-scrim",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         )}
         onClick={onOverlayClick}
@@ -83,33 +83,33 @@ const CanvasDialogContent = React.forwardRef<
     : "w-[420px] max-w-[calc(100%-2rem)]"
 
   return (
-  <DialogPortal>
-    <DialogPrimitive.Overlay
-      className={cn(
-        "fixed inset-0 z-50 bg-[var(--overlay-scrim)]",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      )}
-    />
-    <DialogPrimitive.Content
-      ref={ref}
-      data-canvas-dialog
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 max-h-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg surface-elevated overflow-hidden",
-        sizeClass,
-        "transition-[opacity,transform] ui-motion-fast data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/10 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/10 data-[state=open]:slide-in-from-top-[48%]",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close className="absolute right-3 top-3 h-control-sm w-control-sm rounded-md flex items-center justify-center text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
-          <Cross2Icon className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      )}
-    </DialogPrimitive.Content>
-  </DialogPortal>
+    <DialogPortal>
+      <DialogPrimitive.Overlay
+        className={cn(
+          "fixed inset-0 z-50 ui-overlay-scrim",
+          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        )}
+      />
+      <DialogPrimitive.Content
+        ref={ref}
+        data-canvas-dialog
+        className={cn(
+          "fixed left-[50%] top-[50%] z-50 max-h-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg surface-elevated overflow-hidden",
+          sizeClass,
+          "transition-[opacity,transform] ui-motion-fast data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/10 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/10 data-[state=open]:slide-in-from-top-[48%]",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close className="absolute right-3 top-3 h-control-sm w-control-sm rounded-md flex items-center justify-center text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
+            <Cross2Icon className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPortal>
   )
 })
 CanvasDialogContent.displayName = "CanvasDialogContent"

@@ -120,6 +120,11 @@ Use these **exclusively** in sidebar — not generic `text-body-*` or `ui-meta-t
 | `.ui-title-text` | 28px, fw 600, -0.015em tracking — page titles |
 | `.ui-body-text` | 14px, lh 1.25rem — body text |
 | `.ui-meta-text` | 12px, lh 1rem, muted-foreground — metadata in main content |
+| `.control-cluster-compact` | Reduced-padding variant for dense picker/toolbelt rows under composers and inline cards |
+| `.control-pill-compact` | 20px compact pill chrome for embedded provider/model pickers and icon triggers |
+| `.ui-interactive-card-subtle` | Quiet interactive card treatment for dense rails/lists; avoids lifted hover shadows that clip in scroll containers |
+| `.ui-scrollbar-hidden` | Hides native scrollbar while preserving scroll interaction; use for horizontal rails only when there is another visible affordance such as arrow controls |
+| `.ui-scrollbar-transient` | Hides scrollbar by default and shows it only while actively scrolling; use for dense navigation regions like the sidebar |
 
 ### Font stack
 
@@ -154,6 +159,7 @@ Additional rhythm variables (CSS-only, not in Tailwind):
 - Prefer `*-space-*` utilities in shared primitives/layout wrappers and reusable component shells.
 - Bare Tailwind spacing (for example `px-3`, `gap-2`) is allowed when the value is exactly on the approved spacing scale.
 - Arbitrary spacing values must be treated as exceptions and documented.
+- `rhythm-*` variables remain CSS-only and reserved for future layout primitives; do not introduce new direct component usage until a dedicated adoption pass exists.
 
 ### Opacity policy
 
@@ -199,6 +205,8 @@ Applied via:
 - `.surface-panel` — base elevation on surface-1
 - `.surface-elevated` — overlay elevation on surface-1
 - `.surface-soft` — semi-transparent base elevation
+- `.surface-info-soft` — subdued info/running state surface
+- `.surface-warning-soft` / `.surface-danger-soft` — subdued caution and error surfaces
 - `.surface-depth-header` — surface-1→surface-2 gradient with hairline bottom border (dialog headers)
 
 ## Motion
@@ -233,13 +241,19 @@ All motion respects `prefers-reduced-motion: reduce`.
 CVA variants via `class-variance-authority`:
 
 **Variants**: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link`
-**Sizes**: `xs` (control-xs), `sm` (control-sm), `default` (control-md), `lg` (control-lg), `icon` (square control-sm)
+**Sizes**: `bare` (inline/link-style actions), `xs` (control-xs), `sm` (control-sm), `default` (control-md), `lg` (control-lg), `icon-xs` (square control-xs), `icon` (square control-sm)
 
 Each variant includes its own shadow, inset highlight, and border treatment. All use `.ui-pressable` base.
 
+Filter/toggle convention:
+- Active filter chips use `secondary`
+- Inactive filter chips use `outline`
+- Toggle-like button groups should expose `aria-pressed`
+
 ### Badge (`ui/badge.tsx`)
 
-**Variants**: `default`, `secondary`, `destructive`, `outline`
+**Variants**: `default`, `secondary`, `destructive`, `outline`, `success`, `warning`, `info`
+**Sizes**: `default`, `compact`, `pill`
 
 ### Dialog (`ui/dialog.tsx`)
 
@@ -252,12 +266,26 @@ Two dialog styles:
 ### Page Shell (`ui/page-shell.tsx`)
 
 - `PageShell` — scrollable container, max-width 72rem, respects `--titlebar-height`
-- `PageHeader` — title + subtitle + optional action cluster
+- `PageHeader` — title + optional subtitle + optional action cluster
+- `PageHero` — centered hero block for create/onboarding surfaces; uses the same page title typography as the rest of the app
 - `SectionHeading` — section title with optional meta slot
+
+Rules:
+- Even immersive/create pages should keep a standard `PageHeader` at the top instead of inventing page-level title styles.
+- Use `PageHero` only for the main focal block of the screen, not as a replacement for the page header.
+- Secondary rails and supporting content under a hero should still use `SectionHeading` and standard controls.
+- Create surfaces should avoid competing content widths; keep hero-adjacent rails and the primary composer inside one shared support width.
+- Large page-level composers should prefer `surface-elevated` with token radius (`rounded-lg`) over ad hoc large radii, unless they reuse an existing shared composer primitive.
+- Chat composers in narrow side panels should switch to a compact footer layout (short provider label, reduced helper copy, stacked controls) instead of preserving the wide layout and clipping it.
 
 ### Other primitives
 
-`Input`, `Textarea`, `Select`, `Tabs`, `Switch`, `Tooltip`, `ErrorBoundary`
+`Input`, `Textarea`, `Select`, `Tabs`, `Switch`, `Tooltip`, `ErrorBoundary`, `Skeleton`
+
+Removed from the active primitive surface:
+- `AlertDialog` alias wrapper
+- `ScrollArea` div wrapper
+- `Separator` div wrapper
 
 ## Platform Integration
 

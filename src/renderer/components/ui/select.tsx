@@ -42,7 +42,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-control-md w-full min-w-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-md border border-input bg-input-background px-3 py-1 text-start text-body-sm text-foreground transition-[border-color,box-shadow,background-color,color] ui-motion-fast focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface-2/80 disabled:text-disabled disabled:opacity-100 disabled:[-webkit-text-fill-color:currentColor] disabled:shadow-none data-[placeholder]:text-muted-foreground/70 [&>span]:block [&>span]:min-w-0 [&>span]:truncate",
+      "flex h-control-md w-full min-w-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-md border border-input bg-input-background px-3 py-1 text-start text-body-sm text-foreground shadow-[inset_0_1px_0_hsl(var(--foreground)/0.06)] transition-[border-color,box-shadow,background-color,color] ui-motion-fast hover:border-hairline hover:bg-surface-1 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20 aria-invalid:border-status-danger aria-invalid:ring-[3px] aria-invalid:ring-status-danger/20 disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface-2/80 disabled:text-disabled disabled:opacity-100 disabled:[-webkit-text-fill-color:currentColor] disabled:shadow-none data-[placeholder]:text-muted-foreground/80 [&>span]:block [&>span]:min-w-0 [&>span]:truncate",
       className,
     )}
     {...props}

@@ -4,7 +4,7 @@
 
 // Container Styles
 export const overlayContentBase =
-  "z-50 overflow-hidden rounded-lg border border-border bg-popover text-body-sm text-popover-foreground shadow-lg"
+  "z-50 overflow-hidden rounded-lg border border-border bg-popover text-body-sm text-popover-foreground ui-elevation-overlay"
 
 export const overlayMaxHeight = "max-h-[calc(100vh-32px)]"
 
