@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react"
 import { useAtomValue, useSetAtom } from "jotai"
 import {
   addInboxNotificationAtom,
@@ -12,16 +13,24 @@ type CreateInboxNotification = Omit<InboxNotification, "id" | "createdAt" | "rea
 
 export function useInboxNotifications() {
   const unreadCount = useAtomValue(unreadInboxCountAtom)
-  const addNotification = useSetAtom(addInboxNotificationAtom)
+  const addInboxNotification = useSetAtom(addInboxNotificationAtom)
   const markRead = useSetAtom(markInboxNotificationReadAtom)
   const markAllRead = useSetAtom(markAllInboxNotificationsReadAtom)
   const clearAll = useSetAtom(clearInboxNotificationsAtom)
+  const addNotification = useCallback(
+    // Consumers use this in effect dependencies, so its identity must stay stable.
+    (notification: CreateInboxNotification) => addInboxNotification(notification),
+    [addInboxNotification],
+  )
 
-  return {
-    unreadCount,
-    addNotification: (notification: CreateInboxNotification) => addNotification(notification),
-    markRead,
-    markAllRead,
-    clearAll,
-  }
+  return useMemo(
+    () => ({
+      unreadCount,
+      addNotification,
+      markRead,
+      markAllRead,
+      clearAll,
+    }),
+    [unreadCount, addNotification, markRead, markAllRead, clearAll],
+  )
 }
