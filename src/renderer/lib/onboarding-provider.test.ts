@@ -46,7 +46,7 @@ describe("resolveOnboardingPrimaryProvider", () => {
       ),
     ).toEqual({
       provider: "codex",
-      model: "gpt-5-codex",
+      model: "gpt-5.4",
       providerChanged: true,
       modelChanged: true,
     })

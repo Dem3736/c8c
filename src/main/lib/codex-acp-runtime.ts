@@ -17,6 +17,7 @@ import type {
 import { buildCodexEnv, execCodex } from "./codex-cli"
 import { buildClaudeSdkMcpServers } from "./mcp-config"
 import { getCodexApiKey, getProviderSettings } from "./provider-settings"
+import { logInfo } from "./structured-log"
 
 const require = createRequire(import.meta.url)
 
@@ -52,6 +53,27 @@ interface CodexMcpServer {
   name: string
   enabled?: boolean
   transport?: CodexMcpTransport
+}
+
+interface CodexAvailableModel {
+  modelId?: string
+}
+
+interface CodexSessionModelState {
+  currentModelId?: string | null
+  availableModels?: CodexAvailableModel[]
+}
+
+interface CodexSessionInfoLike {
+  models?: CodexSessionModelState | null
+}
+
+const CODEX_MODEL_EFFORT_PRIORITY = ["xhigh", "high", "medium", "low"] as const
+
+const CODEX_MODEL_ALIAS_FALLBACKS: Record<string, string[]> = {
+  "gpt-5-codex": ["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini"],
+  "gpt-5.1-codex": ["gpt-5.1-codex-max", "gpt-5.1-codex-mini"],
+  "gpt-5": ["gpt-5.4", "gpt-5.2"],
 }
 
 function isWithinRoot(candidatePath: string, rootPath: string): boolean {
@@ -124,6 +146,75 @@ function toUnpackedAsarPath(filePath: string): string {
   }
 
   return filePath
+}
+
+function stripCodexModelEffort(modelId: string): string {
+  const slashIndex = modelId.indexOf("/")
+  return slashIndex === -1 ? modelId : modelId.slice(0, slashIndex)
+}
+
+function normalizeCodexRequestedModel(modelId?: string): string | undefined {
+  const normalized = modelId?.trim()
+  return normalized || undefined
+}
+
+function pickPreferredCodexVariant(
+  baseModelId: string,
+  availableModelIds: string[],
+  currentModelId?: string | null,
+): string | null {
+  if (currentModelId && stripCodexModelEffort(currentModelId) === baseModelId) {
+    return currentModelId
+  }
+
+  for (const effort of CODEX_MODEL_EFFORT_PRIORITY) {
+    const candidate = `${baseModelId}/${effort}`
+    if (availableModelIds.includes(candidate)) {
+      return candidate
+    }
+  }
+
+  if (availableModelIds.includes(baseModelId)) {
+    return baseModelId
+  }
+
+  const firstVariant = availableModelIds.find((modelId) => stripCodexModelEffort(modelId) === baseModelId)
+  return firstVariant || null
+}
+
+function resolveCodexAcpModelId(
+  requestedModelId: string | undefined,
+  sessionInfo: CodexSessionInfoLike | null | undefined,
+): string | undefined {
+  const normalizedRequested = normalizeCodexRequestedModel(requestedModelId)
+  if (!normalizedRequested) return undefined
+
+  const availableModelIds = (sessionInfo?.models?.availableModels || [])
+    .map((model) => (typeof model?.modelId === "string" ? model.modelId.trim() : ""))
+    .filter(Boolean)
+  if (availableModelIds.length === 0) {
+    return normalizedRequested
+  }
+
+  if (availableModelIds.includes(normalizedRequested)) {
+    return normalizedRequested
+  }
+
+  const currentModelId = sessionInfo?.models?.currentModelId || null
+  const requestedBaseModelId = stripCodexModelEffort(normalizedRequested)
+  const preferredVariant = pickPreferredCodexVariant(requestedBaseModelId, availableModelIds, currentModelId)
+  if (preferredVariant) {
+    return preferredVariant
+  }
+
+  for (const aliasCandidate of CODEX_MODEL_ALIAS_FALLBACKS[normalizedRequested] || []) {
+    const aliasVariant = pickPreferredCodexVariant(aliasCandidate, availableModelIds, currentModelId)
+    if (aliasVariant) {
+      return aliasVariant
+    }
+  }
+
+  return normalizedRequested
 }
 
 function getCodexAcpPackageName(): string {
@@ -246,8 +337,8 @@ async function resolveCodexAcpMcpServers(
   return buildCodexAcpMcpServers(mcpConfigPath)
 }
 
-function getCodexAuthMethodId(apiKey?: string): "codex-api-key" | undefined {
-  return apiKey?.trim() ? "codex-api-key" : undefined
+function getCodexAuthMethodId(apiKey?: string): "chatgpt" | "codex-api-key" {
+  return apiKey?.trim() ? "codex-api-key" : "chatgpt"
 }
 
 function buildCodexToolPolicyPrefix(options: AgentRunOptions): string {
@@ -561,8 +652,16 @@ export async function createCodexAcpExecutionHandle(
 
     try {
       const modeId = resolvedSafetyProfile === "safe_readonly" ? "plan" : undefined
+      const sessionInfo = await provider.initSession()
+      const resolvedModelId = resolveCodexAcpModelId(options.model, sessionInfo)
+      logInfo("codex-provider", "acp-model-resolved", {
+        requestedModel: options.model ?? null,
+        resolvedModel: resolvedModelId ?? null,
+        currentModel: sessionInfo?.models?.currentModelId ?? null,
+        availableModelCount: sessionInfo?.models?.availableModels?.length ?? 0,
+      })
       const result = streamText({
-        model: provider.languageModel(options.model, modeId),
+        model: provider.languageModel(resolvedModelId, modeId),
         prompt: buildCodexToolPolicyPrefix(options),
         tools: provider.tools,
         abortSignal: abortController.signal,

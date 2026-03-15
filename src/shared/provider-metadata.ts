@@ -21,22 +21,18 @@ export const PROVIDER_MODELS: Record<ProviderId, string[]> = {
     "claude-haiku-4-5",
   ],
   codex: [
-    "gpt-5-codex",
+    "gpt-5.4",
     "gpt-5.3-codex",
     "gpt-5.2-codex",
-    "gpt-5.1-codex",
+    "gpt-5.2",
     "gpt-5.1-codex-max",
     "gpt-5.1-codex-mini",
-    "gpt-5.4",
-    "gpt-5",
-    "o3",
-    "o4-mini",
   ],
 }
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderId, string> = {
   claude: "sonnet",
-  codex: "gpt-5-codex",
+  codex: "gpt-5.4",
 }
 
 export const SAFETY_PROFILE_LABELS: Record<SafetyProfile, string> = {

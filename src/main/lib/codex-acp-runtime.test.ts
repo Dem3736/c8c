@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { createACPProviderMock, cleanupMock, execCodexMock, getSessionIdMock, languageModelMock, streamTextMock } = vi.hoisted(() => ({
+const {
+  createACPProviderMock,
+  cleanupMock,
+  execCodexMock,
+  getSessionIdMock,
+  initSessionMock,
+  languageModelMock,
+  streamTextMock,
+} = vi.hoisted(() => ({
   createACPProviderMock: vi.fn(),
   cleanupMock: vi.fn(),
   execCodexMock: vi.fn(),
   getSessionIdMock: vi.fn(() => "codex-session-1"),
+  initSessionMock: vi.fn(),
   languageModelMock: vi.fn(() => ({ modelId: "gpt-5-codex" })),
   streamTextMock: vi.fn(),
 }))
@@ -76,14 +85,33 @@ describe("createCodexAcpExecutionHandle", () => {
     cleanupMock.mockReset()
     execCodexMock.mockReset()
     getSessionIdMock.mockClear()
+    initSessionMock.mockReset()
     languageModelMock.mockClear()
     createACPProviderMock.mockReset()
     streamTextMock.mockReset()
     execCodexMock.mockResolvedValue({ stdout: "[]", stderr: "" })
+    initSessionMock.mockResolvedValue({
+      models: {
+        currentModelId: "gpt-5.4/xhigh",
+        availableModels: [
+          { modelId: "gpt-5.4/low" },
+          { modelId: "gpt-5.4/medium" },
+          { modelId: "gpt-5.4/high" },
+          { modelId: "gpt-5.4/xhigh" },
+          { modelId: "gpt-5.3-codex/low" },
+          { modelId: "gpt-5.3-codex/medium" },
+          { modelId: "gpt-5.3-codex/high" },
+          { modelId: "gpt-5.3-codex/xhigh" },
+          { modelId: "gpt-5.1-codex-max/medium" },
+          { modelId: "gpt-5.1-codex-max/high" },
+        ],
+      },
+    })
 
     createACPProviderMock.mockReturnValue({
       cleanup: cleanupMock,
       getSessionId: getSessionIdMock,
+      initSession: initSessionMock,
       languageModel: languageModelMock,
       tools: {},
     })
@@ -149,7 +177,7 @@ describe("createCodexAcpExecutionHandle", () => {
     const handle = await createCodexAcpExecutionHandle({
       workdir: "/tmp/project",
       prompt: "Inspect the file",
-      model: "gpt-5-codex",
+      model: "gpt-5.4",
     })
 
     const entries: Array<{ type: string; content?: string; tool?: string; input?: unknown; output?: string }> = []
@@ -192,7 +220,30 @@ describe("createCodexAcpExecutionHandle", () => {
         ],
       }),
     }))
-    expect(languageModelMock).toHaveBeenCalledWith("gpt-5-codex", undefined)
+    expect(languageModelMock).toHaveBeenCalledWith("gpt-5.4/xhigh", undefined)
     expect(cleanupMock).toHaveBeenCalled()
+  })
+
+  it("maps legacy codex aliases onto currently available ACP model ids", async () => {
+    streamTextMock.mockReturnValue({
+      fullStream: (async function *() {
+        yield { type: "finish", finishReason: "stop" }
+      })(),
+      totalUsage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+      }),
+      finishReason: Promise.resolve("stop"),
+    })
+
+    const handle = await createCodexAcpExecutionHandle({
+      workdir: "/tmp/project",
+      prompt: "Inspect the file",
+      model: "gpt-5-codex",
+    })
+
+    await drainExecutionHandle(handle)
+
+    expect(languageModelMock).toHaveBeenCalledWith("gpt-5.3-codex/xhigh", undefined)
   })
 })
