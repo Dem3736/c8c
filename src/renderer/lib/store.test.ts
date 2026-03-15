@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { doesRunBelongToWorkflowHistory } from "./store"
+import { doesRunBelongToWorkflowHistory } from "@/features/execution"
 
 describe("doesRunBelongToWorkflowHistory", () => {
   it("matches saved workflow runs by file path only", () => {

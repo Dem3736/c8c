@@ -6,7 +6,7 @@ import {
   clearWorkflowExecutionStateAtom,
   moveWorkflowExecutionStateAtom,
   toWorkflowExecutionKey,
-} from "@/lib/store"
+} from "@/features/execution"
 import {
   normalizeWorkflowTitle,
   toWorkflowFileStem,

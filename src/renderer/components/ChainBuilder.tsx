@@ -3,13 +3,12 @@ import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
 import {
   currentWorkflowAtom,
-  nodeStatesAtom,
-  activeNodeIdAtom,
   selectedNodeIdAtom,
   skillPickerOpenAtom,
   type WorkflowNode,
   type DiscoveredSkill,
 } from "@/lib/store"
+import { activeNodeIdAtom, nodeStatesAtom } from "@/features/execution"
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,

@@ -5,8 +5,6 @@ import {
   selectedWorkflowPathAtom,
   selectedProjectAtom,
   workflowsAtom,
-  runStatusAtom,
-  runIdAtom,
   generateDialogOpenAtom,
   inputValueAtom,
   skillsAtom,
@@ -17,6 +15,7 @@ import {
   workflowSavedSnapshotAtom,
   mainViewAtom,
 } from "@/lib/store"
+import { runIdAtom, runStatusAtom } from "@/features/execution"
 import {
   Save,
   Play,

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { useAtom } from "jotai"
-import { pastRunsAtom, inputAttachmentsAtom } from "@/lib/store"
+import { inputAttachmentsAtom } from "@/lib/store"
+import { pastRunsAtom } from "@/features/execution"
 import type { RunResult } from "@shared/types"
 import { Search, History } from "lucide-react"
 import {

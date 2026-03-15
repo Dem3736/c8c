@@ -7,14 +7,16 @@ import {
   desktopRuntimeAtom,
   defaultProviderAtom,
   multiRunDashboardOpenAtom,
-  runStatusAtom,
-  runStartedAtAtom,
-  nodeStatesAtom,
   currentWorkflowAtom,
+} from "@/lib/store"
+import {
+  nodeStatesAtom,
+  runStartedAtAtom,
+  runStatusAtom,
   runtimeNodesAtom,
   toWorkflowExecutionKey,
   workflowExecutionStatesAtom,
-} from "@/lib/store"
+} from "@/features/execution"
 import { cn } from "@/lib/cn"
 import { PROVIDER_LABELS } from "@shared/provider-metadata"
 import { Activity, GitBranch, Laptop, Loader2, ShieldCheck } from "lucide-react"

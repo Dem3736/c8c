@@ -8,9 +8,9 @@ import {
   viewModeAtom,
   chatPanelOpenAtom,
   workflowDirtyAtom,
-  runStatusAtom,
   mainViewAtom,
 } from "@/lib/store"
+import { runStatusAtom } from "@/features/execution"
 import { InputPanel } from "./InputPanel"
 import { ChainBuilder } from "./ChainBuilder"
 import { CanvasView } from "./CanvasView"

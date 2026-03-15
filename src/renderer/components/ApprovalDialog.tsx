@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useAtom } from "jotai"
-import { approvalRequestsAtom } from "@/lib/store"
+import { approvalRequestsAtom } from "@/features/execution"
 import {
   Dialog,
   DialogContent,

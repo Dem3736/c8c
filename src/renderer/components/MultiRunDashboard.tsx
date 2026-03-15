@@ -18,20 +18,22 @@ import {
   XCircle,
 } from "lucide-react"
 import {
-  approvalRequestsAtom,
-  clearWorkflowExecutionStateAtom,
   currentWorkflowAtom,
   mainViewAtom,
   multiRunDashboardOpenAtom,
-  pastRunsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
-  updateWorkflowExecutionStateAtom,
   workflowDirtyAtom,
-  workflowExecutionStatesAtom,
   workflowSavedSnapshotAtom,
-  type WorkflowExecutionState,
 } from "@/lib/store"
+import {
+  approvalRequestsAtom,
+  clearWorkflowExecutionStateAtom,
+  pastRunsAtom,
+  updateWorkflowExecutionStateAtom,
+  workflowExecutionStatesAtom,
+  type WorkflowExecutionState,
+} from "@/features/execution"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {

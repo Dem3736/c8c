@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import { useSetAtom } from "jotai"
+import { selectedNodeIdAtom } from "@/lib/store"
 import {
   activeNodeIdAtom,
   evalResultsAtom,
@@ -12,9 +13,8 @@ import {
   runtimeEdgesAtom,
   runtimeMetaAtom,
   runtimeNodesAtom,
-  selectedNodeIdAtom,
   selectedPastRunAtom,
-} from "@/lib/store"
+} from "@/features/execution"
 
 interface UseExecutionResetOptions {
   clearReportPath?: boolean

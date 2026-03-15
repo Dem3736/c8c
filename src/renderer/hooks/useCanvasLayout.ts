@@ -3,14 +3,16 @@ import { useAtom } from "jotai"
 import dagre from "@dagrejs/dagre"
 import {
   currentWorkflowAtom,
-  nodeStatesAtom,
-  activeNodeIdAtom,
-  runtimeNodesAtom,
-  runtimeEdgesAtom,
-  runtimeMetaAtom,
   validationErrorsAtom,
   canvasManualPositionsAtom,
 } from "@/lib/store"
+import {
+  activeNodeIdAtom,
+  nodeStatesAtom,
+  runtimeEdgesAtom,
+  runtimeMetaAtom,
+  runtimeNodesAtom,
+} from "@/features/execution"
 import type {
   ApprovalNodeConfig,
   Workflow,

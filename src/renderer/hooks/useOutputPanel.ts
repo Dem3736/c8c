@@ -1,17 +1,19 @@
 import { useAtom } from "jotai"
 import {
-  activeNodeIdAtom,
   currentWorkflowAtom,
+  selectedNodeIdAtom,
+} from "@/lib/store"
+import {
+  activeNodeIdAtom,
   evalResultsAtom,
   finalContentAtom,
   nodeStatesAtom,
   reportPathAtom,
   runStatusAtom,
   runtimeMetaAtom,
-  selectedNodeIdAtom,
   workflowHistoryRunsAtom,
   workspaceAtom,
-} from "@/lib/store"
+} from "@/features/execution"
 
 export function useOutputPanel() {
   const [runStatus] = useAtom(runStatusAtom)
