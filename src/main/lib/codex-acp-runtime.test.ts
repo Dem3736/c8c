@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
@@ -90,6 +93,7 @@ describe("createCodexAcpExecutionHandle", () => {
   const originalDocsRoot = process.env.DOCS_ROOT
   const originalOpenAiApiKey = process.env.OPENAI_API_KEY
   const originalCodexApiKey = process.env.CODEX_API_KEY
+  const tempDirs: string[] = []
 
   beforeEach(() => {
     buildCodexEnvMock.mockReset()
@@ -154,6 +158,10 @@ describe("createCodexAcpExecutionHandle", () => {
       delete process.env.CODEX_API_KEY
     } else {
       process.env.CODEX_API_KEY = originalCodexApiKey
+    }
+
+    while (tempDirs.length > 0) {
+      rmSync(tempDirs.pop()!, { recursive: true, force: true })
     }
   })
 
@@ -380,7 +388,7 @@ describe("createCodexAcpExecutionHandle", () => {
     expect(languageModelMock).toHaveBeenCalledWith("gpt-5.3-codex/xhigh", undefined)
   })
 
-  it("resolves MCP env vars and bearer token headers from the runtime environment", async () => {
+  it("skips auth-backed remote MCP servers unless they were explicitly configured for this run", async () => {
     process.env.LINEAR_API_TOKEN = "linear-secret"
     process.env.DOCS_ROOT = "/tmp/project/docs"
 
@@ -432,18 +440,80 @@ describe("createCodexAcpExecutionHandle", () => {
 
     expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
       session: expect.objectContaining({
-        mcpServers: expect.arrayContaining([
+        mcpServers: [
           expect.objectContaining({
             name: "docs",
             command: "npx",
             env: [{ name: "DOCS_ROOT", value: "/tmp/project/docs" }],
           }),
+        ],
+      }),
+    }))
+  })
+
+  it("keeps an auth-backed remote MCP server when it is explicitly configured for the current run", async () => {
+    process.env.LINEAR_API_TOKEN = "linear-secret"
+
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-acp-mcp-"))
+    tempDirs.push(tempDir)
+    const mcpConfigPath = join(tempDir, ".mcp.json")
+    writeFileSync(mcpConfigPath, JSON.stringify({
+      mcpServers: {
+        linear: {
+          type: "http",
+          url: "https://mcp.linear.app/sse",
+          headers: {
+            Authorization: "Bearer linear-secret",
+          },
+        },
+      },
+    }))
+
+    execCodexMock.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          name: "linear",
+          enabled: true,
+          auth_status: "bearer_token",
+          transport: {
+            type: "http",
+            url: "https://mcp.linear.app/sse",
+            bearer_token_env_var: "LINEAR_API_TOKEN",
+          },
+        },
+      ]),
+      stderr: "",
+    })
+
+    streamTextMock.mockReturnValue({
+      fullStream: (async function *() {
+        yield { type: "finish", finishReason: "stop" }
+      })(),
+      totalUsage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+      }),
+      finishReason: Promise.resolve("stop"),
+    })
+
+    const handle = await createCodexAcpExecutionHandle({
+      workdir: "/tmp/project",
+      prompt: "Inspect the file",
+      model: "gpt-5.4",
+      mcpConfigPath,
+    })
+
+    await drainExecutionHandle(handle)
+
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      session: expect.objectContaining({
+        mcpServers: [
           expect.objectContaining({
             name: "linear",
             type: "http",
             headers: [{ name: "Authorization", value: "Bearer linear-secret" }],
           }),
-        ]),
+        ],
       }),
     }))
   })

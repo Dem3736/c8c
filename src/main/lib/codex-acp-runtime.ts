@@ -363,6 +363,10 @@ function buildCodexAcpMcpServers(mcpConfigPath?: string): McpServer[] {
   })
 }
 
+function explicitCodexAcpMcpServerNames(mcpConfigPath?: string): Set<string> {
+  return new Set(buildCodexAcpMcpServers(mcpConfigPath).map((server) => server.name))
+}
+
 function getCodexMcpAuthState(authStatus: string | null | undefined): {
   supportsAuth: boolean
   authenticated: boolean
@@ -472,6 +476,9 @@ async function resolveCodexAcpMcpServers(
   workdir?: string,
   mcpConfigPath?: string,
 ): Promise<McpServer[]> {
+  const explicitServerNames = explicitCodexAcpMcpServerNames(mcpConfigPath)
+  const explicitServers = buildCodexAcpMcpServers(mcpConfigPath)
+
   try {
     const { stdout } = await execCodex(["mcp", "list", "--json"], {
       cwd: workdir,
@@ -484,17 +491,44 @@ async function resolveCodexAcpMcpServers(
         .filter((server) => {
           if (server.enabled === false) return false
           const authState = getCodexMcpAuthState(server.auth_status)
-          return !authState.needsAuth
+          if (authState.needsAuth) return false
+
+          const transportType = codexTransportType(server.transport)
+          const isRemoteTransport = transportType === "http" || transportType === "sse"
+          if (isRemoteTransport && authState.supportsAuth && !explicitServerNames.has(server.name)) {
+            logInfo("codex-provider", "mcp-server-skipped", {
+              name: server.name,
+              transportType,
+              authStatus: server.auth_status || null,
+              reason: "auth-backed remote MCP server was not explicitly configured for this run",
+            })
+            return false
+          }
+
+          return true
         })
         .map(codexServerToMcpServer)
         .filter((server): server is McpServer => Boolean(server))
-      if (runtimeServers.length > 0) return runtimeServers
+
+      const mergedServers = new Map<string, McpServer>()
+      for (const server of runtimeServers) {
+        mergedServers.set(server.name, server)
+      }
+      for (const server of explicitServers) {
+        if (!mergedServers.has(server.name)) {
+          mergedServers.set(server.name, server)
+        }
+      }
+
+      if (mergedServers.size > 0) {
+        return [...mergedServers.values()]
+      }
     }
   } catch {
     // Fall back to the prepared session config file when Codex CLI MCP listing is unavailable.
   }
 
-  return buildCodexAcpMcpServers(mcpConfigPath)
+  return explicitServers
 }
 
 function resolveCodexAcpAuthSelection(
