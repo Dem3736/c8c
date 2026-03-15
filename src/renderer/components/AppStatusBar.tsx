@@ -19,13 +19,19 @@ import {
 } from "@/features/execution"
 import { cn } from "@/lib/cn"
 import { PROVIDER_LABELS } from "@shared/provider-metadata"
-import { Activity, GitBranch, Laptop, Loader2, ShieldCheck } from "lucide-react"
+import { Activity, GitBranch, Keyboard, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-interface AppStatusBarProps {
-  environmentLabel?: string
-  permissionsLabel?: string
-}
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  CanvasDialogBody,
+  CanvasDialogContent,
+  CanvasDialogFooter,
+  CanvasDialogHeader,
+  Dialog,
+  DialogClose,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 function folderName(projectPath: string | null) {
   if (!projectPath) return null
@@ -50,10 +56,7 @@ function isDashboardVisibleState(state: { runStatus: string; runOutcome?: string
     || Object.keys(state.nodeStates || {}).length > 0
 }
 
-export function AppStatusBar({
-  environmentLabel,
-  permissionsLabel = "Protected mode",
-}: AppStatusBarProps = {}) {
+export function AppStatusBar() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
@@ -69,6 +72,7 @@ export function AppStatusBar({
   // undefined = loading, null = no git, string = branch name
   const [branch, setBranch] = useState<string | null | undefined>(undefined)
   const [elapsed, setElapsed] = useState("")
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
 
   useEffect(() => {
     if (!runStartedAt || (runStatus !== "running" && runStatus !== "starting" && runStatus !== "cancelling")) {
@@ -85,12 +89,11 @@ export function AppStatusBar({
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
   }, [runStartedAt, runStatus])
-  const platformLabel = desktopRuntime.platform === "macos"
-    ? "macOS"
-    : desktopRuntime.platform === "windows"
-      ? "Windows"
-      : "Linux"
-  const resolvedEnvironmentLabel = environmentLabel || platformLabel
+  const primaryShortcutLabel = desktopRuntime.primaryModifierLabel
+  const runShortcutLabel = `${primaryShortcutLabel}↵`
+  const chatShortcutLabel = `${primaryShortcutLabel}⇧K`
+  const settingsShortcutLabel = `${primaryShortcutLabel},`
+  const redoShortcutLabel = `${primaryShortcutLabel}⇧Z`
   const selectedWorkflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
   const trackedRunCount = Object.values(workflowExecutionStates).filter(isDashboardVisibleState).length
   const workflowProvider = workflow.defaults?.provider || defaultProvider
@@ -172,72 +175,146 @@ export function AppStatusBar({
     }
   }, [selectedProject])
 
-  return (
-    <footer
-      aria-label="Application status bar"
-      className="h-control-md shrink-0 border-t border-hairline bg-gradient-to-b from-surface-1/90 to-surface-2/90 backdrop-blur-sm"
-    >
-      <div className="h-full px-6 flex items-center justify-between ui-meta-text text-muted-foreground">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-2">
-            <Laptop size={12} aria-hidden="true" />
-            {resolvedEnvironmentLabel}
-          </span>
-          <span className="flex items-center gap-2">
-            <ShieldCheck size={12} aria-hidden="true" />
-            {permissionsLabel}
-          </span>
-          <span className="inline-flex h-control-sm items-center rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
-            {PROVIDER_LABELS[displayedProvider]}
-          </span>
-          {selectedProject ? (
-            <span className="inline-flex h-control-sm max-w-56 items-center truncate rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
-              {folderName(selectedProject)}
-            </span>
-          ) : null}
-        </div>
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      const isEditable = Boolean(
+        target?.isContentEditable ||
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        target?.closest("[contenteditable=true]"),
+      )
 
-        <div className="flex items-center gap-2">
-          {showRunProgress && (
-            <span
-              role="status"
-              aria-live="polite"
-              className={cn(
-                "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast",
-                runProgressClass,
-              )}
-            >
-              {(runStatus === "running" || runStatus === "starting" || runStatus === "cancelling") && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
-              <span className="font-medium">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
-              <span className="text-current/80">{runPhaseLabel}</span>
-              {elapsed && <span className="ui-meta-text text-current/60 tabular-nums">{elapsed}</span>}
+      if (
+        !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !isEditable
+        && (event.key === "?" || (event.key === "/" && event.shiftKey))
+      ) {
+        event.preventDefault()
+        setShortcutsDialogOpen((open) => !open)
+      }
+    }
+
+    window.addEventListener("keydown", handler)
+    return () => {
+      window.removeEventListener("keydown", handler)
+    }
+  }, [])
+
+  return (
+    <>
+      <footer
+        aria-label="Application status bar"
+        className="h-control-md shrink-0 border-t border-hairline bg-gradient-to-b from-surface-1/90 to-surface-2/90 backdrop-blur-sm"
+      >
+        <div className="h-full px-6 flex items-center justify-between ui-meta-text text-muted-foreground">
+          <div className="flex items-center gap-4">
+            <span className="inline-flex h-control-sm items-center rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
+              {PROVIDER_LABELS[displayedProvider]}
             </span>
-          )}
-          {backgroundRunCount > 0 && (
-            <span className="inline-flex h-control-sm items-center rounded-md border border-status-info/30 bg-status-info/10 px-2 text-status-info ui-elevation-inset">
-              {backgroundRunCount} run{backgroundRunCount === 1 ? "" : "s"} in background
-            </span>
-          )}
-          {trackedRunCount > 0 && (
-            <Button
-              variant="ghost"
-              size="xs"
-              className="gap-1.5 px-2 text-muted-foreground hover:text-foreground"
-              onClick={() => setMultiRunDashboardOpen(true)}
-            >
-              <Activity size={12} />
-              Runs
-              <span className="tabular-nums">{trackedRunCount}</span>
-            </Button>
-          )}
-          {selectedProject && (
-            <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast">
-              <GitBranch size={12} aria-hidden="true" />
-              {branch === undefined ? <span className="opacity-60">Checking git...</span> : (branch ?? "No git branch")}
-            </span>
-          )}
+            {selectedProject ? (
+              <span className="inline-flex h-control-sm max-w-56 items-center truncate rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
+                {folderName(selectedProject)}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {showRunProgress && (
+              <span
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast",
+                  runProgressClass,
+                )}
+              >
+                {(runStatus === "running" || runStatus === "starting" || runStatus === "cancelling") && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+                <span className="font-medium">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
+                <span className="text-current/80">{runPhaseLabel}</span>
+                {elapsed && <span className="ui-meta-text text-current/60 tabular-nums">{elapsed}</span>}
+              </span>
+            )}
+            {backgroundRunCount > 0 && (
+              <span className="ui-status-badge ui-status-badge-info h-control-sm px-2 ui-elevation-inset">
+                {backgroundRunCount} run{backgroundRunCount === 1 ? "" : "s"} in background
+              </span>
+            )}
+            {trackedRunCount > 0 && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+                onClick={() => setMultiRunDashboardOpen(true)}
+              >
+                <Activity size={12} />
+                Runs
+                <span className="tabular-nums">{trackedRunCount}</span>
+              </Button>
+            )}
+            {selectedProject && (
+              <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast">
+                <GitBranch size={12} aria-hidden="true" />
+                {branch === undefined ? <span className="opacity-60">Checking git...</span> : (branch ?? "No git branch")}
+              </span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-control-sm w-control-sm text-muted-foreground hover:text-foreground"
+                  onClick={() => setShortcutsDialogOpen(true)}
+                  aria-label="Open keyboard shortcuts"
+                >
+                  <Keyboard size={13} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
-    </footer>
+      </footer>
+
+      <Dialog open={shortcutsDialogOpen} onOpenChange={setShortcutsDialogOpen}>
+        <CanvasDialogContent showCloseButton={false}>
+          <CanvasDialogHeader>
+            <DialogTitle>Keyboard shortcuts</DialogTitle>
+            <DialogDescription>High-value commands available from the editor.</DialogDescription>
+          </CanvasDialogHeader>
+          <CanvasDialogBody>
+            <div className="space-y-2">
+              {[
+                { keys: `${primaryShortcutLabel}Z`, label: "Undo last structural change" },
+                { keys: redoShortcutLabel, label: "Redo last undone change" },
+                { keys: `${primaryShortcutLabel}S`, label: "Save current workflow" },
+                { keys: runShortcutLabel, label: isRunInFlight(runStatus) ? "Stop current run" : "Run current workflow" },
+                { keys: chatShortcutLabel, label: "Toggle Agent panel" },
+                { keys: settingsShortcutLabel, label: "Open global settings" },
+                { keys: "?", label: "Open this shortcuts guide" },
+              ].map((shortcut) => (
+                <div
+                  key={shortcut.keys}
+                  className="flex items-center justify-between gap-4 rounded-md border border-hairline bg-surface-1/80 px-3 py-2"
+                >
+                  <span className="text-body-sm text-foreground">{shortcut.label}</span>
+                  <code className="rounded-sm border border-hairline bg-surface-2 px-2 py-0.5 text-body-sm">
+                    {shortcut.keys}
+                  </code>
+                </div>
+              ))}
+            </div>
+          </CanvasDialogBody>
+          <CanvasDialogFooter>
+            <DialogClose asChild>
+              <Button size="sm">Close</Button>
+            </DialogClose>
+          </CanvasDialogFooter>
+        </CanvasDialogContent>
+      </Dialog>
+    </>
   )
 }

@@ -38,7 +38,6 @@ import {
   Loader2,
   MoreHorizontal,
   ChevronRight,
-  ChevronDown,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
@@ -81,6 +80,8 @@ interface ProjectSidebarProps {
   onWorkflowCreate?: (workflowPath: string) => void
 }
 
+const PROJECT_WORKFLOW_PREVIEW_LIMIT = 10
+
 export function ProjectSidebar({
   onProjectAdd,
   onWorkflowCreate,
@@ -104,6 +105,7 @@ export function ProjectSidebar({
   const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const [workflowSearchQuery, setWorkflowSearchQuery] = useState("")
+  const [expandedWorkflowLists, setExpandedWorkflowLists] = useState<Record<string, boolean>>({})
   const [sidebarScrolling, setSidebarScrolling] = useState(false)
   const [sidebarContextMenu, setSidebarContextMenu] = useState<{
     x: number
@@ -448,7 +450,7 @@ export function ProjectSidebar({
             type="button"
             data-sidebar-item="true"
             onClick={() => void addProject()}
-            className="mx-1.5 mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-sidebar-item text-muted-foreground hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
+            className="ui-pressable mx-1.5 mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-sidebar-item text-muted-foreground hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
           >
             <FolderOpen size={15} className="flex-shrink-0 opacity-60" />
             <span>Open a project</span>
@@ -461,7 +463,6 @@ export function ProjectSidebar({
           const projectWorkflows = isSelectedProject
             ? workflows
             : projectWorkflowsCache[projectPath] || []
-          const ChevronIcon = isExpanded ? ChevronDown : ChevronRight
 
           return (
             <div key={projectPath} className="sidebar-list-group mt-1 first:mt-0">
@@ -470,17 +471,23 @@ export function ProjectSidebar({
                   type="button"
                   data-sidebar-item="true"
                   className={cn(
-                    "sidebar-project-row text-left text-sidebar-label",
+                    "sidebar-project-row ui-pressable text-left text-sidebar-label",
                     isSelectedProject ? "text-foreground" : "text-muted-foreground",
                   )}
                   onClick={() => toggleProjectExpansion(projectPath)}
                   title={projectPath}
                 >
-                  <ChevronIcon size={14} className="flex-shrink-0 text-muted-foreground" />
+                  <ChevronRight
+                    size={14}
+                    className={cn(
+                      "flex-shrink-0 text-muted-foreground transition-transform ui-motion-fast",
+                      isExpanded && "rotate-90",
+                    )}
+                  />
                   <FolderOpen size={14} className="flex-shrink-0" />
                   <span className="truncate flex-1">{projectFolderName(projectPath)}</span>
                 </button>
-                <div className="flex items-center gap-0.5 opacity-0 ui-transition-opacity ui-motion-fast group-hover:opacity-100 group-focus-within:opacity-100">
+                <div className="ui-reveal-trailing flex items-center gap-0.5">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -531,15 +538,30 @@ export function ProjectSidebar({
                 </div>
               </div>
 
-              {isExpanded && (
-                <div className="mt-0.5 ml-7 space-y-px" role="listbox" aria-label={`${projectFolderName(projectPath)} workflows`}>
-                  {projectWorkflows.filter((w) => {
-                    if (!workflowSearchQuery.trim()) return true
-                    return w.name.toLowerCase().includes(workflowSearchQuery.trim().toLowerCase())
-                  }).map((workflow) => {
-                    const runMetrics = getWorkflowRunMetrics(workflow.path)
-                    const workflowRunStatus = runMetrics.runStatus
-                    const isSelected = selectedWorkflowPath === workflow.path
+              {isExpanded && (() => {
+                const hasSearchQuery = workflowSearchQuery.trim().length > 0
+                const filteredProjectWorkflows = projectWorkflows.filter((w) => {
+                  if (!hasSearchQuery) return true
+                  return w.name.toLowerCase().includes(workflowSearchQuery.trim().toLowerCase())
+                })
+                const isWorkflowListExpanded = expandedWorkflowLists[projectPath] ?? false
+                const autoExpandWorkflowList = !hasSearchQuery
+                  && filteredProjectWorkflows
+                    .slice(PROJECT_WORKFLOW_PREVIEW_LIMIT)
+                    .some((workflow) => workflow.path === selectedWorkflowPath)
+                const visibleProjectWorkflows = hasSearchQuery || isWorkflowListExpanded || autoExpandWorkflowList
+                  ? filteredProjectWorkflows
+                  : filteredProjectWorkflows.slice(0, PROJECT_WORKFLOW_PREVIEW_LIMIT)
+                const shouldShowWorkflowToggle = !hasSearchQuery
+                  && filteredProjectWorkflows.length > PROJECT_WORKFLOW_PREVIEW_LIMIT
+
+                return (
+                  <div className="mt-0.5 ml-7 space-y-px">
+                    <div role="listbox" aria-label={`${projectFolderName(projectPath)} workflows`}>
+                      {visibleProjectWorkflows.map((workflow) => {
+                        const runMetrics = getWorkflowRunMetrics(workflow.path)
+                        const workflowRunStatus = runMetrics.runStatus
+                        const isSelected = selectedWorkflowPath === workflow.path
                     const isRunOwner = workflowHasActiveRunStatus(workflowRunStatus)
                     const isDirty = isSelected && workflowDirty
                     const latestRun = latestRunByPath.get(workflow.path)
@@ -566,149 +588,163 @@ export function ProjectSidebar({
                       )
                       : (latestRun ? `Last run ${latestRunMeta.label}` : "No runs yet")
 
-                    return (
-                      <div
-                        key={workflow.path}
-                        role="option"
-                        aria-selected={isSelected}
-                        className={cn(
-                          "sidebar-thread-row group",
-                          isSelected && "sidebar-thread-row--active",
-                        )}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            aria-current={isSelected ? "page" : undefined}
-                            data-sidebar-item="true"
-                            data-workflow-path={workflow.path}
-                            onClick={() => void selectWorkflow(workflow, projectPath)}
-                            onDoubleClick={(event) => {
-                              event.stopPropagation()
-                              requestRenameWorkflow(workflow)
-                            }}
-                            onContextMenu={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              setSidebarContextMenu({
-                                x: event.clientX,
-                                y: event.clientY,
-                                scope: "workflow",
-                                workflow,
-                                projectPath,
-                              })
-                            }}
-                            className={cn(
-                              "min-w-0 flex-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
-                              isSelected
-                                ? "hover:bg-transparent"
-                                : "hover:bg-sidebar-hover/80",
-                            )}
-                          >
-                            {showSpinningIndicator ? (
-                              <Loader2
-                                size={12}
-                                className={cn("animate-spin flex-shrink-0", runMetrics.textClass)}
-                                title={indicatorTitle}
-                              />
-                            ) : (
-                              <span
-                                className={cn(
-                                  "inline-flex h-2 w-2 rounded-full border flex-shrink-0",
-                                  isRunOwner ? activeIndicatorClass : latestRunMeta.dotClass,
-                                )}
-                                title={indicatorTitle}
-                              />
-                            )}
-                            <span className={cn(
-                              "truncate flex-1 text-sidebar-item",
-                              isSelected ? "text-foreground" : "text-foreground-subtle",
-                            )}
+                      return (
+                        <div
+                          key={workflow.path}
+                          role="option"
+                          aria-selected={isSelected}
+                          className={cn(
+                            "sidebar-thread-row group",
+                            isSelected && "sidebar-thread-row--active",
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              aria-current={isSelected ? "page" : undefined}
+                              data-sidebar-item="true"
+                              data-workflow-path={workflow.path}
+                              onClick={() => void selectWorkflow(workflow, projectPath)}
+                              onDoubleClick={(event) => {
+                                event.stopPropagation()
+                                requestRenameWorkflow(workflow)
+                              }}
+                              onContextMenu={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setSidebarContextMenu({
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                  scope: "workflow",
+                                  workflow,
+                                  projectPath,
+                                })
+                              }}
+                              className={cn(
+                                "ui-pressable min-w-0 flex-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
+                                isSelected
+                                  ? "hover:bg-transparent"
+                                  : "hover:bg-sidebar-hover/80",
+                              )}
                             >
-                              {workflow.name}
-                            </span>
-                            {isDirty && (
-                              <span className="inline-flex items-center rounded-sm border border-status-warning/40 bg-status-warning/10 px-1 py-0 text-sidebar-meta text-status-warning">
-                                unsaved
+                              {showSpinningIndicator ? (
+                                <Loader2
+                                  size={12}
+                                  className={cn("animate-spin flex-shrink-0", runMetrics.textClass)}
+                                  title={indicatorTitle}
+                                />
+                              ) : (
+                                <span
+                                  className={cn(
+                                    "inline-flex h-2 w-2 rounded-full border flex-shrink-0",
+                                    isRunOwner ? activeIndicatorClass : latestRunMeta.dotClass,
+                                  )}
+                                  title={indicatorTitle}
+                                />
+                              )}
+                              <span className={cn(
+                                "truncate flex-1 text-sidebar-item",
+                                isSelected ? "text-foreground" : "text-foreground-subtle",
+                              )}
+                              >
+                                {workflow.name}
                               </span>
-                            )}
-                          </button>
+                              {isDirty && (
+                                <span className="inline-flex items-center rounded-sm border border-status-warning/40 bg-status-warning/10 px-1 py-0 text-sidebar-meta text-status-warning">
+                                  unsaved
+                                </span>
+                              )}
+                            </button>
 
-                          <span
-                            className={cn(
-                              "text-sidebar-meta flex-shrink-0 tabular-nums ui-transition-colors ui-motion-fast",
-                              rowMetaClass,
-                            )}
-                          >
-                            {rowMeta}
-                          </span>
-
-                          <div
-                            className={cn(
-                              "flex items-center gap-0.5 ui-transition-opacity ui-motion-fast",
-                              isSelected
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-                            )}
-                          >
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="ui-icon-button ui-transition-colors ui-motion-fast"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    requestRenameWorkflow(workflow)
-                                  }}
-                                  aria-label={`Rename ${workflow.name}`}
-                                >
-                                  <Pencil size={12} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Rename</TooltipContent>
-                            </Tooltip>
-
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="ui-icon-button hover:bg-status-danger/20 hover:text-status-danger ui-transition-colors ui-motion-fast"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    requestDeleteWorkflow(workflow)
-                                  }}
-                                  aria-label={`Delete ${workflow.name}`}
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Delete</TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </div>
-
-                        {runMetrics.showProgressTrack && (
-                          <div className="pointer-events-none absolute inset-x-1 bottom-1">
-                            <div
-                              className="sidebar-progress-track"
-                              role="progressbar"
-                              aria-valuenow={runMetrics.progress}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-label={`${workflow.name} execution progress`}
+                            <span
+                              className={cn(
+                                "text-sidebar-meta flex-shrink-0 tabular-nums ui-transition-colors ui-motion-fast",
+                                rowMetaClass,
+                              )}
                             >
-                              <div
-                                className={cn("sidebar-progress-bar", runMetrics.barClass)}
-                                style={{ width: `${runMetrics.progress}%` }}
-                              />
+                              {rowMeta}
+                            </span>
+
+                            <div
+                              data-visible={isSelected ? "true" : undefined}
+                              className="ui-reveal-trailing flex items-center gap-0.5"
+                            >
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="ui-icon-button ui-transition-colors ui-motion-fast"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      requestRenameWorkflow(workflow)
+                                    }}
+                                    aria-label={`Rename ${workflow.name}`}
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Rename</TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="ui-icon-button hover:bg-status-danger/20 hover:text-status-danger ui-transition-colors ui-motion-fast"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      requestDeleteWorkflow(workflow)
+                                    }}
+                                    aria-label={`Delete ${workflow.name}`}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete</TooltipContent>
+                              </Tooltip>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+
+                          {runMetrics.showProgressTrack && (
+                            <div className="pointer-events-none absolute inset-x-1 bottom-1">
+                              <div
+                                className="sidebar-progress-track"
+                                role="progressbar"
+                                aria-valuenow={runMetrics.progress}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-label={`${workflow.name} execution progress`}
+                              >
+                                <div
+                                  className={cn("sidebar-progress-bar", runMetrics.barClass)}
+                                  style={{ width: `${runMetrics.progress}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    </div>
+
+                    {shouldShowWorkflowToggle && !autoExpandWorkflowList && (
+                      <button
+                        type="button"
+                        data-sidebar-item="true"
+                        onClick={() => {
+                          setExpandedWorkflowLists((prev) => ({
+                            ...prev,
+                            [projectPath]: !isWorkflowListExpanded,
+                          }))
+                        }}
+                        className="ml-1 inline-flex h-6 items-center rounded-md px-1.5 text-sidebar-meta text-muted-foreground hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
+                      >
+                        {isWorkflowListExpanded ? "Show less" : "Show more"}
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })}
@@ -736,7 +772,7 @@ export function ProjectSidebar({
                       })
                     }}
                     className={cn(
-                      "w-full sidebar-thread-row text-left text-sidebar-item ui-transition-colors ui-motion-fast",
+                      "ui-pressable w-full sidebar-thread-row text-left text-sidebar-item ui-transition-colors ui-motion-fast",
                       isSelected
                         ? "sidebar-thread-row--active text-foreground"
                         : "text-foreground-subtle",

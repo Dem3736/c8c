@@ -5,6 +5,7 @@ export function historicalRunVisual(status?: string): {
   progress: number
   barClass: string
   textClass: string
+  dotClass: string
 } {
   switch (status) {
     case "completed":
@@ -13,6 +14,7 @@ export function historicalRunVisual(status?: string): {
         progress: 100,
         barClass: "bg-status-success",
         textClass: "text-status-success",
+        dotClass: "border-status-success/30 bg-status-success",
       }
     case "failed":
       return {
@@ -20,6 +22,7 @@ export function historicalRunVisual(status?: string): {
         progress: 78,
         barClass: "bg-status-danger",
         textClass: "text-status-danger",
+        dotClass: "border-status-danger/30 bg-status-danger",
       }
     case "interrupted":
       return {
@@ -27,6 +30,7 @@ export function historicalRunVisual(status?: string): {
         progress: 56,
         barClass: "bg-status-warning",
         textClass: "text-status-warning",
+        dotClass: "border-status-warning/30 bg-status-warning",
       }
     case "cancelled":
       return {
@@ -34,6 +38,7 @@ export function historicalRunVisual(status?: string): {
         progress: 40,
         barClass: "bg-muted-foreground/60",
         textClass: "text-muted-foreground",
+        dotClass: "border-muted-foreground/20 bg-muted-foreground/70",
       }
     default:
       return {
@@ -41,6 +46,7 @@ export function historicalRunVisual(status?: string): {
         progress: 0,
         barClass: "bg-muted-foreground/50",
         textClass: "text-muted-foreground",
+        dotClass: "border-muted-foreground/20 bg-muted-foreground/45",
       }
   }
 }

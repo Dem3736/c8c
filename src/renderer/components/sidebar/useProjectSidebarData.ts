@@ -110,10 +110,12 @@ export function useProjectSidebarData({
   ])
 
   useEffect(() => {
-    if (selectedProject && !expandedProjects.includes(selectedProject)) {
-      setExpandedProjects((prev) => [...prev, selectedProject])
-    }
-  }, [expandedProjects, selectedProject, setExpandedProjects])
+    setExpandedProjects((prev) => {
+      if (prev.length < 2) return prev
+      const unique = Array.from(new Set(prev))
+      return unique.length === prev.length ? prev : unique
+    })
+  }, [setExpandedProjects])
 
   useEffect(() => {
     for (const path of expandedProjects) {

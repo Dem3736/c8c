@@ -18,10 +18,12 @@ describe("projectSidebarUtils", () => {
       label: "completed",
       progress: 100,
       barClass: "bg-status-success",
+      dotClass: "border-status-success/30 bg-status-success",
     })
     expect(historicalRunVisual("unknown")).toMatchObject({
       label: "no runs yet",
       progress: 0,
+      dotClass: "border-muted-foreground/20 bg-muted-foreground/45",
     })
   })
 

@@ -220,7 +220,7 @@ function StepCheckCli() {
           Checking CLI status...
         </div>
       ) : loadError ? (
-        <div className="rounded-lg border border-status-danger/30 bg-status-danger/5 p-3">
+        <div className="rounded-lg surface-danger-soft p-3">
           <p className="text-body-sm text-status-danger">{loadError}</p>
         </div>
       ) : (
@@ -309,7 +309,7 @@ function StepCheckCli() {
                 : "A provider is ready to go."}
             </p>
           ) : (
-            <div className="rounded-lg border border-status-warning/30 bg-status-warning/5 p-3 space-y-2">
+            <div className="rounded-lg surface-warning-soft p-3 space-y-2">
               <p className="ui-meta-text text-muted-foreground">
                 You can still continue setup and install or authenticate a CLI later.
               </p>
@@ -403,10 +403,11 @@ function StepUnderstandWorkflow({
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <Bot size={20} className="text-foreground" />
         </div>
-        <h2 className="text-title-md text-foreground">A workflow is input → skills → output</h2>
+        <h2 className="text-title-md text-foreground">A workflow is input → plugin skills → output</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
         Start with an input, add one or more skill steps, then review the result.
+        Plugin packs are the fastest way to bring those executable steps into the app.
         The fastest way to create that flow is to describe the task to the Agent.
       </p>
 
@@ -416,8 +417,8 @@ function StepUnderstandWorkflow({
           <p className="text-body-sm text-foreground mt-1">Text, URL, or a project folder.</p>
         </div>
         <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
-          <div className="ui-meta-label text-muted-foreground">2. Skills</div>
-          <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or request approval.</p>
+          <div className="ui-meta-label text-muted-foreground">2. Plugin skills</div>
+          <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or request approval from installed packs.</p>
         </div>
         <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
           <div className="ui-meta-label text-muted-foreground">3. Output</div>
@@ -427,7 +428,7 @@ function StepUnderstandWorkflow({
 
       <div className="rounded-lg bg-surface-2 p-3 space-y-2">
         <div className="ui-meta-text text-muted-foreground/60 flex items-center gap-1.5">
-          Agent <code className="inline-code text-[10px]">&#8984;&#8679;K</code>
+          Agent <code className="inline-code ui-meta-text">&#8984;&#8679;K</code>
         </div>
         <p className="text-body-sm font-mono text-foreground/80">
           {examplePrompt}
@@ -449,9 +450,12 @@ function StepUnderstandWorkflow({
         Start with the Agent if you want c8c to assemble the first draft for you.
       </p>
       <p className="ui-meta-text text-muted-foreground">
-        <code className="inline-code text-[10px]">&#8984;Enter</code> to run
+        Need more building blocks later? Open Plugins to install marketplaces and enable pipeline packs.
+      </p>
+      <p className="ui-meta-text text-muted-foreground">
+        <code className="inline-code ui-meta-text">&#8984;Enter</code> to run
         {" "}&middot;{" "}
-        <code className="inline-code text-[10px]">&#8984;S</code> to save
+        <code className="inline-code ui-meta-text">&#8984;S</code> to save
       </p>
     </div>
   )

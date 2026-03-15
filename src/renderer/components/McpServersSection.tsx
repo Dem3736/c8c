@@ -41,7 +41,6 @@ import {
   Trash2,
   Check,
   AlertCircle,
-  ChevronDown,
   ChevronRight,
   Server,
   Activity,
@@ -135,7 +134,13 @@ function McpServerRow({
           onClick={() => setExpanded(!expanded)}
           label={expanded ? `Collapse ${server.name}` : `Expand ${server.name}`}
         >
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              expanded && "rotate-90",
+            )}
+          />
         </IconActionButton>
 
         <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>
@@ -161,7 +166,7 @@ function McpServerRow({
 
         <span className="flex-1" />
 
-        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 ui-transition-opacity ui-motion-fast">
+        <div className="ui-reveal-trailing flex items-center gap-1 shrink-0">
           <IconActionButton
             onClick={handleTest}
             disabled={testState.loading}
@@ -525,7 +530,13 @@ function ServerGroupSection({
         onClick={() => setGroupOpen(!groupOpen)}
         className="w-full !justify-start gap-1.5 text-left"
       >
-        {groupOpen ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
+        <ChevronRight
+          size={12}
+          className={cn(
+            "text-muted-foreground transition-transform ui-motion-fast",
+            groupOpen && "rotate-90",
+          )}
+        />
         <span className="section-kicker">{group.label}</span>
         <Badge variant="outline" size="compact" className="text-muted-foreground">{group.servers.length}</Badge>
         {group.projectPath && (
@@ -607,7 +618,13 @@ function PluginMcpServerRow({
           onClick={() => setExpanded(!expanded)}
           label={expanded ? `Collapse ${server.name}` : `Expand ${server.name}`}
         >
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              expanded && "rotate-90",
+            )}
+          />
         </IconActionButton>
 
         <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>

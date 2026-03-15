@@ -128,7 +128,7 @@ export function NotificationsPage() {
               <Button
                 key={value}
                 type="button"
-                variant={active ? "default" : "outline"}
+                variant={active ? "secondary" : "outline"}
                 size="sm"
                 onClick={() => setSourceFilter(value)}
               >
