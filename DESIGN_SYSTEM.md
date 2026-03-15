@@ -106,6 +106,12 @@ Use these **exclusively** in sidebar — not generic `text-body-*` or `ui-meta-t
 | `text-sidebar-label` | 0.6875rem (11px) | 1rem | 500 | Project folder group headers |
 | `text-sidebar-meta` | 0.625rem (10px) | 0.875rem | — | Timestamps, helper text |
 
+### Sidebar layout
+
+- Default sidebar width is `256px`, resizable within `224px` to `384px`.
+- Sidebar nav items use `text-sidebar-item` at regular weight; avoid inheriting heavier button typography.
+- Keep sidebar row rhythm compact: project rows at ~26px minimum height, thread rows with tight padding, and only one optional meta line below the primary line.
+
 ### CSS utility classes (globals.css)
 
 | Class | Effect |

@@ -90,6 +90,10 @@ Use these for sidebar elements — not generic `text-body-sm` or `ui-meta-text`:
 | `text-sidebar-label` | 11px, lh 1rem | 500 | Project folder group headers |
 | `text-sidebar-meta` | 10px, lh 0.875rem | 400 | Timestamps, helper text |
 
+Sidebar layout defaults to `256px` width with a supported resize range of `224px` to `384px`.
+Sidebar nav items should preserve regular-weight `text-sidebar-item`; do not inherit heavier button typography.
+Sidebar rows should stay compact: project headers around 26px minimum height, thread rows with tight padding, and at most one secondary meta line.
+
 `section-kicker` (11px, fw 600, uppercase, tracked) stays for structural section dividers like "Threads".
 
 ### Content typography tokens

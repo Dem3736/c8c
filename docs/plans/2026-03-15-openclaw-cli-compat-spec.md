@@ -10,10 +10,14 @@
 - resume and rerun support
 
 The missing piece is not a new workflow engine. It is a compatibility layer for the
-OpenClaw `lobster` tool contract plus a small runtime change so approval checkpoints
-can suspend and resume across separate CLI invocations.
+OpenClaw `lobster` tool contract plus a runtime and CLI upgrade so human-in-the-loop
+checkpoints can suspend and resume across separate CLI invocations.
 
-This spec defines that compatibility target and breaks delivery into staged releases.
+OpenClaw compatibility alone is not sufficient. The local CLI must also expose
+first-class HIL operations, otherwise the only supported path is machine-to-machine
+resume and there is no durable operator workflow on top of the CLI itself.
+
+This spec defines that combined target and breaks delivery into staged releases.
 
 ## Research Summary
 
@@ -32,6 +36,19 @@ From `../openclaw` and official docs:
 - Approval flow is resumable:
   - first call returns `needs_approval` plus `resumeToken`
   - second call resumes using that token
+
+### Current `chain-runner` CLI side
+
+Current `packages/workflow-cli` behavior is not yet true HIL:
+
+- it understands `approval-requested`
+- it supports `--auto-approve`
+- without `--auto-approve`, it effectively treats approval as a terminal CLI condition
+- it does not expose a durable `hil list/show/respond` command surface
+- it does not expose a transport layer for out-of-band delivery such as Telegram
+
+That gap matters because OpenClaw compatibility depends on resumable suspension, but
+real operators also need a human-facing path on top of the same workspace artifacts.
 
 ### Long-running jobs in OpenClaw
 
@@ -63,7 +80,9 @@ That means distribution splits into two layers:
 ## Goal
 
 Make `chain-runner` callable from OpenClaw as a Lobster-compatible workflow
-runtime for deterministic pipelines with approvals.
+runtime for deterministic pipelines with resumable human-in-the-loop checkpoints,
+while also exposing a native CLI HIL surface for local operators and optional
+delivery adapters such as Telegram.
 
 ## Non-Goals
 
@@ -79,9 +98,16 @@ For v1, “OpenClaw-compatible” means:
 
 1. OpenClaw can invoke our executable through the existing Lobster plugin.
 2. `run --mode tool` works against a `chain-runner` workflow file path.
-3. Approval checkpoints can suspend the run and return a resumable token.
-4. `resume --token ... --approve yes|no` continues from the suspended approval node.
+3. HIL checkpoints can suspend the run and return a resumable token.
+4. `resume --token ... --approve yes|no` continues from the suspended approval-style checkpoint.
 5. Stdout is a valid Lobster-style JSON envelope.
+
+For v1, “CLI HIL support” means:
+
+1. The same suspended run can be inspected and resolved without OpenClaw.
+2. The CLI exposes task-oriented commands against persisted HIL artifacts.
+3. A local delivery bridge can be implemented purely on top of the CLI commands.
+4. Telegram is an optional adapter, not a requirement for core runtime correctness.
 
 For v1, “OpenClaw-compatible” does **not** mean:
 
@@ -115,6 +141,22 @@ For v1, “OpenClaw-compatible” does **not** mean:
 3. Plugin launches our compatibility binary.
 4. Result is announced back by OpenClaw.
 
+### Flow D: local operator resolves HIL from CLI
+
+1. A workflow suspends on a HIL checkpoint.
+2. The CLI returns a resumable token and persists task artifacts in the workspace.
+3. Operator runs `c8c-workflow hil list` or `hil show`.
+4. Operator resolves the task with `hil respond`, `hil approve`, or `hil reject`.
+5. The next CLI/OpenClaw resume continues deterministically from persisted state.
+
+### Flow E: Telegram delivery on top of CLI
+
+1. A local Telegram bridge watches open HIL tasks through CLI commands.
+2. When a new task appears, the bridge sends a Telegram message to a configured chat.
+3. The user responds in Telegram.
+4. The bridge maps the Telegram action back to `c8c-workflow hil ...` commands.
+5. The underlying workflow continues through the same persisted task state as any other CLI path.
+
 ## Product Decision
 
 We should build a **compatibility shim**, not a clone of Lobster.
@@ -126,7 +168,9 @@ The correct architecture is:
   - heartbeat
   - sub-agents
 - `chain-runner` owns deterministic workflow execution
-- a thin CLI contract bridges the two
+- a thin compatibility contract bridges the two
+- a native HIL CLI layer sits beside that compatibility contract
+- delivery adapters such as Telegram sit on top of the native HIL CLI layer
 
 ## External Contract
 
@@ -174,6 +218,76 @@ Rules:
 - token must carry enough information to find the suspended workspace
 - `yes` continues past the approval node
 - `no` finalizes the run as cancelled/rejected from OpenClaw’s perspective
+
+### Native HIL CLI contract
+
+These commands are not required by OpenClaw's Lobster plugin, but they are required
+for `chain-runner` to have first-class CLI HIL support.
+
+#### List open tasks
+
+```bash
+c8c-workflow hil list [--project PATH] [--json]
+```
+
+Returns the currently open HIL tasks derived from persisted workspace artifacts.
+
+#### Show task details
+
+```bash
+c8c-workflow hil show --task <task-id> [--json]
+```
+
+Returns request payload, workflow context, workspace, timestamps, and current status.
+
+#### Submit structured response
+
+```bash
+c8c-workflow hil respond --task <task-id> --data-json '<json>' [--comment TEXT] [--idempotency-key KEY]
+```
+
+Rules:
+
+- `data-json` must be valid against the task schema
+- the response is persisted before any attempt to continue execution
+- repeated calls with the same idempotency key must be safe
+
+#### Approve / reject convenience commands
+
+```bash
+c8c-workflow hil approve --task <task-id> [--comment TEXT] [--idempotency-key KEY]
+c8c-workflow hil reject --task <task-id> [--comment TEXT] [--idempotency-key KEY]
+```
+
+These map to the generic response path for approval-style checkpoints.
+
+### Telegram bridge contract
+
+Telegram delivery is an optional local adapter on top of the native HIL CLI.
+
+Recommended shape:
+
+```bash
+c8c-workflow hil telegram serve --config /abs/path/hil-telegram.json
+```
+
+Minimal config:
+
+```json
+{
+  "botTokenEnv": "C8C_TELEGRAM_BOT_TOKEN",
+  "chatId": "123456789",
+  "allowedUserIds": ["123456789"],
+  "pollIntervalSec": 10
+}
+```
+
+Rules:
+
+- the Telegram bridge must not become the source of truth for task state
+- it may only read and write through the same persisted HIL task store / CLI commands
+- bot credentials should come from env, not be stored in plaintext config by default
+- Telegram support is a local operator convenience layer, not part of the OpenClaw plugin contract
 
 ### Stdout envelope
 
@@ -224,6 +338,37 @@ Rules:
 }
 ```
 
+For generic HIL tasks that are richer than yes/no approval, the OpenClaw-facing
+compatibility envelope may still use `status: "needs_approval"` for Lobster
+compatibility, but the payload should distinguish the task kind:
+
+```json
+{
+  "ok": true,
+  "status": "needs_approval",
+  "output": [
+    {
+      "type": "run_summary",
+      "runId": "run-123",
+      "workspace": "/abs/path"
+    }
+  ],
+  "requiresApproval": {
+    "type": "human_task",
+    "taskId": "task-01",
+    "title": "Fill missing production inputs",
+    "fields": [
+      {
+        "id": "target_volume",
+        "type": "number",
+        "label": "Target monthly volume"
+      }
+    ],
+    "resumeToken": "..."
+  }
+}
+```
+
 #### Cancelled
 
 ```json
@@ -255,19 +400,21 @@ Rules:
 
 ## Runtime Requirements
 
-### Approval suspension
+### HIL suspension
 
 Current `chain-runner` approval behavior is process-local: it waits inside the
-same run until approval arrives. OpenClaw compatibility requires cross-process
+same run until approval arrives. OpenClaw compatibility and real CLI HIL support
+require cross-process
 suspension.
 
 Required runtime behavior:
 
-1. approval node enters `waiting_approval`
+1. approval or `human` node enters a persisted waiting state
 2. run persists state without failing the node
-3. run exits with status `paused`
-4. later invocation writes approval decision into persisted workspace state
-5. resume continues from the approval node without re-running completed nodes
+3. run exits with internal status `blocked` or a temporary compatibility equivalent
+4. OpenClaw-facing `run --mode tool` maps that internal state to `status: "needs_approval"`
+5. later invocation writes the HIL decision into persisted workspace state
+6. resume continues from the waiting node without re-running completed nodes
 
 ### Resume token
 
@@ -277,7 +424,7 @@ v1 token requirements:
 - generated by `chain-runner`
 - enough to locate:
   - workspace
-  - approval node id
+  - task id or waiting node id
   - compatibility context
 
 Recommended implementation:
@@ -286,7 +433,7 @@ Recommended implementation:
 - minimal payload:
   - `version`
   - `workspace`
-  - `nodeId`
+  - `taskId`
 
 Compatibility context should be persisted in the workspace, not fully encoded
 into the token. That keeps tokens short and resilient to future schema growth.
@@ -300,7 +447,9 @@ Store a sidecar file in the run workspace:
   "workflowPath": "/abs/path/workflow.yaml",
   "workflow": { "...": "parsed workflow snapshot" },
   "projectPath": "/abs/path/project",
-  "provider": "claude"
+  "provider": "claude",
+  "taskId": "task-01",
+  "checkpointKind": "approval"
 }
 ```
 
@@ -360,10 +509,12 @@ Do not use ClawHub as the only delivery mechanism for the binary itself.
 Minimum required fields in v1 output:
 
 - `runId`
+- `chainId`
 - `workspace`
 - `reportPath` when available
 - `durationMs`
 - `status`
+- `taskId` when a HIL checkpoint is open
 
 Nice-to-have later:
 
@@ -371,6 +522,7 @@ Nice-to-have later:
 - cost
 - node-level summary
 - approval audit trail
+- delivery audit trail for Telegram or other local transports
 
 ## Security Constraints
 
@@ -391,6 +543,13 @@ v1 must keep the surface narrow:
 - `resume --token ... --approve yes` completes the run
 - `resume --token ... --approve no` returns `cancelled`
 - output is valid JSON envelope with no extra stdout noise
+
+### CLI HIL baseline acceptance
+
+- suspended tasks are discoverable through `c8c-workflow hil list`
+- task payload is inspectable through `c8c-workflow hil show`
+- a human can resolve a task without OpenClaw through CLI commands alone
+- the OpenClaw path and CLI path share the same persisted task store
 
 ## Release Plan
 
@@ -426,38 +585,81 @@ Scope:
 - opaque resume token
 - JSON/YAML workflow loading
 - one binary name dedicated to OpenClaw usage
+- no fake HIL: if a task suspends, the contract must preserve resumability instead of auto-rejecting
 
 Out of scope:
 
 - multi-approval workflows
+- Telegram delivery
 - ClawHub packaging
 - scheduler examples
 
 Exit criteria:
 
 - manual OpenClaw invocation works locally
-- no approval flow yet, or approval flow behind a temporary limitation if needed
+- compatibility run path works without extra stdout noise
 
-### Release 2: Approval-Safe Beta
+### Release 2: HIL-Safe Beta
 
 Goal:
 
-- make approvals first-class and resumable
+- make human checkpoints first-class and resumable
 
 Scope:
 
-- runtime `paused` status
-- suspend-on-approval semantics
+- runtime `blocked` status or explicit compatibility mapping
+- suspend-on-HIL semantics
 - persisted compatibility context in workspace
-- resume from waiting approval
-- tests for reject/approve/multi-step pause
+- resume from waiting approval / waiting human checkpoint
+- task ids and persisted HIL artifacts
+- tests for reject/approve/multi-step suspension
 
 Exit criteria:
 
-- approval no longer requires same-process state
+- HIL no longer requires same-process state
 - interrupted CLI process can be resumed cleanly
 
-### Release 3: OpenClaw Integration Pack
+### Release 3: Native CLI HIL Operations
+
+Goal:
+
+- make HIL usable without OpenClaw
+
+Scope:
+
+- `hil list`
+- `hil show`
+- `hil respond`
+- `hil approve`
+- `hil reject`
+- idempotency keys for task resolution
+- human-readable and JSON output modes
+
+Exit criteria:
+
+- operator can fully resolve a checkpoint from the CLI alone
+- no OpenClaw dependency remains for local HIL workflows
+
+### Release 4: Telegram Delivery Bridge
+
+Goal:
+
+- make HIL notifications actionable outside the terminal
+
+Scope:
+
+- local Telegram bridge process or subcommand
+- Telegram bot config format
+- message templates for approval-style and form-style HIL
+- callback mapping from Telegram actions back to CLI task resolution
+- basic auth/allowlist rules for who can resolve tasks
+
+Exit criteria:
+
+- a local user can receive a HIL task in Telegram and resolve it safely
+- Telegram remains an optional adapter over the same task store
+
+### Release 5: OpenClaw Integration Pack
 
 Goal:
 
@@ -468,6 +670,7 @@ Scope:
 - OpenClaw setup doc
 - example plugin config using `lobsterPath`
 - example workflows
+- examples showing when to use OpenClaw-native resume vs local CLI/Telegram HIL
 - optional skill folder prepared for ClawHub publishing
 - packaging sanity check for npm/global install
 
@@ -475,7 +678,7 @@ Exit criteria:
 
 - fresh user can connect OpenClaw to `chain-runner` without reading code
 
-### Release 4: Long-Running Jobs and Scheduling
+### Release 6: Long-Running Jobs and Scheduling
 
 Goal:
 
@@ -499,7 +702,7 @@ Exit criteria:
 
 - long-running usage has one recommended pattern per scenario
 
-### Release 5: ClawHub Distribution
+### Release 7: ClawHub Distribution
 
 Goal:
 
@@ -525,11 +728,14 @@ Implement in this order:
 3. Release 3
 4. Release 4
 5. Release 5
+6. Release 6
+7. Release 7
 
 Reason:
 
 - compatibility surface first
-- approval correctness second
+- HIL correctness second
+- operator-facing CLI before transport adapters
 - packaging and distribution only after the contract is stable
 
 ## Open Questions
@@ -538,6 +744,7 @@ Reason:
    absorb this mode directly?
 2. Should the workspace persist the full workflow snapshot, or only the original
    workflow path plus hash?
-3. In multi-branch graphs, should approval suspend immediately, or only after all
+3. In multi-branch graphs, should approval/HIL suspend immediately, or only after all
    currently running nodes finish?
 4. Do we want v1 to expose report content inline, or only paths and summary data?
+5. Should the Telegram bridge live in the main binary, or as a thin helper that shells out to `c8c-workflow hil ...`?
