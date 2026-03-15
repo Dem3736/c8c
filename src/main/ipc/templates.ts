@@ -16,7 +16,6 @@ import { saveChain } from "../lib/chain-io"
 import { toWorkflowFileStem } from "@shared/workflow-name"
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
-import { buildProviderExtraArgs } from "../lib/mcp-config"
 import { getProviderSettings } from "../lib/provider-settings"
 import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-runtime"
 
@@ -142,11 +141,6 @@ export function registerTemplateHandlers() {
             mcpConfigPath,
             disableBuiltInTools: providerId === "claude",
             disableSlashCommands: providerId === "claude",
-            extraArgs: providerId === "codex"
-              ? [
-                  ...buildProviderExtraArgs("codex", mcpConfigPath),
-                ]
-              : undefined,
             timeout: 300_000,
             abortSignal,
           })

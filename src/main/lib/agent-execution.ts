@@ -3,7 +3,6 @@ import type {
   AgentExecutionEvent,
   AgentExecutionHandle,
   AgentExecutionSummary,
-  AgentProvider,
   AgentRunOptions,
   AgentRunResult,
   ProviderId,
@@ -259,16 +258,4 @@ export async function drainExecutionHandle(
   const summary = await handle.done
   await consumeEvents
   return summary
-}
-
-export async function startLegacyProviderExecution(
-  provider: AgentProvider,
-  mode: "task" | "interactive",
-  options: AgentRunOptions,
-): Promise<AgentExecutionHandle> {
-  const runner = mode === "task"
-    ? provider.runTask.bind(provider)
-    : provider.runInteractive.bind(provider)
-  const backend = provider.id === "codex" ? "codex_exec" : "claude_cli"
-  return createLegacyExecutionHandle(provider.id, backend, options, runner)
 }

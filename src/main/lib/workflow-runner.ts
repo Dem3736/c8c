@@ -27,7 +27,7 @@ import {
   tryStructuredSplit,
 } from "./node-executors/splitter"
 import { mergeResults, buildMergerPrompt } from "./node-executors/merger"
-import { buildProviderExtraArgs, prepareWorkspaceMcpConfig, type WebSearchBackend } from "./mcp-config"
+import { prepareWorkspaceMcpConfig, type WebSearchBackend } from "./mcp-config"
 import { scanAllSkills } from "./skill-scanner"
 import { resolveNodeProviderId, resolveWorkflowProviderId, startProviderTask } from "./provider-runtime"
 import {
@@ -993,14 +993,6 @@ export async function runWorkflow(
 
   const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
   const workflowProviderId = await resolveWorkflowProviderId(workflow)
-  const providerExtraArgsCache = new Map<ProviderId, string[]>()
-  const getProviderExtraArgs = (providerId: ProviderId): string[] => {
-    const cached = providerExtraArgsCache.get(providerId)
-    if (cached) return cached
-    const next = providerId === "codex" ? buildProviderExtraArgs(providerId, mcpConfigPath) : []
-    providerExtraArgsCache.set(providerId, next)
-    return next
-  }
   const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
 
   const sanitizedInputValue = sanitizeInvalidUnicode(input.value)
@@ -1247,7 +1239,6 @@ export async function runWorkflow(
               permissionMode: "acceptEdits",
               executionMode: effectivePermissionMode,
               mcpConfigPath,
-              extraArgs: nodeProviderId === "codex" ? getProviderExtraArgs(nodeProviderId) : undefined,
               addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
@@ -1348,7 +1339,6 @@ export async function runWorkflow(
               executionMode: workflow.defaults?.permissionMode,
               mcpConfigPath,
               disableBuiltInTools: evalProviderId === "claude",
-              extraArgs: evalProviderId === "codex" ? getProviderExtraArgs(evalProviderId) : undefined,
               addDirs: [],
               abortSignal: controller.signal,
               timeout: 120_000,
@@ -1521,9 +1511,6 @@ export async function runWorkflow(
                 executionMode: workflow.defaults?.permissionMode,
                 mcpConfigPath,
                 disableBuiltInTools: splitterProviderId === "claude",
-                extraArgs: splitterProviderId === "codex"
-                  ? getProviderExtraArgs(splitterProviderId)
-                  : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 2 * 60 * 1000,
@@ -1765,7 +1752,6 @@ export async function runWorkflow(
                 executionMode: workflow.defaults?.permissionMode,
                 mcpConfigPath,
                 disableBuiltInTools: mergerProviderId === "claude",
-                extraArgs: mergerProviderId === "codex" ? getProviderExtraArgs(mergerProviderId) : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 10 * 60 * 1000,
@@ -2324,14 +2310,6 @@ export async function rerunFromNode(
   await mkdir(join(workspace, "outputs"), { recursive: true })
   const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
   const workflowProviderId = await resolveWorkflowProviderId(workflow)
-  const providerExtraArgsCache = new Map<ProviderId, string[]>()
-  const getProviderExtraArgs = (providerId: ProviderId): string[] => {
-    const cached = providerExtraArgsCache.get(providerId)
-    if (cached) return cached
-    const next = providerId === "codex" ? buildProviderExtraArgs(providerId, mcpConfigPath) : []
-    providerExtraArgsCache.set(providerId, next)
-    return next
-  }
   const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
   const rerunStartedAt = Date.now()
 
@@ -2521,7 +2499,6 @@ export async function rerunFromNode(
               permissionMode: "acceptEdits",
               executionMode: retryPermissionMode,
               mcpConfigPath,
-              extraArgs: nodeProviderId === "codex" ? getProviderExtraArgs(nodeProviderId) : undefined,
               addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
@@ -2593,7 +2570,6 @@ export async function rerunFromNode(
               executionMode: workflow.defaults?.permissionMode,
               mcpConfigPath,
               disableBuiltInTools: evalProviderId === "claude",
-              extraArgs: evalProviderId === "codex" ? getProviderExtraArgs(evalProviderId) : undefined,
               addDirs: [],
               abortSignal: controller.signal,
               timeout: 120_000,
@@ -2700,9 +2676,6 @@ export async function rerunFromNode(
                 executionMode: workflow.defaults?.permissionMode,
                 mcpConfigPath,
                 disableBuiltInTools: splitterProviderId === "claude",
-                extraArgs: splitterProviderId === "codex"
-                  ? getProviderExtraArgs(splitterProviderId)
-                  : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 2 * 60 * 1000,
@@ -2944,7 +2917,6 @@ export async function rerunFromNode(
                 executionMode: workflow.defaults?.permissionMode,
                 mcpConfigPath,
                 disableBuiltInTools: mergerProviderId === "claude",
-                extraArgs: mergerProviderId === "codex" ? getProviderExtraArgs(mergerProviderId) : undefined,
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 10 * 60 * 1000,

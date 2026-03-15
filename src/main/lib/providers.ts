@@ -334,11 +334,7 @@ class ClaudeAgentProvider implements AgentProvider {
     }
   }
 
-  async runInteractive(options: AgentRunOptions): Promise<AgentRunResult> {
-    return spawnClaude(toClaudeSpawnOptions(options))
-  }
-
-  async runTask(options: AgentRunOptions): Promise<AgentRunResult> {
+  private async runLegacyClaude(options: AgentRunOptions): Promise<AgentRunResult> {
     return spawnClaude(toClaudeSpawnOptions(options))
   }
 
@@ -346,7 +342,7 @@ class ClaudeAgentProvider implements AgentProvider {
     try {
       return await createClaudeSdkExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runInteractive.bind(this))
+      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runLegacyClaude.bind(this))
     }
   }
 
@@ -354,7 +350,7 @@ class ClaudeAgentProvider implements AgentProvider {
     try {
       return await createClaudeSdkExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runTask.bind(this))
+      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runLegacyClaude.bind(this))
     }
   }
 
@@ -408,25 +404,17 @@ class CodexAgentProvider implements AgentProvider {
     }
   }
 
-  async runInteractive(options: AgentRunOptions): Promise<AgentRunResult> {
-    return this.runCodex(options)
-  }
-
-  async runTask(options: AgentRunOptions): Promise<AgentRunResult> {
-    return this.runCodex(options)
-  }
-
   async executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
     const settings = await getProviderSettings()
     const support = canUseCodexAcpExecution(options, settings.safetyProfile)
     if (!support.supported) {
-      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runInteractive.bind(this))
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
     }
 
     try {
       return await createCodexAcpExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runInteractive.bind(this))
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
     }
   }
 
@@ -434,13 +422,13 @@ class CodexAgentProvider implements AgentProvider {
     const settings = await getProviderSettings()
     const support = canUseCodexAcpExecution(options, settings.safetyProfile)
     if (!support.supported) {
-      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runTask.bind(this))
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
     }
 
     try {
       return await createCodexAcpExecutionHandle(options)
     } catch {
-      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runTask.bind(this))
+      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
     }
   }
 
@@ -448,7 +436,7 @@ class CodexAgentProvider implements AgentProvider {
     return false
   }
 
-  private async runCodex(options: AgentRunOptions): Promise<AgentRunResult> {
+  private async runLegacyCodex(options: AgentRunOptions): Promise<AgentRunResult> {
     const executable = findCodexExecutable() || "codex"
     const settings = await getProviderSettings()
     const safetyProfile = resolveSafetyProfile(
@@ -477,8 +465,12 @@ class CodexAgentProvider implements AgentProvider {
       args.push("--add-dir", dir)
     }
 
-    if (options.extraArgs?.length) {
-      args.push(...options.extraArgs)
+    const legacyExtraArgs = [
+      ...buildProviderExtraArgs("codex", options.mcpConfigPath),
+      ...(options.extraArgs || []),
+    ]
+    if (legacyExtraArgs.length > 0) {
+      args.push(...legacyExtraArgs)
     }
 
     args.push(prompt)

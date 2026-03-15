@@ -137,10 +137,8 @@ export interface AgentProvider {
   id: ProviderId
   checkAvailability(): Promise<ProviderHealth>
   getAuthStatus(): Promise<ProviderAuthStatus>
-  executeInteractive?(options: AgentRunOptions): Promise<AgentExecutionHandle>
-  executeTask?(options: AgentRunOptions): Promise<AgentExecutionHandle>
-  runInteractive(options: AgentRunOptions): Promise<AgentRunResult>
-  runTask(options: AgentRunOptions): Promise<AgentRunResult>
+  executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle>
+  executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle>
   cancel(sessionId: string): Promise<boolean> | boolean
 }
 

@@ -23,7 +23,6 @@ import type {
 } from "@shared/types"
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { scanAllSkills } from "./skill-scanner"
-import { buildProviderExtraArgs } from "./mcp-config"
 import { resolveWorkflowProviderId, startProviderInteractive } from "./provider-runtime"
 
 // Active sessions for cancellation
@@ -183,7 +182,6 @@ async function runTurn(
     mcpConfigPath,
     disableBuiltInTools: providerId === "claude",
     disableSlashCommands: providerId === "claude",
-    extraArgs: providerId === "codex" ? buildProviderExtraArgs("codex", mcpConfigPath) : undefined,
     timeout: 120_000,
     abortSignal,
   })

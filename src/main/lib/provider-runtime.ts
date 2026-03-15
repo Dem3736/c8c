@@ -8,7 +8,6 @@ import type {
   WorkflowNode,
 } from "@shared/types"
 import { resolveNodeProvider, resolveWorkflowProvider } from "@shared/provider-metadata"
-import { startLegacyProviderExecution } from "./agent-execution"
 import { getProviderSettings } from "./provider-settings"
 import { resolveAgentProvider } from "./providers"
 
@@ -78,10 +77,7 @@ export async function startProviderTask(
   options: AgentRunOptions,
 ): Promise<AgentExecutionHandle> {
   const resolved = resolveAgentProvider(provider)
-  if (resolved.executeTask) {
-    return resolved.executeTask(options)
-  }
-  return startLegacyProviderExecution(resolved, "task", options)
+  return resolved.executeTask(options)
 }
 
 export async function startProviderInteractive(
@@ -89,8 +85,5 @@ export async function startProviderInteractive(
   options: AgentRunOptions,
 ): Promise<AgentExecutionHandle> {
   const resolved = resolveAgentProvider(provider)
-  if (resolved.executeInteractive) {
-    return resolved.executeInteractive(options)
-  }
-  return startLegacyProviderExecution(resolved, "interactive", options)
+  return resolved.executeInteractive(options)
 }
