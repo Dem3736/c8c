@@ -17,6 +17,9 @@ import type {
   SkillLibrary,
   UpdateEvent,
   UpdateInfo,
+  ProviderDiagnostics,
+  ProviderId,
+  ProviderSettings,
   Workflow,
   WorkflowEvent,
   WorkflowFile,
@@ -179,6 +182,16 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("system:get-project-status", projectPath),
   getClaudeCodeSubscriptionStatus: () =>
     ipcRenderer.invoke("system:get-claude-subscription-status"),
+  getProviderDiagnostics: () =>
+    ipcRenderer.invoke("system:get-provider-diagnostics"),
+  updateProviderSettings: (patch: Partial<ProviderSettings>) =>
+    ipcRenderer.invoke("system:update-provider-settings", patch),
+  setCodexApiKey: (apiKey: string) =>
+    ipcRenderer.invoke("system:set-codex-api-key", apiKey),
+  clearCodexApiKey: () =>
+    ipcRenderer.invoke("system:clear-codex-api-key"),
+  logoutProvider: (provider: ProviderId) =>
+    ipcRenderer.invoke("system:logout-provider", provider),
   getTelemetrySettings: () =>
     ipcRenderer.invoke("system:get-telemetry-settings"),
   setTelemetryConsent: (enabled: boolean) =>
@@ -246,23 +259,29 @@ contextBridge.exposeInMainWorld("api", {
   onDeepLinkTemplateError: (callback: (err: { templateId: string; error: string }) => void) =>
     subscribeIpcChannel<{ templateId: string; error: string }>("template:deep-link-error", callback),
 
+  // Files
+  listProjectFiles: (projectPath: string, query?: string) =>
+    ipcRenderer.invoke("files:list-project", projectPath, query),
+  readFileContent: (filePath: string, projectPath: string) =>
+    ipcRenderer.invoke("files:read-content", filePath, projectPath),
+
   // MCP servers
-  mcpListServers: (projectPath?: string) =>
-    ipcRenderer.invoke("mcp:list-servers", projectPath),
-  mcpListAllServers: () =>
-    ipcRenderer.invoke("mcp:list-all-servers"),
-  mcpAddServer: (server: McpServerInfo, projectPath?: string) =>
-    ipcRenderer.invoke("mcp:add-server", server, projectPath),
-  mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) =>
-    ipcRenderer.invoke("mcp:update-server", name, server, projectPath),
-  mcpRemoveServer: (name: string, scope: McpServerScope, projectPath?: string) =>
-    ipcRenderer.invoke("mcp:remove-server", name, scope, projectPath),
-  mcpToggleServer: (name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) =>
-    ipcRenderer.invoke("mcp:toggle-server", name, scope, disabled, projectPath),
-  mcpTestServer: (name: string, scope: McpServerScope, projectPath?: string) =>
-    ipcRenderer.invoke("mcp:test-server", name, scope, projectPath),
-  mcpDiscoverTools: (serverName?: string, projectPath?: string) =>
-    ipcRenderer.invoke("mcp:discover-tools", serverName, projectPath),
+  mcpListServers: (provider: ProviderId, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:list-servers", provider, projectPath),
+  mcpListAllServers: (provider: ProviderId) =>
+    ipcRenderer.invoke("mcp:list-all-servers", provider),
+  mcpAddServer: (provider: ProviderId, server: McpServerInfo, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:add-server", provider, server, projectPath),
+  mcpUpdateServer: (provider: ProviderId, name: string, server: McpServerInfo, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:update-server", provider, name, server, projectPath),
+  mcpRemoveServer: (provider: ProviderId, name: string, scope: McpServerScope, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:remove-server", provider, name, scope, projectPath),
+  mcpToggleServer: (provider: ProviderId, name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:toggle-server", provider, name, scope, disabled, projectPath),
+  mcpTestServer: (provider: ProviderId, name: string, scope: McpServerScope, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:test-server", provider, name, scope, projectPath),
+  mcpDiscoverTools: (provider: ProviderId, serverName?: string, projectPath?: string) =>
+    ipcRenderer.invoke("mcp:discover-tools", provider, serverName, projectPath),
 })
 
 // Type declaration
@@ -308,6 +327,11 @@ export interface C8cApi {
   onDesktopRuntimeChange: (callback: (runtime: DesktopRuntimeInfo) => void) => () => void
   getProjectStatus: (projectPath: string | null) => Promise<{ branch: string | null }>
   getClaudeCodeSubscriptionStatus: () => Promise<ClaudeCodeSubscriptionStatus>
+  getProviderDiagnostics: () => Promise<ProviderDiagnostics>
+  updateProviderSettings: (patch: Partial<ProviderSettings>) => Promise<ProviderSettings>
+  setCodexApiKey: (apiKey: string) => Promise<ProviderDiagnostics>
+  clearCodexApiKey: () => Promise<ProviderDiagnostics>
+  logoutProvider: (provider: ProviderId) => Promise<ProviderDiagnostics>
   getTelemetrySettings: () => Promise<TelemetrySettings>
   setTelemetryConsent: (enabled: boolean) => Promise<TelemetrySettings>
   trackUiEvent: (eventName: TelemetryUiEvent) => Promise<boolean>
@@ -367,14 +391,16 @@ export interface C8cApi {
   onGenerateProgress: (callback: (progress: GenerationProgress) => void) => () => void
   onDeepLinkTemplate: (callback: (template: WorkflowTemplate) => void) => () => void
   onDeepLinkTemplateError: (callback: (err: { templateId: string; error: string }) => void) => () => void
-  mcpListServers: (projectPath?: string) => Promise<McpServerInfo[]>
-  mcpListAllServers: () => Promise<McpServerInfo[]>
-  mcpAddServer: (server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
-  mcpUpdateServer: (name: string, server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
-  mcpRemoveServer: (name: string, scope: McpServerScope, projectPath?: string) => Promise<{ success: boolean; error?: string }>
-  mcpToggleServer: (name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) => Promise<{ success: boolean; error?: string }>
-  mcpTestServer: (name: string, scope: McpServerScope, projectPath?: string) => Promise<McpTestResult>
-  mcpDiscoverTools: (serverName?: string, projectPath?: string) => Promise<McpToolInfo[]>
+  listProjectFiles: (projectPath: string, query?: string) => Promise<{ name: string; relativePath: string }[]>
+  readFileContent: (filePath: string, projectPath: string) => Promise<{ content: string; truncated: boolean }>
+  mcpListServers: (provider: ProviderId, projectPath?: string) => Promise<McpServerInfo[]>
+  mcpListAllServers: (provider: ProviderId) => Promise<McpServerInfo[]>
+  mcpAddServer: (provider: ProviderId, server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpUpdateServer: (provider: ProviderId, name: string, server: McpServerInfo, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpRemoveServer: (provider: ProviderId, name: string, scope: McpServerScope, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpToggleServer: (provider: ProviderId, name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) => Promise<{ success: boolean; error?: string }>
+  mcpTestServer: (provider: ProviderId, name: string, scope: McpServerScope, projectPath?: string) => Promise<McpTestResult>
+  mcpDiscoverTools: (provider: ProviderId, serverName?: string, projectPath?: string) => Promise<McpToolInfo[]>
 }
 
 declare global {

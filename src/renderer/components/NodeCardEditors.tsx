@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { TextareaWithMention } from "@/components/input/TextareaWithMention"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -356,7 +356,7 @@ export function InputNodeEditor({ nodeId, config, onConfigChange }: {
         <Label htmlFor={`input-default-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Default value
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`input-default-${nodeId}`}
           value={config.defaultValue || ""}
           onChange={(e) => onConfigChange({ ...config, defaultValue: e.target.value })}
@@ -430,62 +430,55 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
         />
       </div>
 
-      <div className="flex items-center gap-3">
-        <Label htmlFor={`model-${nodeId}`} className="ui-meta-text text-muted-foreground">Model</Label>
-        <Select
-          value={config.model || "sonnet"}
-          onValueChange={(v) => onConfigChange({ ...config, model: v as SkillNodeConfig["model"] })}
-        >
-          <SelectTrigger id={`model-${nodeId}`} className="w-36 h-control-md text-body-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sonnet">Sonnet</SelectItem>
-            <SelectItem value="opus">Opus</SelectItem>
-            <SelectItem value="haiku">Haiku</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor={`skill-output-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Output</Label>
+          <Select
+            value={config.outputMode || "auto"}
+            onValueChange={(value) =>
+              onConfigChange({ ...config, outputMode: value as SkillNodeConfig["outputMode"] })
+            }
+          >
+            <SelectTrigger id={`skill-output-mode-${nodeId}`} className="w-full h-control-md text-body-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto</SelectItem>
+              <SelectItem value="stdout">Stdout</SelectItem>
+              <SelectItem value="content_file">content.md</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Label htmlFor={`skill-output-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Output</Label>
-        <Select
-          value={config.outputMode || "auto"}
-          onValueChange={(value) =>
-            onConfigChange({ ...config, outputMode: value as SkillNodeConfig["outputMode"] })
-          }
-        >
-          <SelectTrigger id={`skill-output-mode-${nodeId}`} className="w-36 h-control-md text-body-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="auto">Auto</SelectItem>
-            <SelectItem value="stdout">Stdout</SelectItem>
-            <SelectItem value="content_file">content.md</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Label htmlFor={`skill-max-turns-${nodeId}`} className="ui-meta-text text-muted-foreground">Turns</Label>
-        <Input
-          id={`skill-max-turns-${nodeId}`}
-          type="number"
-          min={1}
-          max={200}
-          value={config.maxTurns ?? ""}
-          onChange={(e) => {
-            const value = e.target.value.trim()
-            onConfigChange({
-              ...config,
-              maxTurns: value ? Math.max(1, Number(value) || 1) : undefined,
-            })
-          }}
-          className="w-20 h-control-sm px-2 text-body-sm text-center"
-        />
+        <div className="space-y-1">
+          <Label htmlFor={`skill-max-turns-${nodeId}`} className="ui-meta-text text-muted-foreground">Turns</Label>
+          <Input
+            id={`skill-max-turns-${nodeId}`}
+            type="number"
+            min={1}
+            max={200}
+            value={config.maxTurns ?? ""}
+            onChange={(e) => {
+              const value = e.target.value.trim()
+              onConfigChange({
+                ...config,
+                maxTurns: value ? Math.max(1, Number(value) || 1) : undefined,
+              })
+            }}
+            className="w-full h-control-md px-3 text-body-sm"
+          />
+        </div>
       </div>
+
+      <p className="ui-meta-text text-muted-foreground">
+        Provider and model are controlled from the workflow Input step.
+      </p>
 
       <div>
         <Label htmlFor={`prompt-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Prompt
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`prompt-${nodeId}`}
           value={config.prompt || ""}
           onChange={(e) => onConfigChange({ ...config, prompt: e.target.value })}
@@ -527,7 +520,7 @@ export function EvaluatorNodeEditor({ nodeId, config, onConfigChange }: {
     <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
       <div>
         <Label htmlFor={`criteria-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">Criteria</Label>
-        <Textarea
+        <TextareaWithMention
           id={`criteria-${nodeId}`}
           value={config.criteria || ""}
           onChange={(e) => onConfigChange({ ...config, criteria: e.target.value })}
@@ -576,25 +569,9 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
 }) {
   return (
     <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
-      <div className="flex items-center gap-3">
-        <Label htmlFor={`splitter-model-${nodeId}`} className="ui-meta-text text-muted-foreground">Model</Label>
-        <Select
-          value={config.model || "sonnet"}
-          onValueChange={(v) => onConfigChange({ ...config, model: v as SplitterNodeConfig["model"] })}
-        >
-          <SelectTrigger id={`splitter-model-${nodeId}`} className="w-36 h-control-md text-body-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sonnet">Sonnet</SelectItem>
-            <SelectItem value="opus">Opus</SelectItem>
-            <SelectItem value="haiku">Haiku</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
       <div>
         <Label htmlFor={`split-strategy-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">Decomposition Strategy</Label>
-        <Textarea
+        <TextareaWithMention
           id={`split-strategy-${nodeId}`}
           value={config.strategy || ""}
           onChange={(e) => onConfigChange({ ...config, strategy: e.target.value })}
@@ -606,6 +583,9 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
           Describe how to break work into independent subtasks. Clear strategy = more stable fan-out.
         </p>
       </div>
+      <p className="ui-meta-text text-muted-foreground">
+        Provider and model are controlled from the workflow Input step.
+      </p>
       <div className="flex items-center gap-3">
         <Label htmlFor={`max-branches-${nodeId}`} className="ui-meta-text text-muted-foreground">Max branches</Label>
         <Input
@@ -655,7 +635,7 @@ export function MergerNodeEditor({ nodeId, config, onConfigChange }: {
       {config.strategy !== "concatenate" && (
         <div>
           <Label htmlFor={`merge-prompt-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">Merge Instructions</Label>
-          <Textarea
+          <TextareaWithMention
             id={`merge-prompt-${nodeId}`}
             value={config.prompt || ""}
             onChange={(e) => onConfigChange({ ...config, prompt: e.target.value })}
@@ -682,7 +662,7 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
         <Label htmlFor={`approval-message-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Message
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`approval-message-${nodeId}`}
           value={config.message || ""}
           onChange={(e) => onConfigChange({ ...config, message: e.target.value })}

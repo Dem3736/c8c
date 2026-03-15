@@ -5,9 +5,96 @@ vi.mock("electron", () => ({
   BrowserWindow: class {},
 }))
 
+const { spawnClaudeMock } = vi.hoisted(() => ({
+  spawnClaudeMock: vi.fn(),
+}))
+
 // Mock spawnClaude before importing workflow-runner
 vi.mock("@claude-tools/runner", () => ({
-  spawnClaude: vi.fn(),
+  spawnClaude: spawnClaudeMock,
+}))
+
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
+  query: ({ prompt, options }: any) => {
+    const messages: any[] = [{
+      type: "system",
+      subtype: "init",
+      apiKeySource: "user",
+      claude_code_version: "2.1.45",
+      cwd: options?.cwd || "/tmp",
+      tools: [],
+      mcp_servers: [],
+      model: options?.model || "sonnet",
+      permissionMode: options?.permissionMode || "default",
+      slash_commands: [],
+      output_style: "default",
+      skills: [],
+      plugins: [],
+      uuid: "00000000-0000-0000-0000-000000000001",
+      session_id: "sdk-test-session",
+    }]
+
+    const run = Promise.resolve(spawnClaudeMock({
+      workdir: options?.cwd,
+      prompt,
+      model: options?.model,
+      maxTurns: options?.maxTurns,
+      permissionMode: options?.permissionMode,
+      systemPrompts: typeof options?.systemPrompt === "string"
+        ? [options.systemPrompt]
+        : options?.systemPrompt?.append
+          ? [options.systemPrompt.append]
+          : [],
+      allowedTools: options?.allowedTools,
+      disallowedTools: options?.disallowedTools,
+      addDirs: options?.additionalDirectories,
+      extraEnv: options?.env,
+      abortSignal: options?.abortController?.signal,
+      onStdout: (data: Buffer) => {
+        for (const line of data.toString().split(/\r?\n/)) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          messages.push(JSON.parse(trimmed))
+        }
+      },
+      onStderr: (data: Buffer) => {
+        options?.stderr?.(data.toString())
+      },
+    })).then((result: any) => {
+      messages.push({
+        type: "result",
+        subtype: result.success ? "success" : "error_during_execution",
+        duration_ms: result.durationMs || 0,
+        duration_api_ms: result.durationMs || 0,
+        is_error: !result.success,
+        num_turns: 1,
+        result: "",
+        stop_reason: result.success ? "end_turn" : null,
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+        },
+        modelUsage: {},
+        permission_denials: [],
+        errors: result.success
+          ? []
+          : [result.exitCode === null ? "Could not start Claude CLI" : `exit code ${String(result.exitCode)}`],
+        uuid: "00000000-0000-0000-0000-000000000002",
+        session_id: "sdk-test-session",
+      })
+    })
+
+    return {
+      async *[Symbol.asyncIterator]() {
+        await run
+        for (const message of messages) {
+          yield message
+        }
+      },
+      close() {},
+    }
+  },
 }))
 
 // Mock fs operations
@@ -621,12 +708,16 @@ describe("workflow-runner splitter recovery", () => {
     expect(runDone.status).toBe("completed")
   })
 
-  it("uses splitter-level model override when configured", async () => {
+  it("uses the workflow-level model for splitter execution", async () => {
     const workflowWithOpus: Workflow = {
       ...SPLITTER_RECOVERY_WORKFLOW,
+      defaults: {
+        ...SPLITTER_RECOVERY_WORKFLOW.defaults,
+        model: "opus",
+      },
       nodes: SPLITTER_RECOVERY_WORKFLOW.nodes.map((node) =>
         node.id === "splitter-1"
-          ? { ...node, config: { ...(node.config as any), model: "opus" } }
+          ? { ...node, config: { ...(node.config as any), model: "sonnet" } }
           : node,
       ),
     }
@@ -757,6 +848,40 @@ describe("workflow-runner runtime error policies", () => {
       (e) => e.type === "node-start" && (e as any).nodeId === "output-1",
     )
     expect(outputStart).toBeUndefined()
+  })
+
+  it("surfaces Claude usage limit failures with actionable message", async () => {
+    const workflow = withSkillRuntime(SIMPLE_SKILL_WORKFLOW, {
+      execution: { onError: "stop" },
+    })
+
+    mockedSpawn.mockImplementation(async (opts: any) => {
+      opts.onStderr?.(
+        Buffer.from("Error: You've reached your Claude usage limit. Please try again later.\n"),
+      )
+      return {
+        success: false,
+        exitCode: 1,
+        signal: null,
+        killed: false,
+        aborted: false,
+        durationMs: 100,
+      }
+    })
+
+    const { runWorkflow } = await import("./workflow-runner")
+    await runWorkflow("run-policy-limit", workflow, { type: "text", value: "input" }, mockWindow)
+
+    const skillError = events.find(
+      (e) => e.type === "node-error" && (e as any).nodeId === "skill-1",
+    ) as any
+    expect(skillError).toBeDefined()
+    expect(String(skillError.error || "")).toContain("Claude usage limit reached")
+    expect(String(skillError.error || "")).toContain("then rerun")
+
+    const runDone = events.find((e) => e.type === "run-done") as any
+    expect(runDone).toBeDefined()
+    expect(runDone.status).toBe("failed")
   })
 
   it("continues with fallback output when onError is continue", async () => {
@@ -925,7 +1050,7 @@ describe("workflow-runner rerun evaluator behavior", () => {
     const runDone = events.find((e) => e.type === "run-done") as any
 
     expect(evalError).toBeDefined()
-    expect(String(evalError.error || "")).toContain("Evaluator node failed with exit code 9")
+    expect(String(evalError.error || "")).toContain("Evaluator node failed: exit code 9")
     expect(runDone).toBeDefined()
     expect(runDone.status).toBe("failed")
   })

@@ -1,6 +1,7 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
+import type { ProviderId } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
 
 export type WebSearchBackend = "builtin" | "exa"
@@ -9,6 +10,7 @@ interface McpServerEntry {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  headers?: Record<string, string>
   disabled?: boolean
   autoApprove?: string[]
   [key: string]: unknown
@@ -17,6 +19,24 @@ interface McpServerEntry {
 interface McpConfig {
   mcpServers: Record<string, McpServerEntry>
 }
+
+export type ClaudeSdkMcpServerConfig =
+  | {
+      type?: "stdio"
+      command: string
+      args?: string[]
+      env?: Record<string, string>
+    }
+  | {
+      type: "sse"
+      url: string
+      headers?: Record<string, string>
+    }
+  | {
+      type: "http"
+      url: string
+      headers?: Record<string, string>
+    }
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -122,12 +142,121 @@ function withExaServer(config: McpConfig, projectPath?: string): McpConfig {
   return config
 }
 
-export function buildClaudeExtraArgs(mcpConfigPath?: string): string[] {
-  const args = ["--verbose", "--output-format", "stream-json"]
-  if (mcpConfigPath) {
-    args.push(`--mcp-config=${mcpConfigPath}`)
+function escapeTomlString(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\"", "\\\"")
+    .replaceAll("\n", "\\n")
+}
+
+function toTomlLiteral(value: unknown): string {
+  if (typeof value === "string") return `"${escapeTomlString(value)}"`
+  if (typeof value === "boolean") return value ? "true" : "false"
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "0"
+  if (Array.isArray(value)) return `[${value.map((item) => toTomlLiteral(item)).join(", ")}]`
+  if (isObject(value)) {
+    return `{ ${Object.entries(value).map(([key, item]) => `${key} = ${toTomlLiteral(item)}`).join(", ")} }`
   }
-  return args
+  return "\"\""
+}
+
+function buildCodexMcpOverrides(config: McpConfig): string[] {
+  const overrides: string[] = []
+  for (const [name, entry] of Object.entries(config.mcpServers)) {
+    if (entry.disabled) continue
+    const pathPrefix = `mcp_servers."${escapeTomlString(name)}"`
+
+    if (typeof entry.command === "string" && entry.command.trim()) {
+      overrides.push("-c", `${pathPrefix}.command=${toTomlLiteral(entry.command)}`)
+    }
+    if (Array.isArray(entry.args) && entry.args.length > 0) {
+      overrides.push("-c", `${pathPrefix}.args=${toTomlLiteral(entry.args)}`)
+    }
+    if (isObject(entry.env) && Object.keys(entry.env).length > 0) {
+      overrides.push("-c", `${pathPrefix}.env=${toTomlLiteral(entry.env)}`)
+    }
+    if (typeof entry.url === "string" && entry.url.trim()) {
+      overrides.push("-c", `${pathPrefix}.url=${toTomlLiteral(entry.url)}`)
+    }
+    if (isObject(entry.headers) && Object.keys(entry.headers).length > 0) {
+      overrides.push("-c", `${pathPrefix}.http_headers=${toTomlLiteral(entry.headers)}`)
+    }
+  }
+  return overrides
+}
+
+function readMcpConfigSync(filePath: string): McpConfig | null {
+  try {
+    const raw = readFileSync(filePath, "utf-8")
+    return normalizeMcpConfig(JSON.parse(raw) as unknown)
+  } catch {
+    return null
+  }
+}
+
+export function buildProviderExtraArgs(provider: ProviderId, mcpConfigPath?: string): string[] {
+  if (provider === "claude" && mcpConfigPath) {
+    return ["--verbose", "--output-format", "stream-json", `--mcp-config=${mcpConfigPath}`]
+  }
+
+  if (provider === "claude") {
+    return ["--verbose", "--output-format", "stream-json"]
+  }
+
+  if (!mcpConfigPath) return []
+
+  const source = existsSync(mcpConfigPath) ? mcpConfigPath : undefined
+  if (!source) return []
+
+  const config = readMcpConfigSync(source)
+  return config ? buildCodexMcpOverrides(config) : []
+}
+
+export function buildClaudeSdkMcpServers(
+  mcpConfigPath?: string,
+): Record<string, ClaudeSdkMcpServerConfig> {
+  if (!mcpConfigPath || !existsSync(mcpConfigPath)) return {}
+
+  const config = readMcpConfigSync(mcpConfigPath)
+  if (!config) return {}
+
+  const servers: Record<string, ClaudeSdkMcpServerConfig> = {}
+  for (const [name, entry] of Object.entries(config.mcpServers)) {
+    if (entry.disabled) continue
+
+    if (typeof entry.command === "string" && entry.command.trim()) {
+      servers[name] = {
+        type: "stdio",
+        command: entry.command,
+        args: Array.isArray(entry.args) ? entry.args.filter((arg): arg is string => typeof arg === "string") : undefined,
+        env: isObject(entry.env)
+          ? Object.fromEntries(
+              Object.entries(entry.env).filter((pair): pair is [string, string] => typeof pair[1] === "string"),
+            )
+          : undefined,
+      }
+      continue
+    }
+
+    if (typeof entry.url === "string" && entry.url.trim()) {
+      const headers = isObject(entry.headers)
+        ? Object.fromEntries(
+            Object.entries(entry.headers).filter((pair): pair is [string, string] => typeof pair[1] === "string"),
+          )
+        : undefined
+      servers[name] = {
+        type: entry.type === "sse" ? "sse" : "http",
+        url: entry.url,
+        headers,
+      }
+    }
+  }
+
+  return servers
+}
+
+export function buildClaudeExtraArgs(mcpConfigPath?: string): string[] {
+  return buildProviderExtraArgs("claude", mcpConfigPath)
 }
 
 export async function prepareWorkspaceMcpConfig(

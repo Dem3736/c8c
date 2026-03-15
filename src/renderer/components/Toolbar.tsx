@@ -22,12 +22,12 @@ import {
   Play,
   Pause,
   Square,
+  ChevronDown,
   MessageSquare,
   SlidersHorizontal,
   Layers,
   Loader2,
   Eye,
-  Pencil,
 } from "lucide-react"
 import type { PermissionMode } from "@shared/types"
 import { Button } from "@/components/ui/button"
@@ -67,7 +67,7 @@ export function Toolbar({
   onRun,
   onCancel,
 }: {
-  onRun: () => Promise<void> | void
+  onRun: (mode?: PermissionMode) => Promise<void> | void
   onCancel: () => Promise<void> | void
 }) {
   const [workflow] = useAtom(currentWorkflowAtom)
@@ -185,7 +185,7 @@ export function Toolbar({
         ? `${workflowValidation.filter((e) => e.severity === "error").length} validation error(s) — fix before running.`
         : null
 
-  const handleRunWithValidation = async () => {
+  const handleRunWithValidation = async (mode: PermissionMode = "edit") => {
     // Show warnings (non-blocking) as toast
     const warnings = workflowValidation.filter((e) => e.severity === "warning")
     if (warnings.length > 0) {
@@ -194,7 +194,7 @@ export function Toolbar({
       })
     }
     setValidationErrors([])
-    await onRun()
+    await onRun(mode)
   }
 
   const deleteLabel =
@@ -304,7 +304,7 @@ export function Toolbar({
       if (isRunning) {
         void onCancel()
       } else if (canRun) {
-        void handleRunWithValidation()
+        void handleRunWithValidation("edit")
       }
     }
 
@@ -325,7 +325,7 @@ export function Toolbar({
                 size="sm"
                 className="gap-1.5"
                 onClick={() => void handlePrimarySave()}
-                disabled={!workflowDirty}
+                disabled={!workflowDirty || isRunning}
               >
                 <Save size={14} />
                 {workflowDirty ? "Save*" : "Save"}
@@ -336,7 +336,7 @@ export function Toolbar({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="w-[168px] justify-between">
+              <Button variant="outline" size="sm" className="w-[168px] justify-between" disabled={isRunning}>
                 <span className="inline-flex min-w-0 flex-1 items-center gap-2">
                   <SlidersHorizontal size={14} />
                   <span className="truncate">Actions</span>
@@ -433,55 +433,6 @@ export function Toolbar({
 
         <div className="flex-1" />
 
-        {/* Permission mode toggle */}
-        {(() => {
-          const mode: PermissionMode = workflow.defaults?.permissionMode ?? "edit"
-          const setMode = (next: PermissionMode) => {
-            setCurrentWorkflow((prev) => ({
-              ...prev,
-              defaults: { ...prev.defaults, permissionMode: next },
-            }))
-          }
-          return (
-            <div
-              role="radiogroup"
-              aria-label="Permission mode"
-              className="flex items-center rounded-lg border border-hairline bg-surface-2/60 p-0.5"
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={mode === "plan"}
-                onClick={() => setMode("plan")}
-                className={cn(
-                  "flex items-center gap-1 px-2 h-control-sm rounded-md text-body-sm ui-pressable ui-motion-fast",
-                  mode === "plan"
-                    ? "bg-surface-1 shadow-sm text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Eye size={13} />
-                Plan
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={mode === "edit"}
-                onClick={() => setMode("edit")}
-                className={cn(
-                  "flex items-center gap-1 px-2 h-control-sm rounded-md text-body-sm ui-pressable ui-motion-fast",
-                  mode === "edit"
-                    ? "bg-surface-1 shadow-sm text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Pencil size={13} />
-                Edit
-              </button>
-            </div>
-          )
-        })()}
-
         <div
           role="group"
           aria-label="Run controls"
@@ -549,20 +500,57 @@ export function Toolbar({
               </Tooltip>
             </>
           ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => void handleRunWithValidation()}
-                  disabled={!canRun}
-                >
-                  <Play size={14} />
-                  Run
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Run ({runShortcutLabel})</TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-0.5 rounded-lg control-cluster p-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => void handleRunWithValidation("edit")}
+                    disabled={!canRun}
+                    className="min-w-[5.75rem] gap-1.5 rounded-md pr-3 shadow-[inset_0_1px_0_hsl(var(--primary-foreground)/0.2),0_0_0_1px_hsl(var(--hairline)/0.22)]"
+                  >
+                    <Play size={14} />
+                    Run
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Run in edit mode ({runShortcutLabel})</TooltipContent>
+              </Tooltip>
+
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!canRun}
+                        className="relative w-8 rounded-md border border-transparent px-0 text-muted-foreground hover:border-hairline/80 hover:bg-surface-1/90 hover:text-foreground before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-hairline/70"
+                        aria-label="Choose run mode"
+                      >
+                        <ChevronDown size={14} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>More run modes</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Alternate mode</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={() => void handleRunWithValidation("plan")}
+                    className="items-start gap-3 py-2"
+                  >
+                    <span className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-md border border-hairline bg-surface-2 text-muted-foreground ui-elevation-inset">
+                      <Eye size={13} />
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-body-sm font-medium text-foreground">Run in plan mode</span>
+                      <span className="ui-meta-text text-muted-foreground">Read-only analysis without file edits</span>
+                    </span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </div>

@@ -295,7 +295,7 @@ describe("validateWorkflow", () => {
     expect(errors).toEqual([])
   })
 
-  it("detects skill node with empty skillRef", () => {
+  it("allows prompt-only skill node with empty skillRef", () => {
     const broken: Workflow = {
       ...LINEAR,
       nodes: [
@@ -305,10 +305,10 @@ describe("validateWorkflow", () => {
       ],
     }
     const errors = validateWorkflow(broken)
-    expect(errors.some((e) => e.includes("skillRef"))).toBe(true)
+    expect(errors.some((e) => e.includes("skillRef"))).toBe(false)
   })
 
-  it("detects skill node with whitespace-only skillRef", () => {
+  it("allows prompt-only skill node with whitespace-only skillRef", () => {
     const broken: Workflow = {
       ...LINEAR,
       nodes: [
@@ -318,7 +318,20 @@ describe("validateWorkflow", () => {
       ],
     }
     const errors = validateWorkflow(broken)
-    expect(errors.some((e) => e.includes("skillRef"))).toBe(true)
+    expect(errors.some((e) => e.includes("skillRef"))).toBe(false)
+  })
+
+  it("detects skill node when both skillRef and prompt are missing", () => {
+    const broken: Workflow = {
+      ...LINEAR,
+      nodes: [
+        LINEAR.nodes[0],
+        { id: "skill-1", type: "skill", position: { x: 300, y: 0 }, config: { skillRef: "  ", prompt: " " } },
+        LINEAR.nodes[2],
+      ],
+    }
+    const errors = validateWorkflow(broken)
+    expect(errors.some((e) => e.includes("neither skillRef nor prompt"))).toBe(true)
   })
 })
 

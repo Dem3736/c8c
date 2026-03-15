@@ -143,15 +143,21 @@ const server = new McpServer({
   version: '1.0.0',
 });
 
-server.tool(
+const webSearchExaSchema: Record<string, z.ZodTypeAny> = {
+  query: z.string().describe('Search query'),
+  numResults: z.number().int().min(1).max(50).optional().describe('Number of results'),
+  type: z.string().optional().describe('Search type (passed through to Exa MCP)'),
+};
+
+const crawlingExaSchema: Record<string, z.ZodTypeAny> = {
+  url: z.string().url().describe('URL to fetch'),
+};
+
+(server as any).tool(
   'web_search_exa',
   'Web search via Exa (proxied) with automatic API key failover.',
-  {
-    query: z.string().describe('Search query'),
-    numResults: z.number().int().min(1).max(50).optional().describe('Number of results'),
-    type: z.string().optional().describe('Search type (passed through to Exa MCP)'),
-  },
-  async ({ query, numResults, type }) => {
+  webSearchExaSchema,
+  async ({ query, numResults, type }: { query: string; numResults?: number; type?: string }) => {
     const args: Record<string, unknown> = { query };
     if (numResults !== undefined) args.numResults = numResults;
     if (type !== undefined) args.type = type;
@@ -159,13 +165,11 @@ server.tool(
   }
 );
 
-server.tool(
+(server as any).tool(
   'crawling_exa',
   'Fetch URL content via Exa (proxied) with automatic API key failover.',
-  {
-    url: z.string().url().describe('URL to fetch'),
-  },
-  async ({ url }) => {
+  crawlingExaSchema,
+  async ({ url }: { url: string }) => {
     return await callToolWithFailover('crawling_exa', { url });
   }
 );

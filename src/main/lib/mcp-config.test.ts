@@ -2,16 +2,27 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { buildClaudeExtraArgs, prepareWorkspaceMcpConfig } from "./mcp-config"
+import {
+  buildClaudeExtraArgs,
+  buildClaudeSdkMcpServers,
+  buildProviderExtraArgs,
+  prepareWorkspaceMcpConfig,
+} from "./mcp-config"
 
-describe("buildClaudeExtraArgs", () => {
-  it("adds mcp config path when provided", () => {
-    expect(buildClaudeExtraArgs("/tmp/.mcp.json")).toEqual([
+describe("buildProviderExtraArgs", () => {
+  it("adds mcp config path for Claude when provided", () => {
+    expect(buildProviderExtraArgs("claude", "/tmp/.mcp.json")).toEqual([
       "--verbose",
       "--output-format",
       "stream-json",
       "--mcp-config=/tmp/.mcp.json",
     ])
+  })
+
+  it("keeps Claude alias behavior for existing callers", () => {
+    expect(buildClaudeExtraArgs("/tmp/.mcp.json")).toEqual(
+      buildProviderExtraArgs("claude", "/tmp/.mcp.json"),
+    )
   })
 })
 
@@ -58,5 +69,58 @@ describe("prepareWorkspaceMcpConfig", () => {
     expect(parsed.mcpServers.exa.command).toBe(process.execPath)
     expect(parsed.mcpServers.exa.args?.[0]).toContain("mcp-search-proxy")
     expect(parsed.mcpServers.exa.env?.ELECTRON_RUN_AS_NODE).toBe("1")
+  })
+})
+
+describe("buildClaudeSdkMcpServers", () => {
+  it("maps stdio and http servers from .mcp.json", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mcp-sdk-test-"))
+    const mcpPath = join(root, ".mcp.json")
+
+    await writeFile(
+      mcpPath,
+      JSON.stringify({
+        mcpServers: {
+          stdioServer: {
+            command: "node",
+            args: ["./server.js"],
+            env: {
+              TOKEN: "secret",
+              INVALID: 42,
+            },
+          },
+          httpServer: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: {
+              Authorization: "Bearer token",
+            },
+          },
+          disabledServer: {
+            command: "node",
+            disabled: true,
+          },
+        },
+      }),
+      "utf-8",
+    )
+
+    expect(buildClaudeSdkMcpServers(mcpPath)).toEqual({
+      stdioServer: {
+        type: "stdio",
+        command: "node",
+        args: ["./server.js"],
+        env: {
+          TOKEN: "secret",
+        },
+      },
+      httpServer: {
+        type: "http",
+        url: "https://example.com/mcp",
+        headers: {
+          Authorization: "Bearer token",
+        },
+      },
+    })
   })
 })

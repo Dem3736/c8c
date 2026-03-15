@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from "react"
-import { useAtom } from "jotai"
-import { currentWorkflowAtom, selectedNodeIdAtom } from "@/lib/store"
+import { useAtom, useAtomValue } from "jotai"
+import { currentWorkflowAtom, defaultProviderAtom, providerSettingsAtom, selectedNodeIdAtom } from "@/lib/store"
 import { cn } from "@/lib/cn"
 import type {
   InputNodeConfig,
@@ -12,6 +12,10 @@ import type {
   ApprovalNodeConfig,
   WorkflowNode,
 } from "@shared/types"
+import {
+  getDefaultModelForProvider,
+  modelLooksCompatible,
+} from "@shared/provider-metadata"
 import { X } from "lucide-react"
 import {
   Select,
@@ -21,12 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { TextareaWithMention } from "@/components/input/TextareaWithMention"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { McpToolPicker } from "@/components/ui/mcp-tool-picker"
 import { NODE_ICONS, NODE_LABELS } from "@/lib/node-ui-config"
+import { ProviderModelInput, ProviderSelect } from "@/components/provider-controls"
 
 type AnyNodeConfig =
   | InputNodeConfig
@@ -163,8 +168,57 @@ function InputFields({
   config: InputNodeConfig
   onChange: (c: InputNodeConfig) => void
 }) {
+  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const defaultProvider = useAtomValue(defaultProviderAtom)
+  const providerSettings = useAtomValue(providerSettingsAtom)
+  const workflowProvider = workflow.defaults?.provider || defaultProvider
+
+  const updateWorkflowDefaults = (patch: Record<string, unknown>) => {
+    setWorkflow((prev) => ({
+      ...prev,
+      defaults: {
+        ...(prev.defaults || {}),
+        ...patch,
+      },
+    }))
+  }
+
   return (
     <>
+      <div className="rounded-md border border-hairline bg-surface-1/80 px-2 py-2 space-y-2">
+        <p className="ui-meta-label text-muted-foreground">Workflow execution</p>
+        <div className="space-y-1">
+          <Label htmlFor={`insp-workflow-provider-${nodeId}`} className="ui-meta-text text-muted-foreground">
+            Provider
+          </Label>
+          <ProviderSelect
+            id={`insp-workflow-provider-${nodeId}`}
+            value={workflowProvider}
+            onValueChange={(value) => updateWorkflowDefaults({
+              provider: value,
+              model: modelLooksCompatible(value, workflow.defaults?.model)
+                ? workflow.defaults?.model
+                : getDefaultModelForProvider(value),
+            })}
+            codexEnabled={providerSettings.features.codexProvider}
+            className="w-full h-control-md text-body-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`insp-workflow-model-${nodeId}`} className="ui-meta-text text-muted-foreground">
+            Model
+          </Label>
+          <ProviderModelInput
+            id={`insp-workflow-model-${nodeId}`}
+            provider={workflowProvider}
+            value={workflow.defaults?.model || getDefaultModelForProvider(workflowProvider)}
+            onValueChange={(value) => updateWorkflowDefaults({ model: value })}
+            placeholder="Enter a model id"
+            className="w-full h-control-md text-body-sm"
+          />
+        </div>
+      </div>
+
       <div className="flex items-center gap-3">
         <Label htmlFor={`insp-input-type-${nodeId}`} className="ui-meta-text text-muted-foreground">
           Input Type
@@ -303,7 +357,7 @@ function SkillFields({
         <Label htmlFor={`insp-prompt-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Prompt
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`insp-prompt-${nodeId}`}
           value={config.prompt || ""}
           onChange={(e) => onChange({ ...config, prompt: e.target.value })}
@@ -311,23 +365,6 @@ function SkillFields({
           className="min-h-[120px] resize-y font-mono text-body-sm"
           placeholder="Enter prompt for this skill..."
         />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Label htmlFor={`insp-model-${nodeId}`} className="ui-meta-text text-muted-foreground">Model</Label>
-        <Select
-          value={config.model || "sonnet"}
-          onValueChange={(v) => onChange({ ...config, model: v as SkillNodeConfig["model"] })}
-        >
-          <SelectTrigger id={`insp-model-${nodeId}`} className="flex-1 h-control-md text-body-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sonnet">Sonnet</SelectItem>
-            <SelectItem value="opus">Opus</SelectItem>
-            <SelectItem value="haiku">Haiku</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="flex items-center gap-3">
@@ -348,6 +385,10 @@ function SkillFields({
           className="w-20 h-control-sm px-2 text-body-sm text-center"
         />
       </div>
+
+      <p className="ui-meta-text text-muted-foreground">
+        Provider and model are controlled from the workflow Input step.
+      </p>
 
       <div className="flex items-center gap-3">
         <Label htmlFor={`insp-output-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Output</Label>
@@ -424,7 +465,7 @@ function EvaluatorFields({
         <Label htmlFor={`insp-criteria-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Criteria
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`insp-criteria-${nodeId}`}
           value={config.criteria || ""}
           onChange={(e) => onChange({ ...config, criteria: e.target.value })}
@@ -501,7 +542,7 @@ function SplitterFields({
         <Label htmlFor={`insp-split-strategy-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Decomposition Strategy
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`insp-split-strategy-${nodeId}`}
           value={config.strategy || ""}
           onChange={(e) => onChange({ ...config, strategy: e.target.value })}
@@ -510,6 +551,10 @@ function SplitterFields({
           placeholder="e.g. Split by page section, Split by topic..."
         />
       </div>
+
+      <p className="ui-meta-text text-muted-foreground">
+        Provider and model are controlled from the workflow Input step.
+      </p>
 
       <div className="flex items-center gap-3">
         <Label htmlFor={`insp-max-branches-${nodeId}`} className="ui-meta-text text-muted-foreground">Max branches</Label>
@@ -578,7 +623,7 @@ function ApprovalFields({
         <Label htmlFor={`insp-approval-message-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Message
         </Label>
-        <Textarea
+        <TextareaWithMention
           id={`insp-approval-message-${nodeId}`}
           value={config.message || ""}
           onChange={(e) => onChange({ ...config, message: e.target.value })}

@@ -1,7 +1,14 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron"
 import { promisify } from "node:util"
 import { execFile as execFileCb } from "node:child_process"
-import type { DesktopPlatform, DesktopRuntimeInfo, TelemetryUiEvent } from "@shared/types"
+import type {
+  DesktopPlatform,
+  DesktopRuntimeInfo,
+  ProviderDiagnostics,
+  ProviderId,
+  ProviderSettings,
+  TelemetryUiEvent,
+} from "@shared/types"
 import { getClaudeCodeSubscriptionStatus } from "../lib/claude-subscription"
 import { allowedOpenPathRoots, allowedProjectRoots, assertWithinRoots } from "../lib/security-paths"
 import { resolve } from "node:path"
@@ -11,6 +18,15 @@ import {
   trackTelemetryUiEvent,
 } from "../lib/telemetry/service"
 import { checkForUpdate, installUpdate, getUpdateStatus } from "../lib/updater"
+import {
+  clearCodexApiKey,
+  getProviderSettings,
+  setCodexApiKey,
+  updateProviderSettings,
+} from "../lib/provider-settings"
+import { execClaude } from "../lib/claude-cli"
+import { execCodex } from "../lib/codex-cli"
+import { resolveAgentProvider } from "../lib/providers"
 
 const execFile = promisify(execFileCb)
 
@@ -68,6 +84,28 @@ async function resolveGitBranch(projectPath: string): Promise<string | null> {
   }
 }
 
+async function getProviderDiagnostics(): Promise<ProviderDiagnostics> {
+  const [settings, claudeHealth, codexHealth, claudeAuth, codexAuth] = await Promise.all([
+    getProviderSettings(),
+    resolveAgentProvider("claude").checkAvailability(),
+    resolveAgentProvider("codex").checkAvailability(),
+    resolveAgentProvider("claude").getAuthStatus(),
+    resolveAgentProvider("codex").getAuthStatus(),
+  ])
+
+  return {
+    settings,
+    health: {
+      claude: claudeHealth,
+      codex: codexHealth,
+    },
+    auth: {
+      claude: claudeAuth,
+      codex: codexAuth,
+    },
+  }
+}
+
 export function registerSystemHandlers() {
   ipcMain.handle("system:get-app-version", () => app.getVersion())
 
@@ -90,6 +128,47 @@ export function registerSystemHandlers() {
 
   ipcMain.handle("system:get-claude-subscription-status", async () => {
     return getClaudeCodeSubscriptionStatus()
+  })
+
+  ipcMain.handle("system:get-provider-diagnostics", async () => {
+    return getProviderDiagnostics()
+  })
+
+  ipcMain.handle("system:update-provider-settings", async (_event, patch: Partial<ProviderSettings>) => {
+    return updateProviderSettings(patch)
+  })
+
+  ipcMain.handle("system:set-codex-api-key", async (_event, apiKey: string) => {
+    await setCodexApiKey(apiKey)
+    return getProviderDiagnostics()
+  })
+
+  ipcMain.handle("system:clear-codex-api-key", async () => {
+    await clearCodexApiKey()
+    return getProviderDiagnostics()
+  })
+
+  ipcMain.handle("system:logout-provider", async (_event, provider: ProviderId) => {
+    if (provider === "codex") {
+      try {
+        await execCodex(["logout"], { timeout: 15_000 })
+      } catch {
+        // Best effort only: app-managed API key may still be the active auth path.
+      }
+      await clearCodexApiKey()
+      return getProviderDiagnostics()
+    }
+
+    if (provider === "claude") {
+      try {
+        await execClaude(["logout"], { timeout: 15_000 })
+      } catch {
+        // Claude logout is best effort.
+      }
+      return getProviderDiagnostics()
+    }
+
+    return getProviderDiagnostics()
   })
 
   ipcMain.handle("system:get-telemetry-settings", async () => {

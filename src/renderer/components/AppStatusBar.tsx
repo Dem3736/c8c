@@ -1,16 +1,24 @@
 import { useEffect, useState } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import {
+  activeExecutionProviderAtom,
   selectedProjectAtom,
+  selectedWorkflowPathAtom,
   desktopRuntimeAtom,
+  defaultProviderAtom,
+  multiRunDashboardOpenAtom,
   runStatusAtom,
   runStartedAtAtom,
   nodeStatesAtom,
   currentWorkflowAtom,
   runtimeNodesAtom,
+  toWorkflowExecutionKey,
+  workflowExecutionStatesAtom,
 } from "@/lib/store"
 import { cn } from "@/lib/cn"
-import { GitBranch, Laptop, Loader2, ShieldCheck } from "lucide-react"
+import { PROVIDER_LABELS } from "@shared/provider-metadata"
+import { Activity, GitBranch, Laptop, Loader2, ShieldCheck } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface AppStatusBarProps {
   environmentLabel?: string
@@ -26,17 +34,36 @@ function isStepNodeType(nodeType: string) {
   return nodeType !== "input" && nodeType !== "output"
 }
 
+function isRunInFlight(status: string) {
+  return status === "starting" || status === "running" || status === "paused" || status === "cancelling"
+}
+
+function isDashboardVisibleState(state: { runStatus: string; runOutcome?: string | null; workspace?: string | null; reportPath?: string | null; finalContent?: string; lastError?: string | null; nodeStates?: Record<string, unknown> }) {
+  return isRunInFlight(state.runStatus)
+    || !!state.runOutcome
+    || !!state.workspace
+    || !!state.reportPath
+    || !!state.lastError
+    || !!state.finalContent?.trim()
+    || Object.keys(state.nodeStates || {}).length > 0
+}
+
 export function AppStatusBar({
   environmentLabel,
   permissionsLabel = "Protected mode",
 }: AppStatusBarProps = {}) {
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
+  const [defaultProvider] = useAtom(defaultProviderAtom)
+  const [activeExecutionProvider] = useAtom(activeExecutionProviderAtom)
   const [runStatus] = useAtom(runStatusAtom)
   const [runStartedAt] = useAtom(runStartedAtAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [runtimeNodes] = useAtom(runtimeNodesAtom)
+  const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
+  const setMultiRunDashboardOpen = useSetAtom(multiRunDashboardOpenAtom)
   // undefined = loading, null = no git, string = branch name
   const [branch, setBranch] = useState<string | null | undefined>(undefined)
   const [elapsed, setElapsed] = useState("")
@@ -62,6 +89,14 @@ export function AppStatusBar({
       ? "Windows"
       : "Linux"
   const resolvedEnvironmentLabel = environmentLabel || platformLabel
+  const selectedWorkflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
+  const trackedRunCount = Object.values(workflowExecutionStates).filter(isDashboardVisibleState).length
+  const workflowProvider = workflow.defaults?.provider || defaultProvider
+  const displayedProvider = isRunInFlight(runStatus) ? activeExecutionProvider : workflowProvider
+  const backgroundRunCount = Object.entries(workflowExecutionStates).reduce((count, [workflowKey, state]) => {
+    if (!isRunInFlight(state.runStatus) || workflowKey === selectedWorkflowKey) return count
+    return count + 1
+  }, 0)
   const nodeTypeById = new Map(
     (runtimeNodes.length > 0 ? runtimeNodes : workflow.nodes).map((node) => [node.id, node.type]),
   )
@@ -150,6 +185,9 @@ export function AppStatusBar({
             <ShieldCheck size={12} aria-hidden="true" />
             {permissionsLabel}
           </span>
+          <span className="inline-flex h-control-sm items-center rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
+            {PROVIDER_LABELS[displayedProvider]}
+          </span>
           {selectedProject ? (
             <span className="inline-flex h-control-sm max-w-56 items-center truncate rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
               {folderName(selectedProject)}
@@ -172,6 +210,23 @@ export function AppStatusBar({
               <span className="text-current/80">{runPhaseLabel}</span>
               {elapsed && <span className="ui-meta-text text-current/60 tabular-nums">{elapsed}</span>}
             </span>
+          )}
+          {backgroundRunCount > 0 && (
+            <span className="inline-flex h-control-sm items-center rounded-md border border-status-info/30 bg-status-info/10 px-2 text-status-info ui-elevation-inset">
+              {backgroundRunCount} run{backgroundRunCount === 1 ? "" : "s"} in background
+            </span>
+          )}
+          {trackedRunCount > 0 && (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setMultiRunDashboardOpen(true)}
+            >
+              <Activity size={12} />
+              Runs
+              <span className="tabular-nums">{trackedRunCount}</span>
+            </Button>
           )}
           {selectedProject && (
             <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast">

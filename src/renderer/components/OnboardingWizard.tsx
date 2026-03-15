@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { Button } from "@/components/ui/button"
 import {
   chatPanelOpenAtom,
   firstLaunchAtom,
+  globalExecutionDefaultsAtom,
   mainViewAtom,
+  providerAuthStatusAtom,
+  providerAvailabilityAtom,
+  providerSettingsAtom,
   selectedProjectAtom,
 } from "@/lib/store"
-import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
+import { resolveOnboardingPrimaryProvider } from "@/lib/onboarding-provider"
+import { PROVIDER_LABELS } from "@shared/provider-metadata"
+import type { ProviderDiagnostics, ProviderId } from "@shared/types"
 import {
   CheckCircle2,
   XCircle,
@@ -130,27 +136,83 @@ export function OnboardingWizard() {
 /* ── Step 1: Check CLI ───────────────────────────────────── */
 
 function StepCheckCli() {
-  const [status, setStatus] = useState<ClaudeCodeSubscriptionStatus | null>(null)
+  const [, setProviderSettings] = useAtom(providerSettingsAtom)
+  const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
+  const [, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
+  const [execDefaults, setExecDefaults] = useAtom(globalExecutionDefaultsAtom)
+  const currentModelRef = useRef(execDefaults.model)
+  const [diagnostics, setDiagnostics] = useState<ProviderDiagnostics | null>(null)
+  const [primaryProvider, setPrimaryProvider] = useState<ProviderId | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    currentModelRef.current = execDefaults.model
+  }, [execDefaults.model])
+
+  const applyDiagnostics = useCallback((nextDiagnostics: ProviderDiagnostics) => {
+    setDiagnostics(nextDiagnostics)
+    setProviderSettings(nextDiagnostics.settings)
+    setProviderAvailability(nextDiagnostics.health)
+    setProviderAuthStatus(nextDiagnostics.auth)
+  }, [setProviderAuthStatus, setProviderAvailability, setProviderSettings])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    window.api
-      .getClaudeCodeSubscriptionStatus()
-      .then((s) => {
-        if (!cancelled) setStatus(s)
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [])
 
-  const cliInstalled = status?.cliInstalled ?? false
-  const loggedIn = status?.loggedIn ?? false
-  const ready = cliInstalled && loggedIn
+    void (async () => {
+      try {
+        const initialDiagnostics = await window.api.getProviderDiagnostics()
+        if (cancelled) return
+
+        applyDiagnostics(initialDiagnostics)
+
+        const resolvedPrimary = resolveOnboardingPrimaryProvider(
+          initialDiagnostics,
+          currentModelRef.current,
+        )
+
+        if (cancelled) return
+        setPrimaryProvider(resolvedPrimary?.provider ?? null)
+
+        if (resolvedPrimary?.providerChanged) {
+          const nextSettings = await window.api.updateProviderSettings({
+            defaultProvider: resolvedPrimary.provider,
+          })
+          if (cancelled) return
+
+          applyDiagnostics({
+            ...initialDiagnostics,
+            settings: nextSettings,
+          })
+        }
+
+        if (resolvedPrimary?.modelChanged) {
+          setExecDefaults((prev) => ({
+            ...prev,
+            model: resolvedPrimary.model,
+          }))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Could not check CLI status.")
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [applyDiagnostics, setExecDefaults])
+
+  const providers: ProviderId[] = ["claude", "codex"]
+  const readyProviders = providers.filter((provider) => {
+    const health = diagnostics?.health[provider]
+    const auth = diagnostics?.auth[provider]
+    return Boolean(health?.available && auth?.authenticated)
+  })
+  const hasMultipleAvailableProviders = providers.filter((provider) => diagnostics?.health[provider].available).length > 1
 
   return (
     <div className="space-y-4">
@@ -161,7 +223,8 @@ function StepCheckCli() {
         <h2 className="text-title-md text-foreground">Check CLI</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
-        c8c requires the Claude Code CLI to execute workflows.
+        c8c can run workflows through Claude Code or Codex. If only one CLI is
+        detected, it becomes the default provider automatically.
       </p>
 
       {loading ? (
@@ -169,50 +232,82 @@ function StepCheckCli() {
           <Loader2 size={16} className="animate-spin" />
           Checking CLI status...
         </div>
+      ) : loadError ? (
+        <div className="rounded-lg border border-status-danger/30 bg-status-danger/5 p-3">
+          <p className="text-body-sm text-status-danger">{loadError}</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-body-sm">
-            {cliInstalled ? (
-              <CheckCircle2 size={16} className="text-status-success shrink-0" />
-            ) : (
-              <XCircle size={16} className="text-status-danger shrink-0" />
-            )}
-            <span className={cliInstalled ? "text-foreground" : "text-status-danger"}>
-              Claude CLI {cliInstalled ? "is installed" : "not found"}
-            </span>
-          </div>
+          {providers.map((provider) => {
+            const health = diagnostics?.health[provider]
+            const auth = diagnostics?.auth[provider]
+            const available = health?.available ?? false
+            const authenticated = auth?.authenticated ?? false
+            const installCommand = provider === "claude"
+              ? "npm install -g @anthropic-ai/claude-code"
+              : "npm install -g @openai/codex"
+            const loginCommand = provider === "claude" ? "claude login" : "codex login"
 
-          <div className="flex items-center gap-2 text-body-sm">
-            {loggedIn ? (
-              <CheckCircle2 size={16} className="text-status-success shrink-0" />
-            ) : (
-              <XCircle size={16} className="text-status-danger shrink-0" />
-            )}
-            <span className={loggedIn ? "text-foreground" : "text-status-danger"}>
-              {loggedIn ? "Logged in" : "Not logged in"}
-            </span>
-          </div>
+            return (
+              <div key={provider} className="rounded-lg border border-hairline bg-surface-2/60 p-3 space-y-2">
+                <div className="text-body-sm font-medium text-foreground">{PROVIDER_LABELS[provider]}</div>
 
-          {ready ? (
+                <div className="flex items-center gap-2 text-body-sm">
+                  {available ? (
+                    <CheckCircle2 size={16} className="text-status-success shrink-0" />
+                  ) : (
+                    <XCircle size={16} className="text-status-danger shrink-0" />
+                  )}
+                  <span className={available ? "text-foreground" : "text-status-danger"}>
+                    CLI {available ? "detected" : "not found"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-body-sm">
+                  {authenticated ? (
+                    <CheckCircle2 size={16} className="text-status-success shrink-0" />
+                  ) : (
+                    <XCircle size={16} className="text-status-danger shrink-0" />
+                  )}
+                  <span className={authenticated ? "text-foreground" : "text-status-danger"}>
+                    {available
+                      ? authenticated
+                        ? "Authenticated"
+                        : "Not authenticated"
+                      : "Authentication unavailable until the CLI is installed"}
+                  </span>
+                </div>
+
+                {!available && (
+                  <p className="text-body-sm text-muted-foreground">
+                    Install: <code className="inline-code">{installCommand}</code>
+                  </p>
+                )}
+
+                {available && !authenticated && (
+                  <p className="text-body-sm text-muted-foreground">
+                    Authenticate: <code className="inline-code">{loginCommand}</code>
+                  </p>
+                )}
+              </div>
+            )
+          })}
+
+          {primaryProvider ? (
             <p className="text-body-sm text-status-success font-medium">
-              All set -- the CLI is ready to go.
+              {PROVIDER_LABELS[primaryProvider]} is the only detected CLI, so it
+              will be used as the default provider.
+            </p>
+          ) : readyProviders.length > 0 ? (
+            <p className="text-body-sm text-status-success font-medium">
+              {hasMultipleAvailableProviders
+                ? "Multiple providers are available. You can switch between them later in Settings."
+                : "A provider is ready to go."}
             </p>
           ) : (
             <div className="rounded-lg border border-status-warning/30 bg-status-warning/5 p-3 space-y-2">
-              {!cliInstalled && (
-                <p className="text-body-sm text-muted-foreground">
-                  Install the CLI:{" "}
-                  <code className="inline-code">npm install -g @anthropic-ai/claude-code</code>
-                </p>
-              )}
-              {cliInstalled && !loggedIn && (
-                <p className="text-body-sm text-muted-foreground">
-                  Authenticate:{" "}
-                  <code className="inline-code">claude login</code>
-                </p>
-              )}
               <p className="ui-meta-text text-muted-foreground">
-                You can still continue setup and install later.
+                You can still continue setup and install or authenticate a CLI later.
               </p>
             </div>
           )}

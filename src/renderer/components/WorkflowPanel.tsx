@@ -22,6 +22,7 @@ import { BatchPanel } from "./BatchPanel"
 import { ApprovalDialog } from "./ApprovalDialog"
 import { ChatPanel } from "./chat/ChatPanel"
 import { WorkflowSettingsPanel } from "./WorkflowSettingsPanel"
+import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { useWorkflowReset } from "@/hooks/useWorkflowReset"
 import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
 import { useUndoRedo } from "@/hooks/useUndoRedo"
@@ -98,9 +99,7 @@ export function WorkflowPanel() {
     }
   }, [runStatus, viewMode])
 
-  const hasMeaningfulContent = workflow.nodes.length > 0
-    || workflow.name.trim().length > 0
-    || (workflow.description || "").trim().length > 0
+  const hasMeaningfulContent = workflowHasMeaningfulContent(workflow)
 
   if (!selectedProject && !hasMeaningfulContent) {
     return (

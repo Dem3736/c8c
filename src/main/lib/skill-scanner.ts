@@ -28,6 +28,8 @@ function errorMessage(error: unknown): string {
 async function scanDirectory(
   baseDir: string,
   type: DiscoveredSkill["type"],
+  format: DiscoveredSkill["format"],
+  sourceScope: DiscoveredSkill["sourceScope"],
 ): Promise<DiscoveredSkill[]> {
   const results: DiscoveredSkill[] = []
 
@@ -61,6 +63,8 @@ async function scanDirectory(
             description: data.description || "",
             category: category || "uncategorized",
             path: fullPath,
+            format,
+            sourceScope,
             model: data.model,
             tools: data.tools,
             maxTurns: data.maxTurns || data.max_turns,
@@ -85,30 +89,95 @@ async function scanDirectory(
   return results
 }
 
+async function scanCodexSkillDirs(
+  baseDir: string,
+  sourceScope: DiscoveredSkill["sourceScope"],
+): Promise<DiscoveredSkill[]> {
+  const results: DiscoveredSkill[] = []
+
+  async function walk(dir: string, category = ""): Promise<void> {
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("skill-scanner", "scan_codex_dir_failed", {
+          dir,
+          category,
+          error: errorMessage(error),
+        })
+      }
+      return
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const skillDir = join(dir, entry.name)
+      const skillFile = join(skillDir, "SKILL.md")
+
+      try {
+        const content = await readFile(skillFile, "utf-8")
+        const { data } = matter(content)
+        results.push({
+          type: "skill",
+          name: data.name || entry.name,
+          description: data.description || "",
+          category: category || "codex",
+          path: skillFile,
+          format: "codex-skill",
+          sourceScope,
+          model: data.model,
+          tools: data.tools,
+          maxTurns: data.maxTurns || data.max_turns,
+          allowedTools: data.allowedTools || data.allowed_tools,
+          disallowedTools: data.disallowedTools || data.disallowed_tools,
+        })
+        continue
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") {
+          logWarn("skill-scanner", "scan_codex_skill_failed", {
+            path: skillFile,
+            error: errorMessage(error),
+          })
+        }
+      }
+
+      await walk(skillDir, category ? `${category}/${entry.name}` : entry.name)
+    }
+  }
+
+  await walk(baseDir)
+  return results
+}
+
 export async function scanSkills(projectPath: string): Promise<DiscoveredSkill[]> {
   const all: DiscoveredSkill[] = []
   const claudeDir = join(projectPath, ".claude")
+  const codexDir = join(projectPath, ".agents", "skills")
 
   for (const dir of SCAN_DIRS) {
     const fullDir = join(claudeDir, dir)
-    const skills = await scanDirectory(fullDir, DIR_TO_TYPE[dir])
+    const skills = await scanDirectory(fullDir, DIR_TO_TYPE[dir], "claude-markdown", "project")
     all.push(...skills)
   }
 
+  all.push(...await scanCodexSkillDirs(codexDir, "project"))
   return all
 }
 
 export async function scanUserSkills(): Promise<DiscoveredSkill[]> {
   const home = process.env.HOME || process.env.USERPROFILE || ""
   const claudeDir = join(home, ".claude")
+  const codexDir = join(home, ".codex", "skills")
   const all: DiscoveredSkill[] = []
 
   for (const dir of SCAN_DIRS) {
     const fullDir = join(claudeDir, dir)
-    const skills = await scanDirectory(fullDir, DIR_TO_TYPE[dir])
+    const skills = await scanDirectory(fullDir, DIR_TO_TYPE[dir], "claude-markdown", "user")
     all.push(...skills)
   }
 
+  all.push(...await scanCodexSkillDirs(codexDir, "user"))
   return all
 }
 

@@ -142,16 +142,33 @@ const server = new McpServer({
   version: '1.0.0',
 });
 
-server.tool(
+const googleSearchSchema: Record<string, z.ZodTypeAny> = {
+  q: z.string().describe('Query string'),
+  gl: z.string().optional().describe('Geolocation country code (e.g. "us")'),
+  hl: z.string().optional().describe('Language (e.g. "en")'),
+  num: z.number().int().min(1).max(20).optional().describe('Number of results'),
+};
+
+const scrapeSchema: Record<string, z.ZodTypeAny> = {
+  url: z.string().url().describe('URL to scrape'),
+  includeMarkdown: z.boolean().optional().describe('Whether to include markdown in response'),
+};
+
+(server as any).tool(
   'google_search',
   'Google search via Serper (proxied) with automatic API key failover.',
-  {
-    q: z.string().describe('Query string'),
-    gl: z.string().optional().describe('Geolocation country code (e.g. "us")'),
-    hl: z.string().optional().describe('Language (e.g. "en")'),
-    num: z.number().int().min(1).max(20).optional().describe('Number of results'),
-  },
-  async ({ q, gl, hl, num }) => {
+  googleSearchSchema,
+  async ({
+    q,
+    gl,
+    hl,
+    num,
+  }: {
+    q: string;
+    gl?: string;
+    hl?: string;
+    num?: number;
+  }) => {
     const args: Record<string, unknown> = { q };
     if (gl !== undefined) args.gl = gl;
     if (hl !== undefined) args.hl = hl;
@@ -160,14 +177,11 @@ server.tool(
   }
 );
 
-server.tool(
+(server as any).tool(
   'scrape',
   'Scrape URL via Serper (proxied) with automatic API key failover.',
-  {
-    url: z.string().url().describe('URL to scrape'),
-    includeMarkdown: z.boolean().optional().describe('Whether to include markdown in response'),
-  },
-  async ({ url, includeMarkdown }) => {
+  scrapeSchema,
+  async ({ url, includeMarkdown }: { url: string; includeMarkdown?: boolean }) => {
     const args: Record<string, unknown> = { url };
     if (includeMarkdown !== undefined) args.includeMarkdown = includeMarkdown;
     return await callToolWithFailover('scrape', args);

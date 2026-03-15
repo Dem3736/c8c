@@ -25,6 +25,14 @@ const NODE_SPACING = 300
 export function yamlToChain(legacy: LegacyChain, name: string): Workflow {
   const nodes: WorkflowNode[] = []
   const edges: WorkflowEdge[] = []
+  const uniqueStepModels = [...new Set(
+    legacy.steps
+      .map((step) => step.model?.trim())
+      .filter((model): model is string => Boolean(model)),
+  )]
+  const migratedWorkflowModel = legacy.defaults?.model || (
+    uniqueStepModels.length === 1 ? uniqueStepModels[0] : undefined
+  )
 
   const inputId = "input-1"
   nodes.push({
@@ -46,7 +54,6 @@ export function yamlToChain(legacy: LegacyChain, name: string): Workflow {
       skillRef: step.agent,
       prompt: step.prompt,
       ...(permissionMode && { permissionMode }),
-      ...(step.model && { model: step.model as "sonnet" | "opus" | "haiku" }),
       ...(step.maxTurns && { maxTurns: step.maxTurns }),
       ...(step.skillPaths && { skillPaths: step.skillPaths }),
     }
@@ -89,12 +96,17 @@ export function yamlToChain(legacy: LegacyChain, name: string): Workflow {
     description: legacy.description,
     defaults: legacy.defaults
       ? {
-          model: legacy.defaults.model,
+          model: migratedWorkflowModel,
           maxTurns: legacy.defaults.maxTurns,
           maxParallel: 8,
           timeout_minutes: legacy.defaults.timeout_minutes,
         }
-      : undefined,
+      : migratedWorkflowModel
+        ? {
+            model: migratedWorkflowModel,
+            maxParallel: 8,
+          }
+        : undefined,
     nodes,
     edges,
   }

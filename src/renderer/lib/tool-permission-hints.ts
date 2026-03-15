@@ -8,7 +8,7 @@ export interface ToolPermissionHint {
 const WEBFETCH_RE = /\bwebfetch\b/i
 const FAILED_RE = /\bfailed\b|ошиб|не удалось|denied/i
 const PERMISSION_RE = /\bpermission\b|allow tool|approve|разреш|одобр/i
-const URL_DOMAIN_RE = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,24})(?::\d+)?(?:\/|$)/i
+const URL_DOMAIN_RE = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,24})(?::\d+)?(?=[/?#:\s.,!]|$)/i
 const DOMAIN_LABELED_RE = /\b(?:domain|site|website|сайт)\b[^a-z0-9]{0,8}([a-z0-9.-]+\.[a-z]{2,24})/i
 
 function normalizeDomain(raw: string): string {
@@ -52,4 +52,3 @@ export function getToolPermissionHint(entry: LogEntry): ToolPermissionHint | nul
 
   return null
 }
-

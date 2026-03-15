@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { EvaluationResult } from "@/lib/store"
 import type { LogEntry, NodeState } from "@shared/types"
 import { cn } from "@/lib/cn"
+import { getToolPermissionHint } from "@/lib/tool-permission-hints"
 import {
   Check,
   Loader2,
@@ -75,6 +76,7 @@ function mcpServerLabel(qualifiedName: string): string {
 }
 
 function LogEntryCard({ entry }: { entry: LogEntry }) {
+  const permissionHint = getToolPermissionHint(entry)
   const [collapsed, setCollapsed] = useState(
     entry.type === "thinking" || entry.type === "tool_use" || entry.type === "tool_result",
   )
@@ -169,6 +171,21 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           </span>
           {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0 border-accent/30 text-accent">{mcpServerLabel(entry.tool)}</Badge>}
         </button>
+        {permissionHint && (
+          <div className="mt-1 rounded-md border border-status-warning/30 bg-status-warning/10 px-2 py-1.5">
+            <p className="ui-meta-text text-status-warning">
+              Permission hint: add <span className="font-mono">{permissionHint.toolName}</span> to this skill step&apos;s
+              {" "}Allowed Tools, then rerun this step.
+            </p>
+            {permissionHint.domain && (
+              <p className="ui-meta-text text-muted-foreground mt-1">
+                If domain allowlist blocks access, add{" "}
+                <span className="font-mono">WebFetch(domain:{permissionHint.domain})</span>{" "}
+                to <span className="font-mono">.claude/settings.local.json</span>.
+              </p>
+            )}
+          </div>
+        )}
         {!collapsed && (
           <pre
             className={cn(
@@ -189,6 +206,21 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
         <pre className="ui-meta-text text-status-danger whitespace-pre-wrap font-mono">
           {entry.content}
         </pre>
+        {permissionHint && (
+          <div className="mt-1 rounded-md border border-status-warning/30 bg-status-warning/10 px-2 py-1.5">
+            <p className="ui-meta-text text-status-warning">
+              Permission hint: add <span className="font-mono">{permissionHint.toolName}</span> to this skill step&apos;s
+              {" "}Allowed Tools, then rerun this step.
+            </p>
+            {permissionHint.domain && (
+              <p className="ui-meta-text text-muted-foreground mt-1">
+                If domain allowlist blocks access, add{" "}
+                <span className="font-mono">WebFetch(domain:{permissionHint.domain})</span>{" "}
+                to <span className="font-mono">.claude/settings.local.json</span>.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     )
   }

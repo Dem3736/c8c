@@ -52,9 +52,9 @@ describe("yamlToChain", () => {
     expect(result.edges.every((e) => e.type === "default")).toBe(true)
   })
 
-  it("preserves per-step model and maxTurns overrides", () => {
+  it("promotes a single per-step model override to workflow defaults", () => {
     const yaml = {
-      defaults: { model: "sonnet" },
+      defaults: { maxTurns: 60 },
       steps: [
         { key: "s1", agent: "a/b", prompt: "Do it", model: "opus", maxTurns: 20 },
       ],
@@ -62,7 +62,8 @@ describe("yamlToChain", () => {
 
     const result = yamlToChain(yaml, "Override Test")
     const skill = result.nodes.find((n) => n.type === "skill")!
-    expect((skill.config as any).model).toBe("opus")
+    expect(result.defaults?.model).toBe("opus")
+    expect((skill.config as any).model).toBeUndefined()
     expect((skill.config as any).maxTurns).toBe(20)
   })
 

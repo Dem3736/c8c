@@ -16,11 +16,11 @@
 
 ## What is c8c?
 
-# Open-source skill operations for Claude Code
+# Open-source skill operations for Claude Code and OpenAI Codex
 
 **If Claude Code is a _worker_, c8c is a _factory_.**
 
-c8c is a desktop app that lets you build visual pipelines from Claude Code skills. Chain, branch, evaluate, and retry — turn single prompts into production operations.
+c8c is a desktop app that lets you build visual pipelines from Claude Code and OpenAI Codex skills. Chain, branch, evaluate, and retry — turn single prompts into production operations.
 
 It looks like Apple Shortcuts — but under the hood it has directed graphs, evaluator gates, parallel branches, and cost tracking.
 
@@ -38,7 +38,7 @@ It looks like Apple Shortcuts — but under the hood it has directed graphs, eva
 
 ## c8c is right for you if
 
-- ✅ You use **Claude Code skills** and want to chain them into repeatable workflows
+- ✅ You use **Claude Code or OpenAI Codex** and want to chain skills into repeatable workflows
 - ✅ You **copy-paste outputs** between Claude conversations manually
 - ✅ You want **evaluator loops** — retry until the output meets your quality bar
 - ✅ You want to **see what's happening** at every step, not just the final answer
@@ -115,7 +115,7 @@ Workflows live with your project. Different repos, different pipelines, same app
 | --- | --- |
 | **Not a multi-agent system.** | Agents don't coordinate with each other. You design the graph. c8c runs it. Predictable, not autonomous. |
 | **Not a chatbot.** | No conversations. Pipelines have inputs, operations, and outputs. |
-| **Not a code editor.** | c8c orchestrates Claude Code skills. Use Claude Code to write code, use c8c to chain the skills. |
+| **Not a code editor.** | c8c orchestrates provider-backed skills. Use Claude Code or Codex to do the work, use c8c to chain the skills. |
 | **Not cloud-only.** | Desktop-first. Your data stays on your machine. |
 
 <br/>
@@ -137,7 +137,9 @@ npm run dev
 > ```
 > Or right-click the app → Open → Open.
 
-> **Requirements:** Node.js 20+, Claude Code CLI installed
+> **Requirements:** Node.js 20+, Claude Code CLI and/or OpenAI Codex CLI installed
+>
+> Provider setup and troubleshooting: [`docs/codex-provider-switch.md`](docs/codex-provider-switch.md)
 
 <br/>
 
@@ -156,7 +158,7 @@ Input → [Skill Node] → [Skill Node] → [Evaluator] →  pass → [Output]
 | Node | Purpose |
 | --- | --- |
 | **Input** | Entry point — text, file, or batch data |
-| **Skill** | Runs a Claude Code skill with a specific model and prompt |
+| **Skill** | Runs a provider-backed skill with a specific model and prompt |
 | **Evaluator** | Scores output against criteria, branches on pass/fail |
 | **Splitter** | Fans out into parallel branches |
 | **Merger** | Combines parallel results back into one |
@@ -223,7 +225,7 @@ Like i18n (*internationalization*), k8s (*kubernetes*), and n8n (*nodemation*):
 
 Cybernetics — the science of control, feedback, and communication in systems. Founded by Norbert Wiener in 1948. From Greek *kybernetes*: helmsman, the one who steers.
 
-The two C's also stand for **C**laude **C**ode.
+The two C's originally stood for **C**laude **C**ode.
 
 <br/>
 

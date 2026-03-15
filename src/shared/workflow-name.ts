@@ -1,5 +1,5 @@
 export function normalizeWorkflowTitle(title: string): string {
-  return title.trim().replace(/\s+/g, " ")
+  return title.normalize("NFKC").trim().replace(/\s+/g, " ")
 }
 
 export function nextWorkflowTitle(
@@ -7,12 +7,12 @@ export function nextWorkflowTitle(
   baseTitle = "New workflow",
 ): string {
   const normalizedExisting = new Set(
-    existingTitles.map((name) => normalizeWorkflowTitle(name).toLowerCase()),
+    existingTitles.map((name) => normalizeWorkflowTitle(name).toLocaleLowerCase()),
   )
 
   let suffix = 1
   let candidate = baseTitle
-  while (normalizedExisting.has(candidate.toLowerCase())) {
+  while (normalizedExisting.has(candidate.toLocaleLowerCase())) {
     suffix += 1
     candidate = `${baseTitle} ${suffix}`
   }
@@ -20,9 +20,9 @@ export function nextWorkflowTitle(
 }
 
 export function toWorkflowFileStem(title: string): string {
-  const normalized = normalizeWorkflowTitle(title).toLowerCase()
+  const normalized = normalizeWorkflowTitle(title).toLocaleLowerCase()
   const stem = normalized
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+/, "")
     .replace(/-+$/, "")
   return stem || "workflow"

@@ -10,6 +10,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "@shared/types"
+import { inferProviderFromModel, modelLooksCompatible } from "@shared/provider-metadata"
 import { findInsertionPoint } from "@/lib/workflow-graph-utils"
 import {
   DEFAULT_APPROVAL_CONFIG,
@@ -137,7 +138,6 @@ export function addSkillNodeToWorkflow(
     config: {
       skillRef: `${skill.category}/${skill.name}`.replace(/^\//, ""),
       prompt: skill.description || `Run ${skill.name}`,
-      model: (skill.model as SkillNodeConfig["model"]) || undefined,
       maxTurns: skill.maxTurns,
       skillPaths: [skill.path],
       allowedTools: skill.allowedTools,
@@ -145,7 +145,27 @@ export function addSkillNodeToWorkflow(
     } satisfies SkillNodeConfig,
   }
 
-  return addLinearNodeBeforeOutput(workflow, newNode)
+  const nextWorkflow = addLinearNodeBeforeOutput(workflow, newNode)
+  const suggestedModel = skill.model?.trim()
+  if (!suggestedModel || nextWorkflow.defaults?.model) {
+    return nextWorkflow
+  }
+
+  const inferredProvider = inferProviderFromModel(suggestedModel)
+  const workflowProvider = nextWorkflow.defaults?.provider
+  const nextProvider = workflowProvider || inferredProvider
+  if (nextProvider && !modelLooksCompatible(nextProvider, suggestedModel)) {
+    return nextWorkflow
+  }
+
+  return {
+    ...nextWorkflow,
+    defaults: {
+      ...(nextWorkflow.defaults || {}),
+      ...(workflowProvider ? {} : inferredProvider ? { provider: inferredProvider } : {}),
+      model: suggestedModel,
+    },
+  }
 }
 
 export function addEvaluatorNodeToWorkflow(

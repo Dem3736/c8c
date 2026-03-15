@@ -39,6 +39,19 @@ describe("classifyError", () => {
     expect(classifyError(new Error("rate limit hit"), false)).toBe("policy")
   })
 
+  it("classifies usage limit as policy", () => {
+    expect(classifyError(new Error("Claude usage limit reached"), false)).toBe("policy")
+  })
+
+  it("classifies skill errors that include usage limit as policy", () => {
+    expect(
+      classifyError(
+        new Error("Skill node failed: Claude usage limit reached: exceeded your usage limit"),
+        false,
+      ),
+    ).toBe("policy")
+  })
+
   it("returns unknown for unrecognized errors", () => {
     expect(classifyError(new Error("something unexpected"), false)).toBe("unknown")
   })

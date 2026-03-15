@@ -11,20 +11,16 @@ import {
   chatSessionIdAtom,
   chatStatusAtom,
   chatUndoStackAtom,
-  runStatusAtom,
   selectedWorkflowPathAtom,
   viewModeAtom,
 } from "@/lib/store"
-import { useExecutionReset } from "./useExecutionReset"
 
 /**
- * Resets execution + output state when the selected workflow changes.
- * Input is intentionally NOT reset (often reused across workflows).
+ * Resets ephemeral UI state when the selected workflow changes.
+ * Execution state is kept per workflow so background runs remain intact.
  */
 export function useWorkflowReset() {
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
-  const [runStatus] = useAtom(runStatusAtom)
-  const resetExecutionState = useExecutionReset()
   const setChatMessages = useSetAtom(chatMessagesAtom)
   const setChatStatus = useSetAtom(chatStatusAtom)
   const setChatSessionId = useSetAtom(chatSessionIdAtom)
@@ -43,10 +39,6 @@ export function useWorkflowReset() {
     if (prevPathRef.current !== selectedWorkflowPath) {
       prevPathRef.current = selectedWorkflowPath
 
-      // Keep active run state stable across workflow switches.
-      if (runStatus !== "running") {
-        resetExecutionState()
-      }
       // Reset chat state atomically with workflow switch to avoid stale events.
       setChatMessages([])
       setChatStatus("idle")
@@ -62,8 +54,6 @@ export function useWorkflowReset() {
       setViewMode("list")
     }
   }, [
-    resetExecutionState,
-    runStatus,
     selectedWorkflowPath,
     setBatchError,
     setBatchId,

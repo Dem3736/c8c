@@ -174,6 +174,29 @@ describe("workflow edge mutations", () => {
     expect(ids.size).toBe(skillNodes.length)
   })
 
+  it("promotes a discovered skill model to workflow defaults instead of the node config", () => {
+    const workflow: Workflow = {
+      ...createWorkflow(),
+      defaults: {},
+    }
+
+    const skill = {
+      type: "skill" as const,
+      name: "Codex Skill",
+      description: "ship it",
+      category: "coding",
+      path: "/tmp/codex-skill.md",
+      model: "gpt-5-codex",
+    }
+
+    const next = addSkillNodeToWorkflow(workflow, skill, 1700000000000)
+    const addedSkill = next.nodes.find((node) => node.id !== "skill-1" && node.type === "skill")
+
+    expect(next.defaults?.provider).toBe("codex")
+    expect(next.defaults?.model).toBe("gpt-5-codex")
+    expect((addedSkill?.config as { model?: string }).model).toBeUndefined()
+  })
+
   it("does not flatten fan-out topology when reordering in list mode", () => {
     const workflow: Workflow = {
       version: 1,

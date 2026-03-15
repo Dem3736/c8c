@@ -1,29 +1,29 @@
 import { useEffect, useCallback, useRef } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import {
-  runStatusAtom,
-  runStartedAtAtom,
-  runIdAtom,
-  runWorkflowPathAtom,
-  nodeStatesAtom,
+  activeExecutionProviderAtom,
   activeNodeIdAtom,
+  approvalRequestsAtom,
+  createEmptyWorkflowExecutionState,
   currentWorkflowAtom,
-  inputValueAtom,
-  finalContentAtom,
-  reportPathAtom,
-  workspaceAtom,
-  pastRunsAtom,
+  defaultProviderAtom,
   evalResultsAtom,
+  inputAttachmentsAtom,
+  inputValueAtom,
+  nodeStatesAtom,
+  pastRunsAtom,
+  runIdAtom,
+  runStatusAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
-  runtimeNodesAtom,
-  runtimeEdgesAtom,
-  runtimeMetaAtom,
-  approvalRequestsAtom,
+  toWorkflowExecutionKey,
+  updateWorkflowExecutionStateAtom,
   webSearchBackendAtom,
+  workflowExecutionStatesAtom,
+  workspaceAtom,
+  type WorkflowExecutionState,
 } from "@/lib/store"
-import type { EvaluationResult } from "@/lib/store"
-import type { Workflow, WorkflowEvent, NodeState, InputNodeConfig, RunResult } from "@shared/types"
+import type { Workflow, WorkflowEvent, NodeState, InputNodeConfig, PermissionMode, RunResult } from "@shared/types"
 import { resolveWorkflowInput } from "@/lib/input-type"
 import { applyWebSearchBackendPreset } from "@/lib/web-search-backend"
 import { toast } from "sonner"
@@ -39,205 +39,263 @@ function isResearchLikeWorkflow(workflow: { name: string; description?: string; 
   })
 }
 
+function isRunInFlight(status: WorkflowExecutionState["runStatus"]): boolean {
+  return status === "starting" || status === "running" || status === "paused" || status === "cancelling"
+}
+
+function withExecutionMode(workflow: Workflow, executionMode: PermissionMode): Workflow {
+  return {
+    ...workflow,
+    defaults: {
+      ...workflow.defaults,
+      permissionMode: executionMode,
+    },
+  }
+}
+
 export function useChainExecution() {
-  const [runStatus, setRunStatus] = useAtom(runStatusAtom)
-  const setRunStartedAt = useSetAtom(runStartedAtAtom)
-  const [runId, setRunId] = useAtom(runIdAtom)
-  const [, setRunWorkflowPath] = useAtom(runWorkflowPathAtom)
-  const [nodeStates, setNodeStates] = useAtom(nodeStatesAtom)
-  const [activeNodeId, setActiveNodeId] = useAtom(activeNodeIdAtom)
-  const setFinalContent = useSetAtom(finalContentAtom)
-  const setReportPath = useSetAtom(reportPathAtom)
-  const [workspace, setWorkspace] = useAtom(workspaceAtom)
+  const [runStatus] = useAtom(runStatusAtom)
+  const [runId] = useAtom(runIdAtom)
+  const [nodeStates] = useAtom(nodeStatesAtom)
+  const [activeNodeId] = useAtom(activeNodeIdAtom)
+  const [workspace] = useAtom(workspaceAtom)
   const setPastRuns = useSetAtom(pastRunsAtom)
-  const [evalResults, setEvalResults] = useAtom(evalResultsAtom)
-  const setRuntimeNodes = useSetAtom(runtimeNodesAtom)
-  const setRuntimeEdges = useSetAtom(runtimeEdgesAtom)
-  const setRuntimeMeta = useSetAtom(runtimeMetaAtom)
+  const [evalResults] = useAtom(evalResultsAtom)
   const setApprovalRequests = useSetAtom(approvalRequestsAtom)
   const [workflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [inputValue] = useAtom(inputValueAtom)
+  const [attachments] = useAtom(inputAttachmentsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
+  const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
+  const [defaultProvider] = useAtom(defaultProviderAtom)
+  const updateWorkflowExecutionState = useSetAtom(updateWorkflowExecutionStateAtom)
+  const setActiveExecutionProvider = useSetAtom(activeExecutionProviderAtom)
 
-  const runIdRef = useRef<string | null>(null)
-  const pendingRunRef = useRef(false)
-  const pendingEventsRef = useRef<WorkflowEvent[]>([])
+  const workflowExecutionStatesRef = useRef(workflowExecutionStates)
+  const runWorkflowKeysRef = useRef(new Map<string, string>())
+  const bufferedEventsRef = useRef(new Map<string, WorkflowEvent[]>())
+  const previousExecutionSnapshotsRef = useRef(new Map<string, WorkflowExecutionState>())
+  const workflowSnapshotsRef = useRef(new Map<string, Workflow>())
   const listRunsRequestRef = useRef(0)
   const selectedProjectRef = useRef(selectedProject)
+
+  workflowExecutionStatesRef.current = workflowExecutionStates
   selectedProjectRef.current = selectedProject
 
-  useEffect(() => {
-    runIdRef.current = runId
-  }, [runId])
+  const removeApprovalRequestsForRun = useCallback((runIdToClear: string | null | undefined) => {
+    if (!runIdToClear) return
+    setApprovalRequests((prev) => prev.filter((request) => request.runId !== runIdToClear))
+  }, [setApprovalRequests])
 
-  const clearRunTracking = useCallback(() => {
-    runIdRef.current = null
-    pendingRunRef.current = false
-    pendingEventsRef.current = []
-  }, [])
+  const clearRunTracking = useCallback((runIdToClear: string | null | undefined) => {
+    if (!runIdToClear) return
+    runWorkflowKeysRef.current.delete(runIdToClear)
+    bufferedEventsRef.current.delete(runIdToClear)
+    removeApprovalRequestsForRun(runIdToClear)
+  }, [removeApprovalRequestsForRun])
 
-  const beginExecution = useCallback((targetWorkflow: Workflow, workflowPathForRun: string | null) => {
+  const updateExecutionForKey = useCallback((
+    workflowKey: string,
+    update: WorkflowExecutionState | ((previous: WorkflowExecutionState) => WorkflowExecutionState),
+  ) => {
+    updateWorkflowExecutionState({ key: workflowKey, update })
+  }, [updateWorkflowExecutionState])
+
+  const beginExecution = useCallback((
+    targetWorkflow: Workflow,
+    workflowPathForRun: string | null,
+    projectPathForRun: string | null,
+  ) => {
+    const workflowKey = toWorkflowExecutionKey(workflowPathForRun)
+    const previousState = workflowExecutionStatesRef.current[workflowKey] ?? createEmptyWorkflowExecutionState()
+    previousExecutionSnapshotsRef.current.set(workflowKey, previousState)
+    workflowSnapshotsRef.current.set(workflowKey, structuredClone(targetWorkflow))
+
     const initialStates: Record<string, NodeState> = {}
     for (const node of targetWorkflow.nodes) {
       initialStates[node.id] = { status: "pending", attempts: 0, log: [] }
     }
-    setNodeStates(initialStates)
-    setEvalResults({})
-    setRuntimeNodes([])
-    setRuntimeEdges([])
-    setRuntimeMeta({})
-    setRunStatus("starting")
-    setRunStartedAt(Date.now())
-    setRunWorkflowPath(workflowPathForRun)
-    setActiveNodeId(null)
-    setApprovalRequests([])
-    setFinalContent("")
-    setReportPath(null)
 
-    clearRunTracking()
-    pendingRunRef.current = true
-    setRunId(null)
-  }, [
-    clearRunTracking,
-    setActiveNodeId,
-    setApprovalRequests,
-    setEvalResults,
-    setFinalContent,
-    setNodeStates,
-    setReportPath,
-    setRunId,
-    setRunStatus,
-    setRunWorkflowPath,
-    setRuntimeEdges,
-    setRuntimeMeta,
-    setRuntimeNodes,
-  ])
+    updateExecutionForKey(workflowKey, (previous) => ({
+      ...previous,
+      runStatus: "starting",
+      runOutcome: null,
+      runStartedAt: Date.now(),
+      completedAt: null,
+      runId: null,
+      runWorkflowPath: workflowPathForRun,
+      workflowName: targetWorkflow.name?.trim() || "Untitled workflow",
+      projectPath: projectPathForRun,
+      lastError: null,
+      workflowSnapshot: structuredClone(targetWorkflow),
+      nodeStates: initialStates,
+      activeNodeId: null,
+      evalResults: {},
+      finalContent: "",
+      reportPath: null,
+      runtimeNodes: [],
+      runtimeEdges: [],
+      runtimeMeta: {},
+    }))
 
-  const rollbackExecutionStart = useCallback(() => {
-    clearRunTracking()
-    setRunStatus("idle")
-    setRunStartedAt(null)
-    setRunWorkflowPath(null)
-    setRunId(null)
-    setApprovalRequests([])
-    setNodeStates({})
-    setEvalResults({})
-    setRuntimeNodes([])
-    setRuntimeEdges([])
-    setRuntimeMeta({})
-  }, [
-    clearRunTracking,
-    setApprovalRequests,
-    setEvalResults,
-    setNodeStates,
-    setRunId,
-    setRunStatus,
-    setRunWorkflowPath,
-    setRuntimeEdges,
-    setRuntimeMeta,
-    setRuntimeNodes,
-  ])
+    return workflowKey
+  }, [updateExecutionForKey])
+
+  const rollbackExecutionStart = useCallback((workflowKey: string) => {
+    const previousState = previousExecutionSnapshotsRef.current.get(workflowKey) ?? createEmptyWorkflowExecutionState()
+    previousExecutionSnapshotsRef.current.delete(workflowKey)
+    workflowSnapshotsRef.current.delete(workflowKey)
+    updateExecutionForKey(workflowKey, previousState)
+  }, [updateExecutionForKey])
 
   const processWorkflowEvent = useCallback((event: WorkflowEvent) => {
+    const workflowKey = runWorkflowKeysRef.current.get(event.runId)
+    if (!workflowKey) {
+      const buffered = bufferedEventsRef.current.get(event.runId) ?? []
+      buffered.push(event)
+      bufferedEventsRef.current.set(event.runId, buffered)
+      return
+    }
+
+    const workflowSnapshot = workflowSnapshotsRef.current.get(workflowKey)
+
     switch (event.type) {
       case "node-start":
-        setRunStatus("running")
-        setActiveNodeId(event.nodeId)
-        setNodeStates((prev) => ({
-          ...prev,
-          [event.nodeId]: {
-            ...prev[event.nodeId],
-            status: "running",
-            log: prev[event.nodeId]?.log || [],
-            attempts: prev[event.nodeId]?.attempts || 0,
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          runStatus: "running",
+          activeNodeId: event.nodeId,
+          nodeStates: {
+            ...previous.nodeStates,
+            [event.nodeId]: {
+              ...previous.nodeStates[event.nodeId],
+              status: "running",
+              log: previous.nodeStates[event.nodeId]?.log || [],
+              attempts: previous.nodeStates[event.nodeId]?.attempts || 0,
+            },
           },
         }))
         break
 
       case "node-log":
-        setNodeStates((prev) => ({
-          ...prev,
-          [event.nodeId]: {
-            ...prev[event.nodeId],
-            log: [...(prev[event.nodeId]?.log || []), event.entry],
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          nodeStates: {
+            ...previous.nodeStates,
+            [event.nodeId]: {
+              ...previous.nodeStates[event.nodeId],
+              log: [...(previous.nodeStates[event.nodeId]?.log || []), event.entry],
+            },
           },
         }))
         break
 
       case "node-done":
-        setNodeStates((prev) => ({
-          ...prev,
-          [event.nodeId]: {
-            ...prev[event.nodeId],
-            status: "completed",
-            output: event.output,
-          },
-        }))
+        updateExecutionForKey(workflowKey, (previous) => {
+          const isOutputNode = workflowSnapshot?.nodes.some((node) => node.id === event.nodeId && node.type === "output") ?? false
+          return {
+            ...previous,
+            finalContent: isOutputNode && event.output?.content ? event.output.content : previous.finalContent,
+            nodeStates: {
+              ...previous.nodeStates,
+              [event.nodeId]: {
+                ...previous.nodeStates[event.nodeId],
+                status: "completed",
+                output: event.output,
+              },
+            },
+          }
+        })
         break
 
       case "node-error":
         if (event.nodeId === "__global") {
-          setRunStatus("error")
-          setActiveNodeId(null)
+          updateExecutionForKey(workflowKey, (previous) => ({
+            ...previous,
+            runStatus: "error",
+            activeNodeId: null,
+            lastError: event.error || "Workflow execution failed.",
+          }))
           toast.error("Run failed", {
             description: event.error || "Workflow execution failed.",
           })
-        } else {
-          setNodeStates((prev) => ({
-            ...prev,
+          break
+        }
+
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          lastError: event.error || previous.lastError,
+          nodeStates: {
+            ...previous.nodeStates,
             [event.nodeId]: {
-              ...prev[event.nodeId],
+              ...previous.nodeStates[event.nodeId],
               status: "failed",
               error: event.error,
             },
-          }))
-        }
+          },
+        }))
         break
 
       case "eval-result":
-        setEvalResults((prev) => ({
-          ...prev,
-          [event.nodeId]: [
-            ...(prev[event.nodeId] || []),
-            {
-              attempt: event.attempt,
-              score: event.score,
-              reason: event.reason,
-              passed: event.passed,
-              fix_instructions: event.fix_instructions,
-              criteria: event.criteria,
-            },
-          ],
-        }))
-        break
-
-      case "nodes-expanded":
-        setNodeStates((prev) => {
-          const next = { ...prev }
-          for (const id of event.newNodeIds) {
-            if (!next[id]) {
-              next[id] = { status: "pending", attempts: 0, log: [] }
-            }
-          }
-          return next
-        })
-        setRuntimeNodes(event.nodes)
-        setRuntimeEdges(event.edges)
-        setRuntimeMeta(event.runtimeMeta)
-        break
-
-      case "approval-requested":
-        setNodeStates((prev) => ({
-          ...prev,
-          [event.nodeId]: {
-            ...prev[event.nodeId],
-            status: "waiting_approval",
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          evalResults: {
+            ...previous.evalResults,
+            [event.nodeId]: [
+              ...(previous.evalResults[event.nodeId] || []),
+              {
+                attempt: event.attempt,
+                score: event.score,
+                reason: event.reason,
+                passed: event.passed,
+                fix_instructions: event.fix_instructions,
+                criteria: event.criteria,
+              },
+            ],
           },
         }))
-        setApprovalRequests((prev) => [
-          ...prev,
+        break
+
+      case "nodes-expanded": {
+        const graphNodeIds = new Set(event.nodes.map((node) => node.id))
+        updateExecutionForKey(workflowKey, (previous) => {
+          const nextNodeStates = { ...previous.nodeStates }
+          for (const nodeId of Object.keys(nextNodeStates)) {
+            if (!graphNodeIds.has(nodeId)) {
+              delete nextNodeStates[nodeId]
+            }
+          }
+          for (const nodeId of event.newNodeIds) {
+            if (!nextNodeStates[nodeId]) {
+              nextNodeStates[nodeId] = { status: "pending", attempts: 0, log: [] }
+            }
+          }
+          return {
+            ...previous,
+            nodeStates: nextNodeStates,
+            runtimeNodes: event.nodes,
+            runtimeEdges: event.edges,
+            runtimeMeta: event.runtimeMeta,
+          }
+        })
+        break
+      }
+
+      case "approval-requested":
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          nodeStates: {
+            ...previous.nodeStates,
+            [event.nodeId]: {
+              ...previous.nodeStates[event.nodeId],
+              status: "waiting_approval",
+            },
+          },
+        }))
+        setApprovalRequests((previous) => [
+          ...previous.filter((request) => !(request.runId === event.runId && request.nodeId === event.nodeId)),
           {
             runId: event.runId,
             nodeId: event.nodeId,
@@ -249,109 +307,73 @@ export function useChainExecution() {
         break
 
       case "run-done":
-        clearRunTracking()
-        setRunWorkflowPath(null)
-        // No toasts here — OutputPanel shows inline completion/error banners
-        setRunStatus(
-          event.status === "completed" ? "done"
-          : event.status === "cancelled" ? "done"
-          : "error"
-        )
-        setRunId(null)
-        setActiveNodeId(null)
-        setApprovalRequests([])
-        if (event.reportPath) {
-          setReportPath(event.reportPath)
-        }
-        if (event.workspace) {
-          setWorkspace(event.workspace)
-        }
-        // Refresh past runs list
+        clearRunTracking(event.runId)
+        previousExecutionSnapshotsRef.current.delete(workflowKey)
+        workflowSnapshotsRef.current.delete(workflowKey)
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          runStatus: event.status === "completed" || event.status === "cancelled" ? "done" : "error",
+          runOutcome: event.status,
+          runStartedAt: null,
+          completedAt: Date.now(),
+          runId: null,
+          runWorkflowPath: null,
+          activeNodeId: null,
+          reportPath: event.reportPath || previous.reportPath,
+          workspace: event.workspace || previous.workspace,
+        }))
         if (selectedProjectRef.current) {
           const requestId = ++listRunsRequestRef.current
           window.api.listRuns(selectedProjectRef.current).then((runs) => {
             if (listRunsRequestRef.current !== requestId) return
             setPastRuns(runs)
-          }).catch((err) => {
+          }).catch((error) => {
             if (listRunsRequestRef.current !== requestId) return
-            console.error("[useChainExecution] listRuns after run-done failed:", err)
+            console.error("[useChainExecution] listRuns after run-done failed:", error)
           })
         }
         break
     }
-  }, [clearRunTracking, setActiveNodeId, setNodeStates, setRunStatus, setRunId, setRunWorkflowPath, setEvalResults, setRuntimeNodes, setRuntimeEdges, setRuntimeMeta, setApprovalRequests, setReportPath, setWorkspace, setPastRuns])
+  }, [clearRunTracking, setApprovalRequests, setPastRuns, updateExecutionForKey])
 
-  const finishStartWithRunId = useCallback((startedRunId: string) => {
-    runIdRef.current = startedRunId
-    setRunId(startedRunId)
-    const bufferedEvents = pendingEventsRef.current
-    pendingRunRef.current = false
-    pendingEventsRef.current = []
+  const finishStartWithRunId = useCallback((startedRunId: string, workflowKey: string) => {
+    runWorkflowKeysRef.current.set(startedRunId, workflowKey)
+    previousExecutionSnapshotsRef.current.delete(workflowKey)
+    updateExecutionForKey(workflowKey, (previous) => ({
+      ...previous,
+      runId: startedRunId,
+    }))
+
+    const bufferedEvents = bufferedEventsRef.current.get(startedRunId) ?? []
+    bufferedEventsRef.current.delete(startedRunId)
     for (const event of bufferedEvents) {
-      if (event.runId === startedRunId) {
-        processWorkflowEvent(event)
-      }
+      processWorkflowEvent(event)
     }
-  }, [processWorkflowEvent, setRunId])
+  }, [processWorkflowEvent, updateExecutionForKey])
 
   useEffect(() => {
     const unsubscribe = window.api.onWorkflowEvent((event: WorkflowEvent) => {
-      const currentRunId = runIdRef.current
-      if (currentRunId) {
-        if (event.runId !== currentRunId) return
-        processWorkflowEvent(event)
-        return
-      }
-      if (pendingRunRef.current) {
-        pendingEventsRef.current.push(event)
-      }
+      processWorkflowEvent(event)
     })
 
     return unsubscribe
   }, [processWorkflowEvent])
 
-  // Load past runs when project changes + restore latest result
   useEffect(() => {
-    if (selectedProject) {
-      const requestId = ++listRunsRequestRef.current
-      window.api.listRuns(selectedProject).then((runs) => {
-        if (listRunsRequestRef.current !== requestId) return
-        setPastRuns(runs)
-        // Auto-restore the latest completed run if UI is idle
-        if (runStatus === "idle" && runs.length > 0) {
-          const latest = runs.find((r) => r.status === "completed")
-          if (latest?.workspace) {
-            window.api.loadRunResult(latest.workspace).then((result) => {
-              if (listRunsRequestRef.current !== requestId) return
-              if (result?.reportContent) {
-                setFinalContent(result.reportContent)
-                setReportPath(result.reportPath || null)
-              }
-            })
-          }
-        }
-      }).catch((err) => {
-        if (listRunsRequestRef.current !== requestId) return
-        console.error("[useChainExecution] listRuns on project change failed:", err)
-      })
-    }
-  }, [selectedProject, runStatus, setPastRuns, setFinalContent, setReportPath])
+    if (!selectedProject) return
 
-  // Extract final content from output node when run completes
-  useEffect(() => {
-    if (runStatus === "done") {
-      const outputNode = workflow.nodes.find((n) => n.type === "output")
-      if (outputNode) {
-        const outputState = nodeStates[outputNode.id]
-        if (outputState?.output?.content) {
-          setFinalContent(outputState.output.content)
-        }
-      }
-    }
-  }, [runStatus, workflow.nodes, nodeStates, setFinalContent])
+    const requestId = ++listRunsRequestRef.current
+    window.api.listRuns(selectedProject).then((runs) => {
+      if (listRunsRequestRef.current !== requestId) return
+      setPastRuns(runs)
+    }).catch((error) => {
+      if (listRunsRequestRef.current !== requestId) return
+      console.error("[useChainExecution] listRuns on project change failed:", error)
+    })
+  }, [selectedProject, setPastRuns])
 
-  const run = useCallback(async () => {
-    if (runStatus === "running" || runStatus === "paused") return
+  const run = useCallback(async (executionMode: PermissionMode = "edit") => {
+    if (isRunInFlight(runStatus)) return
     if (!workflow.nodes.length) return
 
     const inputNode = workflow.nodes.find((node) => node.type === "input")
@@ -363,18 +385,46 @@ export function useChainExecution() {
     })
     if (!resolvedInput.valid) return
 
-    beginExecution(workflow, selectedWorkflowPath ?? null)
+    let assembledValue = resolvedInput.value
+    if (attachments.length > 0) {
+      const sections = await Promise.all(
+        attachments.map(async (attachment) => {
+          if (attachment.kind === "file") {
+            try {
+              const result = await window.api.readFileContent(attachment.path, selectedProject!)
+              return `## Attached File: ${attachment.name}\nPath: ${attachment.path}\n\`\`\`\n${result.content}${result.truncated ? "\n[truncated]" : ""}\n\`\`\``
+            } catch {
+              return `## Attached File: ${attachment.name}\n\n[Could not read file]`
+            }
+          }
+          if (attachment.kind === "run") {
+            try {
+              const result = await window.api.loadRunResult(attachment.workspace)
+              return `## Previous Run Output: ${attachment.workflowName}\nRun workspace: ${attachment.workspace}\n\n${result?.reportContent || "[No output available]"}`
+            } catch {
+              return `## Previous Run Output: ${attachment.workflowName}\n\n[Could not load run output]`
+            }
+          }
+          return `## ${attachment.label}\n\n${attachment.content}`
+        }),
+      )
+      assembledValue = [resolvedInput.value, "\n---\n# Attachments\n", ...sections].join("\n\n")
+    }
 
+    const workflowForRun = withExecutionMode(workflow, executionMode)
+    const workflowKey = beginExecution(workflowForRun, selectedWorkflowPath ?? null, selectedProject ?? null)
+    setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
     const looksResearch = isResearchLikeWorkflow(workflow as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
-      workflow,
+      workflowForRun,
       looksResearch ? "research" : "operations",
       webSearchBackend,
     )
+
     try {
       const result = await window.api.runChain(
         workflowForExecution,
-        { type: resolvedInput.type, value: resolvedInput.value },
+        { type: resolvedInput.type, value: assembledValue },
         selectedProject ?? undefined,
         selectedWorkflowPath ?? undefined,
         webSearchBackend,
@@ -383,86 +433,103 @@ export function useChainExecution() {
         toast.error("Could not start run", {
           description: "No active window is available for execution.",
         })
-        rollbackExecutionStart()
+        rollbackExecutionStart(workflowKey)
         return
       }
       if (typeof result === "object" && "error" in result) {
         toast.error("Could not start run", {
           description: result.error,
         })
-        rollbackExecutionStart()
+        rollbackExecutionStart(workflowKey)
         return
       }
-      finishStartWithRunId(result)
-    } catch (err) {
-      console.error("[useChainExecution] runChain failed:", err)
+      finishStartWithRunId(result, workflowKey)
+    } catch (error) {
+      console.error("[useChainExecution] runChain failed:", error)
       toast.error("Could not start run", {
-        description: String(err),
+        description: String(error),
       })
-      rollbackExecutionStart()
+      rollbackExecutionStart(workflowKey)
     }
   }, [
+    attachments,
     beginExecution,
+    defaultProvider,
     finishStartWithRunId,
     inputValue,
     rollbackExecutionStart,
     runStatus,
     selectedProject,
     selectedWorkflowPath,
+    setActiveExecutionProvider,
     webSearchBackend,
     workflow,
   ])
 
   const cancel = useCallback(async () => {
-    setRunStatus("cancelling")
-    const currentRunId = runIdRef.current
-    if (currentRunId) {
+    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
+    if (!isRunInFlight(runStatus)) return
+
+    updateExecutionForKey(workflowKey, (previous) => ({
+      ...previous,
+      runStatus: "cancelling",
+    }))
+
+    if (runId) {
       try {
-        await window.api.cancelRun(currentRunId)
-      } catch (err) {
-        console.error("[useChainExecution] cancelRun failed:", err)
+        await window.api.cancelRun(runId)
+      } catch (error) {
+        console.error("[useChainExecution] cancelRun failed:", error)
         toast.error("Could not cancel run", {
-          description: String(err),
+          description: String(error),
         })
-        setRunStatus("running")
+        updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          runStatus: "running",
+        }))
         return
       }
     }
-    clearRunTracking()
-    // Preserve partial results — keep nodeStates, evalResults, and runtime graph
-    // so completed node outputs remain visible in OutputPanel.
-    setRunStatus("done")
-    setRunWorkflowPath(null)
-    setRunId(null)
-    setActiveNodeId(null)
-    setApprovalRequests([])
-    // Mark any still-running nodes as skipped
-    setNodeStates((prev) => {
-      const next = { ...prev }
-      for (const [nodeId, state] of Object.entries(next)) {
+
+    clearRunTracking(runId)
+    previousExecutionSnapshotsRef.current.delete(workflowKey)
+    workflowSnapshotsRef.current.delete(workflowKey)
+    updateExecutionForKey(workflowKey, (previous) => {
+      const nextNodeStates = { ...previous.nodeStates }
+      for (const [nodeId, state] of Object.entries(nextNodeStates)) {
         if (state.status === "running" || state.status === "queued" || state.status === "waiting_approval") {
-          next[nodeId] = { ...state, status: "skipped" }
+          nextNodeStates[nodeId] = { ...state, status: "skipped" }
         }
       }
-      return next
+      return {
+        ...previous,
+        runStatus: "done",
+        runStartedAt: null,
+        runId: null,
+        runWorkflowPath: null,
+        activeNodeId: null,
+        nodeStates: nextNodeStates,
+      }
     })
-  }, [setRunStatus, setRunWorkflowPath, setRunId, setActiveNodeId, setNodeStates, setApprovalRequests, clearRunTracking])
+  }, [clearRunTracking, runId, runStatus, selectedWorkflowPath, updateExecutionForKey])
 
   const rerunFrom = useCallback(async (fromNodeId: string) => {
-    if (runStatus === "running" || runStatus === "paused") return
+    if (isRunInFlight(runStatus)) return
     if (!workspace || !workflow.nodes.length) return
 
-    beginExecution(workflow, selectedWorkflowPath ?? null)
-
-    const looksResearch = isResearchLikeWorkflow(workflow as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
+    const workflowKeyForRun = toWorkflowExecutionKey(selectedWorkflowPath ?? null)
+    const workflowForRun = workflowExecutionStatesRef.current[workflowKeyForRun]?.workflowSnapshot ?? workflow
+    const workflowKey = beginExecution(workflowForRun, selectedWorkflowPath ?? null, selectedProject ?? null)
+    setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
+    const looksResearch = isResearchLikeWorkflow(workflowForRun as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
-      workflow,
+      workflowForRun,
       looksResearch ? "research" : "operations",
       webSearchBackend,
     )
 
     try {
-      const id = await window.api.rerunFrom(
+      const result = await window.api.rerunFrom(
         fromNodeId,
         workflowForExecution,
         workspace,
@@ -470,40 +537,42 @@ export function useChainExecution() {
         selectedWorkflowPath ?? undefined,
         webSearchBackend,
       )
-      if (id && typeof id === "string") {
-        finishStartWithRunId(id)
+      if (typeof result === "string") {
+        finishStartWithRunId(result, workflowKey)
         return
       }
-      if (id && typeof id === "object" && "error" in id) {
+      if (result && typeof result === "object" && "error" in result) {
         toast.error("Could not restart from selected node", {
-          description: id.error,
+          description: result.error,
         })
-        rollbackExecutionStart()
+        rollbackExecutionStart(workflowKey)
         return
       }
       toast.error("Could not restart from selected node")
-    } catch (err) {
-      console.error("[useChainExecution] rerunFrom failed:", err)
+    } catch (error) {
+      console.error("[useChainExecution] rerunFrom failed:", error)
       toast.error("Could not restart from selected node", {
-        description: String(err),
+        description: String(error),
       })
     }
 
-    rollbackExecutionStart()
+    rollbackExecutionStart(workflowKey)
   }, [
     beginExecution,
+    defaultProvider,
     finishStartWithRunId,
     rollbackExecutionStart,
     runStatus,
     selectedProject,
     selectedWorkflowPath,
+    setActiveExecutionProvider,
     webSearchBackend,
     workflow,
     workspace,
   ])
 
   const continueRun = useCallback(async (runToContinue: RunResult) => {
-    if (runStatus === "running" || runStatus === "paused") return
+    if (isRunInFlight(runStatus)) return
     if (!runToContinue.workspace) {
       toast.error("Could not continue run", {
         description: "Run workspace is missing.",
@@ -520,9 +589,9 @@ export function useChainExecution() {
         workflowPathForRun = runToContinue.workflowPath
         setCurrentWorkflow(workflowForRun)
         setSelectedWorkflowPath(runToContinue.workflowPath)
-      } catch (err) {
+      } catch (error) {
         toast.error("Could not continue run", {
-          description: `Failed to load workflow file: ${String(err)}`,
+          description: `Failed to load workflow file: ${String(error)}`,
         })
         return
       }
@@ -535,8 +604,12 @@ export function useChainExecution() {
       return
     }
 
-    beginExecution(workflowForRun, workflowPathForRun)
-    setWorkspace(runToContinue.workspace)
+    const workflowKey = beginExecution(workflowForRun, workflowPathForRun, selectedProject ?? null)
+    setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
+    updateExecutionForKey(workflowKey, (previous) => ({
+      ...previous,
+      workspace: runToContinue.workspace,
+    }))
 
     const looksResearch = isResearchLikeWorkflow(workflowForRun as unknown as { name: string; description?: string; nodes: Array<{ type: string; config: Record<string, unknown> }> })
     const workflowForExecution = applyWebSearchBackendPreset(
@@ -555,7 +628,7 @@ export function useChainExecution() {
       )
 
       if (typeof result === "string") {
-        finishStartWithRunId(result)
+        finishStartWithRunId(result, workflowKey)
         return
       }
 
@@ -563,31 +636,33 @@ export function useChainExecution() {
         toast.error("Could not continue run", {
           description: result.error,
         })
-        rollbackExecutionStart()
+        rollbackExecutionStart(workflowKey)
         return
       }
 
       toast.error("Could not continue run", {
         description: "No active window is available for execution.",
       })
-    } catch (err) {
-      console.error("[useChainExecution] continueRun failed:", err)
+    } catch (error) {
+      console.error("[useChainExecution] continueRun failed:", error)
       toast.error("Could not continue run", {
-        description: String(err),
+        description: String(error),
       })
     }
 
-    rollbackExecutionStart()
+    rollbackExecutionStart(workflowKey)
   }, [
     beginExecution,
+    defaultProvider,
     finishStartWithRunId,
     rollbackExecutionStart,
     runStatus,
     selectedProject,
     selectedWorkflowPath,
     setCurrentWorkflow,
+    setActiveExecutionProvider,
     setSelectedWorkflowPath,
-    setWorkspace,
+    updateExecutionForKey,
     webSearchBackend,
     workflow,
   ])

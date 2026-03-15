@@ -144,7 +144,7 @@ export function WorkflowsTemplatesPage() {
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [workflows, setWorkflows] = useAtom(workflowsAtom)
-  const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setGenerateDialogOpen] = useAtom(generateDialogOpenAtom)
@@ -230,12 +230,6 @@ export function WorkflowsTemplatesPage() {
     const previousWorkflow = structuredClone(workflow)
     const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     setWorkflow(nextWorkflow)
-    if (selectedWorkflowPath && nextWorkflow.name.trim()) {
-      const nextName = nextWorkflow.name.trim()
-      setWorkflows((prev) =>
-        prev.map((item) => (item.path === selectedWorkflowPath ? { ...item, name: nextName, updatedAt: Date.now() } : item)),
-      )
-    }
     setMainView("thread")
     setPendingTemplate(null)
     toast.success(`Template "${template.name}" applied`, {
@@ -249,24 +243,17 @@ export function WorkflowsTemplatesPage() {
   const doCreateFromTemplate = async (template: WorkflowTemplate, projectPath: string) => {
     const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     try {
-      const existingWorkflows = await window.api.listProjectWorkflows(projectPath)
-      const existingNames = new Set(existingWorkflows.map((item) => item.name.toLowerCase()))
-      let name = template.name.toLowerCase().replace(/\s+/g, "-")
-      if (existingNames.has(name)) {
-        let index = 2
-        while (existingNames.has(`${name}-${index}`)) index += 1
-        name = `${name}-${index}`
-      }
-      const filePath = await window.api.createWorkflow(projectPath, name, nextWorkflow)
+      const filePath = await window.api.createWorkflow(projectPath, template.name, nextWorkflow)
+      const loadedWorkflow = await window.api.loadWorkflow(filePath)
       const refreshed = await window.api.listProjectWorkflows(projectPath)
       setWorkflows(refreshed)
       setSelectedProject(projectPath)
       setSelectedWorkflowPath(filePath)
-      setWorkflow(nextWorkflow)
-      setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow))
+      setWorkflow(loadedWorkflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
       setMainView("thread")
       setPendingTemplate(null)
-      toast.success(`Created "${name}" from template`)
+      toast.success(`Created "${loadedWorkflow.name || template.name}" from template`)
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
     }

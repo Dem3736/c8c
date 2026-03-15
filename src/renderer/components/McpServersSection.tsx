@@ -22,7 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { McpServerInfo, McpServerScope, McpTransportType, McpTestResult } from "@shared/types"
+import type {
+  McpServerInfo,
+  McpServerScope,
+  McpTransportType,
+  McpTestResult,
+  ProviderId,
+} from "@shared/types"
+import { PROVIDER_LABELS } from "@shared/provider-metadata"
 import {
   Plus,
   RefreshCw,
@@ -46,11 +53,13 @@ interface ServerTestState {
 
 function McpServerRow({
   server,
+  provider,
   onEdit,
   onRemove,
   onRefresh,
 }: {
   server: McpServerInfo
+  provider: ProviderId
   onEdit: (server: McpServerInfo) => void
   onRemove: (server: McpServerInfo) => void
   onRefresh: () => void
@@ -63,6 +72,7 @@ function McpServerRow({
     setToggling(true)
     try {
       await window.api.mcpToggleServer(
+        provider,
         server.name,
         server.scope,
         !enabled,
@@ -78,6 +88,7 @@ function McpServerRow({
     setTestState({ loading: true, result: null })
     try {
       const result = await window.api.mcpTestServer(
+        provider,
         server.name,
         server.scope,
         server.projectPath,
@@ -264,11 +275,13 @@ function formStateToServer(form: FormState): McpServerInfo {
 
 function McpServerFormDialog({
   open,
+  provider,
   editingServer,
   onClose,
   onSave,
 }: {
   open: boolean
+  provider: ProviderId
   editingServer: McpServerInfo | null
   onClose: () => void
   onSave: (server: McpServerInfo, originalName?: string) => void
@@ -279,10 +292,11 @@ function McpServerFormDialog({
 
   useEffect(() => {
     if (open) {
-      setForm(editingServer ? serverToFormState(editingServer) : EMPTY_FORM)
+      const nextForm = editingServer ? serverToFormState(editingServer) : EMPTY_FORM
+      setForm(provider === "codex" ? { ...nextForm, scope: "user" } : nextForm)
       setError(null)
     }
-  }, [open, editingServer])
+  }, [editingServer, open, provider])
 
   const isEdit = Boolean(editingServer)
   const nameValid = form.name.trim().length > 0
@@ -405,7 +419,7 @@ function McpServerFormDialog({
           </div>
 
           {/* Scope (only for new servers) */}
-          {!isEdit && (
+          {!isEdit && provider !== "codex" && (
             <div className="space-y-1">
               <Label className="ui-meta-text text-muted-foreground">Scope</Label>
               <Select value={form.scope} onValueChange={(v) => update("scope", v as McpServerScope)}>
@@ -418,6 +432,17 @@ function McpServerFormDialog({
                   <SelectItem value="user">User (~/.claude.json — global)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {!isEdit && provider === "codex" && (
+            <div className="rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2">
+              <p className="text-body-sm text-status-warning">
+                Codex stores MCP servers in global CLI config only.
+              </p>
+              <p className="ui-meta-text text-muted-foreground mt-1">
+                Project and local `.mcp.json` servers still flow into Codex execution through runtime config injection, but they do not appear here as separate scoped entries.
+              </p>
             </div>
           )}
 
@@ -444,11 +469,13 @@ const COLLAPSED_LIMIT = 4
 
 function ServerGroupSection({
   group,
+  provider,
   onEdit,
   onRemove,
   onRefresh,
 }: {
   group: ServerGroup
+  provider: ProviderId
   onEdit: (server: McpServerInfo) => void
   onRemove: (server: McpServerInfo) => void
   onRefresh: () => void
@@ -479,6 +506,7 @@ function ServerGroupSection({
             <McpServerRow
               key={`${server.scope}:${server.projectPath || ""}:${server.name}`}
               server={server}
+              provider={provider}
               onEdit={onEdit}
               onRemove={onRemove}
               onRefresh={onRefresh}
@@ -506,7 +534,7 @@ interface ServerGroup {
   servers: McpServerInfo[]
 }
 
-export function McpServersSection() {
+export function McpServersSection({ provider = "claude" }: { provider?: ProviderId }) {
   const [servers, setServers] = useAtom(mcpServersAtom)
   const [loading, setLoading] = useAtom(mcpServersLoadingAtom)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -515,12 +543,12 @@ export function McpServersSection() {
   const refreshServers = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await window.api.mcpListAllServers()
+      const result = await window.api.mcpListAllServers(provider)
       setServers(result)
     } finally {
       setLoading(false)
     }
-  }, [setServers, setLoading])
+  }, [provider, setServers, setLoading])
 
   useEffect(() => {
     void refreshServers()
@@ -564,16 +592,16 @@ export function McpServersSection() {
   }
 
   const handleRemove = async (server: McpServerInfo) => {
-    await window.api.mcpRemoveServer(server.name, server.scope, server.projectPath)
+    await window.api.mcpRemoveServer(provider, server.name, server.scope, server.projectPath)
     void refreshServers()
   }
 
   const handleSave = async (server: McpServerInfo, originalName?: string) => {
     let result: { success: boolean; error?: string }
     if (originalName) {
-      result = await window.api.mcpUpdateServer(originalName, server, server.projectPath)
+      result = await window.api.mcpUpdateServer(provider, originalName, server, server.projectPath)
     } else {
-      result = await window.api.mcpAddServer(server, server.projectPath)
+      result = await window.api.mcpAddServer(provider, server, server.projectPath)
     }
     if (!result.success) {
       throw new Error(result.error || "Operation failed")
@@ -607,15 +635,26 @@ export function McpServersSection() {
         }
       />
 
+      {provider === "codex" && (
+        <article className="rounded-lg border border-status-warning/20 bg-status-warning/10 px-4 py-3">
+          <p className="text-body-sm text-status-warning">
+            This panel shows only Codex global MCP servers.
+          </p>
+          <p className="ui-meta-text text-muted-foreground mt-1">
+            Project and local `.mcp.json` servers are still injected into Codex runs through provider runtime args.
+          </p>
+        </article>
+      )}
+
       {!hasServers && !loading && (
         <article className="rounded-lg surface-panel p-6">
           <div className="ui-empty-state">
             <Server size={24} className="text-muted-foreground/60" />
             <p className="text-body-sm text-muted-foreground mt-2">
-              No MCP servers configured. Add a server to extend Claude's capabilities with external tools.
+              No MCP servers configured. Add a server to extend the active provider with external tools.
             </p>
             <p className="ui-meta-text text-muted-foreground mt-1">
-              Servers are read from <code className="inline-code">~/.claude.json</code> per-project and <code className="inline-code">~/.claude.json</code> global.
+              Viewing {PROVIDER_LABELS[provider]} servers.
             </p>
           </div>
         </article>
@@ -634,6 +673,7 @@ export function McpServersSection() {
             <ServerGroupSection
               key={group.label + (group.projectPath || "")}
               group={group}
+              provider={provider}
               onEdit={handleEdit}
               onRemove={handleRemove}
               onRefresh={refreshServers}
@@ -644,6 +684,7 @@ export function McpServersSection() {
 
       <McpServerFormDialog
         open={dialogOpen}
+        provider={provider}
         editingServer={editingServer}
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}

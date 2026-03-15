@@ -12,7 +12,6 @@ import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { scanAllSkills } from "../lib/skill-scanner"
-import { getClaudeCodeSubscriptionStatus } from "../lib/claude-subscription"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import { readdir, readFile } from "node:fs/promises"
@@ -20,44 +19,48 @@ import { join, resolve } from "node:path"
 import type { Workflow, WorkflowInput, RunResult } from "@shared/types"
 import { allowedProjectRoots, allowedReportRoots, assertWithinRoots } from "../lib/security-paths"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
+import {
+  getProviderReadiness,
+  providerReadinessError,
+  resolveWorkflowProviderId,
+} from "../lib/provider-runtime"
 
 let runCounter = 0
 let batchCounter = 0
-const activeWindowRuns = new Map<number, string>()
+const activeWindowExecutions = new Map<number, Set<string>>()
 const windowLifecycleBindings = new Set<number>()
 
-function reserveWindowRun(windowId: number): string | null {
-  if (activeWindowRuns.has(windowId)) return null
-  const reservationId = `pending-${windowId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  activeWindowRuns.set(windowId, reservationId)
-  return reservationId
+function trackWindowExecution(windowId: number, executionId: string): void {
+  const executions = activeWindowExecutions.get(windowId) ?? new Set<string>()
+  executions.add(executionId)
+  activeWindowExecutions.set(windowId, executions)
 }
 
-function releaseWindowRun(windowId: number, reservationId: string): void {
-  if (activeWindowRuns.get(windowId) === reservationId) {
-    activeWindowRuns.delete(windowId)
+function releaseWindowExecution(windowId: number, executionId: string): void {
+  const executions = activeWindowExecutions.get(windowId)
+  if (!executions) return
+  executions.delete(executionId)
+  if (executions.size === 0) {
+    activeWindowExecutions.delete(windowId)
   }
 }
 
 function cancelActiveWindowExecution(windowId: number): void {
-  const active = activeWindowRuns.get(windowId)
-  if (!active) return
-  activeWindowRuns.delete(windowId)
+  const executions = activeWindowExecutions.get(windowId)
+  if (!executions || executions.size === 0) return
+  activeWindowExecutions.delete(windowId)
 
-  if (active.startsWith("batch:")) {
-    const batchId = active.slice("batch:".length)
-    const cancelled = cancelBatch(batchId)
-    logInfo("executor-ipc", "window_closed_cancel_batch", { windowId, batchId, cancelled })
-    return
+  for (const executionId of executions) {
+    if (executionId.startsWith("batch:")) {
+      const batchId = executionId.slice("batch:".length)
+      const cancelled = cancelBatch(batchId)
+      logInfo("executor-ipc", "window_closed_cancel_batch", { windowId, batchId, cancelled })
+      continue
+    }
+
+    const cancelled = cancelWorkflowRun(executionId)
+    logInfo("executor-ipc", "window_closed_cancel_run", { windowId, runId: executionId, cancelled })
   }
-
-  if (active.startsWith("pending-")) {
-    logInfo("executor-ipc", "window_closed_release_pending", { windowId, reservationId: active })
-    return
-  }
-
-  const cancelled = cancelWorkflowRun(active)
-  logInfo("executor-ipc", "window_closed_cancel_run", { windowId, runId: active, cancelled })
 }
 
 function bindWindowLifecycle(window: BrowserWindow): void {
@@ -161,22 +164,13 @@ export function registerExecutorHandlers() {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
 
-      if (activeWindowRuns.has(window.id)) {
-        return { error: "A workflow is already running" }
-      }
-
-      // Pre-run CLI availability check
       try {
-        const cliStatus = await getClaudeCodeSubscriptionStatus()
-        if (!cliStatus.cliInstalled) {
-          return { error: "cli_unavailable:Claude CLI is not installed. Install it with: npm install -g @anthropic-ai/claude-code" }
-        }
-        if (!cliStatus.loggedIn) {
-          return { error: "cli_unavailable:Claude CLI is not authenticated. Run `claude login` in your terminal." }
-        }
+        const providerId = await resolveWorkflowProviderId(workflow)
+        const readiness = await getProviderReadiness(providerId)
+        const providerError = providerReadinessError(readiness)
+        if (providerError) return { error: providerError }
       } catch (err) {
         logWarn("executor-ipc", "cli_precheck_failed", { error: errorMessage(err) })
-        // Don't block on check failure — let the run attempt proceed
       }
 
       let errors: string[]
@@ -189,53 +183,44 @@ export function registerExecutorHandlers() {
         return { error: errors.join("; ") }
       }
 
-      const reservationId = reserveWindowRun(window.id)
-      if (!reservationId) {
-        return { error: "A workflow is already running" }
+      // Auto-scaffold missing skills before run
+      if (projectPath) {
+        try {
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
+        }
       }
 
-      try {
-        // Auto-scaffold missing skills before run
-        if (projectPath) {
-          try {
-            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
-          } catch (err) {
-            return { error: `Skill scaffolding failed: ${String(err)}` }
+      if (window.isDestroyed()) {
+        logWarn("executor-ipc", "run_start_aborted_window_closed", { windowId: window.id })
+        return { error: "Window was closed before run start" }
+      }
+
+      const runId = `run-${++runCounter}-${Date.now()}`
+      trackWindowExecution(window.id, runId)
+      logInfo("executor-ipc", "run_started", { runId, windowId: window.id })
+
+      // Fire and forget — events stream back via IPC
+      runWorkflow(runId, workflow, input, window, projectPath, workflowPath, webSearchBackend).catch((err) => {
+        try {
+          if (!window.isDestroyed()) {
+            window.webContents.send("workflow:event", {
+              runId,
+              type: "node-error",
+              nodeId: "__global",
+              error: String(err),
+            })
+            window.webContents.send("workflow:event", {
+              runId,
+              type: "run-done",
+              status: "failed",
+            })
           }
-        }
+        } catch { /* window destroyed between check and send */ }
+      }).finally(() => releaseWindowExecution(window.id, runId))
 
-        if (window.isDestroyed()) {
-          logWarn("executor-ipc", "run_start_aborted_window_closed", { windowId: window.id })
-          return { error: "Window was closed before run start" }
-        }
-
-        const runId = `run-${++runCounter}-${Date.now()}`
-        activeWindowRuns.set(window.id, runId)
-        logInfo("executor-ipc", "run_started", { runId, windowId: window.id })
-
-        // Fire and forget — events stream back via IPC
-        runWorkflow(runId, workflow, input, window, projectPath, workflowPath, webSearchBackend).catch((err) => {
-          try {
-            if (!window.isDestroyed()) {
-              window.webContents.send("workflow:event", {
-                runId,
-                type: "node-error",
-                nodeId: "__global",
-                error: String(err),
-              })
-              window.webContents.send("workflow:event", {
-                runId,
-                type: "run-done",
-                status: "failed",
-              })
-            }
-          } catch { /* window destroyed between check and send */ }
-        }).finally(() => activeWindowRuns.delete(window.id))
-
-        return runId
-      } finally {
-        releaseWindowRun(window.id, reservationId)
-      }
+      return runId
     },
   )
 
@@ -270,61 +255,63 @@ export function registerExecutorHandlers() {
         return { error: valErrors.join("; ") }
       }
 
-      const reservationId = reserveWindowRun(window.id)
-      if (!reservationId) return null
-
       try {
-        const runId = `rerun-${++runCounter}-${Date.now()}`
-        const safeWorkspace = await assertRunWorkspacePath(workspace)
-
-        // Auto-scaffold missing skills before rerun
-        if (projectPath) {
-          try {
-            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
-          } catch (err) {
-            return { error: `Skill scaffolding failed: ${String(err)}` }
-          }
-        }
-
-        if (window.isDestroyed()) {
-          logWarn("executor-ipc", "rerun_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
-          return { error: "Window was closed before rerun start" }
-        }
-
-        activeWindowRuns.set(window.id, runId)
-        logInfo("executor-ipc", "rerun_started", { runId, fromNodeId, windowId: window.id })
-
-        rerunFromNode(
-          runId,
-          fromNodeId,
-          workflow,
-          safeWorkspace,
-          window,
-          projectPath,
-          workflowPath,
-          webSearchBackend,
-        ).catch((err) => {
-          try {
-            if (!window.isDestroyed()) {
-              window.webContents.send("workflow:event", {
-                runId,
-                type: "node-error",
-                nodeId: "__global",
-                error: String(err),
-              })
-              window.webContents.send("workflow:event", {
-                runId,
-                type: "run-done",
-                status: "failed",
-              })
-            }
-          } catch { /* window destroyed between check and send */ }
-        }).finally(() => activeWindowRuns.delete(window.id))
-
-        return runId
-      } finally {
-        releaseWindowRun(window.id, reservationId)
+        const providerId = await resolveWorkflowProviderId(workflow)
+        const readiness = await getProviderReadiness(providerId)
+        const providerError = providerReadinessError(readiness)
+        if (providerError) return { error: providerError }
+      } catch (err) {
+        logWarn("executor-ipc", "rerun_precheck_failed", { error: errorMessage(err) })
       }
+
+      const runId = `rerun-${++runCounter}-${Date.now()}`
+      const safeWorkspace = await assertRunWorkspacePath(workspace)
+
+      // Auto-scaffold missing skills before rerun
+      if (projectPath) {
+        try {
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
+        }
+      }
+
+      if (window.isDestroyed()) {
+        logWarn("executor-ipc", "rerun_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
+        return { error: "Window was closed before rerun start" }
+      }
+
+      trackWindowExecution(window.id, runId)
+      logInfo("executor-ipc", "rerun_started", { runId, fromNodeId, windowId: window.id })
+
+      rerunFromNode(
+        runId,
+        fromNodeId,
+        workflow,
+        safeWorkspace,
+        window,
+        projectPath,
+        workflowPath,
+        webSearchBackend,
+      ).catch((err) => {
+        try {
+          if (!window.isDestroyed()) {
+            window.webContents.send("workflow:event", {
+              runId,
+              type: "node-error",
+              nodeId: "__global",
+              error: String(err),
+            })
+            window.webContents.send("workflow:event", {
+              runId,
+              type: "run-done",
+              status: "failed",
+            })
+          }
+        } catch { /* window destroyed between check and send */ }
+      }).finally(() => releaseWindowExecution(window.id, runId))
+
+      return runId
     },
   )
 
@@ -346,60 +333,62 @@ export function registerExecutorHandlers() {
         return { error: valErrors.join("; ") }
       }
 
-      const reservationId = reserveWindowRun(window.id)
-      if (!reservationId) return null
-
       try {
-        const runId = `resume-${++runCounter}-${Date.now()}`
-        const safeWorkspace = await assertRunWorkspacePath(workspace)
-
-        // Auto-scaffold missing skills before continue.
-        if (projectPath) {
-          try {
-            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
-          } catch (err) {
-            return { error: `Skill scaffolding failed: ${String(err)}` }
-          }
-        }
-
-        if (window.isDestroyed()) {
-          logWarn("executor-ipc", "continue_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
-          return { error: "Window was closed before continue start" }
-        }
-
-        activeWindowRuns.set(window.id, runId)
-        logInfo("executor-ipc", "continue_started", { runId, windowId: window.id, workspace: safeWorkspace })
-
-        continueRunFromWorkspace(
-          runId,
-          workflow,
-          safeWorkspace,
-          window,
-          projectPath,
-          workflowPath,
-          webSearchBackend,
-        ).catch((err) => {
-          try {
-            if (!window.isDestroyed()) {
-              window.webContents.send("workflow:event", {
-                runId,
-                type: "node-error",
-                nodeId: "__global",
-                error: String(err),
-              })
-              window.webContents.send("workflow:event", {
-                runId,
-                type: "run-done",
-                status: "failed",
-              })
-            }
-          } catch { /* window destroyed between check and send */ }
-        }).finally(() => activeWindowRuns.delete(window.id))
-
-        return runId
-      } finally {
-        releaseWindowRun(window.id, reservationId)
+        const providerId = await resolveWorkflowProviderId(workflow)
+        const readiness = await getProviderReadiness(providerId)
+        const providerError = providerReadinessError(readiness)
+        if (providerError) return { error: providerError }
+      } catch (err) {
+        logWarn("executor-ipc", "continue_precheck_failed", { error: errorMessage(err) })
       }
+
+      const runId = `resume-${++runCounter}-${Date.now()}`
+      const safeWorkspace = await assertRunWorkspacePath(workspace)
+
+      // Auto-scaffold missing skills before continue.
+      if (projectPath) {
+        try {
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
+        }
+      }
+
+      if (window.isDestroyed()) {
+        logWarn("executor-ipc", "continue_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
+        return { error: "Window was closed before continue start" }
+      }
+
+      trackWindowExecution(window.id, runId)
+      logInfo("executor-ipc", "continue_started", { runId, windowId: window.id, workspace: safeWorkspace })
+
+      continueRunFromWorkspace(
+        runId,
+        workflow,
+        safeWorkspace,
+        window,
+        projectPath,
+        workflowPath,
+        webSearchBackend,
+      ).catch((err) => {
+        try {
+          if (!window.isDestroyed()) {
+            window.webContents.send("workflow:event", {
+              runId,
+              type: "node-error",
+              nodeId: "__global",
+              error: String(err),
+            })
+            window.webContents.send("workflow:event", {
+              runId,
+              type: "run-done",
+              status: "failed",
+            })
+          }
+        } catch { /* window destroyed between check and send */ }
+      }).finally(() => releaseWindowExecution(window.id, runId))
+
+      return runId
     },
   )
 
@@ -497,48 +486,42 @@ export function registerExecutorHandlers() {
         return { error: valErrors.join("; ") }
       }
 
-      const reservationId = reserveWindowRun(window.id)
-      if (!reservationId) return null
-
-      try {
-        // Auto-scaffold missing skills before batch run
-        if (projectPath) {
-          try {
-            workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
-          } catch (err) {
-            return { error: `Skill scaffolding failed: ${String(err)}` }
-          }
+      // Auto-scaffold missing skills before batch run
+      if (projectPath) {
+        try {
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
+        } catch (err) {
+          return { error: `Skill scaffolding failed: ${String(err)}` }
         }
-
-        if (window.isDestroyed()) {
-          logWarn("executor-ipc", "batch_start_aborted_window_closed", { windowId: window.id })
-          return { error: "Window was closed before batch start" }
-        }
-
-        const batchId = `batch-${++batchCounter}-${Date.now()}`
-        activeWindowRuns.set(window.id, `batch:${batchId}`)
-        logInfo("executor-ipc", "batch_started", { batchId, windowId: window.id, inputs: inputs.length, concurrency, stopOnFailure })
-
-        runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
-          .catch((err) => {
-            const errorMessage = String(err)
-            logError("executor-ipc", "batch_unhandled_failure", { batchId, error: errorMessage })
-            try {
-              if (!window.isDestroyed()) {
-                window.webContents.send("batch:event", {
-                  type: "batch-error",
-                  batchId,
-                  error: errorMessage,
-                })
-              }
-            } catch { /* window destroyed between check and send */ }
-          })
-          .finally(() => activeWindowRuns.delete(window.id))
-
-        return batchId
-      } finally {
-        releaseWindowRun(window.id, reservationId)
       }
+
+      if (window.isDestroyed()) {
+        logWarn("executor-ipc", "batch_start_aborted_window_closed", { windowId: window.id })
+        return { error: "Window was closed before batch start" }
+      }
+
+      const batchId = `batch-${++batchCounter}-${Date.now()}`
+      const executionId = `batch:${batchId}`
+      trackWindowExecution(window.id, executionId)
+      logInfo("executor-ipc", "batch_started", { batchId, windowId: window.id, inputs: inputs.length, concurrency, stopOnFailure })
+
+      runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
+        .catch((err) => {
+          const errorMessage = String(err)
+          logError("executor-ipc", "batch_unhandled_failure", { batchId, error: errorMessage })
+          try {
+            if (!window.isDestroyed()) {
+              window.webContents.send("batch:event", {
+                type: "batch-error",
+                batchId,
+                error: errorMessage,
+              })
+            }
+          } catch { /* window destroyed between check and send */ }
+        })
+        .finally(() => releaseWindowExecution(window.id, executionId))
+
+      return batchId
     },
   )
 

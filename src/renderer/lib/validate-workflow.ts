@@ -1,4 +1,8 @@
-import type { Workflow } from "@shared/types"
+import type { ProviderId, Workflow } from "@shared/types"
+import {
+  modelLooksCompatible,
+  resolveWorkflowProvider,
+} from "@shared/provider-metadata"
 
 export interface ValidationError {
   nodeId: string
@@ -7,16 +11,19 @@ export interface ValidationError {
   severity: "error" | "warning"
 }
 
-export function validateWorkflow(workflow: Workflow): ValidationError[] {
+export function validateWorkflow(workflow: Workflow, defaultProvider: ProviderId = "claude"): ValidationError[] {
   const errors: ValidationError[] = []
+  const workflowProvider = resolveWorkflowProvider(workflow, defaultProvider)
 
   for (const node of workflow.nodes) {
     if (node.type === "skill") {
-      if (!node.config.skillRef?.trim()) {
+      const hasSkillRef = !!node.config.skillRef?.trim()
+      const hasPrompt = !!node.config.prompt?.trim()
+      if (!hasSkillRef && !hasPrompt) {
         errors.push({
           nodeId: node.id,
-          field: "skillRef",
-          message: "Skill reference is required.",
+          field: "prompt",
+          message: "Add a prompt or select a skill reference.",
           severity: "error",
         })
       }
@@ -43,6 +50,15 @@ export function validateWorkflow(workflow: Workflow): ValidationError[] {
         })
       }
     }
+  }
+
+  if (workflow.defaults?.model?.trim() && !modelLooksCompatible(workflowProvider, workflow.defaults.model)) {
+    errors.push({
+      nodeId: "__workflow__",
+      field: "defaults.model",
+      message: `Default model "${workflow.defaults.model}" does not match provider "${workflowProvider}".`,
+      severity: "error",
+    })
   }
 
   // Check for disconnected nodes (no incoming or outgoing edges, except input/output)

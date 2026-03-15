@@ -14,16 +14,41 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
-import { globalExecutionDefaultsAtom, webSearchBackendAtom } from "@/lib/store"
-import type { ClaudeCodeSubscriptionStatus, TelemetrySettings, UpdateInfo, UpdateEvent } from "@shared/types"
+import {
+  defaultProviderAtom,
+  globalExecutionDefaultsAtom,
+  providerAuthStatusAtom,
+  providerAvailabilityAtom,
+  providerSettingsAtom,
+  webSearchBackendAtom,
+} from "@/lib/store"
+import type {
+  ProviderDiagnostics,
+  ProviderId,
+  TelemetrySettings,
+  UpdateInfo,
+  UpdateEvent,
+} from "@shared/types"
+import {
+  PROVIDER_LABELS,
+  SAFETY_PROFILE_LABELS,
+  getDefaultModelForProvider,
+  modelLooksCompatible,
+} from "@shared/provider-metadata"
 import { Download, Loader2, RefreshCw } from "lucide-react"
 import { McpServersSection } from "@/components/McpServersSection"
+import { ProviderModelInput, ProviderSelect } from "@/components/provider-controls"
 
 export function SettingsPage() {
   const [webSearchBackend, setWebSearchBackend] = useAtom(webSearchBackendAtom)
   const [execDefaults, setExecDefaults] = useAtom(globalExecutionDefaultsAtom)
-  const [subscriptionStatus, setSubscriptionStatus] = useState<ClaudeCodeSubscriptionStatus | null>(null)
-  const [subscriptionStatusLoading, setSubscriptionStatusLoading] = useState(false)
+  const [providerSettings, setProviderSettings] = useAtom(providerSettingsAtom)
+  const [defaultProvider, setDefaultProvider] = useAtom(defaultProviderAtom)
+  const [providerAvailability, setProviderAvailability] = useAtom(providerAvailabilityAtom)
+  const [providerAuthStatus, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
+  const [providerDiagnosticsLoading, setProviderDiagnosticsLoading] = useState(false)
+  const [codexApiKeyDraft, setCodexApiKeyDraft] = useState("")
+  const [codexApiKeySaving, setCodexApiKeySaving] = useState(false)
   const [telemetrySettings, setTelemetrySettings] = useState<TelemetrySettings | null>(null)
   const [telemetrySettingsLoading, setTelemetrySettingsLoading] = useState(false)
   const [telemetryConsentSaving, setTelemetryConsentSaving] = useState(false)
@@ -37,15 +62,26 @@ export function SettingsPage() {
     trackUiEvent?: (eventName: "settings_opened") => Promise<boolean>
   }
 
-  const refreshSubscriptionStatus = useCallback(async () => {
-    setSubscriptionStatusLoading(true)
+  const applyProviderDiagnostics = useCallback((diagnostics: ProviderDiagnostics) => {
+    setProviderSettings(diagnostics.settings)
+    setProviderAvailability(diagnostics.health)
+    setProviderAuthStatus(diagnostics.auth)
+  }, [setProviderAuthStatus, setProviderAvailability, setProviderSettings])
+
+  const refreshProviderDiagnostics = useCallback(async () => {
+    setProviderDiagnosticsLoading(true)
     try {
-      const status = await window.api.getClaudeCodeSubscriptionStatus()
-      setSubscriptionStatus(status)
+      const diagnostics = await window.api.getProviderDiagnostics()
+      applyProviderDiagnostics(diagnostics)
     } finally {
-      setSubscriptionStatusLoading(false)
+      setProviderDiagnosticsLoading(false)
     }
-  }, [])
+  }, [applyProviderDiagnostics])
+
+  const persistProviderSettings = useCallback(async (patch: Partial<typeof providerSettings>) => {
+    const nextSettings = await window.api.updateProviderSettings(patch)
+    setProviderSettings(nextSettings)
+  }, [setProviderSettings])
 
   const refreshTelemetrySettings = useCallback(async () => {
     if (typeof telemetryApi.getTelemetrySettings !== "function") {
@@ -94,8 +130,51 @@ export function SettingsPage() {
     void window.api.installUpdate()
   }, [])
 
+  const handleDefaultProviderChange = useCallback(async (provider: ProviderId) => {
+    await persistProviderSettings({ defaultProvider: provider })
+    setDefaultProvider(provider)
+    setExecDefaults((prev) => ({
+      ...prev,
+      model: modelLooksCompatible(provider, prev.model)
+        ? prev.model
+        : getDefaultModelForProvider(provider),
+    }))
+  }, [persistProviderSettings, setDefaultProvider, setExecDefaults])
+
+  const handleSaveCodexApiKey = useCallback(async () => {
+    setCodexApiKeySaving(true)
+    try {
+      const diagnostics = await window.api.setCodexApiKey(codexApiKeyDraft)
+      applyProviderDiagnostics(diagnostics)
+      setCodexApiKeyDraft("")
+    } finally {
+      setCodexApiKeySaving(false)
+    }
+  }, [applyProviderDiagnostics, codexApiKeyDraft])
+
+  const handleClearCodexApiKey = useCallback(async () => {
+    setCodexApiKeySaving(true)
+    try {
+      const diagnostics = await window.api.clearCodexApiKey()
+      applyProviderDiagnostics(diagnostics)
+      setCodexApiKeyDraft("")
+    } finally {
+      setCodexApiKeySaving(false)
+    }
+  }, [applyProviderDiagnostics])
+
+  const handleLogoutProvider = useCallback(async (provider: ProviderId) => {
+    setProviderDiagnosticsLoading(true)
+    try {
+      const diagnostics = await window.api.logoutProvider(provider)
+      applyProviderDiagnostics(diagnostics)
+    } finally {
+      setProviderDiagnosticsLoading(false)
+    }
+  }, [applyProviderDiagnostics])
+
   useEffect(() => {
-    void refreshSubscriptionStatus()
+    void refreshProviderDiagnostics()
     void refreshTelemetrySettings()
     void window.api.getAppVersion().then(setAppVersion)
     void window.api.getUpdateStatus().then(setUpdateInfo)
@@ -127,28 +206,7 @@ export function SettingsPage() {
     })
 
     return unsubUpdate
-  }, [refreshSubscriptionStatus, refreshTelemetrySettings, telemetryApi])
-
-  const subscriptionBadge = useMemo(() => {
-    if (subscriptionStatusLoading && !subscriptionStatus) {
-      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-2/70 px-2 py-1">Checking...</span>
-    }
-    if (!subscriptionStatus) {
-      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Unknown</span>
-    }
-    if (!subscriptionStatus.cliInstalled) {
-      return <span className="ui-meta-text rounded-md border border-status-danger/30 bg-status-danger/10 px-2 py-1 text-status-danger">CLI not found</span>
-    }
-    if (subscriptionStatus.hasSubscription) {
-      return <span className="ui-meta-text rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 text-status-success">Connected</span>
-    }
-    return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Not connected</span>
-  }, [subscriptionStatus, subscriptionStatusLoading])
-
-  const checkedAtLabel = subscriptionStatus
-    ? new Date(subscriptionStatus.checkedAt).toLocaleString()
-    : null
-  const isInitialSubscriptionCheck = subscriptionStatusLoading && !subscriptionStatus
+  }, [refreshProviderDiagnostics, refreshTelemetrySettings, telemetryApi])
   const telemetryAvailable = Boolean(telemetrySettings?.enabledInBuild)
   const telemetryChecked = Boolean(telemetrySettings?.consent)
   const telemetryDisabled = telemetrySettingsLoading || telemetryConsentSaving || !telemetryAvailable
@@ -181,6 +239,7 @@ export function SettingsPage() {
     }
     return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled</span>
   }, [telemetryAvailable, telemetryChecked, telemetrySettings, telemetrySettingsLoading])
+  const providers = useMemo(() => ["claude", "codex"] as ProviderId[], [])
 
   return (
     <PageShell>
@@ -295,23 +354,17 @@ export function SettingsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="exec-default-model" className="text-body-sm font-medium text-foreground">Model</Label>
-              <Select
+              <ProviderModelInput
+                id="exec-default-model"
+                provider={defaultProvider}
                 value={execDefaults.model}
                 onValueChange={(value) => setExecDefaults((prev) => ({ ...prev, model: value }))}
-              >
-                <SelectTrigger id="exec-default-model" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Model</SelectLabel>
-                    <SelectItem value="sonnet">Sonnet</SelectItem>
-                    <SelectItem value="opus">Opus</SelectItem>
-                    <SelectItem value="haiku">Haiku</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="ui-meta-text text-muted-foreground">Claude model for skill nodes.</p>
+                placeholder={getDefaultModelForProvider(defaultProvider)}
+                className="w-full"
+              />
+              <p className="ui-meta-text text-muted-foreground">
+                Suggested models follow the current default provider.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -401,107 +454,170 @@ export function SettingsPage() {
         </article>
       </section>
 
-      <McpServersSection />
-
       <section className="space-y-3">
-        <SectionHeading title="Integrations" />
+        <SectionHeading title="Providers" />
 
-        <article className="rounded-lg surface-panel p-4 space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-body-md font-semibold">Claude Code Subscription</h3>
-              <p className="text-body-sm text-muted-foreground mt-1">
-                Checks local Claude CLI auth state and whether Claude subscription auth is available.
+        <article className="rounded-lg surface-panel p-4 space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="default-provider" className="text-body-sm font-medium text-foreground">
+                Default provider
+              </Label>
+              <ProviderSelect
+                id="default-provider"
+                value={defaultProvider}
+                onValueChange={(value) => void handleDefaultProviderChange(value)}
+                codexEnabled={providerSettings.features.codexProvider}
+                className="w-full"
+              />
+              <p className="ui-meta-text text-muted-foreground">
+                Used when a workflow does not set its own provider override.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {subscriptionBadge}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => void refreshSubscriptionStatus()}
-                disabled={subscriptionStatusLoading}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="safety-profile" className="text-body-sm font-medium text-foreground">
+                Safety profile
+              </Label>
+              <Select
+                value={providerSettings.safetyProfile}
+                onValueChange={(value) => void persistProviderSettings({ safetyProfile: value as typeof providerSettings.safetyProfile })}
               >
-                {subscriptionStatusLoading ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={14} />
-                )}
-                Refresh
-              </Button>
+                <SelectTrigger id="safety-profile" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Profile</SelectLabel>
+                    {Object.entries(SAFETY_PROFILE_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="ui-meta-text text-muted-foreground">
+                Mapped to provider-specific sandbox and approval flags at runtime.
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 text-body-sm text-muted-foreground sm:grid-cols-2">
-            <p>
-              CLI:{" "}
-              <span className="text-foreground">
-                {isInitialSubscriptionCheck
-                  ? "checking..."
-                  : subscriptionStatus?.cliInstalled ? "installed" : "not found"}
-              </span>
-            </p>
-            <p>
-              Auth method:{" "}
-              <span className="text-foreground">
-                {isInitialSubscriptionCheck
-                  ? "checking..."
-                  : subscriptionStatus?.authMethod || "none"}
-              </span>
-            </p>
-            <p>
-              Logged in:{" "}
-              <span className="text-foreground">
-                {isInitialSubscriptionCheck
-                  ? "checking..."
-                  : subscriptionStatus?.loggedIn ? "yes" : "no"}
-              </span>
-            </p>
-            <p>
-              Provider:{" "}
-              <span className="text-foreground">
-                {isInitialSubscriptionCheck
-                  ? "checking..."
-                  : subscriptionStatus?.apiProvider || "n/a"}
-              </span>
-            </p>
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void refreshProviderDiagnostics()}
+              disabled={providerDiagnosticsLoading}
+            >
+              {providerDiagnosticsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Refresh provider status
+            </Button>
           </div>
 
-          {checkedAtLabel ? (
-            <p className="ui-meta-text text-muted-foreground">
-              Last check: {checkedAtLabel}
-            </p>
-          ) : null}
+          <div className="grid grid-cols-1 gap-3">
+            {providers.map((providerId) => {
+              const health = providerAvailability[providerId]
+              const auth = providerAuthStatus[providerId]
+              const available = Boolean(health?.available)
+              const authenticated = Boolean(auth?.authenticated)
+              const statusLabel = !health
+                ? "Checking..."
+                : !available
+                  ? "CLI not found"
+                  : authenticated
+                    ? "Ready"
+                    : "Needs auth"
 
-          {subscriptionStatus?.error ? (
-            <p className="text-body-sm text-status-danger">
-              {subscriptionStatus.error}
-            </p>
-          ) : null}
+              return (
+                <article key={providerId} className="rounded-lg border border-hairline bg-surface-1/60 p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-body-md font-semibold">{PROVIDER_LABELS[providerId]}</h3>
+                      <p className="text-body-sm text-muted-foreground mt-1">
+                        {health?.version || "CLI version unknown"}
+                      </p>
+                    </div>
+                    <span className={`ui-meta-text rounded-md border px-2 py-1 ${
+                      authenticated
+                        ? "border-status-success/30 bg-status-success/10 text-status-success"
+                        : available
+                          ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
+                          : "border-status-danger/30 bg-status-danger/10 text-status-danger"
+                    }`}>
+                      {statusLabel}
+                    </span>
+                  </div>
 
-          {subscriptionStatus && !subscriptionStatus.cliInstalled && (
-            <div className="ui-alert-warning space-y-1">
-              <p className="font-medium text-status-warning">Claude CLI is required to run workflows</p>
-              <p className="text-muted-foreground">
-                Install via: <code className="inline-code">npm install -g @anthropic-ai/claude-code</code>
-              </p>
-              <p className="text-muted-foreground">
-                Then authenticate: <code className="inline-code">claude login</code>
-              </p>
-            </div>
-          )}
+                  <div className="grid grid-cols-1 gap-2 text-body-sm text-muted-foreground sm:grid-cols-2">
+                    <p>Executable: <span className="text-foreground">{health?.executablePath || "not found"}</span></p>
+                    <p>Auth method: <span className="text-foreground">{auth?.authMethod || "none"}</span></p>
+                    <p>Account: <span className="text-foreground">{auth?.accountLabel || "n/a"}</span></p>
+                    <p>API key override: <span className="text-foreground">{auth?.apiKeyConfigured ? "configured" : "not set"}</span></p>
+                  </div>
 
-          {subscriptionStatus?.cliInstalled && !subscriptionStatus.loggedIn && (
-            <div className="ui-alert-warning space-y-1">
-              <p className="font-medium text-status-warning">Not authenticated</p>
-              <p className="text-muted-foreground">
-                Run <code className="inline-code">claude login</code> in your terminal, then click Refresh above.
-              </p>
-            </div>
-          )}
+                  {health?.error ? (
+                    <p className="text-body-sm text-status-danger">{health.error}</p>
+                  ) : null}
+                  {auth?.error ? (
+                    <p className="text-body-sm text-status-danger">{auth.error}</p>
+                  ) : null}
+
+                  {providerId === "codex" && (
+                    <div className="space-y-2 rounded-lg border border-hairline bg-surface-2/40 p-3">
+                      <Label htmlFor="codex-api-key" className="text-body-sm font-medium text-foreground">
+                        CODEX_API_KEY override
+                      </Label>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Input
+                          id="codex-api-key"
+                          type="password"
+                          value={codexApiKeyDraft}
+                          onChange={(event) => setCodexApiKeyDraft(event.target.value)}
+                          placeholder="Paste API key to store in the main process"
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void handleSaveCodexApiKey()}
+                          disabled={codexApiKeySaving || !codexApiKeyDraft.trim()}
+                        >
+                          Save key
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => void handleClearCodexApiKey()}
+                          disabled={codexApiKeySaving}
+                        >
+                          Clear key
+                        </Button>
+                      </div>
+                      <p className="ui-meta-text text-muted-foreground">
+                        ChatGPT subscription login works via <code className="inline-code">codex login</code> and does not require an API key. The app-managed key is only an optional override stored in the main process.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleLogoutProvider(providerId)}
+                      disabled={providerDiagnosticsLoading}
+                    >
+                      Log out
+                    </Button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
         </article>
       </section>
+
+      <McpServersSection provider={defaultProvider} />
 
       <section className="space-y-3">
         <SectionHeading title="Privacy" />

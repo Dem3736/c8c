@@ -25,6 +25,7 @@
     "package:mac": "electron-builder --mac"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.45",
     "@claude-tools/mcp-search-proxy": "workspace:*",
     "@claude-tools/runner": "workspace:*",
     "@dagrejs/dagre": "^2.0.4",

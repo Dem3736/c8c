@@ -1,11 +1,31 @@
-import { useEffect, useState } from "react"
-import { useAtom } from "jotai"
+import { useEffect, useMemo, useState } from "react"
+import { useAtom, useAtomValue } from "jotai"
 import { cn } from "@/lib/cn"
-import { currentWorkflowAtom, inputValueAtom, selectedWorkflowPathAtom } from "@/lib/store"
+import {
+  currentWorkflowAtom,
+  defaultProviderAtom,
+  inputValueAtom,
+  inputAttachmentsAtom,
+  providerSettingsAtom,
+  selectedWorkflowPathAtom,
+} from "@/lib/store"
 import { resolveWorkflowInput } from "@/lib/input-type"
 import type { InputNodeConfig } from "@shared/types"
+import { getDefaultModelForProvider, modelLooksCompatible } from "@shared/provider-metadata"
 import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { File, History, Type, X, Plus } from "lucide-react"
+import { TextareaWithMention } from "@/components/input/TextareaWithMention"
+import { FilePicker } from "@/components/input/FilePicker"
+import { RunPicker } from "@/components/input/RunPicker"
+import { TextAttachmentEditor } from "@/components/input/TextAttachmentEditor"
+import { ProviderModelSelect, ProviderSelect } from "@/components/provider-controls"
 
 interface InputPanelProps {
   label?: string
@@ -14,11 +34,21 @@ interface InputPanelProps {
 
 export function InputPanel({ label = "Input", compact = false }: InputPanelProps = {}) {
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
-  const [workflow] = useAtom(currentWorkflowAtom)
+  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const defaultProvider = useAtomValue(defaultProviderAtom)
+  const providerSettings = useAtomValue(providerSettingsAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [attachments, setAttachments] = useAtom(inputAttachmentsAtom)
   const [touched, setTouched] = useState(false)
+  const [filePickerOpen, setFilePickerOpen] = useState(false)
+  const [runPickerOpen, setRunPickerOpen] = useState(false)
+  const [textEditorOpen, setTextEditorOpen] = useState(false)
+  const [editingTextIndex, setEditingTextIndex] = useState<number | undefined>(undefined)
+
   const inputNode = workflow.nodes.find((node) => node.type === "input")
   const inputConfig = (inputNode?.config || {}) as InputNodeConfig
+  const workflowProvider = workflow.defaults?.provider || defaultProvider
+  const workflowModel = workflow.defaults?.model || getDefaultModelForProvider(workflowProvider)
   const resolvedInput = resolveWorkflowInput(inputValue, {
     inputType: inputConfig.inputType,
     required: inputConfig.required,
@@ -41,7 +71,45 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
 
   useEffect(() => {
     setTouched(false)
-  }, [selectedWorkflowPath])
+    setAttachments([])
+  }, [selectedWorkflowPath, setAttachments])
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleEditText = (index: number) => {
+    setEditingTextIndex(index)
+    setTextEditorOpen(true)
+  }
+
+  const handleAddText = () => {
+    setEditingTextIndex(undefined)
+    setTextEditorOpen(true)
+  }
+
+  const existingFilePaths = useMemo(
+    () => new Set(attachments.filter((a) => a.kind === "file").map((a) => a.path)),
+    [attachments],
+  )
+
+  const handleFileMention = (file: { name: string; relativePath: string }) => {
+    if (existingFilePaths.has(file.relativePath)) return
+    setAttachments((prev) => [
+      ...prev,
+      { kind: "file" as const, path: file.relativePath, name: file.name },
+    ])
+  }
+
+  const updateWorkflowDefaults = (patch: Record<string, unknown>) => {
+    setWorkflow((prev) => ({
+      ...prev,
+      defaults: {
+        ...(prev.defaults || {}),
+        ...patch,
+      },
+    }))
+  }
 
   return (
     <section
@@ -54,11 +122,13 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         {label}
       </label>
 
-      <Textarea
+      <TextareaWithMention
         id="workflow-input"
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onBlur={() => setTouched(true)}
+        onFileMention={handleFileMention}
+        existingFilePaths={existingFilePaths}
         placeholder={placeholder}
         rows={compact ? 2 : 4}
         aria-invalid={showError || undefined}
@@ -69,29 +139,115 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         )}
       />
 
-      <div className={cn("flex items-center gap-2", compact && "flex-wrap gap-y-1")}>
-        <span role="status" aria-live="polite">
-          <Badge variant="outline">
-            Type: {inputTypeLabel}
+      {/* Attachment chips */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {attachments.map((att, i) => (
+          <Badge
+            key={`${att.kind}-${i}`}
+            variant="outline"
+            className="gap-1.5 pl-1.5 pr-1 py-0.5 max-w-[200px] cursor-default"
+          >
+            {att.kind === "file" && <File size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+            {att.kind === "run" && <History size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+            {att.kind === "text" && <Type size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+            <span
+              className="truncate text-[11px]"
+              title={att.kind === "file" ? att.path : att.kind === "run" ? `${att.workflowName} (${att.runId.slice(0, 8)})` : att.label}
+              onClick={att.kind === "text" ? () => handleEditText(i) : undefined}
+              role={att.kind === "text" ? "button" : undefined}
+              tabIndex={att.kind === "text" ? 0 : undefined}
+              onKeyDown={att.kind === "text" ? (e) => { if (e.key === "Enter" || e.key === " ") handleEditText(i) } : undefined}
+            >
+              {att.kind === "file" && att.name}
+              {att.kind === "run" && att.workflowName}
+              {att.kind === "text" && att.label}
+            </span>
+            <button
+              type="button"
+              onClick={() => removeAttachment(i)}
+              className="ml-0.5 rounded-sm p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+              aria-label={`Remove ${att.kind === "file" ? att.name : att.kind === "run" ? att.workflowName : att.label}`}
+            >
+              <X size={10} aria-hidden="true" />
+            </button>
           </Badge>
-        </span>
-        {forcedInputType && (
-          <span className="ui-meta-text text-muted-foreground">
-            Locked to {forcedInputType}
+        ))}
+      </div>
+
+      <div className={cn("control-cluster flex flex-wrap items-center gap-1.5 rounded-[1rem] px-1.5 py-1.5", compact && "gap-1")}>
+        <div className="flex flex-wrap items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 rounded-full border-hairline bg-surface-1/85 text-muted-foreground shadow-inset-highlight-subtle hover:bg-surface-1 hover:text-foreground"
+                aria-label="Attach context"
+              >
+                <Plus size={12} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => setFilePickerOpen(true)}>
+                <File size={13} className="mr-2" />
+                Attach file
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setRunPickerOpen(true)}>
+                <History size={13} className="mr-2" />
+                Attach run output
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleAddText}>
+                <Type size={13} className="mr-2" />
+                Add text snippet
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ProviderSelect
+            value={workflowProvider}
+            onValueChange={(provider) => updateWorkflowDefaults({
+              provider,
+              model: modelLooksCompatible(provider, workflow.defaults?.model)
+                ? workflow.defaults?.model
+                : getDefaultModelForProvider(provider),
+            })}
+            codexEnabled={providerSettings.features.codexProvider}
+            labelMode="short"
+            className="h-7 w-[104px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs shadow-inset-highlight-subtle"
+            ariaLabel="Workflow provider"
+          />
+          <ProviderModelSelect
+            provider={workflowProvider}
+            value={workflowModel}
+            onValueChange={(model) => updateWorkflowDefaults({ model })}
+            className="h-7 w-[124px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs tabular-nums shadow-inset-highlight-subtle"
+            ariaLabel="Workflow model"
+          />
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <span role="status" aria-live="polite">
+            <Badge variant="outline" className="control-badge rounded-full border-hairline bg-surface-1/80 px-2.5 text-label-xs">
+              Type: {inputTypeLabel}
+            </Badge>
           </span>
-        )}
-        {resolvedInput.usedDefault && (
-          <Badge variant="secondary">Using default value</Badge>
-        )}
-        <span id="input-hint" className="ui-meta-text">
-          {compact
-            ? inputConfig.required === false
-              ? "Optional input."
-              : "Auto-detected type."
-            : inputConfig.required === false
-              ? "Optional input. If empty, default value is used when provided."
-              : "Auto-detected from your input. You can paste plain text, a URL, or a directory path."}
-        </span>
+          {forcedInputType && (
+            <span className="ui-meta-text text-muted-foreground">
+              Locked to {forcedInputType}
+            </span>
+          )}
+          {resolvedInput.usedDefault && (
+            <Badge variant="secondary" className="control-badge rounded-full px-2.5 text-label-xs">Using default value</Badge>
+          )}
+          <span id="input-hint" className="ui-meta-text text-muted-foreground">
+            {compact
+              ? inputConfig.required === false
+                ? "Optional input."
+                : "Auto-detected type."
+              : inputConfig.required === false
+                ? "Optional input. Empty state falls back to the workflow default."
+                : "Paste text, a URL, or a project path."}
+          </span>
+        </div>
       </div>
 
       {showError && (
@@ -99,6 +255,15 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
           {resolvedInput.message}
         </p>
       )}
+
+      {/* Picker dialogs */}
+      <FilePicker open={filePickerOpen} onOpenChange={setFilePickerOpen} />
+      <RunPicker open={runPickerOpen} onOpenChange={setRunPickerOpen} />
+      <TextAttachmentEditor
+        open={textEditorOpen}
+        onOpenChange={setTextEditorOpen}
+        editIndex={editingTextIndex}
+      />
     </section>
   )
 }

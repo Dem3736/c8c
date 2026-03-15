@@ -22,6 +22,7 @@ import {
 } from "./ipc/system"
 import { registerChatHandlers } from "./ipc/chat"
 import { registerMcpHandlers } from "./ipc/mcp"
+import { registerFilesHandlers } from "./ipc/files"
 import {
   flushTelemetryService,
   initTelemetryService,
@@ -498,6 +499,7 @@ app.whenReady().then(async () => {
     ["system", registerSystemHandlers],
     ["chat", registerChatHandlers],
     ["mcp", registerMcpHandlers],
+    ["files", registerFilesHandlers],
   ] as const
 
   for (const [name, register] of handlers) {

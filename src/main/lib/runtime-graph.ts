@@ -24,6 +24,100 @@ export interface RuntimeWorkflow extends Workflow {
   runtimeMeta: Record<string, RuntimeNodeMeta>
 }
 
+/**
+ * Collapses a previous splitter expansion, restoring the original template
+ * nodes and edges from the original workflow definition.
+ * Returns the set of removed clone node IDs (for state cleanup by caller).
+ */
+export function collapseSplitterExpansion(
+  runtimeWorkflow: RuntimeWorkflow,
+  originalWorkflow: Workflow,
+  splitterId: string,
+): Set<string> {
+  const removedIds = new Set<string>()
+
+  // Check if the splitter has been expanded (outgoing edges point to clones)
+  const splitterOutEdges = runtimeWorkflow.edges.filter(
+    (e) => e.source === splitterId && e.type === "default",
+  )
+  if (splitterOutEdges.length === 0) return removedIds
+  if (!splitterOutEdges[0].target.includes("::")) return removedIds
+
+  // BFS to find all runtime clone nodes and the merger
+  let mergerId: string | undefined
+  const queue = splitterOutEdges.map((e) => e.target)
+
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    if (removedIds.has(id) || id === mergerId) continue
+    const node = runtimeWorkflow.nodes.find((n) => n.id === id)
+    if (!node) continue
+    if (node.type === "merger") {
+      mergerId = id
+      continue
+    }
+    removedIds.add(id)
+    for (const edge of runtimeWorkflow.edges) {
+      if (edge.source === id) queue.push(edge.target)
+    }
+  }
+
+  if (!mergerId || removedIds.size === 0) return removedIds
+
+  // Remove clone nodes and edges touching them
+  runtimeWorkflow.nodes = runtimeWorkflow.nodes.filter((n) => !removedIds.has(n.id))
+  runtimeWorkflow.edges = runtimeWorkflow.edges.filter(
+    (e) => !removedIds.has(e.source) && !removedIds.has(e.target),
+  )
+
+  // Clean up runtime metadata for clones
+  for (const id of removedIds) {
+    delete runtimeWorkflow.runtimeMeta[id]
+  }
+
+  // Restore original template nodes from the original workflow via BFS
+  const origSplitterOut = originalWorkflow.edges.filter(
+    (e) => e.source === splitterId && e.type === "default",
+  )
+  const origTemplateIds = new Set<string>()
+  const origQueue = origSplitterOut.map((e) => e.target)
+
+  while (origQueue.length > 0) {
+    const id = origQueue.shift()!
+    if (origTemplateIds.has(id)) continue
+    const node = originalWorkflow.nodes.find((n) => n.id === id)
+    if (!node) continue
+    if (node.type === "merger") continue
+    origTemplateIds.add(id)
+    for (const edge of originalWorkflow.edges) {
+      if (edge.source === id) origQueue.push(edge.target)
+    }
+  }
+
+  // Add original template nodes back
+  for (const tplId of origTemplateIds) {
+    const origNode = originalWorkflow.nodes.find((n) => n.id === tplId)
+    if (origNode && !runtimeWorkflow.nodes.some((n) => n.id === tplId)) {
+      runtimeWorkflow.nodes.push({ ...origNode })
+    }
+  }
+
+  // Restore original edges (splitter→template, template→template, template→merger)
+  for (const origEdge of originalWorkflow.edges) {
+    if (
+      (origEdge.source === splitterId && origTemplateIds.has(origEdge.target)) ||
+      (origTemplateIds.has(origEdge.source) && origTemplateIds.has(origEdge.target)) ||
+      (origTemplateIds.has(origEdge.source) && origEdge.target === mergerId)
+    ) {
+      if (!runtimeWorkflow.edges.some((e) => e.id === origEdge.id)) {
+        runtimeWorkflow.edges.push({ ...origEdge })
+      }
+    }
+  }
+
+  return removedIds
+}
+
 export function expandSplitter(
   workflow: Workflow,
   splitterId: string,

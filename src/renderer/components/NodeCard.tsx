@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react"
-import { useAtom } from "jotai"
-import { inputValueAtom, selectedWorkflowPathAtom, validationErrorsAtom } from "@/lib/store"
+import { useAtom, useAtomValue } from "jotai"
+import {
+  currentWorkflowAtom,
+  defaultProviderAtom,
+  inputValueAtom,
+  inputAttachmentsAtom,
+  providerSettingsAtom,
+  selectedWorkflowPathAtom,
+  validationErrorsAtom,
+} from "@/lib/store"
 import { cn } from "@/lib/cn"
 import { resolveWorkflowInput } from "@/lib/input-type"
 import type {
@@ -15,6 +23,7 @@ import type {
   ApprovalNodeConfig,
 } from "@shared/types"
 import type { ErrorKind, NodeOnErrorPolicy, NodeRetryBackoff, NodeRuntimeConfig } from "@shared/types"
+import { getDefaultModelForProvider, modelLooksCompatible } from "@shared/provider-metadata"
 import {
   ChevronDown,
   ChevronUp,
@@ -25,6 +34,9 @@ import {
   Zap,
   Eye,
   Pencil,
+  File,
+  History,
+  Type,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import {
@@ -40,9 +52,19 @@ import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { NODE_ICONS, NODE_LABELS, NODE_ICON_TONES } from "@/lib/node-ui-config"
 import { SkillRefInput } from "@/components/ui/skill-ref-input"
 import { McpToolPicker } from "@/components/ui/mcp-tool-picker"
+import { FilePicker } from "@/components/input/FilePicker"
+import { RunPicker } from "@/components/input/RunPicker"
+import { TextAttachmentEditor } from "@/components/input/TextAttachmentEditor"
+import { ProviderModelSelect, ProviderSelect } from "@/components/provider-controls"
 import {
   InputNodeEditor,
   OutputNodeEditor,
@@ -83,9 +105,17 @@ export function NodeCard({
   resolveNodeLabel,
 }: NodeCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
+  const [attachments, setAttachments] = useAtom(inputAttachmentsAtom)
+  const defaultProvider = useAtomValue(defaultProviderAtom)
+  const providerSettings = useAtomValue(providerSettingsAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [inputTouched, setInputTouched] = useState(false)
+  const [filePickerOpen, setFilePickerOpen] = useState(false)
+  const [runPickerOpen, setRunPickerOpen] = useState(false)
+  const [textEditorOpen, setTextEditorOpen] = useState(false)
+  const [editingTextIndex, setEditingTextIndex] = useState<number | undefined>(undefined)
   const [allValidationErrors] = useAtom(validationErrorsAtom)
   const nodeValidationErrors = allValidationErrors[node.id] || []
   const hasValidationErrors = nodeValidationErrors.some((e) => e.severity === "error")
@@ -100,6 +130,8 @@ export function NodeCard({
   const isExpandable = isInput || isOutput || isSkill || isEvaluator || isSplitter || isMerger || isApproval
   const isTerminal = isInput || isOutput
   const inputConfig = isInput ? (node.config as InputNodeConfig) : null
+  const workflowProvider = workflow.defaults?.provider || defaultProvider
+  const workflowModel = workflow.defaults?.model || getDefaultModelForProvider(workflowProvider)
   const outputConfig = isOutput ? (node.config as OutputNodeConfig) : null
   const skillConfig = isSkill ? (node.config as SkillNodeConfig) : null
   const evalConfig = isEvaluator ? (node.config as EvaluatorNodeConfig) : null
@@ -165,6 +197,16 @@ export function NodeCard({
   useEffect(() => {
     setInputTouched(false)
   }, [selectedWorkflowPath, node.id])
+
+  const updateWorkflowDefaults = (patch: Record<string, unknown>) => {
+    setWorkflow((prev) => ({
+      ...prev,
+      defaults: {
+        ...(prev.defaults || {}),
+        ...patch,
+      },
+    }))
+  }
 
   return (
     <div
@@ -383,22 +425,107 @@ export function NodeCard({
             rows={2}
             placeholder={inlineInputPlaceholder}
             aria-invalid={showInlineInputError || undefined}
-            aria-describedby={showInlineInputError ? `run-input-hint-${node.id} run-input-error-${node.id}` : `run-input-hint-${node.id}`}
+            aria-describedby={showInlineInputError ? `run-input-error-${node.id}` : undefined}
             className="min-h-[3rem] max-h-[10rem] resize-y bg-surface-2/90 text-body-sm"
           />
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline" className="px-1.5 py-0 text-label-xs">
-              Type: {inputTypeLabel}
-            </Badge>
-            <span id={`run-input-hint-${node.id}`} className="text-label-xs font-normal text-muted-foreground">
-              {inputConfig?.required === false ? "Optional input." : "Auto-detected type."}
-            </span>
-            {showInlineInputError && (
-              <span id={`run-input-error-${node.id}`} className="text-label-xs font-normal text-status-danger">
-                {resolvedInput.message}
-              </span>
-            )}
+          {/* Attachment chips */}
+          <div className="flex flex-wrap items-center gap-1">
+            {attachments.map((att, i) => (
+              <Badge
+                key={`${att.kind}-${i}`}
+                variant="outline"
+                className="gap-1 pl-1.5 pr-1 py-0.5 max-w-[180px] cursor-default text-label-xs"
+              >
+                {att.kind === "file" && <File size={10} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+                {att.kind === "run" && <History size={10} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+                {att.kind === "text" && <Type size={10} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+                <span
+                  className="truncate"
+                  title={att.kind === "file" ? att.path : att.kind === "run" ? `${att.workflowName} (${att.runId.slice(0, 8)})` : att.label}
+                  onClick={att.kind === "text" ? () => { setEditingTextIndex(i); setTextEditorOpen(true) } : undefined}
+                  role={att.kind === "text" ? "button" : undefined}
+                  tabIndex={att.kind === "text" ? 0 : undefined}
+                  onKeyDown={att.kind === "text" ? (e) => { if (e.key === "Enter" || e.key === " ") { setEditingTextIndex(i); setTextEditorOpen(true) } } : undefined}
+                >
+                  {att.kind === "file" && att.name}
+                  {att.kind === "run" && att.workflowName}
+                  {att.kind === "text" && att.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="ml-0.5 rounded-sm p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                  aria-label={`Remove ${att.kind === "file" ? att.name : att.kind === "run" ? att.workflowName : att.label}`}
+                >
+                  <X size={8} aria-hidden="true" />
+                </button>
+              </Badge>
+            ))}
           </div>
+          <div className="control-cluster flex flex-wrap items-center gap-1 rounded-[0.95rem] px-1.5 py-1.5">
+            <div className="flex flex-wrap items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 rounded-full border-hairline bg-surface-1/85 text-muted-foreground shadow-inset-highlight-subtle hover:bg-surface-1 hover:text-foreground"
+                    aria-label="Attach context"
+                  >
+                    <Plus size={12} aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onSelect={() => setFilePickerOpen(true)}>
+                    <File size={13} className="mr-2" />
+                    Attach file
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setRunPickerOpen(true)}>
+                    <History size={13} className="mr-2" />
+                    Attach run output
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { setEditingTextIndex(undefined); setTextEditorOpen(true) }}>
+                    <Type size={13} className="mr-2" />
+                    Add text snippet
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <ProviderSelect
+                value={workflowProvider}
+                onValueChange={(provider) => updateWorkflowDefaults({
+                  provider,
+                  model: modelLooksCompatible(provider, workflow.defaults?.model)
+                    ? workflow.defaults?.model
+                    : getDefaultModelForProvider(provider),
+                })}
+                codexEnabled={providerSettings.features.codexProvider}
+                labelMode="short"
+                className="h-7 w-[96px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs shadow-inset-highlight-subtle"
+                ariaLabel="Workflow provider"
+              />
+              <ProviderModelSelect
+                provider={workflowProvider}
+                value={workflowModel}
+                onValueChange={(model) => updateWorkflowDefaults({ model })}
+                className="h-7 w-[118px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs tabular-nums shadow-inset-highlight-subtle"
+                ariaLabel="Workflow model"
+              />
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="control-badge rounded-full border-hairline bg-surface-1/80 px-2 text-label-xs">
+                Type: {inputTypeLabel}
+              </Badge>
+              {showInlineInputError && (
+                <span id={`run-input-error-${node.id}`} className="text-label-xs font-normal text-status-danger">
+                  {resolvedInput.message}
+                </span>
+              )}
+            </div>
+          </div>
+          <FilePicker open={filePickerOpen} onOpenChange={setFilePickerOpen} />
+          <RunPicker open={runPickerOpen} onOpenChange={setRunPickerOpen} />
+          <TextAttachmentEditor open={textEditorOpen} onOpenChange={setTextEditorOpen} editIndex={editingTextIndex} />
         </div>
       )}
 

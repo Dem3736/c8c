@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import {
+  clearWorkflowExecutionStateAtom,
+  createEmptyWorkflowExecutionState,
+  moveWorkflowExecutionStateAtom,
   projectsAtom,
   selectedProjectAtom,
   expandedProjectsAtom,
@@ -9,11 +12,10 @@ import {
   projectSidebarWidthAtom,
   currentWorkflowAtom,
   skillsAtom,
-  runStatusAtom,
-  runWorkflowPathAtom,
   mainViewAtom,
-  nodeStatesAtom,
   pastRunsAtom,
+  toWorkflowExecutionKey,
+  workflowExecutionStatesAtom,
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   type WorkflowFile,
@@ -52,6 +54,7 @@ import { toast } from "sonner"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { useExecutionReset } from "@/hooks/useExecutionReset"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { SidebarNavItem } from "@/components/sidebar/SidebarNavItem"
 import { SidebarConfirmDialog } from "@/components/sidebar/SidebarConfirmDialog"
@@ -121,13 +124,13 @@ export function ProjectSidebar({
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [sidebarWidth, setSidebarWidth] = useAtom(projectSidebarWidthAtom)
   const [currentWorkflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
-  const [nodeStates] = useAtom(nodeStatesAtom)
   const [pastRuns] = useAtom(pastRunsAtom)
+  const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSkills] = useAtom(skillsAtom)
   const [mainView, setMainView] = useAtom(mainViewAtom)
-  const [runStatus] = useAtom(runStatusAtom)
-  const [runWorkflowPath] = useAtom(runWorkflowPathAtom)
+  const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
+  const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const [pendingRenameWorkflow, setPendingRenameWorkflow] = useState<WorkflowFile | null>(null)
   const [renameInput, setRenameInput] = useState("")
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<WorkflowFile | null>(null)
@@ -142,13 +145,22 @@ export function ProjectSidebar({
     projectPath?: string
   } | null>(null)
   const [globalWorkflows, setGlobalWorkflows] = useState<WorkflowFile[]>([])
+  const restoredWorkflowPathRef = useRef<string | null>(null)
 
   const [resizing, setResizing] = useState(false)
 
   const resetExecutionState = useExecutionReset({ clearReportPath: true, clearSelectedPastRun: true })
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
+  const selectedExecutionState = selectedWorkflowPath
+    ? (workflowExecutionStates[selectedWorkflowPath] ?? createEmptyWorkflowExecutionState())
+    : createEmptyWorkflowExecutionState()
+  const selectedRunStatus = selectedExecutionState.runStatus
+  const workflowHasActiveRun = (workflowPath: string) => {
+    const status = workflowExecutionStates[workflowPath]?.runStatus ?? "idle"
+    return status === "starting" || status === "running" || status === "paused" || status === "cancelling"
+  }
   const resetExecutionIfSafe = () => {
-    if (runStatus === "running" || runStatus === "paused") return
+    if (selectedRunStatus === "starting" || selectedRunStatus === "running" || selectedRunStatus === "paused" || selectedRunStatus === "cancelling") return
     resetExecutionState()
   }
 
@@ -175,6 +187,47 @@ export function ProjectSidebar({
   useEffect(() => {
     window.api.listGlobalWorkflows().then(setGlobalWorkflows).catch(() => setGlobalWorkflows([]))
   }, [])
+
+  useEffect(() => {
+    if (!selectedWorkflowPath) {
+      restoredWorkflowPathRef.current = null
+      return
+    }
+    if (workflowHasMeaningfulContent(currentWorkflow)) {
+      return
+    }
+    if (restoredWorkflowPathRef.current === selectedWorkflowPath) {
+      return
+    }
+
+    let cancelled = false
+    restoredWorkflowPathRef.current = selectedWorkflowPath
+
+    void window.api.loadWorkflow(selectedWorkflowPath).then((loadedWorkflow) => {
+      if (cancelled) return
+      setCurrentWorkflow(loadedWorkflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+    }).catch((error) => {
+      if (cancelled) return
+      setSelectedWorkflowPath(null)
+      const emptyWorkflow = createEmptyWorkflow()
+      setCurrentWorkflow(emptyWorkflow)
+      setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
+      toast.error("Could not restore the previously opened workflow", {
+        description: String(error),
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    currentWorkflow,
+    selectedWorkflowPath,
+    setCurrentWorkflow,
+    setSelectedWorkflowPath,
+    setWorkflowSavedSnapshot,
+  ])
 
   // Auto-expand the selected project
   useEffect(() => {
@@ -339,11 +392,19 @@ export function ProjectSidebar({
 
   const openRenameWorkflowDialog = (workflow: WorkflowFile, event: React.MouseEvent) => {
     event.stopPropagation()
+    if (workflowHasActiveRun(workflow.path)) {
+      toast.error("Stop the workflow before renaming it")
+      return
+    }
     setRenameInput(workflow.name)
     setPendingRenameWorkflow(workflow)
   }
 
   const openRenameWorkflowDialogFromMenu = (workflow: WorkflowFile) => {
+    if (workflowHasActiveRun(workflow.path)) {
+      toast.error("Stop the workflow before renaming it")
+      return
+    }
     setRenameInput(workflow.name)
     setPendingRenameWorkflow(workflow)
   }
@@ -356,9 +417,18 @@ export function ProjectSidebar({
       setPendingRenameWorkflow(null)
       return
     }
+    if (workflowHasActiveRun(workflow.path)) {
+      toast.error("Stop the workflow before renaming it")
+      setPendingRenameWorkflow(null)
+      return
+    }
 
     try {
       const renamedPath = await window.api.renameWorkflow(workflow.path, nextName)
+      moveWorkflowExecutionState({
+        fromKey: toWorkflowExecutionKey(workflow.path),
+        toKey: toWorkflowExecutionKey(renamedPath),
+      })
 
       if (selectedProject) {
         const refreshed = await window.api.listProjectWorkflows(selectedProject)
@@ -381,6 +451,10 @@ export function ProjectSidebar({
 
   const openDeleteWorkflowDialog = (workflow: WorkflowFile, event: React.MouseEvent) => {
     event.stopPropagation()
+    if (workflowHasActiveRun(workflow.path)) {
+      toast.error("Stop the workflow before deleting it")
+      return
+    }
     setPendingDeleteWorkflow(workflow)
   }
 
@@ -388,9 +462,14 @@ export function ProjectSidebar({
     const workflow = pendingDeleteWorkflow
     if (!workflow) return
     setPendingDeleteWorkflow(null)
+    if (workflowHasActiveRun(workflow.path)) {
+      toast.error("Stop the workflow before deleting it")
+      return
+    }
 
     try {
       await window.api.deleteWorkflow(workflow.path)
+      clearWorkflowExecutionState(toWorkflowExecutionKey(workflow.path))
 
       if (selectedProject) {
         const refreshed = await window.api.listProjectWorkflows(selectedProject)
@@ -463,7 +542,7 @@ export function ProjectSidebar({
     latestRunByWorkflowPath.set(path, run)
   }
 
-  const activeRunStates = Object.values(nodeStates)
+  const activeRunStates = Object.values(selectedExecutionState.nodeStates)
   let activeRunCompletedSteps = 0
   let activeRunRunningSteps = 0
   let activeRunFailedSteps = 0
@@ -492,13 +571,13 @@ export function ProjectSidebar({
         ? "bg-status-warning"
         : "bg-status-info"
   const showSelectedWorkflowProgress = (
-    (runStatus === "running" || runStatus === "paused")
-    && runWorkflowPath != null
+    (selectedRunStatus === "running" || selectedRunStatus === "paused")
+    && selectedWorkflowPath != null
     && activeRunTotalSteps > 0
   )
   const selectedWorkflowTitle = (
-    workflows.find((workflow) => workflow.path === runWorkflowPath)?.name
-    || runWorkflowPath?.split("/").pop()
+    workflows.find((workflow) => workflow.path === selectedWorkflowPath)?.name
+    || selectedWorkflowPath?.split("/").pop()
     || "Running workflow"
   )
 
@@ -782,8 +861,13 @@ export function ProjectSidebar({
                     if (!workflowSearchQuery.trim()) return true
                     return w.name.toLowerCase().includes(workflowSearchQuery.trim().toLowerCase())
                   }).map((workflow) => {
+                    const workflowExecution = workflowExecutionStates[workflow.path]
+                    const workflowRunStatus = workflowExecution?.runStatus ?? "idle"
                     const isSelected = selectedWorkflowPath === workflow.path
-                    const isRunOwner = (runStatus === "running" || runStatus === "paused") && runWorkflowPath === workflow.path
+                    const isRunOwner = workflowRunStatus === "starting"
+                      || workflowRunStatus === "running"
+                      || workflowRunStatus === "paused"
+                      || workflowRunStatus === "cancelling"
                     const isRunning = isRunOwner
                     const isDirty = isSelected && workflowDirty
                     const latestRun = latestRunByWorkflowPath.get(workflow.path)
@@ -797,12 +881,16 @@ export function ProjectSidebar({
                           : latestRun?.status === "cancelled"
                             ? "border-muted-foreground/40"
                             : "border-muted-foreground/30"
-                    const showLiveProgress = isRunOwner && showSelectedWorkflowProgress
-                    const runningHint = isSelected ? `Running · ${activeRunPhase}` : "Running in background"
-                    const currentWorkflowName = currentWorkflow.name.trim()
-                    const displayWorkflowName = isSelected && currentWorkflowName
-                      ? currentWorkflowName
-                      : workflow.name
+                    const showLiveProgress = isSelected && showSelectedWorkflowProgress
+                    const runningHint = workflowRunStatus === "paused"
+                      ? (isSelected ? "Paused" : "Paused in background")
+                      : workflowRunStatus === "cancelling"
+                        ? (isSelected ? "Stopping..." : "Stopping in background")
+                        : workflowRunStatus === "starting"
+                          ? (isSelected ? "Connecting..." : "Starting in background")
+                          : isSelected
+                            ? `Running · ${activeRunPhase}`
+                            : "Running in background"
 
                     return (
                       <div
@@ -850,7 +938,7 @@ export function ProjectSidebar({
                               isSelected ? "text-foreground" : "text-foreground-subtle",
                             )}
                             >
-                              {displayWorkflowName}
+                              {workflow.name}
                             </span>
                             {isDirty && (
                               <span className="inline-flex items-center rounded-sm border border-status-warning/40 bg-status-warning/10 px-1 py-0 text-sidebar-meta text-status-warning">
@@ -873,7 +961,7 @@ export function ProjectSidebar({
                                   type="button"
                                   className="ui-icon-button ui-transition-colors ui-motion-fast"
                                   onClick={(event) => openRenameWorkflowDialog(workflow, event)}
-                                  aria-label={`Rename ${displayWorkflowName}`}
+                                  aria-label={`Rename ${workflow.name}`}
                                 >
                                   <Pencil size={12} />
                                 </button>
@@ -887,7 +975,7 @@ export function ProjectSidebar({
                                   type="button"
                                   className="ui-icon-button hover:bg-status-danger/20 hover:text-status-danger ui-transition-colors ui-motion-fast"
                                   onClick={(event) => openDeleteWorkflowDialog(workflow, event)}
-                                  aria-label={`Delete ${displayWorkflowName}`}
+                                  aria-label={`Delete ${workflow.name}`}
                                 >
                                   <Trash2 size={12} />
                                 </button>

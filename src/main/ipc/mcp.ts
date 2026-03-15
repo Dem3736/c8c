@@ -1,64 +1,66 @@
 import { ipcMain } from "electron"
-import type { McpServerInfo, McpServerScope } from "@shared/types"
-import {
-  listMcpServers,
-  listAllMcpServers,
-  addMcpServer,
-  updateMcpServer,
-  removeMcpServer,
-  toggleMcpServer,
-  testMcpServer,
-  discoverMcpTools,
-} from "../lib/mcp-manager"
+import type { McpServerInfo, McpServerScope, ProviderId } from "@shared/types"
+import { resolveMcpProvider } from "../lib/providers"
 
 export function registerMcpHandlers() {
-  ipcMain.handle("mcp:list-servers", async (_event, projectPath?: string) => {
-    return listMcpServers(projectPath)
+  ipcMain.handle("mcp:list-servers", async (_event, provider: ProviderId, projectPath?: string) => {
+    return resolveMcpProvider(provider).listServers(undefined, projectPath)
   })
 
-  ipcMain.handle("mcp:list-all-servers", async () => {
-    return listAllMcpServers()
+  ipcMain.handle("mcp:list-all-servers", async (_event, provider: ProviderId) => {
+    return resolveMcpProvider(provider).listAllServers?.() ?? []
   })
 
   ipcMain.handle(
     "mcp:add-server",
-    async (_event, server: McpServerInfo, projectPath?: string) => {
-      return addMcpServer(server, projectPath)
+    async (_event, provider: ProviderId, server: McpServerInfo, projectPath?: string) => {
+      return resolveMcpProvider(provider).addServer(server, projectPath)
     },
   )
 
   ipcMain.handle(
     "mcp:update-server",
-    async (_event, name: string, server: McpServerInfo, projectPath?: string) => {
-      return updateMcpServer(name, server, projectPath)
+    async (_event, provider: ProviderId, name: string, server: McpServerInfo, projectPath?: string) => {
+      const mcpProvider = resolveMcpProvider(provider)
+      if (!mcpProvider.updateServer) {
+        throw new Error("MCP provider does not support server updates.")
+      }
+      return mcpProvider.updateServer(name, server, projectPath)
     },
   )
 
   ipcMain.handle(
     "mcp:remove-server",
-    async (_event, name: string, scope: McpServerScope, projectPath?: string) => {
-      return removeMcpServer(name, scope, projectPath)
+    async (_event, provider: ProviderId, name: string, scope: McpServerScope, projectPath?: string) => {
+      return resolveMcpProvider(provider).removeServer(name, scope, projectPath)
     },
   )
 
   ipcMain.handle(
     "mcp:toggle-server",
-    async (_event, name: string, scope: McpServerScope, disabled: boolean, projectPath?: string) => {
-      return toggleMcpServer(name, scope, disabled, projectPath)
+    async (
+      _event,
+      provider: ProviderId,
+      name: string,
+      scope: McpServerScope,
+      disabled: boolean,
+      projectPath?: string,
+    ) => {
+      return resolveMcpProvider(provider).toggleServer(name, scope, disabled, projectPath)
     },
   )
 
   ipcMain.handle(
     "mcp:test-server",
-    async (_event, name: string, scope: McpServerScope, projectPath?: string) => {
-      return testMcpServer(name, scope, projectPath)
+    async (_event, provider: ProviderId, name: string, scope: McpServerScope, projectPath?: string) => {
+      return resolveMcpProvider(provider).testServer(name, scope, projectPath)
     },
   )
 
   ipcMain.handle(
     "mcp:discover-tools",
-    async (_event, serverName?: string, projectPath?: string) => {
-      return discoverMcpTools(serverName, projectPath)
+    async (_event, provider: ProviderId, serverName?: string, projectPath?: string) => {
+      return resolveMcpProvider(provider).discoverTools(serverName, projectPath)
     },
   )
 }

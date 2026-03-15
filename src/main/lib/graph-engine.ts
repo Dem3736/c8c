@@ -121,12 +121,14 @@ export function validateWorkflow(workflow: Workflow): string[] {
     seen.add(node.id)
   }
 
-  // Skill nodes must have a skillRef
+  // Skill nodes need an executable instruction: skillRef, prompt, or both.
   for (const node of workflow.nodes) {
     if (node.type === "skill") {
       const config = node.config as SkillNodeConfig
-      if (!config.skillRef || !config.skillRef.trim()) {
-        errors.push(`Skill node "${node.id}" has no skillRef — select a skill before running`)
+      const hasSkillRef = !!config.skillRef?.trim()
+      const hasPrompt = !!config.prompt?.trim()
+      if (!hasSkillRef && !hasPrompt) {
+        errors.push(`Skill node "${node.id}" has neither skillRef nor prompt`)
       }
     }
   }

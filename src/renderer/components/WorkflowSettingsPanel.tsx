@@ -1,15 +1,12 @@
 import { useAtom } from "jotai"
-import { currentWorkflowAtom, mcpServersAtom, mainViewAtom } from "@/lib/store"
+import {
+  currentWorkflowAtom,
+  mcpServersAtom,
+  mainViewAtom,
+} from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Server } from "lucide-react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 function parseOptionalNumber(value: string): number | undefined {
   const trimmed = value.trim()
@@ -50,24 +47,6 @@ export function WorkflowSettingsPanel() {
       <div className="w-full max-w-[620px] surface-inset-card space-y-2">
         <h3 className="section-kicker">Execution Defaults</h3>
         <div className="grid gap-2 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="workflow-default-model" className="ui-meta-text text-muted-foreground">
-              Default model
-            </Label>
-            <Select
-              value={defaults.model || "sonnet"}
-              onValueChange={(value) => updateDefaults({ model: value })}
-            >
-              <SelectTrigger id="workflow-default-model" className="h-control-sm ui-body-text">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sonnet">Sonnet</SelectItem>
-                <SelectItem value="opus">Opus</SelectItem>
-                <SelectItem value="haiku">Haiku</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <div className="space-y-1">
             <Label htmlFor="workflow-default-max-turns" className="ui-meta-text text-muted-foreground">
               Max turns per step
@@ -127,7 +106,7 @@ export function WorkflowSettingsPanel() {
           </div>
         </div>
         <p className="ui-meta-text text-muted-foreground">
-          Used as fallback for steps that do not override model, turns, or timeout.
+          Provider and model are configured from the workflow Input step. These values stay as workflow-wide execution defaults.
         </p>
       </div>
 

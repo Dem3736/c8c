@@ -8,6 +8,21 @@ export function classifyError(err: unknown, timedOut: boolean): ErrorKind {
 
   const msg = String(err).toLowerCase()
 
+  // Policy errors: budget, throttling, account limits
+  if (
+    msg.includes("budget") ||
+    msg.includes("rate limit") ||
+    msg.includes("usage limit") ||
+    msg.includes("quota") ||
+    msg.includes("too many requests") ||
+    msg.includes("429") ||
+    msg.includes("credit balance") ||
+    msg.includes("billing") ||
+    msg.includes("policy")
+  ) {
+    return "policy"
+  }
+
   // Tool/skill errors: CLI subprocess failure, tool_result errors, file not found
   if (
     msg.includes("exit code") ||
@@ -27,15 +42,6 @@ export function classifyError(err: unknown, timedOut: boolean): ErrorKind {
     msg.includes("json")
   ) {
     return "model"
-  }
-
-  // Policy errors: budget, rate limit
-  if (
-    msg.includes("budget") ||
-    msg.includes("rate limit") ||
-    msg.includes("policy")
-  ) {
-    return "policy"
   }
 
   return "unknown"

@@ -10,6 +10,7 @@ import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
 import { SettingsPage } from "@/components/SettingsPage"
 import { OnboardingWizard } from "@/components/OnboardingWizard"
 import { AppStatusBar } from "@/components/AppStatusBar"
+import { MultiRunDashboard } from "@/components/MultiRunDashboard"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
 import {
@@ -27,6 +28,9 @@ import {
   workflowsAtom,
   workflowSavedSnapshotAtom,
   selectedWorkflowPathAtom,
+  providerSettingsAtom,
+  providerAvailabilityAtom,
+  providerAuthStatusAtom,
 } from "@/lib/store"
 import {
   Dialog,
@@ -78,6 +82,9 @@ const AppShell = memo(function AppShell() {
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [, setProviderSettings] = useAtom(providerSettingsAtom)
+  const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
+  const [, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
   const [deepLinkTargetProject, setDeepLinkTargetProject] = useState<string | null>(selectedProject)
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
 
@@ -167,6 +174,14 @@ const AppShell = memo(function AppShell() {
     window.api.getClaudeCodeSubscriptionStatus().then(setCliStatus).catch(() => {})
   }, [setCliStatus])
 
+  useEffect(() => {
+    window.api.getProviderDiagnostics().then((diagnostics) => {
+      setProviderSettings(diagnostics.settings)
+      setProviderAvailability(diagnostics.health)
+      setProviderAuthStatus(diagnostics.auth)
+    }).catch(() => {})
+  }, [setProviderAuthStatus, setProviderAvailability, setProviderSettings])
+
   // Deep link protocol subscription
   useEffect(() => {
     const unsubTemplate = window.api.onDeepLinkTemplate((template) => {
@@ -219,16 +234,7 @@ const AppShell = memo(function AppShell() {
     if (!deepLinkTemplate || !deepLinkTargetProject) return
     const nextWorkflow = resolveTemplateWorkflow(deepLinkTemplate, webSearchBackend)
     try {
-      const existingWorkflows = await window.api.listProjectWorkflows(deepLinkTargetProject)
-      const existingNames = new Set(existingWorkflows.map((item) => item.name.toLowerCase()))
-      let name = deepLinkTemplate.name.toLowerCase().replace(/\s+/g, "-")
-      if (existingNames.has(name)) {
-        let index = 2
-        while (existingNames.has(`${name}-${index}`)) index += 1
-        name = `${name}-${index}`
-      }
-
-      const filePath = await window.api.createWorkflow(deepLinkTargetProject, name, nextWorkflow)
+      const filePath = await window.api.createWorkflow(deepLinkTargetProject, deepLinkTemplate.name, nextWorkflow)
       const loadedWorkflow = await window.api.loadWorkflow(filePath)
       const refreshed = await window.api.listProjectWorkflows(deepLinkTargetProject)
       setWorkflows(refreshed)
@@ -238,7 +244,7 @@ const AppShell = memo(function AppShell() {
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
       setMainView("thread")
       setDeepLinkTemplate(null)
-      toast.success(`Created "${name}" from template`)
+      toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from template`)
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
     }
@@ -273,6 +279,9 @@ const AppShell = memo(function AppShell() {
         </SectionErrorBoundary>
         <SectionErrorBoundary sectionName="status bar">
           <AppStatusBar />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary sectionName="runs dashboard">
+          <MultiRunDashboard />
         </SectionErrorBoundary>
       </div>
 

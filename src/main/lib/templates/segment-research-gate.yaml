@@ -2,16 +2,17 @@ id: segment-research-gate
 stage: research
 emoji: "\U0001F3AF"
 headline: Validate market segments with evidence
-how: Generates segment hypotheses, researches each in parallel with signal grounding, then scores and filters by quality gate
-input: A market or product area to segment
+how: Analyzes input context first, then generates grounded segment hypotheses, researches each in parallel, and filters by quality gate
+input: A landing page, deep research document, product description, or market area to segment
 output: Scored and validated segment list with evidence and quality ratings
 steps:
-  - Generate segment hypotheses from market data
+  - Analyze the input to extract product context, trends, audience signals, and vocabulary
+  - Generate grounded segment hypotheses based on context analysis
   - Research each segment in parallel with signal grounding
   - Score and filter segments through quality gate
-version: 1
+version: 2
 name: Segment Research with Quality Gate
-description: Generate segment hypotheses, research each in parallel with signal grounding, score and filter by quality gate
+description: Analyzes input context, generates grounded segment hypotheses, researches each in parallel, scores and filters by quality gate
 defaults:
   model: sonnet
   maxTurns: 60
@@ -23,43 +24,103 @@ nodes:
       x: 0
       y: 200
     config: {}
+  - id: skill-1
+    type: skill
+    position:
+      x: 250
+      y: 200
+    config:
+      prompt: >
+        Analyze the provided input and extract a structured context brief. The input may be a landing page,
+        deep research document, product description, or just a market/topic name.
+
+        Extract and structure the following:
+
+        1. **Product/Market Identity** — what is being offered or explored, core value proposition
+        2. **Target Audience Signals** — any audience segments, personas, or user types already mentioned or implied
+        3. **Jobs-To-Be-Done** — what jobs, needs, or pain points are referenced (explicit or implicit)
+        4. **Market Context** — B2B vs B2C, geo, industry, maturity stage, competitive landscape hints
+        5. **Vocabulary & Language** — domain jargon, emotional language, specific terms the audience uses
+        6. **Key Trends** — any market shifts, triggers, or timing factors mentioned
+        7. **Gaps & Opportunities** — what's missing, what's not addressed, weak spots in positioning
+
+        Be specific and grounded in what the input actually says. Flag assumptions clearly.
+        If the input is just a topic name, note that context is minimal and downstream
+        hypothesis generation should rely more on research.
+
+        Output a structured context brief that will inform segment hypothesis generation.
+      model: sonnet
+      maxTurns: 15
   - id: splitter-1
     type: splitter
     position:
-      x: 300
+      x: 500
       y: 200
     config:
-      strategy: "Identify 6-10 distinct market segments or user personas. For each, define: name, primary job-to-be-done, key
-        triggers, and initial hypothesis about their needs."
+      strategy: >
+        Using the context analysis provided, generate 6-10 grounded segment hypotheses.
+
+        For each segment, define:
+        - Name (specific role + context, not generic labels)
+        - Primary job-to-be-done (anchored to context findings)
+        - Key triggers (what makes them act now)
+        - Initial needs hypothesis
+        - How this segment connects to signals found in the context analysis
+
+        Rules:
+        - Segment by role + context, NOT by tool or feature usage
+        - Each segment must connect to at least one job or pain point from the context
+        - Include at least one non-obvious or edge-case segment
+        - If context analysis found existing audience signals, use them as starting points but go deeper
+        - Be specific: "bootstrapped SaaS founders pre-PMF" > "founders"
       maxBranches: 8
-  - id: researcher-1
+  - id: skill-2
     type: skill
     position:
-      x: 600
+      x: 750
       y: 200
     config:
       skillRef: segment-researcher
-      prompt: "Research this market segment deeply. Find: real user signals (complaints, requests, workarounds), quantitative
-        data (market size, growth), competitive landscape, and unmet needs. Grade source quality (S=primary, A=expert,
-        B=aggregator, C=promotional, D=content farm)."
+      prompt: >
+        Research this market segment deeply. Find: real user signals (complaints, requests,
+        workarounds), quantitative data (market size, growth), competitive landscape, and unmet needs.
+
+        Use the context analysis upstream for vocabulary and search terms — search in the language
+        and jargon the audience actually uses.
+
+        Grade source quality: S=primary (user's own words), A=expert analysis, B=aggregator,
+        C=promotional, D=content farm.
+
+        Prioritize first-hand accounts and real user voices over marketing content.
   - id: merger-1
     type: merger
     position:
-      x: 900
+      x: 1000
       y: 200
     config:
       strategy: summarize
-      prompt: "Compile all segment research into a scored summary. For each segment: confidence score (1-10), signal count,
-        source quality distribution, key findings. Rank segments by research confidence."
+      prompt: >
+        Compile all segment research into a scored summary. For each segment:
+        - Confidence score (1-10) based on signal quality and quantity
+        - Signal count and source quality distribution
+        - Key findings (strongest signals, biggest surprises)
+        - Connection back to original context (does research confirm or challenge the input?)
+
+        Rank segments by research confidence.
+        Flag any segments where research contradicts the original context analysis.
   - id: evaluator-1
     type: evaluator
     position:
-      x: 1200
+      x: 1250
       y: 200
     config:
-      criteria: "Score 1-10 the overall research quality: signal diversity (multiple source types?), grounding depth (real
-        evidence vs speculation?), segment differentiation (are segments truly distinct?), actionability (can we act on
-        findings?)"
+      criteria: >
+        Score 1-10 the overall research quality:
+        - Signal diversity: multiple source types and platforms?
+        - Grounding depth: real evidence vs speculation?
+        - Segment differentiation: are segments truly distinct, not overlapping?
+        - Context alignment: do findings connect back to the original input?
+        - Actionability: can we act on these findings?
       threshold: 7
       maxRetries: 2
       retryFrom: splitter-1
@@ -70,16 +131,20 @@ nodes:
       y: 200
     config: {}
 edges:
-  - id: e-input-splitter
+  - id: e-input-skill1
     source: input-1
+    target: skill-1
+    type: default
+  - id: e-skill1-splitter
+    source: skill-1
     target: splitter-1
     type: default
-  - id: e-splitter-researcher
+  - id: e-splitter-skill2
     source: splitter-1
-    target: researcher-1
+    target: skill-2
     type: default
-  - id: e-researcher-merger
-    source: researcher-1
+  - id: e-skill2-merger
+    source: skill-2
     target: merger-1
     type: default
   - id: e-merger-evaluator
