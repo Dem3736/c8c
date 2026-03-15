@@ -39,7 +39,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@xyflow/react": "^12.10.1",
-    "@zed-industries/codex-acp": "^0.9.3",
+    "@zed-industries/codex-acp": "^0.10.0",
     "ai": "^6.0.14",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
