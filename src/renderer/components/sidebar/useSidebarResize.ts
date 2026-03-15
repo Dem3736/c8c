@@ -5,9 +5,9 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction,
 } from "react"
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/sidebar-layout"
 
-export const SIDEBAR_MIN_WIDTH = 240
-export const SIDEBAR_MAX_WIDTH = 430
+export { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/sidebar-layout"
 
 export function clampSidebarWidth(width: number): number {
   return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, width))

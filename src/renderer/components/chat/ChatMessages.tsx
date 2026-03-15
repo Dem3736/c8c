@@ -70,7 +70,7 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
         <div className="text-muted-foreground">
-          <p className="text-body-md font-medium mb-1">Pipeline Co-pilot</p>
+          <p className="text-body-md font-medium mb-1">Agent</p>
           <p className="ui-meta-text leading-relaxed">
             Ask me to add skills, build pipelines,
             <br />

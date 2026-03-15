@@ -7,7 +7,7 @@ import {
   type ApprovalRequest,
   type WorkflowExecutionState,
 } from "@/lib/workflow-execution"
-import type { RunResult, Workflow, WorkflowEvent } from "@shared/types"
+import type { ActiveWorkflowRun, RunResult, Workflow, WorkflowEvent } from "@shared/types"
 
 type UpdateValue<T> = T | ((prev: T) => T)
 
@@ -17,6 +17,7 @@ interface WorkflowExecutionControllerDeps {
   setPastRuns: (runs: RunResult[]) => void
   listRuns: (projectPath: string) => Promise<RunResult[]>
   onRunFailed: (message: string) => void
+  onRunFinished?: (state: WorkflowExecutionState) => void
   onError: (scope: string, error: unknown) => void
 }
 
@@ -112,6 +113,42 @@ export class WorkflowExecutionController {
     }
   }
 
+  rehydrateActiveRun(snapshot: ActiveWorkflowRun) {
+    const workflowKey = toWorkflowExecutionKey(snapshot.workflowPath)
+    this.runWorkflowKeys.set(snapshot.runId, workflowKey)
+    this.workflowSnapshots.set(workflowKey, {
+      version: 1,
+      name: snapshot.workflowName,
+      nodes: snapshot.runtimeNodes,
+      edges: snapshot.runtimeEdges,
+    } as Workflow)
+    this.updateExecutionForKey(workflowKey, (previous) => ({
+      ...previous,
+      runStatus: snapshot.status === "paused" ? "paused" : "running",
+      runOutcome: null,
+      runStartedAt: snapshot.startedAt,
+      lastUpdatedAt: snapshot.updatedAt,
+      completedAt: null,
+      runId: snapshot.runId,
+      runWorkflowPath: snapshot.workflowPath,
+      workflowName: snapshot.workflowName,
+      projectPath: snapshot.projectPath,
+      workflowSnapshot: {
+        version: 1,
+        name: snapshot.workflowName,
+        nodes: snapshot.runtimeNodes,
+        edges: snapshot.runtimeEdges,
+      } as Workflow,
+      nodeStates: snapshot.nodeStates,
+      activeNodeId: Object.entries(snapshot.nodeStates).find(([, nodeState]) => nodeState.status === "running")?.[0] ?? null,
+      workspace: snapshot.workspace,
+      runtimeNodes: snapshot.runtimeNodes,
+      runtimeEdges: snapshot.runtimeEdges,
+      runtimeMeta: snapshot.runtimeMeta,
+      lastError: previous.lastError,
+    }))
+  }
+
   processWorkflowEvent(event: WorkflowEvent) {
     const workflowKey = this.runWorkflowKeys.get(event.runId)
     if (!workflowKey) {
@@ -141,6 +178,7 @@ export class WorkflowExecutionController {
     }
 
     if (transition.effects.runFinished) {
+      this.deps.onRunFinished?.(transition.nextState)
       this.clearRunTracking(event.runId)
       this.previousExecutionSnapshots.delete(workflowKey)
       this.workflowSnapshots.delete(workflowKey)

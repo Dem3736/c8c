@@ -12,6 +12,7 @@ import {
   mainViewAtom,
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
+  unreadInboxCountAtom,
   type WorkflowFile,
 } from "@/lib/store"
 import {
@@ -22,6 +23,7 @@ import {
   workflowExecutionStatesAtom,
 } from "@/features/execution"
 import { cn } from "@/lib/cn"
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/sidebar-layout"
 import {
   FolderOpen,
   Globe,
@@ -30,6 +32,7 @@ import {
   X,
   Sparkles,
   LayoutTemplate,
+  Inbox,
   Settings,
   Pencil,
   Trash2,
@@ -90,6 +93,7 @@ export function ProjectSidebar({
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSkills] = useAtom(skillsAtom)
   const [mainView, setMainView] = useAtom(mainViewAtom)
+  const [unreadInboxCount] = useAtom(unreadInboxCountAtom)
   const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const [workflowSearchQuery, setWorkflowSearchQuery] = useState("")
@@ -299,7 +303,7 @@ export function ProjectSidebar({
       )}
     >
       {/* Top navigation */}
-      <div className="px-2 pt-3 pb-1 space-y-0.5">
+      <div className="space-y-px px-1.5 pt-2.5 pb-1">
         <SidebarNavItem
           icon={FilePlus2}
           label="New workflow"
@@ -320,10 +324,22 @@ export function ProjectSidebar({
           active={mainView === "templates"}
           onClick={() => setMainView("templates")}
         />
+
+        <SidebarNavItem
+          icon={Inbox}
+          label="Inbox"
+          active={mainView === "inbox"}
+          onClick={() => setMainView("inbox")}
+          meta={unreadInboxCount > 0 ? (
+            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+              {unreadInboxCount > 99 ? "99+" : unreadInboxCount}
+            </span>
+          ) : null}
+        />
       </div>
 
       {/* Section header */}
-      <div className="px-3 pt-4 pb-2">
+      <div className="px-2.5 pt-3 pb-1.5">
         <div className="flex items-center justify-between">
           <span className="section-kicker inline-flex items-center gap-1.5">
             Workflows
@@ -340,11 +356,11 @@ export function ProjectSidebar({
                 <button
                   type="button"
                   data-sidebar-item="true"
-                  className="flex items-center justify-center h-control-sm w-control-sm rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground ui-transition-colors ui-motion-fast"
+                  className="ui-icon-button hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
                   onClick={() => void createNewWorkflow()}
                   aria-label="New workflow"
                 >
-                  <Plus size={14} />
+                  <Plus size={12} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>New workflow</TooltipContent>
@@ -354,23 +370,23 @@ export function ProjectSidebar({
                 <button
                   type="button"
                   data-sidebar-item="true"
-                  className="flex items-center justify-center h-control-sm w-control-sm rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground ui-transition-colors ui-motion-fast"
+                  className="ui-icon-button hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
                   onClick={() => void addProject()}
                   aria-label="Add project"
                 >
-                  <FolderOpen size={14} />
+                  <FolderOpen size={12} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>Add project</TooltipContent>
             </Tooltip>
           </div>
         </div>
-        <div className="mt-2 h-px bg-hairline" />
+        <div className="mt-1.5 h-px bg-hairline" />
       </div>
 
       {/* Workflow search */}
       {(workflows.length > 3 || Object.values(projectWorkflowsCache).some((wfs) => wfs.length > 3)) && (
-        <div className="px-3 pb-2">
+        <div className="px-2.5 pb-1.5">
           <input
             type="search"
             placeholder="Search workflows..."
@@ -383,15 +399,15 @@ export function ProjectSidebar({
       )}
 
       {/* Scrollable workflow list */}
-      <div className="ui-scroll-region flex-1 min-h-0 overflow-y-auto pb-2">
+      <div className="ui-scroll-region flex-1 min-h-0 overflow-y-auto pb-1.5">
         {projects.length === 0 && (
           <button
             type="button"
             data-sidebar-item="true"
             onClick={() => void addProject()}
-            className="mx-2 mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-sidebar-item text-muted-foreground hover:bg-surface-2 hover:text-foreground ui-transition-colors ui-motion-fast"
+            className="mx-1.5 mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-sidebar-item text-muted-foreground hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
           >
-            <FolderOpen size={16} className="flex-shrink-0 opacity-60" />
+            <FolderOpen size={15} className="flex-shrink-0 opacity-60" />
             <span>Open a project</span>
           </button>
         )}
@@ -440,7 +456,7 @@ export function ProjectSidebar({
               </div>
 
               {isExpanded && (
-                <div className="mt-1 ml-8 space-y-0.5" role="listbox" aria-label={`${projectFolderName(projectPath)} workflows`}>
+                <div className="mt-0.5 ml-7 space-y-px" role="listbox" aria-label={`${projectFolderName(projectPath)} workflows`}>
                   {projectWorkflows.filter((w) => {
                     if (!workflowSearchQuery.trim()) return true
                     return w.name.toLowerCase().includes(workflowSearchQuery.trim().toLowerCase())
@@ -486,7 +502,7 @@ export function ProjectSidebar({
                           isSelected && "sidebar-thread-row--active",
                         )}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             aria-current={isSelected ? "page" : undefined}
@@ -509,16 +525,16 @@ export function ProjectSidebar({
                               })
                             }}
                             className={cn(
-                              "min-w-0 flex-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
+                              "min-w-0 flex-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
                               isSelected
                                 ? "hover:bg-transparent"
-                                : "hover:bg-surface-2/70",
+                                : "hover:bg-sidebar-hover/80",
                             )}
                           >
                             {isRunning ? (
-                              <Loader2 size={13} className="text-status-info animate-spin flex-shrink-0" />
+                              <Loader2 size={12} className="text-status-info animate-spin flex-shrink-0" />
                             ) : (
-                              <span className={cn("inline-flex h-2.5 w-2.5 rounded-full border bg-transparent flex-shrink-0", statusDotClass)} />
+                              <span className={cn("inline-flex h-2 w-2 rounded-full border bg-transparent flex-shrink-0", statusDotClass)} />
                             )}
                             <span className={cn(
                               "truncate flex-1 text-sidebar-item",
@@ -588,7 +604,7 @@ export function ProjectSidebar({
                         </div>
 
                         {showLiveProgress && (
-                          <div className="px-1.5 pb-1">
+                          <div className="px-1 pb-0.5">
                             <div
                               className="sidebar-progress-track"
                               role="progressbar"
@@ -602,7 +618,7 @@ export function ProjectSidebar({
                                 style={{ width: `${activeRunProgress}%` }}
                               />
                             </div>
-                            <div className="mt-1 flex items-center justify-between text-sidebar-meta text-muted-foreground">
+                            <div className="mt-0.5 flex items-center justify-between text-sidebar-meta text-muted-foreground">
                               <span className="truncate pr-2">{selectedWorkflowTitle}</span>
                               <span className="tabular-nums">
                                 {activeRunCompletedSteps}/{activeRunTotalSteps}
@@ -612,13 +628,13 @@ export function ProjectSidebar({
                         )}
 
                         {!showLiveProgress && isRunOwner && (
-                          <div className="px-1.5 pb-1 text-sidebar-meta text-status-info">
+                          <div className="px-1 pb-0.5 text-sidebar-meta text-status-info">
                             {runningHint}
                           </div>
                         )}
 
                         {!showLiveProgress && !isRunOwner && isSelected && latestRun && (
-                          <div className="px-1.5 pb-1 text-sidebar-meta text-muted-foreground">
+                          <div className="px-1 pb-0.5 text-sidebar-meta text-muted-foreground">
                             Last run: <span className={latestRunMeta.textClass}>{latestRunMeta.label}</span>
                           </div>
                         )}
@@ -632,8 +648,8 @@ export function ProjectSidebar({
         })}
 
         {globalWorkflows.length > 0 && (
-          <div className="mt-4 px-2">
-            <div className="px-1 pb-1.5 section-kicker text-muted-foreground">Global workflows</div>
+          <div className="mt-3 px-1.5">
+            <div className="px-1.5 pb-1 section-kicker text-muted-foreground">Global workflows</div>
             <div className="space-y-0.5 sidebar-list-group">
               {globalWorkflows.map((workflow) => {
                 const isSelected = selectedWorkflowPath === workflow.path
@@ -739,10 +755,10 @@ export function ProjectSidebar({
       </CursorMenu>
 
       {/* Settings */}
-      <div className="px-2 pb-2">
+      <div className="px-1.5 pb-1.5">
         <SidebarNavItem
           icon={Settings}
-          label="Settings"
+          label="Global Settings"
           active={mainView === "settings"}
           onClick={() => setMainView("settings")}
         />
@@ -753,8 +769,8 @@ export function ProjectSidebar({
         role="slider"
         aria-label="Sidebar width"
         aria-orientation="horizontal"
-        aria-valuemin={240}
-        aria-valuemax={430}
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
         aria-valuenow={sidebarWidth}
         tabIndex={0}
         onPointerDown={startResize}

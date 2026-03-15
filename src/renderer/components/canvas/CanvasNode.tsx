@@ -54,11 +54,11 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
     ? "min-w-[156px] max-w-[198px] rounded-md border border-hairline/70 bg-surface-1/80 px-2 py-1.5 ui-elevation-inset"
     : "min-w-[212px] max-w-[248px] rounded-lg border bg-gradient-to-b from-surface-1 to-surface-2/70 px-3 py-2 ui-elevation-base"
   const iconShellStyle = isTerminal
-    ? "mt-0.5 h-control-xs w-control-xs rounded-md border border-hairline bg-surface-2/80 text-muted-foreground shadow-none"
+    ? "mt-0.5 flex h-control-xs w-control-xs items-center justify-center rounded-md border border-hairline bg-surface-2/80 text-muted-foreground shadow-none"
     : `mt-0.5 h-control-sm w-control-sm rounded-md border flex items-center justify-center ui-elevation-inset ${iconTone}`
 
   return (
-    <>
+    <div className="relative">
       {data.nodeType !== "input" && (
         <Handle
           type="target"
@@ -136,6 +136,12 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
 
       {data.nodeType === "evaluator" ? (
         <>
+          <span
+            className="pointer-events-none absolute -right-12 top-[35%] -translate-y-1/2 rounded-sm border border-status-success/30 bg-status-success/10 px-1.5 py-0 ui-meta-text text-status-success shadow-sm"
+            aria-hidden="true"
+          >
+            Pass
+          </span>
           <Handle
             type="source"
             position={Position.Right}
@@ -144,6 +150,12 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
             className="node-handle-dot ui-motion-fast !h-2.5 !w-2.5 !rounded-full !border !border-surface-1 !bg-status-success hover:!bg-status-success/80"
             aria-label="Pass output"
           />
+          <span
+            className="pointer-events-none absolute -right-12 top-[65%] -translate-y-1/2 rounded-sm border border-status-danger/30 bg-status-danger/10 px-1.5 py-0 ui-meta-text text-status-danger shadow-sm"
+            aria-hidden="true"
+          >
+            Fail
+          </span>
           <Handle
             type="source"
             position={Position.Right}
@@ -161,7 +173,7 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
           aria-label="Output connection"
         />
       ) : null}
-    </>
+    </div>
   )
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import type { RunResult, Workflow } from "@shared/types"
+import type { ActiveWorkflowRun, RunResult, Workflow } from "@shared/types"
 import { createWorkflowExecutionController } from "./controller"
 
 function createWorkflow(): Workflow {
@@ -131,5 +131,36 @@ describe("WorkflowExecutionController", () => {
     expect(controller.getExecutionState(workflowKey).runOutcome).toBe("completed")
     expect(controller.getExecutionState(workflowKey).reportPath).toBe("/tmp/final-report.md")
     expect(controller.getExecutionState(workflowKey).workspace).toBe("/tmp/final-workspace")
+  })
+
+  it("rehydrates an active run snapshot for renderer resync", () => {
+    const { controller } = createHarness()
+    const snapshot: ActiveWorkflowRun = {
+      kind: "run",
+      runId: "run-active",
+      workflowName: "Research flow",
+      workflowPath: "/tmp/research.chain",
+      projectPath: "/tmp/project",
+      workspace: "/tmp/workspace",
+      status: "running",
+      startedAt: 100,
+      updatedAt: 120,
+      nodeStates: {
+        input: { status: "completed", attempts: 1, log: [] },
+        output: { status: "running", attempts: 1, log: [] },
+      },
+      runtimeNodes: createWorkflow().nodes,
+      runtimeEdges: createWorkflow().edges,
+      runtimeMeta: {},
+    }
+
+    controller.rehydrateActiveRun(snapshot)
+
+    const state = controller.getExecutionState("/tmp/research.chain")
+    expect(state.runId).toBe("run-active")
+    expect(state.runStatus).toBe("running")
+    expect(state.workspace).toBe("/tmp/workspace")
+    expect(state.activeNodeId).toBe("output")
+    expect(state.nodeStates.output.status).toBe("running")
   })
 })

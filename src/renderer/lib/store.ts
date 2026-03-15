@@ -1,5 +1,6 @@
 import { atom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
+import { SIDEBAR_DEFAULT_WIDTH } from "@/lib/sidebar-layout"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import type {
@@ -106,7 +107,7 @@ export const workflowsAtom = atom<WorkflowFile[]>([])
 export const selectedWorkflowPathAtom = atomWithStorage<string | null>("c8c:selectedWorkflowPath", null)
 export const projectSidebarWidthAtom = atomWithStorage<number>(
   "c8c:sidebar-width",
-  286,
+  SIDEBAR_DEFAULT_WIDTH,
 )
 
 // Graph-aware workflow
@@ -214,10 +215,87 @@ export const viewModeAtom = atom<ViewMode>("list")
 export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
 
 // App pages
-export type MainView = "thread" | "skills" | "templates" | "settings" | "onboarding"
+export type MainView = "thread" | "skills" | "templates" | "settings" | "inbox" | "onboarding"
 export const mainViewAtom = atomWithStorage<MainView>(
   "c8c:main-view",
   "thread",
+)
+
+// ── Inbox / Notification Memory ───────────────────────
+
+export type InboxNotificationLevel = "info" | "success" | "warning" | "error"
+export type InboxNotificationSource = "workflow" | "batch" | "agent" | "system"
+
+export interface InboxNotification {
+  id: string
+  title: string
+  description?: string
+  level: InboxNotificationLevel
+  source: InboxNotificationSource
+  createdAt: number
+  read: boolean
+}
+
+const MAX_INBOX_NOTIFICATIONS = 150
+
+export const inboxNotificationsAtom = atomWithStorage<InboxNotification[]>(
+  "c8c:inbox-notifications",
+  [],
+)
+
+export const unreadInboxCountAtom = atom((get) =>
+  get(inboxNotificationsAtom).filter((notification) => !notification.read).length,
+)
+
+export const addInboxNotificationAtom = atom(
+  null,
+  (
+    get,
+    set,
+    notification: Omit<InboxNotification, "id" | "createdAt" | "read">,
+  ) => {
+    const nextEntry: InboxNotification = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      createdAt: Date.now(),
+      read: false,
+      ...notification,
+    }
+    const next = [nextEntry, ...get(inboxNotificationsAtom)].slice(0, MAX_INBOX_NOTIFICATIONS)
+    set(inboxNotificationsAtom, next)
+  },
+)
+
+export const markInboxNotificationReadAtom = atom(
+  null,
+  (get, set, notificationId: string) => {
+    set(
+      inboxNotificationsAtom,
+      get(inboxNotificationsAtom).map((notification) =>
+        notification.id === notificationId
+          ? { ...notification, read: true }
+          : notification,
+      ),
+    )
+  },
+)
+
+export const markAllInboxNotificationsReadAtom = atom(
+  null,
+  (get, set) => {
+    set(
+      inboxNotificationsAtom,
+      get(inboxNotificationsAtom).map((notification) =>
+        notification.read ? notification : { ...notification, read: true },
+      ),
+    )
+  },
+)
+
+export const clearInboxNotificationsAtom = atom(
+  null,
+  (_get, set) => {
+    set(inboxNotificationsAtom, [])
+  },
 )
 
 // Templates & generation

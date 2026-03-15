@@ -8,6 +8,7 @@ import { WorkflowPanel } from "@/components/WorkflowPanel"
 import { SkillsPage } from "@/components/SkillsPage"
 import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
 import { SettingsPage } from "@/components/SettingsPage"
+import { NotificationsPage } from "@/components/NotificationsPage"
 import { OnboardingWizard } from "@/components/OnboardingWizard"
 import { AppStatusBar } from "@/components/AppStatusBar"
 import { MultiRunDashboard } from "@/components/MultiRunDashboard"
@@ -63,6 +64,7 @@ const MainView = memo(function MainView() {
   if (mainView === "skills") return <SkillsPage />
   if (mainView === "templates") return <WorkflowsTemplatesPage />
   if (mainView === "settings") return <SettingsPage />
+  if (mainView === "inbox") return <NotificationsPage />
 
   return <WorkflowPanel />
 })

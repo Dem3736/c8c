@@ -3,7 +3,8 @@ import { toast } from "sonner"
 import { createWorkflowExecutionController } from "./controller"
 import type { WorkflowExecutionController } from "./controller"
 import type { ApprovalRequest, WorkflowExecutionState } from "@/lib/workflow-execution"
-import type { RunResult } from "@shared/types"
+import type { ActiveExecutionSnapshot, RunResult } from "@shared/types"
+import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
 type UpdateValue<T> = T | ((prev: T) => T)
 
@@ -23,6 +24,7 @@ export function useExecutionController({
   setPastRuns,
 }: UseExecutionControllerArgs): WorkflowExecutionController {
   const controllerRef = useRef<WorkflowExecutionController | null>(null)
+  const { addNotification } = useInboxNotifications()
 
   if (!controllerRef.current) {
     controllerRef.current = createWorkflowExecutionController({
@@ -33,6 +35,33 @@ export function useExecutionController({
       onRunFailed: (message) => {
         toast.error("Run failed", {
           description: message,
+        })
+        addNotification({
+          title: "Run failed",
+          description: message,
+          level: "error",
+          source: "workflow",
+        })
+      },
+      onRunFinished: (state) => {
+        if (state.runOutcome === "failed") return
+        const workflowName = state.workflowName || "Workflow"
+        const title = state.runOutcome === "completed"
+          ? `Run completed: ${workflowName}`
+          : state.runOutcome === "cancelled"
+            ? `Run cancelled: ${workflowName}`
+            : state.runOutcome === "interrupted"
+              ? `Run interrupted: ${workflowName}`
+              : `Run finished: ${workflowName}`
+        const description = state.lastError
+          || state.reportPath
+          || state.workspace
+          || undefined
+        addNotification({
+          title,
+          description,
+          level: state.runOutcome === "completed" ? "success" : state.runOutcome === "cancelled" ? "warning" : "error",
+          source: "workflow",
         })
       },
       onError: (scope, error) => {
@@ -55,6 +84,17 @@ export function useExecutionController({
   useEffect(() => {
     controller.refreshPastRuns()
   }, [controller, selectedProject])
+
+  useEffect(() => {
+    window.api.getActiveExecutions().then((executions: ActiveExecutionSnapshot[]) => {
+      for (const execution of executions) {
+        if (execution.kind !== "run") continue
+        controller.rehydrateActiveRun(execution)
+      }
+    }).catch((error) => {
+      console.error("[useExecutionController] getActiveExecutions failed:", error)
+    })
+  }, [controller])
 
   return controller
 }

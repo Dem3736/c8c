@@ -13,6 +13,7 @@ import {
 } from "@shared/workflow-name"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
@@ -22,6 +23,13 @@ function errorMessage(error: unknown, fallback: string): string {
     return error
   }
   return fallback
+}
+
+function showPersistentError(message: string, description?: string) {
+  toast.error(message, {
+    description,
+    duration: Infinity,
+  })
 }
 
 interface UseToolbarActionsArgs {
@@ -47,6 +55,7 @@ export function useToolbarActions({
 }: UseToolbarActionsArgs) {
   const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
+  const { addNotification } = useInboxNotifications()
   const refreshProjectData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!selectedProject) return
     try {
@@ -60,9 +69,15 @@ export function useToolbarActions({
         toast.success("Refreshed")
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to refresh project data"))
+      addNotification({
+        title: "Project refresh failed",
+        description: errorMessage(error, "Failed to refresh project data"),
+        level: "error",
+        source: "system",
+      })
+      showPersistentError(errorMessage(error, "Failed to refresh project data"))
     }
-  }, [selectedProject, setSkills, setWorkflows])
+  }, [addNotification, selectedProject, setSkills, setWorkflows])
 
   const deriveTitleFromPath = useCallback((path: string) =>
     path
@@ -97,22 +112,35 @@ export function useToolbarActions({
   }, [moveWorkflowExecutionState, selectedProject, setSelectedWorkflowPath, setWorkflows, workflow.name])
 
   const save = useCallback(async () => {
-    if (!workflowPath) return
+    if (!workflowPath) return false
     const workflowTitle = normalizeWorkflowTitle(workflow.name || "") || deriveTitleFromPath(workflowPath)
     try {
       const targetPath = await ensureWorkflowNameSync(workflowPath)
       await window.api.saveWorkflow(targetPath, workflow)
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       toast.success(`Workflow saved: ${workflowTitle}`)
+      addNotification({
+        title: `Workflow saved: ${workflowTitle}`,
+        level: "success",
+        source: "workflow",
+      })
+      return true
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save workflow"))
+      addNotification({
+        title: "Workflow save failed",
+        description: errorMessage(error, "Failed to save workflow"),
+        level: "error",
+        source: "workflow",
+      })
+      showPersistentError(errorMessage(error, "Failed to save workflow"))
+      return false
     }
-  }, [deriveTitleFromPath, ensureWorkflowNameSync, setWorkflowSavedSnapshot, workflow, workflowPath])
+  }, [addNotification, deriveTitleFromPath, ensureWorkflowNameSync, setWorkflowSavedSnapshot, workflow, workflowPath])
 
   const saveAs = useCallback(async () => {
     try {
       const filePath = await window.api.saveWorkflowAs(workflow, selectedProject || undefined)
-      if (!filePath) return
+      if (!filePath) return false
       const workflowTitle = normalizeWorkflowTitle(workflow.name || "") || deriveTitleFromPath(filePath)
       moveWorkflowExecutionState({
         fromKey: toWorkflowExecutionKey(workflowPath),
@@ -125,15 +153,29 @@ export function useToolbarActions({
         setWorkflows(wfs)
       }
       toast.success(`Workflow saved as: ${workflowTitle}`)
+      addNotification({
+        title: `Workflow saved as: ${workflowTitle}`,
+        description: filePath,
+        level: "success",
+        source: "workflow",
+      })
+      return true
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save workflow"))
+      addNotification({
+        title: "Save as failed",
+        description: errorMessage(error, "Failed to save workflow"),
+        level: "error",
+        source: "workflow",
+      })
+      showPersistentError(errorMessage(error, "Failed to save workflow"))
+      return false
     }
-  }, [deriveTitleFromPath, moveWorkflowExecutionState, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
+  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
 
   const openFile = useCallback(async () => {
     try {
       const result = await window.api.openWorkflowFile()
-      if (!result) return
+      if (!result) return false
       setCurrentWorkflow(result.chain)
       setSelectedWorkflowPath(result.filePath)
       setWorkflowSavedSnapshot(workflowSnapshot(result.chain))
@@ -141,10 +183,26 @@ export function useToolbarActions({
         const wfs = await window.api.listProjectWorkflows(selectedProject)
         setWorkflows(wfs)
       }
+      const workflowTitle = normalizeWorkflowTitle(result.chain.name || "") || deriveTitleFromPath(result.filePath)
+      toast.success(`Workflow imported: ${workflowTitle}`)
+      addNotification({
+        title: `Workflow imported: ${workflowTitle}`,
+        description: result.filePath,
+        level: "success",
+        source: "workflow",
+      })
+      return true
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to import workflow"))
+      addNotification({
+        title: "Workflow import failed",
+        description: errorMessage(error, "Failed to import workflow"),
+        level: "error",
+        source: "workflow",
+      })
+      showPersistentError(errorMessage(error, "Failed to import workflow"))
+      return false
     }
-  }, [selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
+  }, [addNotification, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
 
   const renameWorkflow = useCallback(async (nextName: string) => {
     if (!workflowPath) return false
@@ -164,12 +222,23 @@ export function useToolbarActions({
       setWorkflowSavedSnapshot(workflowSnapshot(renamedWorkflow))
       await refreshProjectData({ silent: true })
       toast.success(`Workflow renamed: ${trimmed}`)
+      addNotification({
+        title: `Workflow renamed: ${trimmed}`,
+        level: "success",
+        source: "workflow",
+      })
       return true
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to rename workflow"))
+      addNotification({
+        title: "Workflow rename failed",
+        description: errorMessage(error, "Failed to rename workflow"),
+        level: "error",
+        source: "workflow",
+      })
+      showPersistentError(errorMessage(error, "Failed to rename workflow"))
       return false
     }
-  }, [deriveTitleFromPath, moveWorkflowExecutionState, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
+  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
 
   const deleteWorkflow = useCallback(async () => {
     if (!workflowPath) return false
@@ -182,12 +251,23 @@ export function useToolbarActions({
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
       await refreshProjectData({ silent: true })
       toast.success(`Workflow deleted: ${workflowTitle}`)
+      addNotification({
+        title: `Workflow deleted: ${workflowTitle}`,
+        level: "success",
+        source: "workflow",
+      })
       return true
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to delete workflow"))
+      addNotification({
+        title: "Workflow delete failed",
+        description: errorMessage(error, "Failed to delete workflow"),
+        level: "error",
+        source: "workflow",
+      })
+      showPersistentError(errorMessage(error, "Failed to delete workflow"))
       return false
     }
-  }, [clearWorkflowExecutionState, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
+  }, [addNotification, clearWorkflowExecutionState, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
 
   return {
     refreshProjectData,

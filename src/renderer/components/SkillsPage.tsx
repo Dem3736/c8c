@@ -18,6 +18,7 @@ import {
   librariesAtom,
   mainViewAtom,
   selectedProjectAtom,
+  selectedNodeIdAtom,
   selectedWorkflowPathAtom,
   skillsAtom,
   type SkillLibrary,
@@ -183,6 +184,7 @@ export function SkillsPage() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [currentWorkflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
+  const [, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const [, setMainView] = useAtom(mainViewAtom)
 
   const [query, setQuery] = useState("")
@@ -327,24 +329,41 @@ export function SkillsPage() {
     }
   }, [acknowledgeBrokenRefs, pendingUninstall, pendingUninstallRefs.length, refresh])
 
+  const addToWorkflowDisabledReason = !selectedProject
+    ? "Select a project first."
+    : !selectedWorkflowPath
+      ? "Open a workflow first."
+      : null
+
   const addSkillToWorkflow = useCallback((skill: DiscoveredSkill) => {
     if (!selectedProject) {
       toast.error("Select a project first.")
       return
     }
     if (!selectedWorkflowPath) {
-      setMainView("thread")
       toast.error("Open a workflow first, then add a skill.")
       return
     }
 
-    setCurrentWorkflow((prev) => addSkillNodeToWorkflow(prev, skill))
-    setMainView("thread")
+    let nextSelectedId: string | null = null
+    setCurrentWorkflow((prev) => {
+      const next = addSkillNodeToWorkflow(prev, skill)
+      const previousIds = new Set(prev.nodes.map((node) => node.id))
+      nextSelectedId = next.nodes.find((node) => !previousIds.has(node.id))?.id ?? null
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
     toast.success(`Skill added: ${skill.name}`, {
-      description: "Configure the new step in the workflow editor.",
+      description: "The new step is ready in the workflow editor.",
+      action: {
+        label: "View workflow",
+        onClick: () => setMainView("thread"),
+      },
     })
     setStatusMessage(`${skill.name} added to workflow`)
-  }, [selectedProject, selectedWorkflowPath, setCurrentWorkflow, setMainView])
+  }, [selectedProject, selectedWorkflowPath, setCurrentWorkflow, setMainView, setSelectedNodeId])
 
   const createSkill = async () => {
     if (!selectedProject) {
@@ -418,6 +437,7 @@ export function SkillsPage() {
               variant="default"
               onClick={() => void createSkill()}
               disabled={!selectedProject}
+              title={selectedProject ? undefined : "Select a project first to create a skill."}
             >
               <Plus size={14} />
               New skill
@@ -540,7 +560,8 @@ export function SkillsPage() {
                   size="sm"
                   variant="outline"
                   onClick={(e) => { e.stopPropagation(); addSkillToWorkflow(skill) }}
-                  disabled={!selectedWorkflowPath}
+                  disabled={!!addToWorkflowDisabledReason}
+                  title={addToWorkflowDisabledReason || "Add this skill to the current workflow."}
                 >
                   Add to workflow
                 </Button>
@@ -653,6 +674,9 @@ export function SkillsPage() {
       {selectedSkill && (
         <SkillDetailPanel
           skill={selectedSkill}
+          onAddToWorkflow={() => addSkillToWorkflow(selectedSkill)}
+          canAddToWorkflow={!addToWorkflowDisabledReason}
+          addDisabledReason={addToWorkflowDisabledReason}
           onClose={() => setSelectedSkill(null)}
         />
       )}

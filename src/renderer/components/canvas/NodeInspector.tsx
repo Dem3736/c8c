@@ -30,12 +30,21 @@ import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { McpToolPicker } from "@/components/ui/mcp-tool-picker"
+import { SkillRefInput } from "@/components/ui/skill-ref-input"
 import { NODE_ICONS, NODE_LABELS } from "@/lib/node-ui-config"
 import { ProviderModelInput, ProviderSelect } from "@/components/provider-controls"
+import { RuntimePolicyEditor } from "@/components/NodeCardEditors"
 
 type AnyNodeConfig =
   | InputNodeConfig
   | OutputNodeConfig
+  | SkillNodeConfig
+  | EvaluatorNodeConfig
+  | SplitterNodeConfig
+  | MergerNodeConfig
+  | ApprovalNodeConfig
+
+type RuntimeConfigurableNodeConfig =
   | SkillNodeConfig
   | EvaluatorNodeConfig
   | SplitterNodeConfig
@@ -343,11 +352,10 @@ function SkillFields({
         <Label htmlFor={`insp-skill-ref-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Skill reference
         </Label>
-        <Input
+        <SkillRefInput
           id={`insp-skill-ref-${nodeId}`}
-          type="text"
           value={config.skillRef || ""}
-          onChange={(e) => onChange({ ...config, skillRef: e.target.value })}
+          onChange={(value) => onChange({ ...config, skillRef: value })}
           placeholder="category/skill-name"
           className="h-control-md font-mono text-body-sm"
         />
@@ -441,6 +449,12 @@ function SkillFields({
           placeholder="e.g. Edit"
         />
       </div>
+
+      <RuntimePolicyEditor
+        nodeId={nodeId}
+        config={config}
+        onConfigChange={onChange as (next: RuntimeConfigurableNodeConfig) => void}
+      />
     </>
   )
 }
@@ -523,6 +537,12 @@ function EvaluatorFields({
           </SelectContent>
         </Select>
       </div>
+
+      <RuntimePolicyEditor
+        nodeId={nodeId}
+        config={config}
+        onConfigChange={onChange as (next: RuntimeConfigurableNodeConfig) => void}
+      />
     </>
   )
 }
@@ -568,6 +588,12 @@ function SplitterFields({
           max={20}
         />
       </div>
+
+      <RuntimePolicyEditor
+        nodeId={nodeId}
+        config={config}
+        onConfigChange={onChange as (next: RuntimeConfigurableNodeConfig) => void}
+      />
     </>
   )
 }
@@ -604,6 +630,27 @@ function MergerFields({
         {config.strategy === "summarize" && "Compresses all branch outputs into a shorter synthesis."}
         {config.strategy === "select_best" && "Picks a single strongest branch output."}
       </p>
+      {config.strategy !== "concatenate" && (
+        <div>
+          <Label htmlFor={`insp-merge-prompt-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
+            Merge Instructions
+          </Label>
+          <TextareaWithMention
+            id={`insp-merge-prompt-${nodeId}`}
+            value={config.prompt || ""}
+            onChange={(e) => onChange({ ...config, prompt: e.target.value })}
+            rows={3}
+            className="min-h-[72px] resize-y font-mono text-body-sm"
+            placeholder="How to combine the results..."
+          />
+        </div>
+      )}
+
+      <RuntimePolicyEditor
+        nodeId={nodeId}
+        config={config}
+        onConfigChange={onChange as (next: RuntimeConfigurableNodeConfig) => void}
+      />
     </>
   )
 }
@@ -657,6 +704,12 @@ function ApprovalFields({
           />
         </div>
       </div>
+
+      <RuntimePolicyEditor
+        nodeId={nodeId}
+        config={config}
+        onConfigChange={onChange as (next: RuntimeConfigurableNodeConfig) => void}
+      />
     </>
   )
 }

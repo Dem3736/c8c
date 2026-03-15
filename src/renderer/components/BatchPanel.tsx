@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback } from "react"
 import { useAtom } from "jotai"
 import {
   batchDialogOpenAtom,
@@ -100,7 +100,6 @@ export function BatchPanel() {
   const [inputText, setInputText] = useState("")
   const [concurrency, setConcurrency] = useState(2)
   const [stopOnFailure, setStopOnFailure] = useState(false)
-  const prevOpenRef = useRef(open)
 
   const inputs = inputText
     .split("\n")
@@ -120,13 +119,13 @@ export function BatchPanel() {
       type: "text" as const,
       value,
     }))
-    setBatchStatus("idle")
-    setBatchError(null)
-    setBatchItems([])
     setBatchSummary(null)
-    setBatchProgress({ completed: 0, total: 0, running: 0 })
-    runBatch(workflowInputs, concurrency, stopOnFailure)
-  }, [failedItems, failedCount, inputs, concurrency, stopOnFailure, runBatch, setBatchStatus, setBatchError, setBatchItems, setBatchSummary, setBatchProgress])
+    runBatch(workflowInputs, concurrency, stopOnFailure, {
+      preserveExistingItems: true,
+      inputIndexMap: failedItems.map((item) => item.input_index),
+      totalInputsOverride: inputs.length,
+    })
+  }, [failedItems, failedCount, inputs, concurrency, stopOnFailure, runBatch, setBatchSummary])
 
   const handleRun = useCallback(() => {
     if (inputs.length === 0) return
@@ -157,20 +156,6 @@ export function BatchPanel() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-")
     downloadText(`batch-results-${stamp}.csv`, toBatchCsv(batchItems, inputs), "text/csv;charset=utf-8")
   }, [batchItems, inputs])
-
-  useEffect(() => {
-    if (prevOpenRef.current === open) return
-    const openedNow = !prevOpenRef.current && open
-    prevOpenRef.current = open
-    if (!openedNow) return
-    if (batchStatus === "running") return
-
-    setBatchStatus("idle")
-    setBatchError(null)
-    setBatchItems([])
-    setBatchSummary(null)
-    setBatchProgress({ completed: 0, total: 0, running: 0 })
-  }, [open, batchStatus, setBatchStatus, setBatchError, setBatchItems, setBatchSummary, setBatchProgress])
 
   return (
     <Dialog
@@ -290,6 +275,11 @@ export function BatchPanel() {
                 value={`${(batchSummary.mean_duration_ms / 1000).toFixed(1)}s`}
               />
             </div>
+            {batchSummary.cancelled > 0 && (
+              <div className="ui-alert-warning ui-meta-text text-status-warning">
+                Batch was cancelled before all items finished. Completed results are still available below.
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={batchItems.length === 0}>
                 <Download size={14} />

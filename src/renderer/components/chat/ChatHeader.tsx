@@ -32,7 +32,7 @@ export function ChatHeader({
   messageCount,
   status,
   activeToolName,
-  title = "Chat",
+  title = "Agent",
 }: ChatHeaderProps) {
   const [confirmClearOpen, setConfirmClearOpen] = useState(false)
   const statusLabel = status === "error"
@@ -104,7 +104,7 @@ export function ChatHeader({
           <Button
             onClick={() => setConfirmClearOpen(true)}
             disabled={messageCount === 0 || status !== "idle"}
-            aria-label="Clear history"
+            aria-label="Clear Agent history"
             variant="ghost"
             size="icon"
             className={cn(
@@ -117,14 +117,14 @@ export function ChatHeader({
             <Trash2 size={13} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Clear history</TooltipContent>
+        <TooltipContent>Clear Agent history</TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             onClick={onClose}
-            aria-label="Close chat"
+            aria-label="Close Agent panel"
             variant="ghost"
             size="icon"
             className="text-muted-foreground ui-transition-colors ui-motion-fast hover:text-foreground hover:bg-surface-3"
@@ -132,14 +132,14 @@ export function ChatHeader({
             <PanelRightClose size={13} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Close chat</TooltipContent>
+        <TooltipContent>Close Agent panel</TooltipContent>
       </Tooltip>
 
       <Dialog open={confirmClearOpen} onOpenChange={setConfirmClearOpen}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Clear chat history?</DialogTitle>
-            <DialogDescription>Clear all messages? This cannot be undone.</DialogDescription>
+            <DialogTitle>Clear Agent history?</DialogTitle>
+            <DialogDescription>Clear the current conversation? This cannot be undone.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogFooter>
             <DialogClose asChild>

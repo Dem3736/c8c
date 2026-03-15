@@ -317,6 +317,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
                       : "border border-hairline bg-surface-2/70 text-muted-foreground/80 cursor-not-allowed",
                   )}
                   disabled={!canOpenReport}
+                  title={canOpenReport ? "Open the saved report file" : "This run does not have a saved report file."}
                   onClick={() => {
                     if (!run.reportPath) return
                     void handleOpenReport(run.reportPath)
@@ -333,6 +334,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
                       : "border border-hairline bg-surface-2/70 text-muted-foreground/80 cursor-not-allowed",
                   )}
                   disabled={!canContinue}
+                  title={canContinue ? "Continue this run from its saved workspace" : "Continue is only available for paused or interrupted runs."}
                   onClick={() => {
                     if (!canContinue || !onContinueRun) return
                     void onContinueRun(run)
@@ -383,7 +385,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
             {!historyLoading && !historyError && selectedRunDetails?.reportContent && (
               <div className="rounded-md border border-hairline bg-surface-1/70 p-2">
                 <div className="ui-meta-text text-muted-foreground mb-1">Report preview</div>
-                <div className="max-h-56 overflow-y-auto ui-scroll-region">
+                <div className="max-h-80 overflow-y-auto ui-scroll-region">
                   <div className={MARKDOWN_PROSE_CLASS}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MARKDOWN_COMPONENTS}>
                       {selectedRunDetails.reportContent}

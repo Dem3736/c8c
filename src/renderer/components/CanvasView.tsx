@@ -12,15 +12,15 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { useCanvasLayout } from "@/hooks/useCanvasLayout"
+import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 import { CanvasNode } from "./canvas/CanvasNode"
 import { WorkflowEdge } from "./canvas/WorkflowEdge"
-import { useAtom, useSetAtom } from "jotai"
+import { useAtom } from "jotai"
 import { skillPickerOpenAtom, selectedNodeIdAtom, selectedWorkflowPathAtom, canvasManualPositionsAtom } from "@/lib/store"
 import { runStatusAtom } from "@/features/execution"
 import { SkillPicker } from "./SkillPicker"
 import type { DiscoveredSkill } from "@/lib/store"
 import { toast } from "sonner"
-import { currentWorkflowAtom } from "@/lib/store"
 import { Plus, BarChart3, GitFork, LocateFixed, LayoutDashboard, Hand, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,10 +40,10 @@ import {
   addSkillNodeToWorkflow,
   removeEdgeFromWorkflow,
   removeNodeAndRewireWorkflow,
-  wouldCreateCycle,
 } from "@/lib/workflow-mutations"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { MOTION_BASE_MS } from "@/lib/tokens"
+import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
 
 const nodeTypes: NodeTypes = {
   input: CanvasNode,
@@ -75,6 +75,11 @@ function areStringArraysEqual(a: string[], b: string[]): boolean {
   return true
 }
 
+function findFirstAddedNodeId(prevNodeIds: string[], nextNodeIds: string[]): string | null {
+  const previousIds = new Set(prevNodeIds)
+  return nextNodeIds.find((id) => !previousIds.has(id)) ?? null
+}
+
 export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {}) {
   const { nodes, edges } = useCanvasLayout()
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
@@ -82,8 +87,8 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
   const isRunning = runStatus === "running" || runStatus === "paused"
   const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
-  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
-  const setManualPositions = useSetAtom(canvasManualPositionsAtom)
+  const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
+  const [manualPositions, setManualPositions] = useAtom(canvasManualPositionsAtom)
   const [reactFlow, setReactFlow] = useState<ReactFlowInstance | null>(null)
   const [hasUserNavigatedCanvas, setHasUserNavigatedCanvas] = useState(false)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
@@ -118,25 +123,69 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
         onAddSkill(skill)
         return
       }
-      setWorkflow((prev) => addSkillNodeToWorkflow(prev, skill))
+      let nextSelectedId: string | null = null
+      setWorkflow((prev) => {
+        const next = addSkillNodeToWorkflow(prev, skill)
+        nextSelectedId = findFirstAddedNodeId(
+          prev.nodes.map((node) => node.id),
+          next.nodes.map((node) => node.id),
+        )
+        return next
+      })
+      if (nextSelectedId) {
+        setSelectedNodeId(nextSelectedId)
+      }
     },
-    [isRunning, onAddSkill, readOnly, setWorkflow],
+    [isRunning, onAddSkill, readOnly, setSelectedNodeId, setWorkflow],
   )
 
   const addEvaluator = useCallback(() => {
     if (readOnly || isRunning) return
-    setWorkflow((prev) => addEvaluatorNodeToWorkflow(prev))
-  }, [isRunning, readOnly, setWorkflow])
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addEvaluatorNodeToWorkflow(prev)
+      nextSelectedId = findFirstAddedNodeId(
+        prev.nodes.map((node) => node.id),
+        next.nodes.map((node) => node.id),
+      )
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
+  }, [isRunning, readOnly, setSelectedNodeId, setWorkflow])
 
   const addFanOut = useCallback(() => {
     if (readOnly || isRunning) return
-    setWorkflow((prev) => addFanOutPatternToWorkflow(prev))
-  }, [isRunning, readOnly, setWorkflow])
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addFanOutPatternToWorkflow(prev)
+      nextSelectedId = findFirstAddedNodeId(
+        prev.nodes.map((node) => node.id),
+        next.nodes.map((node) => node.id),
+      )
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
+  }, [isRunning, readOnly, setSelectedNodeId, setWorkflow])
 
   const addApproval = useCallback(() => {
     if (readOnly || isRunning) return
-    setWorkflow((prev) => addApprovalNodeToWorkflow(prev))
-  }, [isRunning, readOnly, setWorkflow])
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addApprovalNodeToWorkflow(prev)
+      nextSelectedId = findFirstAddedNodeId(
+        prev.nodes.map((node) => node.id),
+        next.nodes.map((node) => node.id),
+      )
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
+  }, [isRunning, readOnly, setSelectedNodeId, setWorkflow])
 
   const hasSkillNodes = useMemo(
     () => nodes.some((node) => node.type === "skill"),
@@ -185,6 +234,13 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
   )
   const canDeleteSelectedEdge = Boolean(selectedEdgeId && !readOnly && !isRunning)
   const canDeleteSelection = canDeleteSelectedNode || canDeleteSelectedEdge
+  const selectedSummaryLabel = selectedNodeIds.length > 1
+    ? `${selectedNodeIds.length} nodes selected`
+    : selectedTemplateNode
+      ? getWorkflowNodeLabel(selectedTemplateNode)
+      : selectedEdgeId
+        ? "Edge selected"
+        : null
   const contextNode = canvasContextMenu?.scope === "node" && canvasContextMenu.nodeId
     ? workflow.nodes.find((node) => node.id === canvasContextMenu.nodeId) || null
     : null
@@ -202,12 +258,13 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     setWorkflow((prev) => removeNodeAndRewireWorkflow(prev, selectedNodeId))
     setSelectedNodeId(null)
     toast.success("Node removed", {
+      duration: Infinity,
       action: {
         label: "Undo",
-        onClick: () => setWorkflow(previousWorkflow),
+        onClick: () => setWorkflowDirect(previousWorkflow),
       },
     })
-  }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow, workflow])
+  }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow, setWorkflowDirect, workflow])
 
   const removeSelectedEdge = useCallback(() => {
     if (!selectedEdgeId || readOnly || isRunning) return
@@ -215,12 +272,13 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     setWorkflow((prev) => removeEdgeFromWorkflow(prev, selectedEdgeId))
     setSelectedEdgeId(null)
     toast.success("Edge removed", {
+      duration: Infinity,
       action: {
         label: "Undo",
-        onClick: () => setWorkflow(previousWorkflow),
+        onClick: () => setWorkflowDirect(previousWorkflow),
       },
     })
-  }, [isRunning, readOnly, selectedEdgeId, setWorkflow, workflow])
+  }, [isRunning, readOnly, selectedEdgeId, setWorkflow, setWorkflowDirect, workflow])
 
   const removeSelection = useCallback(() => {
     // Multi-select delete
@@ -240,9 +298,10 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
       setSelectedNodeId(null)
       setSelectedNodeIds([])
       toast.success(`${deletableIds.length} nodes removed`, {
+        duration: Infinity,
         action: {
           label: "Undo",
-          onClick: () => setWorkflow(previousWorkflow),
+          onClick: () => setWorkflowDirect(previousWorkflow),
         },
       })
       return
@@ -254,7 +313,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     if (canDeleteSelectedNode) {
       removeSelectedNode()
     }
-  }, [canDeleteSelectedEdge, canDeleteSelectedNode, isRunning, readOnly, removeSelectedEdge, removeSelectedNode, selectedNodeIds, setSelectedNodeId, setWorkflow, workflow])
+  }, [canDeleteSelectedEdge, canDeleteSelectedNode, isRunning, readOnly, removeSelectedEdge, removeSelectedNode, selectedNodeIds, setSelectedNodeId, setWorkflow, setWorkflowDirect, workflow])
 
   const removeNodeById = useCallback((nodeId: string) => {
     if (readOnly || isRunning) return
@@ -279,22 +338,9 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
   )
 
   const isValidConnection = useCallback(
-    (connection: Connection | { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => {
-      if (!connection.source || !connection.target) return false
-      if (connection.source === connection.target) return false
-      const sourceNode = workflow.nodes.find((n) => n.id === connection.source)
-      const targetNode = workflow.nodes.find((n) => n.id === connection.target)
-      if (!sourceNode || !targetNode) return false
-      if (sourceNode.type === "output") return false
-      if (targetNode.type === "input") return false
-      if (wouldCreateCycle(workflow, connection.source, connection.target)) return false
-      const duplicate = workflow.edges.some(
-        (e) => e.source === connection.source && e.target === connection.target,
-      )
-      if (duplicate) return false
-      return true
-    },
-    [workflow],
+    (connection: Connection | { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) =>
+      Boolean(connection.source && connection.target && connection.source !== connection.target),
+    [],
   )
 
   const onConnect = useCallback(
@@ -308,7 +354,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
       setWorkflow((prev) => {
         const result = addEdgeToWorkflow(prev, connection.source!, connection.target!, edgeType)
         if (result.error) {
-          toast.warning(result.error)
+          toast.warning(result.error, { duration: 8000 })
         }
         return result.workflow
       })
@@ -429,7 +475,14 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           variant="outline"
           size="sm"
           aria-label="Add skill step"
-          disabled={readOnly}
+          disabled={readOnly || isRunning}
+          title={
+            readOnly
+              ? "Canvas is read-only."
+              : isRunning
+                ? "Cannot add nodes while a run is in progress."
+                : undefined
+          }
           onClick={() => setPickerOpen(true)}
         >
           <Plus size={14} />
@@ -441,8 +494,21 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           size="icon"
           aria-label="Auto-layout"
           onClick={() => {
+            const previousPositions = manualPositions
             setManualPositions({})
             setTimeout(() => reactFlow?.fitView({ duration: 300 }), 50)
+            if (Object.keys(previousPositions).length > 0) {
+              toast.success("Layout reset", {
+                duration: Infinity,
+                action: {
+                  label: "Undo",
+                  onClick: () => {
+                    setManualPositions(previousPositions)
+                    setTimeout(() => reactFlow?.fitView({ duration: 300 }), 50)
+                  },
+                },
+              })
+            }
           }}
           className="text-muted-foreground hover:text-foreground"
           title="Reset to auto-layout"
@@ -465,6 +531,7 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           onClick={removeSelection}
           disabled={!canDeleteSelection}
           className="text-muted-foreground enabled:hover:text-status-danger"
+          title={canDeleteSelection ? "Delete selected node or edge" : "Select a node or edge to delete."}
         >
           <Trash2 size={14} />
         </Button>
@@ -475,16 +542,23 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
               variant="outline"
               size="sm"
               className="w-[188px] justify-between bg-surface-1/90"
-              disabled={readOnly}
+              disabled={readOnly || isRunning}
+              title={
+                readOnly
+                  ? "Canvas is read-only."
+                  : isRunning
+                    ? "Cannot add nodes while a run is in progress."
+                    : undefined
+              }
             >
               <span className="inline-flex min-w-0 flex-1 items-center gap-2">
                 <GitFork size={14} />
-                <span className="truncate">Add block...</span>
+                <span className="truncate">Add node...</span>
               </span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Add Block</DropdownMenuLabel>
+            <DropdownMenuLabel>Add Node</DropdownMenuLabel>
             <DropdownMenuItem
               disabled={!hasSkillNodes}
               onSelect={() => handleInsertBlock("evaluator")}
@@ -512,6 +586,44 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {selectedSummaryLabel && (
+        <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-lg border border-hairline/70 bg-surface-1/92 px-3 py-2 shadow-sm backdrop-blur">
+          <div className="min-w-0">
+            <p className="section-kicker text-muted-foreground">Selected</p>
+            <p className="max-w-[240px] truncate text-body-sm font-medium text-foreground" title={selectedSummaryLabel}>
+              {selectedSummaryLabel}
+            </p>
+          </div>
+
+          {canDeleteSelection && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={removeSelection}
+              className="gap-1.5 text-muted-foreground hover:text-status-danger"
+              title="Delete selected node or edge"
+            >
+              <Trash2 size={13} />
+              Delete
+            </Button>
+          )}
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedNodeId(null)
+              setSelectedNodeIds([])
+              setSelectedEdgeId(null)
+            }}
+            className="gap-1.5 text-muted-foreground hover:text-foreground"
+            title="Clear current canvas selection"
+          >
+            Clear
+          </Button>
+        </div>
+      )}
 
       <SkillPicker onAddSkill={addNode} />
 

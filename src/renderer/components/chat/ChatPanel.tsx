@@ -85,7 +85,7 @@ export function ChatPanel({
       <div
         role="slider"
         aria-orientation="horizontal"
-        aria-label="Resize chat panel"
+        aria-label="Resize Agent panel"
         aria-valuenow={panelWidth}
         aria-valuemin={minWidth}
         aria-valuemax={maxPanelWidth}

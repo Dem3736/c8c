@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useAtom } from "jotai"
 import {
   currentWorkflowAtom,
@@ -14,17 +14,21 @@ export function useMcpTools(): {
   refresh: () => Promise<void>
 } {
   const [tools, setTools] = useAtom(mcpDiscoveredToolsAtom)
+  const [loading, setLoading] = useState(false)
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [defaultProvider] = useAtom(defaultProviderAtom)
   const provider = workflow.defaults?.provider || defaultProvider
 
   const refresh = async () => {
+    setLoading(true)
     try {
       const discovered = await window.api.mcpDiscoverTools(provider, undefined, selectedProject ?? undefined)
       setTools(discovered)
-    } catch {
-      // Silently fail — tools remain empty
+    } catch (error) {
+      console.error("[useMcpTools] discoverTools failed:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -36,5 +40,5 @@ export function useMcpTools(): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, selectedProject])
 
-  return { tools, loading: false, refresh }
+  return { tools, loading, refresh }
 }

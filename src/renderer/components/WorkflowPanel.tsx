@@ -147,15 +147,15 @@ export function WorkflowPanel() {
           className="flex-1 min-h-0 flex flex-col overflow-hidden"
         >
           <div className="border-b border-hairline bg-surface-1">
-            <div className={cn("ui-content-shell flex flex-wrap items-start gap-3", viewMode === "list" ? "py-3" : "py-4")}>
-              <div className="flex-1 min-w-[280px] group/workflow-meta">
-                <div className="mb-1 flex items-center gap-2">
-                  <Label htmlFor="workflow-name" className="section-kicker text-muted-foreground">Workflow Name</Label>
-                  <span className="ui-meta-text inline-flex items-center gap-1 text-muted-foreground ui-transition-opacity ui-motion-fast group-focus-within/workflow-meta:opacity-0">
-                    <PencilLine size={11} />
-                    click to edit
-                  </span>
-                </div>
+            <div className="ui-content-shell flex flex-wrap items-center gap-3 py-2.5">
+              <div className="flex min-w-[280px] flex-1 items-center gap-2">
+                <span
+                  className="inline-flex h-control-sm w-control-sm shrink-0 items-center justify-center rounded-md border border-hairline bg-surface-2/80 text-muted-foreground ui-elevation-inset"
+                  aria-hidden="true"
+                >
+                  <PencilLine size={13} />
+                </span>
+                <Label htmlFor="workflow-name" className="sr-only">Workflow name</Label>
                 <Input
                   id="workflow-name"
                   type="text"
@@ -165,22 +165,12 @@ export function WorkflowPanel() {
                   }
                   disabled={runStatus === "running" || runStatus === "paused"}
                   placeholder="Workflow name"
-                  className="h-auto border-none bg-transparent px-0 py-0 text-title-lg font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
-                />
-                <Label htmlFor="workflow-description" className="sr-only">Workflow description</Label>
-                <Input
-                  id="workflow-description"
-                  type="text"
-                  value={workflow.description || ""}
-                  onChange={(e) =>
-                    setWorkflow((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  disabled={runStatus === "running" || runStatus === "paused"}
-                  placeholder="What does this workflow do?"
-                  className="mt-1 h-auto border-none bg-transparent px-0 py-0 text-body-md text-muted-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+                  className="h-auto min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-title-md font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
                 {workflowDirty && (
-                  <p className="mt-2 ui-meta-text text-status-warning">Unsaved changes</p>
+                  <span className="ui-meta-text shrink-0 rounded-md border border-status-warning/30 bg-status-warning/10 px-2 py-1 text-status-warning">
+                    Unsaved
+                  </span>
                 )}
               </div>
               <TabsList className="h-control-md shrink-0" aria-label="View mode">
@@ -194,7 +184,7 @@ export function WorkflowPanel() {
                 </TabsTrigger>
                 <TabsTrigger value="settings" className="px-3 py-1">
                   <SlidersHorizontal size={13} aria-hidden="true" className="mr-1.5" />
-                  Settings
+                  Defaults
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -249,9 +239,9 @@ export function WorkflowPanel() {
         <ApprovalDialog />
       </div>
 
-      {/* Chat panel — right side */}
+      {/* Agent panel — right side */}
       {chatOpen && selectedWorkflowPath && (
-        <SectionErrorBoundary sectionName="chat panel">
+        <SectionErrorBoundary sectionName="Agent panel">
           <ChatPanel onClose={() => setChatOpen(false)} />
         </SectionErrorBoundary>
       )}

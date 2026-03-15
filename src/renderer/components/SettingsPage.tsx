@@ -244,8 +244,8 @@ export function SettingsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Settings"
-        subtitle="Configure global behavior for generated and template-based workflows."
+        title="Global Settings"
+        subtitle="Configure app-wide defaults, providers, and services used across workflows."
       />
 
       {process.env.NODE_ENV !== "development" && (
@@ -345,7 +345,7 @@ export function SettingsPage() {
 
         <article className="rounded-lg surface-panel p-4 space-y-3">
           <div>
-            <h3 className="text-body-md font-semibold">Workflow Defaults</h3>
+            <h3 className="text-body-md font-semibold">New Workflow Defaults</h3>
             <p className="text-body-sm text-muted-foreground mt-1">
               Default values applied when creating new workflows. These do not affect existing saved workflows.
             </p>

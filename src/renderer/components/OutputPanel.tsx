@@ -97,6 +97,7 @@ export function OutputPanel({
   const copyResetTimerRef = useRef<number | null>(null)
   const resultPulseTimerRef = useRef<number | null>(null)
   const resultSignalShownRef = useRef(false)
+  const previousRunStatusRef = useRef(runStatus)
 
   const handleRerunFrom = useCallback((nodeId: string) => {
     if (!onRerunFrom || !workspace) return
@@ -308,13 +309,22 @@ export function OutputPanel({
     if (runStatus !== "done" || !hasResult) {
       resultSignalShownRef.current = false
       setResultReadyPulse(false)
+      previousRunStatusRef.current = runStatus
       return
+    }
+    const runJustCompleted = previousRunStatusRef.current !== "done"
+    previousRunStatusRef.current = runStatus
+    if (runJustCompleted) {
+      resultSignalShownRef.current = true
+      if (activeTab !== "result" && activeTab !== "history") {
+        setActiveTab("result")
+        setResultReadyPulse(false)
+        return
+      }
     }
     if (resultSignalShownRef.current) return
     resultSignalShownRef.current = true
-    if (activeTab === "result") {
-      return
-    }
+    if (activeTab === "result") return
     setResultReadyPulse(true)
     if (resultPulseTimerRef.current) {
       window.clearTimeout(resultPulseTimerRef.current)
@@ -466,9 +476,18 @@ export function OutputPanel({
                 <div
                   role="status"
                   aria-live="polite"
-                  className="ui-alert-success text-status-success mt-2"
+                  className="ui-alert-success text-status-success mt-2 flex flex-wrap items-center justify-between gap-2"
                 >
-                  Workflow completed successfully
+                  <span>Workflow completed successfully.</span>
+                  {hasResult && (
+                    <button
+                      type="button"
+                      className="rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 ui-meta-label text-status-success hover:bg-status-success/15"
+                      onClick={() => setActiveTab("result")}
+                    >
+                      View result
+                    </button>
+                  )}
                 </div>
               )}
               {runStatus === "error" && (

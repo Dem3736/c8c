@@ -37,10 +37,19 @@ const MARKDOWN_COMPONENTS: MarkdownComponents = {
 
 interface SkillDetailPanelProps {
   skill: DiscoveredSkill
+  onAddToWorkflow?: () => void
+  canAddToWorkflow?: boolean
+  addDisabledReason?: string | null
   onClose: () => void
 }
 
-export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
+export function SkillDetailPanel({
+  skill,
+  onAddToWorkflow,
+  canAddToWorkflow = false,
+  addDisabledReason = null,
+  onClose,
+}: SkillDetailPanelProps) {
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +128,18 @@ export function SkillDetailPanel({ skill, onClose }: SkillDetailPanelProps) {
               {skill.category}/{skill.name}
             </p>
           </div>
+          {onAddToWorkflow && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAddToWorkflow}
+              disabled={!canAddToWorkflow}
+              title={addDisabledReason || "Add this skill to the current workflow."}
+              className="shrink-0 mt-0.5"
+            >
+              Add to workflow
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

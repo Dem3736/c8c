@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
+import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 import {
-  currentWorkflowAtom,
   selectedNodeIdAtom,
   skillPickerOpenAtom,
   type WorkflowNode,
@@ -60,7 +60,7 @@ interface ChainBuilderProps {
 }
 
 export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
-  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
@@ -113,6 +113,11 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
     return nodeId
   }
 
+  const selectFirstNewNode = (previous: typeof workflow, next: typeof workflow) => {
+    const previousIds = new Set(previous.nodes.map((node) => node.id))
+    return next.nodes.find((node) => !previousIds.has(node.id))?.id ?? null
+  }
+
   const confirmRemove = (nodeId: string) => {
     const node = workflow.nodes.find((n) => n.id === nodeId)
     if (!node || node.type === "input" || node.type === "output") return
@@ -133,14 +138,21 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
     }
 
     undoToastIdRef.current = toast.success("Node removed", {
+      duration: Infinity,
       action: {
         label: "Undo",
-        onClick: () => setWorkflow(previousWorkflow),
+        onClick: () => setWorkflowDirect(previousWorkflow),
       },
     })
   }
 
   const moveNode = (nodeId: string, direction: "up" | "down") => {
+    if (!isReorderSafe) {
+      toast.warning("Reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.", {
+        duration: 8000,
+      })
+      return
+    }
     setWorkflow((prev) => moveMiddleNodeByDirection(prev, nodeId, direction))
   }
 
@@ -148,26 +160,58 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
     nodeId: string,
     config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig,
   ) => {
-    setWorkflow((prev) => ({
+    setWorkflowDirect((prev) => ({
       ...prev,
       nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, config } as typeof n : n)),
     }))
   }
 
   const addNode = (skill: DiscoveredSkill) => {
-    setWorkflow((prev) => addSkillNodeToWorkflow(prev, skill))
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addSkillNodeToWorkflow(prev, skill)
+      nextSelectedId = selectFirstNewNode(prev, next)
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
   }
 
   const addEvaluator = () => {
-    setWorkflow((prev) => addEvaluatorNodeToWorkflow(prev))
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addEvaluatorNodeToWorkflow(prev)
+      nextSelectedId = selectFirstNewNode(prev, next)
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
   }
 
   const addFanOut = () => {
-    setWorkflow((prev) => addFanOutPatternToWorkflow(prev))
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addFanOutPatternToWorkflow(prev)
+      nextSelectedId = selectFirstNewNode(prev, next)
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
   }
 
   const addApproval = () => {
-    setWorkflow((prev) => addApprovalNodeToWorkflow(prev))
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addApprovalNodeToWorkflow(prev)
+      nextSelectedId = selectFirstNewNode(prev, next)
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
   }
 
   const handleInsertBlock = (value: string) => {
@@ -186,6 +230,13 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
 
   const handleDragStart = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
     if (node.type === "input" || node.type === "output") return
+    if (!isReorderSafe) {
+      event.preventDefault()
+      toast.warning("Drag reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.", {
+        duration: 8000,
+      })
+      return
+    }
     setDraggedNodeId(node.id)
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", node.id)
@@ -214,6 +265,14 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
   const handleDrop = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
     if (!draggedNodeId) return
     if (node.type === "input" || node.type === "output") return
+    if (!isReorderSafe) {
+      event.preventDefault()
+      toast.warning("Drag reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.", {
+        duration: 8000,
+      })
+      clearDragState()
+      return
+    }
     event.preventDefault()
     setWorkflow((prev) => moveMiddleNodeBeforeTarget(prev, draggedNodeId, node.id))
     setDragOverNodeId(null)
@@ -251,7 +310,7 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
         {orderedNodes.map((node, i) => (
           <div
             key={node.id}
-            draggable={node.type !== "input" && node.type !== "output"}
+            draggable={node.type !== "input" && node.type !== "output" && isReorderSafe}
             onDragStart={(event) => handleDragStart(node, event)}
             onDragEnd={clearDragState}
             onDragOver={(event) => handleDragOver(node, event)}
@@ -331,7 +390,7 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
                 className={cn("justify-start bg-surface-1/80", compact ? "w-[170px]" : "w-[196px]")}
               >
                 <GitFork size={14} />
-                Add block...
+                Add node...
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

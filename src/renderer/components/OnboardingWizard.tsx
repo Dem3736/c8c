@@ -21,21 +21,15 @@ import {
   FolderOpen,
   ArrowRight,
   ArrowLeft,
-  Search,
-  Pencil,
-  FileText,
   LayoutTemplate,
   Terminal,
   Bot,
 } from "lucide-react"
 
-type JobChoice = "analyze" | "generate" | "content"
-
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 3
 
 export function OnboardingWizard() {
   const [step, setStep] = useState(1)
-  const [selectedJob, setSelectedJob] = useState<JobChoice | null>(null)
   const [, setFirstLaunch] = useAtom(firstLaunchAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setSelectedProject] = useAtom(selectedProjectAtom)
@@ -90,14 +84,7 @@ export function OnboardingWizard() {
           <div className="rounded-lg surface-panel p-8 space-y-6">
             {step === 1 && <StepCheckCli />}
             {step === 2 && <StepOpenProject onProjectAdded={setSelectedProject} />}
-            {step === 3 && <StepPickJob selectedJob={selectedJob} onSelect={setSelectedJob} />}
-            {step === 4 && (
-              <StepActivateAgent
-                selectedJob={selectedJob}
-                onOpenAgent={openAgent}
-                onGoTemplates={goTemplates}
-              />
-            )}
+            {step === 3 && <StepUnderstandWorkflow onOpenAgent={openAgent} onGoTemplates={goTemplates} />}
           </div>
 
           {/* Navigation */}
@@ -399,110 +386,16 @@ function StepOpenProject({
   )
 }
 
-/* ── Step 3: What will you build? (JTBD) ─────────────────── */
+/* ── Step 3: Workflow mental model + first action ────────── */
 
-const JOB_CARDS: { id: JobChoice; icon: typeof Search; title: string; description: string; mode: string }[] = [
-  {
-    id: "analyze",
-    icon: Search,
-    title: "Analyze & review",
-    description: "Code review, audits, docs",
-    mode: "Plan mode (read-only)",
-  },
-  {
-    id: "generate",
-    icon: Pencil,
-    title: "Generate & refactor",
-    description: "Write code, tests, refactor",
-    mode: "Edit mode (can modify)",
-  },
-  {
-    id: "content",
-    icon: FileText,
-    title: "Content pipelines",
-    description: "Blog posts, landing pages",
-    mode: "Multi-step generation",
-  },
-]
-
-function StepPickJob({
-  selectedJob,
-  onSelect,
-}: {
-  selectedJob: JobChoice | null
-  onSelect: (job: JobChoice) => void
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
-          <Bot size={20} className="text-foreground" />
-        </div>
-        <h2 className="text-title-md text-foreground">What will you build?</h2>
-      </div>
-      <p className="text-body-md text-muted-foreground">
-        Pick your primary use case. This helps us show relevant examples.
-      </p>
-
-      <div className="flex flex-col gap-3" role="radiogroup">
-        {JOB_CARDS.map((card) => {
-          const Icon = card.icon
-          const selected = selectedJob === card.id
-          return (
-            <button
-              key={card.id}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onSelect(card.id)}
-              className={`flex items-start gap-3 rounded-lg p-3 text-left ui-pressable transition-colors ${
-                selected
-                  ? "surface-panel border border-primary bg-primary/5"
-                  : "surface-panel border border-transparent hover:border-muted-foreground/20"
-              }`}
-            >
-              <div className={`flex items-center justify-center w-8 h-8 rounded-md shrink-0 ${
-                selected ? "bg-primary/10" : "bg-surface-2"
-              }`}>
-                <Icon size={16} className={selected ? "text-primary" : "text-muted-foreground"} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-body-sm font-medium text-foreground">{card.title}</div>
-                <div className="ui-meta-text text-muted-foreground">{card.description}</div>
-                <div className="ui-meta-text text-muted-foreground/60 mt-0.5">{card.mode}</div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      <p className="ui-meta-text text-muted-foreground">
-        You can always change this later in the toolbar.
-      </p>
-    </div>
-  )
-}
-
-/* ── Step 4: Start with the Agent ────────────────────────── */
-
-const EXAMPLE_PROMPTS: Record<JobChoice, string> = {
-  analyze: "Review this codebase for security vulnerabilities",
-  generate: "Refactor all React class components to hooks",
-  content: "Generate a blog post series from research notes",
-}
-
-function StepActivateAgent({
-  selectedJob,
+function StepUnderstandWorkflow({
   onOpenAgent,
   onGoTemplates,
 }: {
-  selectedJob: JobChoice | null
   onOpenAgent: () => void
   onGoTemplates: () => void
 }) {
-  const examplePrompt = selectedJob
-    ? EXAMPLE_PROMPTS[selectedJob]
-    : EXAMPLE_PROMPTS.generate
+  const examplePrompt = "Build a workflow that reviews this codebase for risky files, then summarizes what to fix first."
 
   return (
     <div className="space-y-4">
@@ -510,12 +403,27 @@ function StepActivateAgent({
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <Bot size={20} className="text-foreground" />
         </div>
-        <h2 className="text-title-md text-foreground">Describe what you need</h2>
+        <h2 className="text-title-md text-foreground">A workflow is input → skills → output</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
-        The fastest way to build a workflow -- open the Agent and describe your
-        task. It will find the right skills and set everything up.
+        Start with an input, add one or more skill steps, then review the result.
+        The fastest way to create that flow is to describe the task to the Agent.
       </p>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
+          <div className="ui-meta-label text-muted-foreground">1. Input</div>
+          <p className="text-body-sm text-foreground mt-1">Text, URL, or a project folder.</p>
+        </div>
+        <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
+          <div className="ui-meta-label text-muted-foreground">2. Skills</div>
+          <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or request approval.</p>
+        </div>
+        <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
+          <div className="ui-meta-label text-muted-foreground">3. Output</div>
+          <p className="text-body-sm text-foreground mt-1">Inspect logs, results, and rerun from the step that failed.</p>
+        </div>
+      </div>
 
       <div className="rounded-lg bg-surface-2 p-3 space-y-2">
         <div className="ui-meta-text text-muted-foreground/60 flex items-center gap-1.5">
@@ -537,6 +445,9 @@ function StepActivateAgent({
         </Button>
       </div>
 
+      <p className="ui-meta-text text-muted-foreground">
+        Start with the Agent if you want c8c to assemble the first draft for you.
+      </p>
       <p className="ui-meta-text text-muted-foreground">
         <code className="inline-code text-[10px]">&#8984;Enter</code> to run
         {" "}&middot;{" "}

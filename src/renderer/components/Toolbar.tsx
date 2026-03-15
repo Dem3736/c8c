@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
-import { useAtom, useSetAtom } from "jotai"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import {
   currentWorkflowAtom,
   selectedWorkflowPathAtom,
@@ -14,6 +14,7 @@ import {
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   mainViewAtom,
+  unreadInboxCountAtom,
 } from "@/lib/store"
 import { runIdAtom, runStatusAtom } from "@/features/execution"
 import {
@@ -21,12 +22,16 @@ import {
   Play,
   Pause,
   Square,
+  Undo2,
+  Redo2,
   ChevronDown,
   MessageSquare,
   SlidersHorizontal,
   Layers,
   Loader2,
   Eye,
+  Keyboard,
+  Inbox,
 } from "lucide-react"
 import type { PermissionMode } from "@shared/types"
 import { Button } from "@/components/ui/button"
@@ -61,6 +66,14 @@ import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { InputNodeConfig } from "@shared/types"
 import { toast } from "sonner"
+import {
+  canUndoAtom,
+  canRedoAtom,
+  performRedo,
+  performUndo,
+  redoStackAtom,
+  undoStackAtom,
+} from "@/lib/undo-manager"
 
 export function Toolbar({
   onRun,
@@ -84,14 +97,22 @@ export function Toolbar({
   const setGenerateOpen = useSetAtom(generateDialogOpenAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [, setMainView] = useAtom(mainViewAtom)
+  const unreadInboxCount = useAtomValue(unreadInboxCountAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const setBatchOpen = useSetAtom(batchDialogOpenAtom)
+  const [undoStack, setUndoStack] = useAtom(undoStackAtom)
+  const [redoStack, setRedoStack] = useAtom(redoStackAtom)
+  const canUndo = useAtomValue(canUndoAtom)
+  const canRedo = useAtomValue(canRedoAtom)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [templateNameInput, setTemplateNameInput] = useState("")
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
+  const [saveFlash, setSaveFlash] = useState<"saved" | "imported" | null>(null)
+  const flashTimerRef = useRef<number | null>(null)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const {
     refreshProjectData,
@@ -163,6 +184,7 @@ export function Toolbar({
   const runShortcutLabel = `${primaryShortcutLabel}↵`
   const chatShortcutLabel = `${primaryShortcutLabel}⇧K`
   const settingsShortcutLabel = `${primaryShortcutLabel},`
+  const redoShortcutLabel = `${primaryShortcutLabel}⇧Z`
 
   // Has at least one skill node
   const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
@@ -183,6 +205,12 @@ export function Toolbar({
       : hasBlockingErrors
         ? `${workflowValidation.filter((e) => e.severity === "error").length} validation error(s) — fix before running.`
         : null
+  const saveDisabledReason = isRunning
+    ? "Cannot save while a run is in progress."
+    : !workflowDirty
+      ? "No unsaved changes."
+      : null
+  const batchDisabledReason = hasSkillNodes ? null : "Add at least one skill step to enable batch runs."
 
   const handleRunWithValidation = async (mode: PermissionMode = "edit") => {
     // Show warnings (non-blocking) as toast
@@ -202,25 +230,56 @@ export function Toolbar({
       : "this workflow"
   const controlGroupClass = "control-cluster flex items-center gap-1 rounded-lg p-1"
 
+  const flashToolbarStatus = useCallback((status: "saved" | "imported") => {
+    setSaveFlash(status)
+    if (flashTimerRef.current) {
+      window.clearTimeout(flashTimerRef.current)
+    }
+    flashTimerRef.current = window.setTimeout(() => {
+      setSaveFlash(null)
+      flashTimerRef.current = null
+    }, 1800)
+  }, [])
+
   const handlePrimarySave = useCallback(async () => {
     if (!workflowDirty) return
     if (workflowPath) {
-      await save()
+      const saved = await save()
+      if (saved) flashToolbarStatus("saved")
       return
     }
-    await saveAs()
-  }, [save, saveAs, workflowDirty, workflowPath])
+    const saved = await saveAs()
+    if (saved) flashToolbarStatus("saved")
+  }, [flashToolbarStatus, save, saveAs, workflowDirty, workflowPath])
+
+  const handleUndo = useCallback(() => {
+    const restored = performUndo(workflow, undoStack, setUndoStack, setRedoStack)
+    if (restored) {
+      setCurrentWorkflow(restored)
+    }
+  }, [setCurrentWorkflow, setRedoStack, setUndoStack, undoStack, workflow])
+
+  const handleRedo = useCallback(() => {
+    const restored = performRedo(workflow, redoStack, setUndoStack, setRedoStack)
+    if (restored) {
+      setCurrentWorkflow(restored)
+    }
+  }, [redoStack, setCurrentWorkflow, setRedoStack, setUndoStack, workflow])
 
   const handleActionMenu = async (value: string) => {
     switch (value) {
       case "save_as":
-        await saveAs()
+        if (await saveAs()) {
+          flashToolbarStatus("saved")
+        }
         return
       case "import":
         if (!(await confirmDiscard("import another workflow", workflowDirty))) {
           return
         }
-        await openFile()
+        if (await openFile()) {
+          flashToolbarStatus("imported")
+        }
         return
       case "refresh":
         await refreshProjectData()
@@ -261,12 +320,15 @@ export function Toolbar({
   }
 
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
-        ? event.metaKey
-        : event.ctrlKey
-      if (!usesPrimaryModifier) return
+    return () => {
+      if (flashTimerRef.current) {
+        window.clearTimeout(flashTimerRef.current)
+      }
+    }
+  }, [])
 
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
       const isEditable = Boolean(
@@ -275,6 +337,23 @@ export function Toolbar({
         tag === "TEXTAREA" ||
         target?.closest("[contenteditable=true]"),
       )
+
+      if (
+        !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !isEditable
+        && (event.key === "?" || (event.key === "/" && event.shiftKey))
+      ) {
+        event.preventDefault()
+        setShortcutsDialogOpen((open) => !open)
+        return
+      }
+
+      const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
+        ? event.metaKey
+        : event.ctrlKey
+      if (!usesPrimaryModifier) return
 
       const key = event.key.toLowerCase()
       if (key === "k" && event.shiftKey) {
@@ -320,17 +399,78 @@ export function Toolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleUndo}
+                disabled={!canUndo || isRunning}
+                title={
+                  isRunning
+                    ? "Undo is unavailable while a run is in progress."
+                    : !canUndo
+                      ? "Nothing to undo yet."
+                      : undefined
+                }
+              >
+                <Undo2 size={14} />
+                Undo
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isRunning
+                ? "Undo is unavailable while a run is in progress."
+                : canUndo
+                  ? `Undo (${primaryShortcutLabel}Z)`
+                  : "Nothing to undo yet."}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleRedo}
+                disabled={!canRedo || isRunning}
+                title={
+                  isRunning
+                    ? "Redo is unavailable while a run is in progress."
+                    : !canRedo
+                      ? "Nothing to redo yet."
+                      : undefined
+                }
+              >
+                <Redo2 size={14} />
+                Redo
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isRunning
+                ? "Redo is unavailable while a run is in progress."
+                : canRedo
+                  ? `Redo (${redoShortcutLabel})`
+                  : "Nothing to redo yet."}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
                 onClick={() => void handlePrimarySave()}
                 disabled={!workflowDirty || isRunning}
+                title={saveDisabledReason || undefined}
               >
                 <Save size={14} />
-                {workflowDirty ? "Save*" : "Save"}
+                {saveFlash === "saved" ? "Saved" : workflowDirty ? "Save*" : "Save"}
               </Button>
             </TooltipTrigger>
-          <TooltipContent>Save workflow ({primaryShortcutLabel}S)</TooltipContent>
+          <TooltipContent>
+            {saveDisabledReason || `Save workflow (${primaryShortcutLabel}S)`}
+          </TooltipContent>
           </Tooltip>
 
           <DropdownMenu>
@@ -411,7 +551,28 @@ export function Toolbar({
               Agent
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Toggle chat panel ({chatShortcutLabel})</TooltipContent>
+          <TooltipContent>Toggle Agent panel ({chatShortcutLabel})</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={unreadInboxCount > 0 ? "outline" : "ghost"}
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setMainView("inbox")}
+              aria-label="Open Inbox"
+            >
+              <Inbox size={14} />
+              Inbox
+              {unreadInboxCount > 0 ? (
+                <span className="inline-flex min-w-[1.1rem] items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-1 py-0 text-[11px] font-medium text-primary">
+                  {unreadInboxCount > 99 ? "99+" : unreadInboxCount}
+                </span>
+              ) : null}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open Inbox</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -422,13 +583,40 @@ export function Toolbar({
               className="gap-1.5"
               onClick={() => setBatchOpen(true)}
               disabled={!hasSkillNodes}
+              title={batchDisabledReason || undefined}
             >
               <Layers size={14} />
               Batch
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Run on multiple inputs</TooltipContent>
+          <TooltipContent>{batchDisabledReason || "Run on multiple inputs"}</TooltipContent>
         </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setShortcutsDialogOpen(true)}
+              title="Show keyboard shortcuts."
+            >
+              <Keyboard size={14} />
+              Shortcuts
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
+        </Tooltip>
+
+        {saveFlash && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="ui-meta-text text-status-success"
+          >
+            {saveFlash === "saved" ? "Saved" : "Imported"}
+          </div>
+        )}
 
         <div className="flex-1" />
 
@@ -508,12 +696,13 @@ export function Toolbar({
                     onClick={() => void handleRunWithValidation("edit")}
                     disabled={!canRun}
                     className="min-w-[5.75rem] gap-1.5 rounded-md pr-3 shadow-[inset_0_1px_0_hsl(var(--primary-foreground)/0.2),0_0_0_1px_hsl(var(--hairline)/0.22)]"
+                    title={runDisabledReason || undefined}
                   >
                     <Play size={14} />
                     Run
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Run in edit mode ({runShortcutLabel})</TooltipContent>
+                <TooltipContent>{runDisabledReason || `Run in edit mode (${runShortcutLabel})`}</TooltipContent>
               </Tooltip>
 
               <DropdownMenu>
@@ -566,8 +755,45 @@ export function Toolbar({
         </div>
       )}
       <span className="sr-only">
-        Keyboard shortcuts: {primaryShortcutLabel} S to save, {runShortcutLabel} to run or stop, {chatShortcutLabel} to toggle chat panel, {settingsShortcutLabel} to open settings.
+        Keyboard shortcuts: {primaryShortcutLabel} Z to undo, {redoShortcutLabel} to redo, {primaryShortcutLabel} S to save, {runShortcutLabel} to run or stop, {chatShortcutLabel} to toggle Agent panel, {settingsShortcutLabel} to open settings, question mark to open shortcuts help.
       </span>
+
+      <Dialog open={shortcutsDialogOpen} onOpenChange={setShortcutsDialogOpen}>
+        <CanvasDialogContent showCloseButton={false}>
+          <CanvasDialogHeader>
+            <DialogTitle>Keyboard shortcuts</DialogTitle>
+            <DialogDescription>High-value commands available from the editor.</DialogDescription>
+          </CanvasDialogHeader>
+          <CanvasDialogBody>
+            <div className="space-y-2">
+              {[
+                { keys: `${primaryShortcutLabel}Z`, label: "Undo last structural change" },
+                { keys: redoShortcutLabel, label: "Redo last undone change" },
+                { keys: `${primaryShortcutLabel}S`, label: "Save current workflow" },
+                { keys: runShortcutLabel, label: isRunning ? "Stop current run" : "Run current workflow" },
+                { keys: chatShortcutLabel, label: "Toggle Agent panel" },
+                { keys: settingsShortcutLabel, label: "Open global settings" },
+                { keys: "?", label: "Open this shortcuts guide" },
+              ].map((shortcut) => (
+                <div
+                  key={shortcut.keys}
+                  className="flex items-center justify-between gap-4 rounded-md border border-hairline bg-surface-1/80 px-3 py-2"
+                >
+                  <span className="text-body-sm text-foreground">{shortcut.label}</span>
+                  <code className="rounded-sm border border-hairline bg-surface-2 px-2 py-0.5 text-body-sm">
+                    {shortcut.keys}
+                  </code>
+                </div>
+              ))}
+            </div>
+          </CanvasDialogBody>
+          <CanvasDialogFooter>
+            <DialogClose asChild>
+              <Button size="sm">Close</Button>
+            </DialogClose>
+          </CanvasDialogFooter>
+        </CanvasDialogContent>
+      </Dialog>
 
       {/* Rename dialog — replaces window.prompt for accessibility */}
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>

@@ -14,6 +14,7 @@ import {
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { Workflow } from "@shared/types"
 import { toast } from "sonner"
+import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
 function isWorkflowPayload(value: unknown): value is Workflow {
   if (!value || typeof value !== "object") return false
@@ -49,6 +50,7 @@ export function useChatSession() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [activeToolName, setActiveToolName] = useState<string | null>(null)
+  const { addNotification } = useInboxNotifications()
 
   const streamingTextRef = useRef("")
   const workflowRef = useRef(workflow)
@@ -163,7 +165,12 @@ export function useChatSession() {
 
         case "workflow-mutated": {
           if (!isWorkflowPayload(event.workflow)) {
-            toast.error("Received an invalid workflow update from chat.")
+            toast.error("Received an invalid workflow update from the Agent.")
+            addNotification({
+              title: "Agent sent an invalid workflow update",
+              level: "error",
+              source: "agent",
+            })
             break
           }
 
@@ -190,7 +197,7 @@ export function useChatSession() {
           }
 
           const mutationWorkflowPath = workflowPathRef.current
-          toast.success("Workflow updated", {
+          toast.success("Workflow updated from Agent", {
             action: {
               label: "Undo",
               onClick: () => {
@@ -208,6 +215,12 @@ export function useChatSession() {
               },
             },
             duration: 5000,
+          })
+          addNotification({
+            title: "Workflow updated from Agent",
+            description: workflowPathRef.current || undefined,
+            level: "success",
+            source: "agent",
           })
           break
         }
@@ -240,14 +253,20 @@ export function useChatSession() {
         case "error": {
           removeStreamingPlaceholder()
           resetLocalSessionState()
-          toast.error(event.content || "Chat error")
+          toast.error(event.content || "Agent error")
+          addNotification({
+            title: "Agent error",
+            description: event.content || "Agent error",
+            level: "error",
+            source: "agent",
+          })
           // Persist error in chat history as a system message
           setMessages((prev) => [
             ...prev,
             {
               id: `error-${Date.now()}`,
               role: "assistant" as const,
-              content: `**Error:** ${event.content || "Chat error"}`,
+              content: `**Agent error:** ${event.content || "Agent error"}`,
               timestamp: Date.now(),
             },
           ])
@@ -257,7 +276,7 @@ export function useChatSession() {
     })
 
     return cleanup
-  }, [nextLocalMessageId, removeStreamingPlaceholder, resetLocalSessionState, setMessages, setSessionId, setStatus, setUndoStack, setWorkflow, setWorkflowSavedSnapshot])
+  }, [addNotification, nextLocalMessageId, removeStreamingPlaceholder, resetLocalSessionState, setMessages, setSessionId, setStatus, setUndoStack, setWorkflow, setWorkflowSavedSnapshot])
 
   // Load history when workflow changes
   useEffect(() => {
@@ -302,9 +321,15 @@ export function useChatSession() {
       if (historyRequestRef.current !== requestId) return
       console.error("[useChatSession] chatLoadHistory failed:", err)
       setMessages([])
-      toast.error("Could not load chat history")
+      toast.error("Could not load Agent history")
+      addNotification({
+        title: "Could not load Agent history",
+        description: String(err),
+        level: "error",
+        source: "agent",
+      })
     })
-  }, [workflowPath, resetLocalSessionState, setMessages, setUndoStack])
+  }, [addNotification, workflowPath, resetLocalSessionState, setMessages, setUndoStack])
 
   const sendMessage = useCallback(
     async (message: string) => {
@@ -355,9 +380,15 @@ export function useChatSession() {
           "",
         )
         toast.error(msg)
+        addNotification({
+          title: "Agent request failed",
+          description: msg,
+          level: "error",
+          source: "agent",
+        })
       }
     },
-    [nextLocalMessageId, workflowPath, selectedProject, resetLocalSessionState, setMessages, setSessionId, setStatus],
+    [addNotification, nextLocalMessageId, workflowPath, selectedProject, resetLocalSessionState, setMessages, setSessionId, setStatus],
   )
 
   const cancel = useCallback(async () => {
@@ -379,7 +410,7 @@ export function useChatSession() {
 
     const activeSessionId = sessionIdRef.current || pendingSessionRef.current
     if (!activeSessionId && statusRef.current !== "idle") {
-      toast.error("Please wait for the chat session to initialize before clearing history.")
+      toast.error("Please wait for the Agent session to initialize before clearing history.")
       return
     }
 
@@ -388,7 +419,13 @@ export function useChatSession() {
         await window.api.chatCancel(activeSessionId)
       } catch (err) {
         console.error("[useChatSession] chatCancel before clear failed:", err)
-        toast.error("Could not stop active chat before clearing history.")
+        toast.error("Could not stop the active Agent before clearing history.")
+        addNotification({
+          title: "Could not stop the active Agent",
+          description: String(err),
+          level: "error",
+          source: "agent",
+        })
         return
       }
     }
@@ -397,7 +434,13 @@ export function useChatSession() {
       await window.api.chatClearHistory(workflowPath)
     } catch (err) {
       console.error("[useChatSession] chatClearHistory failed:", err)
-      toast.error("Could not clear chat history")
+      toast.error("Could not clear Agent history")
+      addNotification({
+        title: "Could not clear Agent history",
+        description: String(err),
+        level: "error",
+        source: "agent",
+      })
       return
     }
 
@@ -405,7 +448,7 @@ export function useChatSession() {
     removeStreamingPlaceholder()
     setMessages([])
     setUndoStack([])
-  }, [workflowPath, resetLocalSessionState, removeStreamingPlaceholder, setMessages, setUndoStack])
+  }, [addNotification, workflowPath, resetLocalSessionState, removeStreamingPlaceholder, setMessages, setUndoStack])
 
   const undo = useCallback(() => {
     if (statusRef.current !== "idle") return

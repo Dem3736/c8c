@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import { toast } from "sonner"
+import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 import type { WebSearchBackend } from "@/lib/web-search-backend"
 import {
   assembleInputWithAttachments,
@@ -49,6 +50,16 @@ export function useExecutionCommands({
   setCurrentWorkflow,
   setSelectedWorkflowPath,
 }: UseExecutionCommandsArgs) {
+  const { addNotification } = useInboxNotifications()
+  const recordExecutionError = useCallback((title: string, description?: string) => {
+    addNotification({
+      title,
+      description,
+      level: "error",
+      source: "workflow",
+    })
+  }, [addNotification])
+
   const run = useCallback(async (executionMode: PermissionMode = "edit") => {
     if (isRunInFlight(runStatus)) return
     if (!workflow.nodes.length) return
@@ -96,6 +107,7 @@ export function useExecutionCommands({
         toast.error("Could not start run", {
           description: errorMessage || undefined,
         })
+        recordExecutionError("Could not start run", errorMessage || undefined)
         controller.rollbackExecutionStart(workflowKey)
         return
       }
@@ -105,6 +117,7 @@ export function useExecutionCommands({
       toast.error("Could not start run", {
         description: String(error),
       })
+      recordExecutionError("Could not start run", String(error))
       controller.rollbackExecutionStart(workflowKey)
     }
   }, [
@@ -118,6 +131,7 @@ export function useExecutionCommands({
     setActiveExecutionProvider,
     webSearchBackend,
     workflow,
+    recordExecutionError,
   ])
 
   const cancel = useCallback(async () => {
@@ -137,6 +151,7 @@ export function useExecutionCommands({
         toast.error("Could not cancel run", {
           description: String(error),
         })
+        recordExecutionError("Could not cancel run", String(error))
         controller.updateExecutionForKey(executionKey, (previous) => ({
           ...previous,
           runStatus: "running",
@@ -181,15 +196,18 @@ export function useExecutionCommands({
         toast.error("Could not restart from selected node", {
           description: errorMessage,
         })
+        recordExecutionError("Could not restart from selected node", errorMessage)
         controller.rollbackExecutionStart(workflowKey)
         return
       }
       toast.error("Could not restart from selected node")
+      recordExecutionError("Could not restart from selected node")
     } catch (error) {
       console.error("[useChainExecution] rerunFrom failed:", error)
       toast.error("Could not restart from selected node", {
         description: String(error),
       })
+      recordExecutionError("Could not restart from selected node", String(error))
     }
 
     controller.rollbackExecutionStart(workflowKey)
@@ -203,6 +221,7 @@ export function useExecutionCommands({
     webSearchBackend,
     workflow,
     workspace,
+    recordExecutionError,
   ])
 
   const continueRun = useCallback(async (runToContinue: RunResult) => {
@@ -211,6 +230,7 @@ export function useExecutionCommands({
       toast.error("Could not continue run", {
         description: "Run workspace is missing.",
       })
+      recordExecutionError("Could not continue run", "Run workspace is missing.")
       return
     }
 
@@ -234,6 +254,7 @@ export function useExecutionCommands({
       toast.error("Could not continue run", {
         description: `Failed to load workflow file: ${String(error)}`,
       })
+      recordExecutionError("Could not continue run", `Failed to load workflow file: ${String(error)}`)
       return
     }
 
@@ -241,6 +262,7 @@ export function useExecutionCommands({
       toast.error("Could not continue run", {
         description: "Workflow has no steps.",
       })
+      recordExecutionError("Could not continue run", "Workflow has no steps.")
       return
     }
 
@@ -278,11 +300,13 @@ export function useExecutionCommands({
       toast.error("Could not continue run", {
         description: errorMessage || undefined,
       })
+      recordExecutionError("Could not continue run", errorMessage || undefined)
     } catch (error) {
       console.error("[useChainExecution] continueRun failed:", error)
       toast.error("Could not continue run", {
         description: String(error),
       })
+      recordExecutionError("Could not continue run", String(error))
     }
 
     controller.rollbackExecutionStart(workflowKey)
@@ -297,6 +321,7 @@ export function useExecutionCommands({
     setSelectedWorkflowPath,
     webSearchBackend,
     workflow,
+    recordExecutionError,
   ])
 
   return {

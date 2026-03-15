@@ -41,8 +41,8 @@ export function WorkflowSettingsPanel() {
   }
 
   return (
-    <section aria-label="Workflow settings" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
-      <h2 className="section-kicker">Workflow Settings</h2>
+    <section aria-label="Workflow defaults" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
+      <h2 className="section-kicker">Workflow Defaults</h2>
 
       <div className="w-full max-w-[620px] surface-inset-card space-y-2">
         <h3 className="section-kicker">Execution Defaults</h3>
