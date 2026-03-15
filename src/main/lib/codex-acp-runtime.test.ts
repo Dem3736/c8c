@@ -1,17 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
+  buildCodexEnvMock,
   createACPProviderMock,
   cleanupMock,
   execCodexMock,
+  getCodexApiKeyMock,
   getSessionIdMock,
   initSessionMock,
   languageModelMock,
   streamTextMock,
 } = vi.hoisted(() => ({
+  buildCodexEnvMock: vi.fn(),
   createACPProviderMock: vi.fn(),
   cleanupMock: vi.fn(),
   execCodexMock: vi.fn(),
+  getCodexApiKeyMock: vi.fn(),
   getSessionIdMock: vi.fn(() => "codex-session-1"),
   initSessionMock: vi.fn(),
   languageModelMock: vi.fn(() => ({ modelId: "gpt-5-codex" })),
@@ -33,11 +37,11 @@ vi.mock("./provider-settings", () => ({
     safetyProfile: "workspace_auto",
     features: { codexProvider: true },
   })),
-  getCodexApiKey: vi.fn(async () => undefined),
+  getCodexApiKey: getCodexApiKeyMock,
 }))
 
 vi.mock("./codex-cli", () => ({
-  buildCodexEnv: vi.fn(async () => ({ PATH: process.env.PATH || "" })),
+  buildCodexEnv: buildCodexEnvMock,
   execCodex: execCodexMock,
 }))
 
@@ -45,6 +49,7 @@ import { drainExecutionHandle } from "./agent-execution"
 import {
   canUseCodexAcpExecution,
   createCodexAcpExecutionHandle,
+  probeCodexAcpAuthStatus,
 } from "./codex-acp-runtime"
 
 describe("canUseCodexAcpExecution", () => {
@@ -85,14 +90,18 @@ describe("createCodexAcpExecutionHandle", () => {
   const originalDocsRoot = process.env.DOCS_ROOT
 
   beforeEach(() => {
+    buildCodexEnvMock.mockReset()
     cleanupMock.mockReset()
     execCodexMock.mockReset()
+    getCodexApiKeyMock.mockReset()
     getSessionIdMock.mockClear()
     initSessionMock.mockReset()
     languageModelMock.mockClear()
     createACPProviderMock.mockReset()
     streamTextMock.mockReset()
+    buildCodexEnvMock.mockResolvedValue({ PATH: process.env.PATH || "" })
     execCodexMock.mockResolvedValue({ stdout: "[]", stderr: "" })
+    getCodexApiKeyMock.mockResolvedValue(undefined)
     initSessionMock.mockResolvedValue({
       models: {
         currentModelId: "gpt-5.4/xhigh",
@@ -132,6 +141,54 @@ describe("createCodexAcpExecutionHandle", () => {
     } else {
       process.env.DOCS_ROOT = originalDocsRoot
     }
+  })
+
+  it("verifies ChatGPT subscription auth through an ACP session probe", async () => {
+    const status = await probeCodexAcpAuthStatus()
+
+    expect(status).toMatchObject({
+      provider: "codex",
+      state: "authenticated",
+      authenticated: true,
+      authMethod: "chatgpt",
+      accountLabel: "ChatGPT subscription",
+      apiKeyConfigured: false,
+    })
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      authMethodId: undefined,
+      session: expect.objectContaining({
+        mcpServers: [],
+      }),
+    }))
+    expect(cleanupMock).toHaveBeenCalled()
+  })
+
+  it("marks Codex as unauthenticated when ACP returns an auth-required error", async () => {
+    initSessionMock.mockRejectedValue(new Error("Authentication required. Run codex login."))
+
+    const status = await probeCodexAcpAuthStatus()
+
+    expect(status).toMatchObject({
+      provider: "codex",
+      state: "unauthenticated",
+      authenticated: false,
+    })
+    expect(status.error).toContain("Codex CLI is not authenticated")
+    expect(cleanupMock).toHaveBeenCalled()
+  })
+
+  it("returns an unknown auth state for non-auth ACP transport failures", async () => {
+    initSessionMock.mockRejectedValue(new Error("HTTP error: 426 Upgrade Required"))
+
+    const status = await probeCodexAcpAuthStatus()
+
+    expect(status).toMatchObject({
+      provider: "codex",
+      state: "unknown",
+      authenticated: false,
+    })
+    expect(status.error).toContain("HTTP 426 Upgrade Required")
+    expect(cleanupMock).toHaveBeenCalled()
   })
 
   it("maps ACP stream parts into the shared execution handle", async () => {

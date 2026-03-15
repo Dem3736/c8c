@@ -62,6 +62,10 @@ export function providerReadinessError(readiness: ProviderReadiness): string | n
     return "cli_unavailable:Claude CLI is not installed. Install it with: npm install -g @anthropic-ai/claude-code"
   }
 
+  if (readiness.provider === "codex" && readiness.auth.state === "unknown") {
+    return null
+  }
+
   if (!readiness.auth.authenticated) {
     if (readiness.provider === "codex") {
       return "cli_unavailable:Codex CLI is not authenticated. Run `codex login` (ChatGPT subscription works) or configure an optional CODEX_API_KEY in Settings."

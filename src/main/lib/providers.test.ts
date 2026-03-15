@@ -10,6 +10,7 @@ import {
 describe("providers codex auth parsing", () => {
   it("detects ChatGPT subscription auth", () => {
     expect(parseCodexAuth("Logged in using ChatGPT", false)).toMatchObject({
+      state: "authenticated",
       authenticated: true,
       authMethod: "chatgpt",
       accountLabel: "ChatGPT",
@@ -20,6 +21,10 @@ describe("providers codex auth parsing", () => {
     const output = "Sign in with ChatGPT ERROR Raw mode is not supported on the current process.stdin"
     expect(isCodexHeadlessAuthCheckError(output)).toBe(true)
     expect(sanitizeCodexAuthError(output)).toContain("could not report auth status in non-interactive mode")
+    expect(parseCodexAuth(output, false)).toMatchObject({
+      state: "unknown",
+      authenticated: false,
+    })
   })
 
   it("recognizes legacy exec stderr when codex opens instructions.md in vi", () => {

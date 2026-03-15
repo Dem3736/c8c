@@ -520,13 +520,16 @@ export function SettingsPage() {
               const auth = providerAuthStatus[providerId]
               const available = Boolean(health?.available)
               const authenticated = Boolean(auth?.authenticated)
+              const authState = auth?.state ?? "unknown"
               const statusLabel = !health
                 ? "Checking..."
                 : !available
                   ? "CLI not found"
                   : authenticated
                     ? "Ready"
-                    : "Needs auth"
+                    : authState === "unknown"
+                      ? "Auth check unavailable"
+                      : "Needs auth"
 
               return (
                 <article key={providerId} className="rounded-lg border border-hairline bg-surface-1/60 p-4 space-y-3">
@@ -540,6 +543,8 @@ export function SettingsPage() {
                     <span className={`ui-meta-text rounded-md border px-2 py-1 ${
                       authenticated
                         ? "border-status-success/30 bg-status-success/10 text-status-success"
+                        : authState === "unknown"
+                          ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
                         : available
                           ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
                           : "border-status-danger/30 bg-status-danger/10 text-status-danger"

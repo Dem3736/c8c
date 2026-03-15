@@ -19,7 +19,11 @@ import { resolveSafetyProfile } from "@shared/provider-metadata"
 import { spawnClaude, type ClaudeSpawnOptions } from "@claude-tools/runner"
 import { createErroredExecutionHandle, createLegacyExecutionHandle } from "./agent-execution"
 import { createClaudeSdkExecutionHandle } from "./claude-sdk-runtime"
-import { canUseCodexAcpExecution, createCodexAcpExecutionHandle } from "./codex-acp-runtime"
+import {
+  canUseCodexAcpExecution,
+  createCodexAcpExecutionHandle,
+  probeCodexAcpAuthStatus,
+} from "./codex-acp-runtime"
 import { getClaudeCodeSubscriptionStatus } from "./claude-subscription"
 import { execClaude, findClaudeExecutable } from "./claude-cli"
 import { buildCodexEnv, execCodex, findCodexExecutable, supportsCodexExecSubcommand } from "./codex-cli"
@@ -215,6 +219,7 @@ export function parseCodexAuth(output: string, apiKeyConfigured: boolean): Provi
   if (/logged in using chatgpt/i.test(normalized)) {
     return {
       provider: "codex",
+      state: "authenticated",
       authenticated: true,
       authMethod: "chatgpt",
       accountLabel: "ChatGPT",
@@ -226,6 +231,7 @@ export function parseCodexAuth(output: string, apiKeyConfigured: boolean): Provi
   if (/logged in using api key/i.test(normalized)) {
     return {
       provider: "codex",
+      state: "authenticated",
       authenticated: true,
       authMethod: "api_key",
       accountLabel: "CLI API key",
@@ -237,6 +243,7 @@ export function parseCodexAuth(output: string, apiKeyConfigured: boolean): Provi
   if (apiKeyConfigured) {
     return {
       provider: "codex",
+      state: "authenticated",
       authenticated: true,
       authMethod: "api_key",
       accountLabel: "App-managed CODEX_API_KEY",
@@ -247,10 +254,11 @@ export function parseCodexAuth(output: string, apiKeyConfigured: boolean): Provi
 
   return {
     provider: "codex",
+    state: isCodexHeadlessAuthCheckError(normalized) ? "unknown" : "unauthenticated",
     authenticated: false,
     authMethod: null,
     accountLabel: null,
-    apiKeyConfigured: false,
+    apiKeyConfigured,
     error: sanitizeCodexAuthError(normalized),
   }
 }
@@ -260,6 +268,7 @@ async function fallbackCodexAuthStatus(apiKeyConfigured: boolean): Promise<Provi
     await execCodex(["mcp", "list", "--json"], { timeout: 10_000 })
     return {
       provider: "codex",
+      state: "authenticated",
       authenticated: true,
       authMethod: apiKeyConfigured ? "api_key" : "chatgpt",
       accountLabel: apiKeyConfigured
@@ -273,6 +282,7 @@ async function fallbackCodexAuthStatus(apiKeyConfigured: boolean): Promise<Provi
     if (/not authenticated|login required|unauthorized|forbidden|401/i.test(message)) {
       return {
         provider: "codex",
+        state: "unauthenticated",
         authenticated: false,
         authMethod: null,
         accountLabel: null,
@@ -347,6 +357,7 @@ class ClaudeAgentProvider implements AgentProvider {
     const status = await getClaudeCodeSubscriptionStatus()
     return {
       provider: "claude",
+      state: status.loggedIn ? "authenticated" : "unauthenticated",
       authenticated: status.loggedIn,
       authMethod: status.authMethod,
       accountLabel: status.apiProvider,
@@ -397,10 +408,15 @@ class CodexAgentProvider implements AgentProvider {
 
   async getAuthStatus(): Promise<ProviderAuthStatus> {
     const apiKeyConfigured = Boolean(await getCodexApiKey())
+    const acpProbe = await probeCodexAcpAuthStatus()
+    if (acpProbe.state !== "unknown") {
+      return acpProbe
+    }
+
     try {
       const { stdout, stderr } = await execCodex(["login", "status"], { timeout: 10_000 })
       const parsed = parseCodexAuth([stdout, stderr].filter(Boolean).join("\n"), apiKeyConfigured)
-      if (!parsed.authenticated && isCodexHeadlessAuthCheckError(parsed.error || "")) {
+      if (parsed.state === "unknown") {
         return await fallbackCodexAuthStatus(apiKeyConfigured) ?? parsed
       }
       return parsed
@@ -414,6 +430,7 @@ class CodexAgentProvider implements AgentProvider {
       if (apiKeyConfigured) {
         return {
           provider: "codex",
+          state: "authenticated",
           authenticated: true,
           authMethod: "api_key",
           accountLabel: "App-managed CODEX_API_KEY",
@@ -422,13 +439,15 @@ class CodexAgentProvider implements AgentProvider {
         }
       }
 
+      const isUnauthenticated = /not authenticated|login required|unauthorized|forbidden|401/i.test(message)
       return {
         provider: "codex",
+        state: isUnauthenticated ? "unauthenticated" : "unknown",
         authenticated: false,
         authMethod: null,
         accountLabel: null,
         apiKeyConfigured,
-        error: message,
+        error: isUnauthenticated ? message : (acpProbe.error || message),
       }
     }
   }

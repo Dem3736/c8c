@@ -47,8 +47,11 @@ export interface ProviderHealth {
   error?: string | null
 }
 
+export type ProviderAuthState = "authenticated" | "unauthenticated" | "unknown"
+
 export interface ProviderAuthStatus {
   provider: ProviderId
+  state: ProviderAuthState
   authenticated: boolean
   authMethod?: string | null
   accountLabel?: string | null

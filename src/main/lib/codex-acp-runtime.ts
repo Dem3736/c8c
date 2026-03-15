@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs"
 import { createRequire } from "node:module"
+import { homedir } from "node:os"
 import { dirname, isAbsolute, resolve, sep } from "node:path"
 import { createACPProvider, ACP_PROVIDER_AGENT_DYNAMIC_TOOL_NAME } from "@mcpc-tech/acp-ai-provider"
 import type { EnvVariable, HttpHeader, McpServer } from "@agentclientprotocol/sdk"
@@ -13,6 +14,7 @@ import type {
   AgentExecutionSummary,
   AgentRunOptions,
   LogEntry,
+  ProviderAuthStatus,
 } from "@shared/types"
 import { buildCodexEnv, execCodex } from "./codex-cli"
 import { buildClaudeSdkMcpServers } from "./mcp-config"
@@ -80,6 +82,28 @@ const CODEX_MODEL_ALIAS_FALLBACKS: Record<string, string[]> = {
   "gpt-5": ["gpt-5.4", "gpt-5.2"],
 }
 
+const CODEX_AUTH_HINTS = [
+  "not logged in",
+  "authentication required",
+  "auth required",
+  "authrequired",
+  "login required",
+  "missing credentials",
+  "no credentials",
+  "unauthorized",
+  "forbidden",
+  "codex login",
+  "401",
+  "403",
+] as const
+
+interface CodexAcpAuthSelection {
+  apiKeyConfigured: boolean
+  authMethod: "chatgpt" | "api_key"
+  accountLabel: string
+  authMethodId?: "codex-api-key" | "openai-api-key"
+}
+
 function isWithinRoot(candidatePath: string, rootPath: string): boolean {
   const candidate = resolve(candidatePath)
   const root = resolve(rootPath)
@@ -137,6 +161,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function normalizeCodexErrorText(text: string): string {
+  return text
+    .replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function extractCodexAcpError(error: unknown): { message: string; code?: string } {
+  const anyError = error as any
+  const message =
+    anyError?.data?.message
+    || anyError?.errorText
+    || anyError?.message
+    || anyError?.error
+    || String(error)
+  const code = anyError?.data?.code || anyError?.code
+
+  return {
+    message: normalizeCodexErrorText(typeof message === "string" ? message : String(message)),
+    code: typeof code === "string" ? code : undefined,
+  }
+}
+
+function isCodexAcpAuthError(params: { message?: string | null; code?: string | null }): boolean {
+  const searchableText = `${params.code || ""} ${params.message || ""}`.toLowerCase()
+  return CODEX_AUTH_HINTS.some((hint) => searchableText.includes(hint))
+}
+
+function sanitizeCodexAcpProbeError(text: string): string {
+  const normalized = normalizeCodexErrorText(text)
+  if (!normalized) {
+    return "Codex ACP could not verify the current authentication state."
+  }
+
+  if (normalized.includes("426 Upgrade Required")) {
+    return "Codex ACP could not verify authentication because the current Codex runtime rejected the websocket transport (HTTP 426 Upgrade Required)."
+  }
+
+  return normalized
 }
 
 function toUnpackedAsarPath(filePath: string): string {
@@ -419,8 +484,45 @@ async function resolveCodexAcpMcpServers(
   return buildCodexAcpMcpServers(mcpConfigPath)
 }
 
-function getCodexAuthMethodId(apiKey?: string): "codex-api-key" | undefined {
-  return apiKey?.trim() ? "codex-api-key" : undefined
+function resolveCodexAcpAuthSelection(
+  env: NodeJS.ProcessEnv,
+  appManagedApiKey?: string,
+): CodexAcpAuthSelection {
+  const normalizedAppManagedApiKey = appManagedApiKey?.trim()
+  if (normalizedAppManagedApiKey) {
+    return {
+      apiKeyConfigured: true,
+      authMethod: "api_key",
+      accountLabel: "App-managed CODEX_API_KEY",
+      authMethodId: "codex-api-key",
+    }
+  }
+
+  const codexApiKey = env.CODEX_API_KEY?.trim()
+  if (codexApiKey) {
+    return {
+      apiKeyConfigured: false,
+      authMethod: "api_key",
+      accountLabel: "CODEX_API_KEY environment",
+      authMethodId: "codex-api-key",
+    }
+  }
+
+  const openAiApiKey = env.OPENAI_API_KEY?.trim()
+  if (openAiApiKey) {
+    return {
+      apiKeyConfigured: false,
+      authMethod: "api_key",
+      accountLabel: "OPENAI_API_KEY environment",
+      authMethodId: "openai-api-key",
+    }
+  }
+
+  return {
+    apiKeyConfigured: false,
+    authMethod: "chatgpt",
+    accountLabel: "ChatGPT subscription",
+  }
 }
 
 function buildCodexToolPolicyPrefix(options: AgentRunOptions): string {
@@ -676,6 +778,62 @@ export function canUseCodexAcpExecution(
   return { supported: true }
 }
 
+export async function probeCodexAcpAuthStatus(): Promise<ProviderAuthStatus> {
+  const apiKey = await getCodexApiKey()
+  const env = await buildCodexEnv()
+  const authSelection = resolveCodexAcpAuthSelection(env, apiKey)
+  const provider = createACPProvider({
+    command: resolveCodexAcpBinaryPath(),
+    env: Object.fromEntries(
+      Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    ),
+    authMethodId: authSelection.authMethodId,
+    session: {
+      cwd: homedir(),
+      mcpServers: [],
+    },
+    persistSession: false,
+  })
+
+  try {
+    await provider.initSession()
+    return {
+      provider: "codex",
+      state: "authenticated",
+      authenticated: true,
+      authMethod: authSelection.authMethod,
+      accountLabel: authSelection.accountLabel,
+      apiKeyConfigured: authSelection.apiKeyConfigured,
+      error: null,
+    }
+  } catch (error) {
+    const normalized = extractCodexAcpError(error)
+    if (isCodexAcpAuthError(normalized)) {
+      return {
+        provider: "codex",
+        state: "unauthenticated",
+        authenticated: false,
+        authMethod: null,
+        accountLabel: null,
+        apiKeyConfigured: authSelection.apiKeyConfigured,
+        error: "Codex CLI is not authenticated. Run `codex login` or configure an optional CODEX_API_KEY in Settings.",
+      }
+    }
+
+    return {
+      provider: "codex",
+      state: "unknown",
+      authenticated: false,
+      authMethod: null,
+      accountLabel: authSelection.apiKeyConfigured ? authSelection.accountLabel : null,
+      apiKeyConfigured: authSelection.apiKeyConfigured,
+      error: sanitizeCodexAcpProbeError(normalized.message),
+    }
+  } finally {
+    provider.cleanup()
+  }
+}
+
 export async function createCodexAcpExecutionHandle(
   options: AgentRunOptions,
 ): Promise<AgentExecutionHandle> {
@@ -691,13 +849,14 @@ export async function createCodexAcpExecutionHandle(
 
   const apiKey = await getCodexApiKey()
   const env = await buildCodexEnv(options.extraEnv)
+  const authSelection = resolveCodexAcpAuthSelection(env, apiKey)
   const mcpServers = await resolveCodexAcpMcpServers(options.workdir, options.mcpConfigPath)
   const provider = createACPProvider({
     command: resolveCodexAcpBinaryPath(),
     env: Object.fromEntries(
       Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
     ),
-    authMethodId: getCodexAuthMethodId(apiKey),
+    authMethodId: authSelection.authMethodId,
     session: {
       cwd: options.workdir,
       mcpServers,

@@ -243,6 +243,7 @@ function StepCheckCli() {
             const auth = diagnostics?.auth[provider]
             const available = health?.available ?? false
             const authenticated = auth?.authenticated ?? false
+            const authState = auth?.state ?? "unknown"
             const installCommand = provider === "claude"
               ? "npm install -g @anthropic-ai/claude-code"
               : "npm install -g @openai/codex"
@@ -266,14 +267,24 @@ function StepCheckCli() {
                 <div className="flex items-center gap-2 text-body-sm">
                   {authenticated ? (
                     <CheckCircle2 size={16} className="text-status-success shrink-0" />
+                  ) : authState === "unknown" ? (
+                    <Loader2 size={16} className="text-status-warning shrink-0" />
                   ) : (
                     <XCircle size={16} className="text-status-danger shrink-0" />
                   )}
-                  <span className={authenticated ? "text-foreground" : "text-status-danger"}>
+                  <span className={
+                    authenticated
+                      ? "text-foreground"
+                      : authState === "unknown"
+                        ? "text-status-warning"
+                        : "text-status-danger"
+                  }>
                     {available
                       ? authenticated
                         ? "Authenticated"
-                        : "Not authenticated"
+                        : authState === "unknown"
+                          ? "Authentication could not be verified automatically"
+                          : "Not authenticated"
                       : "Authentication unavailable until the CLI is installed"}
                   </span>
                 </div>
@@ -284,11 +295,17 @@ function StepCheckCli() {
                   </p>
                 )}
 
-                {available && !authenticated && (
+                {available && authState === "unauthenticated" && (
                   <p className="text-body-sm text-muted-foreground">
                     Authenticate: <code className="inline-code">{loginCommand}</code>
                   </p>
                 )}
+
+                {available && authState === "unknown" && auth?.error ? (
+                  <p className="text-body-sm text-muted-foreground">
+                    Status check: <code className="inline-code">{auth.error}</code>
+                  </p>
+                ) : null}
               </div>
             )
           })}
