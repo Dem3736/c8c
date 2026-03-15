@@ -16,6 +16,7 @@ docs/
 # Claude Code local settings
 .claude/settings.local.json
 .claude/.DS_Store
+.claude/skills/
 
 # Playwright
 .playwright-cli/
