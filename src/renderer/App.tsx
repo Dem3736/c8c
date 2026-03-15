@@ -10,6 +10,7 @@ import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
 import { SettingsPage } from "@/components/SettingsPage"
 import { NotificationsPage } from "@/components/NotificationsPage"
 import { OnboardingWizard } from "@/components/OnboardingWizard"
+import { WorkflowCreatePage } from "@/components/WorkflowCreatePage"
 import { AppStatusBar } from "@/components/AppStatusBar"
 import { MultiRunDashboard } from "@/components/MultiRunDashboard"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
@@ -61,6 +62,7 @@ const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
 
   if (mainView === "onboarding") return <OnboardingWizard />
+  if (mainView === "workflow_create") return <WorkflowCreatePage />
   if (mainView === "skills") return <SkillsPage />
   if (mainView === "templates") return <WorkflowsTemplatesPage />
   if (mainView === "settings") return <SettingsPage />

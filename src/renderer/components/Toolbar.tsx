@@ -5,7 +5,6 @@ import {
   selectedWorkflowPathAtom,
   selectedProjectAtom,
   workflowsAtom,
-  generateDialogOpenAtom,
   inputValueAtom,
   skillsAtom,
   chatPanelOpenAtom,
@@ -14,7 +13,6 @@ import {
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   mainViewAtom,
-  unreadInboxCountAtom,
 } from "@/lib/store"
 import { runIdAtom, runStatusAtom } from "@/features/execution"
 import {
@@ -30,8 +28,6 @@ import {
   Layers,
   Loader2,
   Eye,
-  Keyboard,
-  Inbox,
 } from "lucide-react"
 import type { PermissionMode } from "@shared/types"
 import { Button } from "@/components/ui/button"
@@ -60,9 +56,10 @@ import { cn } from "@/lib/cn"
 import {
   resolveWorkflowInput,
 } from "@/lib/input-type"
-import { validateWorkflow, type ValidationError } from "@/lib/validate-workflow"
+import { validateWorkflow } from "@/lib/validate-workflow"
 import { useToolbarActions } from "@/hooks/useToolbarActions"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
+import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { InputNodeConfig } from "@shared/types"
 import { toast } from "sonner"
@@ -94,26 +91,23 @@ export function Toolbar({
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [runStatus, setRunStatus] = useAtom(runStatusAtom)
   const [runId] = useAtom(runIdAtom)
-  const setGenerateOpen = useSetAtom(generateDialogOpenAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [, setMainView] = useAtom(mainViewAtom)
-  const unreadInboxCount = useAtomValue(unreadInboxCountAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const setBatchOpen = useSetAtom(batchDialogOpenAtom)
   const [undoStack, setUndoStack] = useAtom(undoStackAtom)
   const [redoStack, setRedoStack] = useAtom(redoStackAtom)
   const canUndo = useAtomValue(canUndoAtom)
   const canRedo = useAtomValue(canRedoAtom)
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [templateNameInput, setTemplateNameInput] = useState("")
-  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
   const [saveFlash, setSaveFlash] = useState<"saved" | "imported" | null>(null)
   const flashTimerRef = useRef<number | null>(null)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
+  const { openWorkflowCreate } = useWorkflowCreateNavigation()
   const {
     refreshProjectData,
     deriveTitleFromPath,
@@ -211,6 +205,7 @@ export function Toolbar({
       ? "No unsaved changes."
       : null
   const batchDisabledReason = hasSkillNodes ? null : "Add at least one skill step to enable batch runs."
+  const hasRunMenuActions = canRun || hasSkillNodes
 
   const handleRunWithValidation = async (mode: PermissionMode = "edit") => {
     // Show warnings (non-blocking) as toast
@@ -220,7 +215,6 @@ export function Toolbar({
         description: warnings.map((w) => w.message).join(" "),
       })
     }
-    setValidationErrors([])
     await onRun(mode)
   }
 
@@ -288,7 +282,7 @@ export function Toolbar({
         setMainView("templates")
         return
       case "generate":
-        setGenerateOpen(true)
+        openWorkflowCreate()
         return
       case "save_as_template":
         openTemplateDialog()
@@ -337,18 +331,6 @@ export function Toolbar({
         tag === "TEXTAREA" ||
         target?.closest("[contenteditable=true]"),
       )
-
-      if (
-        !event.metaKey
-        && !event.ctrlKey
-        && !event.altKey
-        && !isEditable
-        && (event.key === "?" || (event.key === "/" && event.shiftKey))
-      ) {
-        event.preventDefault()
-        setShortcutsDialogOpen((open) => !open)
-        return
-      }
 
       const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
         ? event.metaKey
@@ -400,10 +382,10 @@ export function Toolbar({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="gap-1.5"
+                size="icon"
                 onClick={handleUndo}
                 disabled={!canUndo || isRunning}
+                aria-label="Undo"
                 title={
                   isRunning
                     ? "Undo is unavailable while a run is in progress."
@@ -413,7 +395,6 @@ export function Toolbar({
                 }
               >
                 <Undo2 size={14} />
-                Undo
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -429,10 +410,10 @@ export function Toolbar({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="gap-1.5"
+                size="icon"
                 onClick={handleRedo}
                 disabled={!canRedo || isRunning}
+                aria-label="Redo"
                 title={
                   isRunning
                     ? "Redo is unavailable while a run is in progress."
@@ -442,7 +423,6 @@ export function Toolbar({
                 }
               >
                 <Redo2 size={14} />
-                Redo
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -458,14 +438,13 @@ export function Toolbar({
             <TooltipTrigger asChild>
               <Button
                 variant="outline"
-                size="sm"
-                className="gap-1.5"
+                size="icon"
                 onClick={() => void handlePrimarySave()}
                 disabled={!workflowDirty || isRunning}
+                aria-label={saveFlash === "saved" ? "Saved" : "Save workflow"}
                 title={saveDisabledReason || undefined}
               >
                 <Save size={14} />
-                {saveFlash === "saved" ? "Saved" : workflowDirty ? "Save*" : "Save"}
               </Button>
             </TooltipTrigger>
           <TooltipContent>
@@ -508,7 +487,7 @@ export function Toolbar({
                   Browse templates
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("generate")}>
-                  Generate workflow
+                  Create with Agent
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
@@ -554,60 +533,6 @@ export function Toolbar({
           <TooltipContent>Toggle Agent panel ({chatShortcutLabel})</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={unreadInboxCount > 0 ? "outline" : "ghost"}
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setMainView("inbox")}
-              aria-label="Open Inbox"
-            >
-              <Inbox size={14} />
-              Inbox
-              {unreadInboxCount > 0 ? (
-                <span className="inline-flex min-w-[1.1rem] items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-1 py-0 text-[11px] font-medium text-primary">
-                  {unreadInboxCount > 99 ? "99+" : unreadInboxCount}
-                </span>
-              ) : null}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Open Inbox</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setBatchOpen(true)}
-              disabled={!hasSkillNodes}
-              title={batchDisabledReason || undefined}
-            >
-              <Layers size={14} />
-              Batch
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{batchDisabledReason || "Run on multiple inputs"}</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setShortcutsDialogOpen(true)}
-              title="Show keyboard shortcuts."
-            >
-              <Keyboard size={14} />
-              Shortcuts
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
-        </Tooltip>
-
         {saveFlash && (
           <div
             role="status"
@@ -628,7 +553,7 @@ export function Toolbar({
             isRunning
               ? isPaused
                 ? "surface-warning-soft shadow-inset-highlight-subtle"
-                : "border border-status-info/20 bg-status-info/10 shadow-inset-highlight-subtle"
+                : "surface-info-soft shadow-inset-highlight-subtle"
               : controlGroupClass,
           )}
         >
@@ -712,19 +637,21 @@ export function Toolbar({
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={!canRun}
+                        disabled={!hasRunMenuActions}
                         className="relative w-8 rounded-md border border-transparent px-0 text-muted-foreground hover:border-hairline/80 hover:bg-surface-1/90 hover:text-foreground before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-hairline/70"
                         aria-label="Choose run mode"
+                        title={!hasRunMenuActions ? batchDisabledReason || undefined : undefined}
                       >
                         <ChevronDown size={14} />
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>More run modes</TooltipContent>
+                  <TooltipContent>{hasRunMenuActions ? "More run options" : batchDisabledReason}</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Alternate mode</DropdownMenuLabel>
+                  <DropdownMenuLabel>Run options</DropdownMenuLabel>
                   <DropdownMenuItem
+                    disabled={!canRun}
                     onSelect={() => void handleRunWithValidation("plan")}
                     className="items-start gap-3 py-2"
                   >
@@ -733,7 +660,24 @@ export function Toolbar({
                     </span>
                     <span className="flex min-w-0 flex-col">
                       <span className="text-body-sm font-medium text-foreground">Run in plan mode</span>
-                      <span className="ui-meta-text text-muted-foreground">Read-only analysis without file edits</span>
+                      <span className="ui-meta-text text-muted-foreground">
+                        {canRun ? "Read-only analysis without file edits" : (runDisabledReason || "Unavailable")}
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!hasSkillNodes}
+                    onSelect={() => setBatchOpen(true)}
+                    className="items-start gap-3 py-2"
+                  >
+                    <span className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-md border border-hairline bg-surface-2 text-muted-foreground ui-elevation-inset">
+                      <Layers size={13} />
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-body-sm font-medium text-foreground">Batch run</span>
+                      <span className="ui-meta-text text-muted-foreground">
+                        {batchDisabledReason || "Run the workflow on multiple inputs"}
+                      </span>
                     </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -757,43 +701,6 @@ export function Toolbar({
       <span className="sr-only">
         Keyboard shortcuts: {primaryShortcutLabel} Z to undo, {redoShortcutLabel} to redo, {primaryShortcutLabel} S to save, {runShortcutLabel} to run or stop, {chatShortcutLabel} to toggle Agent panel, {settingsShortcutLabel} to open settings, question mark to open shortcuts help.
       </span>
-
-      <Dialog open={shortcutsDialogOpen} onOpenChange={setShortcutsDialogOpen}>
-        <CanvasDialogContent showCloseButton={false}>
-          <CanvasDialogHeader>
-            <DialogTitle>Keyboard shortcuts</DialogTitle>
-            <DialogDescription>High-value commands available from the editor.</DialogDescription>
-          </CanvasDialogHeader>
-          <CanvasDialogBody>
-            <div className="space-y-2">
-              {[
-                { keys: `${primaryShortcutLabel}Z`, label: "Undo last structural change" },
-                { keys: redoShortcutLabel, label: "Redo last undone change" },
-                { keys: `${primaryShortcutLabel}S`, label: "Save current workflow" },
-                { keys: runShortcutLabel, label: isRunning ? "Stop current run" : "Run current workflow" },
-                { keys: chatShortcutLabel, label: "Toggle Agent panel" },
-                { keys: settingsShortcutLabel, label: "Open global settings" },
-                { keys: "?", label: "Open this shortcuts guide" },
-              ].map((shortcut) => (
-                <div
-                  key={shortcut.keys}
-                  className="flex items-center justify-between gap-4 rounded-md border border-hairline bg-surface-1/80 px-3 py-2"
-                >
-                  <span className="text-body-sm text-foreground">{shortcut.label}</span>
-                  <code className="rounded-sm border border-hairline bg-surface-2 px-2 py-0.5 text-body-sm">
-                    {shortcut.keys}
-                  </code>
-                </div>
-              ))}
-            </div>
-          </CanvasDialogBody>
-          <CanvasDialogFooter>
-            <DialogClose asChild>
-              <Button size="sm">Close</Button>
-            </DialogClose>
-          </CanvasDialogFooter>
-        </CanvasDialogContent>
-      </Dialog>
 
       {/* Rename dialog — replaces window.prompt for accessibility */}
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>

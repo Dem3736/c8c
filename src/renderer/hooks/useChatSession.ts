@@ -8,6 +8,7 @@ import {
   currentWorkflowAtom,
   selectedWorkflowPathAtom,
   selectedProjectAtom,
+  workflowCreatePendingMessageAtom,
   workflowSavedSnapshotAtom,
   type ChatMessageDisplay,
 } from "@/lib/store"
@@ -49,8 +50,10 @@ export function useChatSession() {
   const setWorkflowSavedSnapshot = useSetAtom(workflowSavedSnapshotAtom)
   const [workflowPath] = useAtom(selectedWorkflowPathAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [pendingCreateMessage, setPendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [activeToolName, setActiveToolName] = useState<string | null>(null)
+  const [historyLoadedWorkflowPath, setHistoryLoadedWorkflowPath] = useState<string | null>(null)
   const { addNotification } = useInboxNotifications()
 
   const streamingTextRef = useRef("")
@@ -299,6 +302,7 @@ export function useChatSession() {
     resetLocalSessionState()
     setMessages([])
     setUndoStack([])
+    setHistoryLoadedWorkflowPath(null)
 
     if (!workflowPath) {
       return
@@ -333,10 +337,12 @@ export function useChatSession() {
       } else {
         setMessages([])
       }
+      setHistoryLoadedWorkflowPath(workflowPath)
     }).catch((err) => {
       if (historyRequestRef.current !== requestId) return
       console.error("[useChatSession] chatLoadHistory failed:", err)
       setMessages([])
+      setHistoryLoadedWorkflowPath(workflowPath)
       toast.error("Could not load Agent history")
       addNotification({
         title: "Could not load Agent history",
@@ -406,6 +412,24 @@ export function useChatSession() {
     },
     [addNotification, nextLocalMessageId, workflowPath, selectedProject, resetLocalSessionState, setMessages, setSessionId, setStatus],
   )
+
+  useEffect(() => {
+    if (!workflowPath || !pendingCreateMessage) return
+    if (pendingCreateMessage.workflowPath !== workflowPath) return
+    if (historyLoadedWorkflowPath !== workflowPath) return
+    if (status !== "idle") return
+
+    const { message } = pendingCreateMessage
+    setPendingCreateMessage(null)
+    void sendMessage(message)
+  }, [
+    historyLoadedWorkflowPath,
+    pendingCreateMessage,
+    sendMessage,
+    setPendingCreateMessage,
+    status,
+    workflowPath,
+  ])
 
   const cancel = useCallback(async () => {
     const activeSessionId = sessionIdRef.current || pendingSessionRef.current

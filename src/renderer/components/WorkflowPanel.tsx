@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
 import {
+  chatStatusAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   currentWorkflowAtom,
@@ -9,6 +10,7 @@ import {
   chatPanelOpenAtom,
   workflowDirtyAtom,
   mainViewAtom,
+  workflowCreatePendingMessageAtom,
 } from "@/lib/store"
 import { runStatusAtom } from "@/features/execution"
 import { InputPanel } from "./InputPanel"
@@ -17,7 +19,6 @@ import { CanvasView } from "./CanvasView"
 import { NodeInspector } from "./canvas/NodeInspector"
 import { Toolbar } from "./Toolbar"
 import { OutputPanel } from "./OutputPanel"
-import { GenerateWorkflow } from "./GenerateWorkflow"
 import { BatchPanel } from "./BatchPanel"
 import { ApprovalDialog } from "./ApprovalDialog"
 import { ChatPanel } from "./chat/ChatPanel"
@@ -27,8 +28,20 @@ import { useWorkflowReset } from "@/hooks/useWorkflowReset"
 import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
 import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
-import { List, LayoutGrid, SlidersHorizontal, FolderOpen, FileStack, LayoutTemplate, PencilLine, type LucideIcon } from "lucide-react"
+import {
+  List,
+  LayoutGrid,
+  SlidersHorizontal,
+  FolderOpen,
+  FileStack,
+  LayoutTemplate,
+  PencilLine,
+  Loader2,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -49,14 +62,49 @@ function EmptyState({ icon: Icon, title, description, children }: { icon: Lucide
   )
 }
 
+function WorkflowDraftSkeleton() {
+  return (
+    <div className="rounded-lg surface-panel p-5 ui-fade-slide-in">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-foreground shadow-inset-highlight">
+          <Sparkles size={18} aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-title-sm text-foreground">
+            <Loader2 size={14} className="animate-spin text-status-info" />
+            Building the first workflow draft
+          </div>
+          <p className="mt-2 text-body-sm text-muted-foreground">
+            The agent is turning your prompt into concrete steps. This list will populate as soon as the structure is ready.
+          </p>
+        </div>
+      </div>
+      <div className="mt-5 space-y-3" aria-hidden="true">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={`workflow-draft-skeleton-${index}`}
+            className="animate-pulse rounded-xl border border-hairline bg-surface-2/70 px-4 py-4"
+          >
+            <div className="h-4 w-40 rounded bg-surface-3" />
+            <div className="mt-3 h-3 w-full rounded bg-surface-3" />
+            <div className="mt-2 h-3 w-5/6 rounded bg-surface-3" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
+  const [chatStatus] = useAtom(chatStatusAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [runStatus] = useAtom(runStatusAtom)
+  const [pendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const { run, cancel, rerunFrom, continueRun } = useChainExecution()
   const listScrollRegionRef = useRef<HTMLDivElement | null>(null)
@@ -100,6 +148,20 @@ export function WorkflowPanel() {
   }, [runStatus, viewMode])
 
   const hasMeaningfulContent = workflowHasMeaningfulContent(workflow)
+  const workflowHasGeneratedSteps = workflow.nodes.some(
+    (node) => node.type !== "input" && node.type !== "output",
+  )
+  const showCreateDraftSkeleton = (
+    viewMode === "list"
+    && selectedWorkflowPath != null
+    && (
+      pendingCreateMessage?.workflowPath === selectedWorkflowPath
+      || (
+        (chatStatus === "thinking" || chatStatus === "streaming")
+        && !workflowHasGeneratedSteps
+      )
+    )
+  )
 
   if (!selectedProject && !hasMeaningfulContent) {
     return (
@@ -168,9 +230,9 @@ export function WorkflowPanel() {
                   className="h-auto min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-title-md font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                 />
                 {workflowDirty && (
-                  <span className="ui-meta-text shrink-0 rounded-md border border-status-warning/30 bg-status-warning/10 px-2 py-1 text-status-warning">
+                  <Badge variant="warning" className="ui-meta-text shrink-0 px-2 py-1">
                     Unsaved
-                  </span>
+                  </Badge>
                 )}
               </div>
               <TabsList className="h-control-md shrink-0" aria-label="View mode">
@@ -222,19 +284,24 @@ export function WorkflowPanel() {
             className="mt-0 ui-scroll-region flex-1 min-h-0 overflow-y-auto ui-fade-slide-in"
           >
             <div className="ui-content-shell py-3 space-y-3">
-              <SectionErrorBoundary sectionName="chain builder">
-                <ChainBuilder compact />
-              </SectionErrorBoundary>
-              <div ref={outputPanelRef} id="run-output-panel" className="scroll-mt-4">
-                <SectionErrorBoundary sectionName="output panel">
-                  <OutputPanel onRerunFrom={rerunFrom} onContinueRun={continueRun} />
-                </SectionErrorBoundary>
-              </div>
+              {showCreateDraftSkeleton ? (
+                <WorkflowDraftSkeleton />
+              ) : (
+                <>
+                  <SectionErrorBoundary sectionName="chain builder">
+                    <ChainBuilder compact />
+                  </SectionErrorBoundary>
+                  <div ref={outputPanelRef} id="run-output-panel" className="scroll-mt-4">
+                    <SectionErrorBoundary sectionName="output panel">
+                      <OutputPanel onRerunFrom={rerunFrom} onContinueRun={continueRun} />
+                    </SectionErrorBoundary>
+                  </div>
+                </>
+              )}
             </div>
           </TabsContent>
         </Tabs>
 
-        <GenerateWorkflow />
         <BatchPanel />
         <ApprovalDialog />
       </div>

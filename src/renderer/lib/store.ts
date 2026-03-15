@@ -215,7 +215,14 @@ export const viewModeAtom = atom<ViewMode>("list")
 export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
 
 // App pages
-export type MainView = "thread" | "skills" | "templates" | "settings" | "inbox" | "onboarding"
+export type MainView =
+  | "thread"
+  | "workflow_create"
+  | "skills"
+  | "templates"
+  | "settings"
+  | "inbox"
+  | "onboarding"
 export const mainViewAtom = atomWithStorage<MainView>(
   "c8c:main-view",
   "thread",
@@ -301,6 +308,18 @@ export const clearInboxNotificationsAtom = atom(
 // Templates & generation
 export const templateBrowserOpenAtom = atom(false)
 export const generateDialogOpenAtom = atom(false)
+export const workflowCreateContextAtom = atom<{
+  projectPath: string | null
+  locked: boolean
+}>({
+  projectPath: null,
+  locked: false,
+})
+export const workflowCreateDraftPromptAtom = atom("")
+export const workflowCreatePendingMessageAtom = atom<{
+  workflowPath: string
+  message: string
+} | null>(null)
 
 // ── Chat Panel ──────────────────────────────────────────
 
