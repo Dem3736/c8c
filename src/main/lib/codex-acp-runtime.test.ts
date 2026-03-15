@@ -88,6 +88,8 @@ describe("canUseCodexAcpExecution", () => {
 describe("createCodexAcpExecutionHandle", () => {
   const originalLinearToken = process.env.LINEAR_API_TOKEN
   const originalDocsRoot = process.env.DOCS_ROOT
+  const originalOpenAiApiKey = process.env.OPENAI_API_KEY
+  const originalCodexApiKey = process.env.CODEX_API_KEY
 
   beforeEach(() => {
     buildCodexEnvMock.mockReset()
@@ -141,6 +143,18 @@ describe("createCodexAcpExecutionHandle", () => {
     } else {
       process.env.DOCS_ROOT = originalDocsRoot
     }
+
+    if (originalOpenAiApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiApiKey
+    }
+
+    if (originalCodexApiKey === undefined) {
+      delete process.env.CODEX_API_KEY
+    } else {
+      process.env.CODEX_API_KEY = originalCodexApiKey
+    }
   })
 
   it("verifies ChatGPT subscription auth through an ACP session probe", async () => {
@@ -155,12 +169,51 @@ describe("createCodexAcpExecutionHandle", () => {
       apiKeyConfigured: false,
     })
     expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
-      authMethodId: undefined,
+      authMethodId: "chatgpt",
       session: expect.objectContaining({
         mcpServers: [],
       }),
     }))
     expect(cleanupMock).toHaveBeenCalled()
+  })
+
+  it("keeps ChatGPT auth even when ambient API keys exist in the shell environment", async () => {
+    buildCodexEnvMock.mockResolvedValue({
+      PATH: process.env.PATH || "",
+      OPENAI_API_KEY: "ambient-openai-key",
+      CODEX_API_KEY: "ambient-codex-key",
+    })
+
+    const status = await probeCodexAcpAuthStatus()
+
+    expect(status).toMatchObject({
+      provider: "codex",
+      state: "authenticated",
+      authenticated: true,
+      authMethod: "chatgpt",
+      accountLabel: "ChatGPT subscription",
+    })
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      authMethodId: "chatgpt",
+    }))
+  })
+
+  it("still forces codex-api-key when the app-managed override is configured", async () => {
+    getCodexApiKeyMock.mockResolvedValue("app-managed-key")
+
+    const status = await probeCodexAcpAuthStatus()
+
+    expect(status).toMatchObject({
+      provider: "codex",
+      state: "authenticated",
+      authenticated: true,
+      authMethod: "api_key",
+      accountLabel: "App-managed CODEX_API_KEY",
+      apiKeyConfigured: true,
+    })
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      authMethodId: "codex-api-key",
+    }))
   })
 
   it("marks Codex as unauthenticated when ACP returns an auth-required error", async () => {

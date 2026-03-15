@@ -101,7 +101,7 @@ interface CodexAcpAuthSelection {
   apiKeyConfigured: boolean
   authMethod: "chatgpt" | "api_key"
   accountLabel: string
-  authMethodId?: "codex-api-key" | "openai-api-key"
+  authMethodId?: "chatgpt" | "codex-api-key"
 }
 
 function isWithinRoot(candidatePath: string, rootPath: string): boolean {
@@ -485,7 +485,6 @@ async function resolveCodexAcpMcpServers(
 }
 
 function resolveCodexAcpAuthSelection(
-  env: NodeJS.ProcessEnv,
   appManagedApiKey?: string,
 ): CodexAcpAuthSelection {
   const normalizedAppManagedApiKey = appManagedApiKey?.trim()
@@ -498,30 +497,11 @@ function resolveCodexAcpAuthSelection(
     }
   }
 
-  const codexApiKey = env.CODEX_API_KEY?.trim()
-  if (codexApiKey) {
-    return {
-      apiKeyConfigured: false,
-      authMethod: "api_key",
-      accountLabel: "CODEX_API_KEY environment",
-      authMethodId: "codex-api-key",
-    }
-  }
-
-  const openAiApiKey = env.OPENAI_API_KEY?.trim()
-  if (openAiApiKey) {
-    return {
-      apiKeyConfigured: false,
-      authMethod: "api_key",
-      accountLabel: "OPENAI_API_KEY environment",
-      authMethodId: "openai-api-key",
-    }
-  }
-
   return {
     apiKeyConfigured: false,
     authMethod: "chatgpt",
     accountLabel: "ChatGPT subscription",
+    authMethodId: "chatgpt",
   }
 }
 
@@ -781,7 +761,7 @@ export function canUseCodexAcpExecution(
 export async function probeCodexAcpAuthStatus(): Promise<ProviderAuthStatus> {
   const apiKey = await getCodexApiKey()
   const env = await buildCodexEnv()
-  const authSelection = resolveCodexAcpAuthSelection(env, apiKey)
+  const authSelection = resolveCodexAcpAuthSelection(apiKey)
   const provider = createACPProvider({
     command: resolveCodexAcpBinaryPath(),
     env: Object.fromEntries(
@@ -849,7 +829,7 @@ export async function createCodexAcpExecutionHandle(
 
   const apiKey = await getCodexApiKey()
   const env = await buildCodexEnv(options.extraEnv)
-  const authSelection = resolveCodexAcpAuthSelection(env, apiKey)
+  const authSelection = resolveCodexAcpAuthSelection(apiKey)
   const mcpServers = await resolveCodexAcpMcpServers(options.workdir, options.mcpConfigPath)
   const provider = createACPProvider({
     command: resolveCodexAcpBinaryPath(),
