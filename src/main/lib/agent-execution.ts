@@ -223,6 +223,42 @@ export function createLegacyExecutionHandle(
   }
 }
 
+export function createErroredExecutionHandle(
+  provider: ProviderId,
+  backend: AgentExecutionBackend,
+  message: string,
+): AgentExecutionHandle {
+  const queue = new AsyncEventQueue<AgentExecutionEvent>()
+  const startedAt = Date.now()
+
+  queue.push({ type: "start" })
+  queue.push({ type: "error", text: message })
+
+  const summary: AgentExecutionSummary = {
+    success: false,
+    exitCode: null,
+    signal: null,
+    killed: false,
+    aborted: false,
+    durationMs: Date.now() - startedAt,
+    pid: undefined,
+    error: message,
+    providerSessionId: null,
+    backend,
+  }
+
+  queue.push({ type: "finish", summary })
+  queue.close()
+
+  return {
+    provider,
+    backend,
+    events: queue,
+    abort: () => {},
+    done: Promise.resolve(summary),
+  }
+}
+
 export async function drainExecutionHandle(
   handle: AgentExecutionHandle,
   sinks: ExecutionEventSinks = {},

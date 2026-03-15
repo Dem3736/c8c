@@ -6,6 +6,7 @@ import { promisify } from "node:util"
 import { getCodexApiKey } from "./provider-settings"
 
 const execFile = promisify(execFileCb)
+let codexExecSupportPromise: Promise<boolean> | null = null
 
 export interface ExecCodexResult {
   stdout: string
@@ -114,4 +115,19 @@ export async function execCodex(
     cwd: opts?.cwd,
   })
   return { stdout, stderr }
+}
+
+export async function supportsCodexExecSubcommand(): Promise<boolean> {
+  if (!codexExecSupportPromise) {
+    codexExecSupportPromise = (async () => {
+      try {
+        await execCodex(["exec", "--help"], { timeout: 5_000 })
+        return true
+      } catch {
+        return false
+      }
+    })()
+  }
+
+  return codexExecSupportPromise
 }

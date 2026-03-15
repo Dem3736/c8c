@@ -17,12 +17,12 @@ import type {
 } from "@shared/types"
 import { resolveSafetyProfile } from "@shared/provider-metadata"
 import { spawnClaude, type ClaudeSpawnOptions } from "@claude-tools/runner"
-import { createLegacyExecutionHandle } from "./agent-execution"
+import { createErroredExecutionHandle, createLegacyExecutionHandle } from "./agent-execution"
 import { createClaudeSdkExecutionHandle } from "./claude-sdk-runtime"
 import { canUseCodexAcpExecution, createCodexAcpExecutionHandle } from "./codex-acp-runtime"
 import { getClaudeCodeSubscriptionStatus } from "./claude-subscription"
 import { execClaude, findClaudeExecutable } from "./claude-cli"
-import { buildCodexEnv, execCodex, findCodexExecutable } from "./codex-cli"
+import { buildCodexEnv, execCodex, findCodexExecutable, supportsCodexExecSubcommand } from "./codex-cli"
 import {
   createCodexJsonNormalizerState,
   normalizeCodexJsonLine,
@@ -382,6 +382,15 @@ class ClaudeAgentProvider implements AgentProvider {
 class CodexAgentProvider implements AgentProvider {
   readonly id = "codex" as const
 
+  private async createCodexLegacyUnavailableHandle(
+    mode: "interactive" | "task",
+    reason: string,
+  ): Promise<AgentExecutionHandle> {
+    const message = `Codex ACP could not be used (${reason}), and the installed Codex CLI does not support the legacy \`codex exec\` backend. Restart on a build with ACP working, or upgrade the Codex CLI fallback implementation.`
+    logWarn("codex-provider", "legacy-exec-unavailable", { mode, reason, message })
+    return createErroredExecutionHandle(this.id, "codex_exec", message)
+  }
+
   checkAvailability(): Promise<ProviderHealth> {
     return checkCodexAvailability()
   }
@@ -445,6 +454,9 @@ class CodexAgentProvider implements AgentProvider {
     })
 
     if (!support.supported) {
+      if (!(await supportsCodexExecSubcommand())) {
+        return this.createCodexLegacyUnavailableHandle(mode, support.reason ?? "ACP unsupported")
+      }
       logWarn("codex-provider", "legacy-fallback", {
         mode,
         reason: support.reason ?? "unknown",
@@ -463,6 +475,9 @@ class CodexAgentProvider implements AgentProvider {
       })
       return handle
     } catch (error) {
+      if (!(await supportsCodexExecSubcommand())) {
+        return this.createCodexLegacyUnavailableHandle(mode, errorMessage(error))
+      }
       logWarn("codex-provider", "acp-init-failed", {
         mode,
         workdir: options.workdir,
@@ -486,6 +501,10 @@ class CodexAgentProvider implements AgentProvider {
   }
 
   private async runLegacyCodex(options: AgentRunOptions): Promise<AgentRunResult> {
+    if (!(await supportsCodexExecSubcommand())) {
+      throw new Error("Installed Codex CLI does not support the legacy `codex exec` backend.")
+    }
+
     const executable = findCodexExecutable() || "codex"
     const settings = await getProviderSettings()
     const safetyProfile = resolveSafetyProfile(
