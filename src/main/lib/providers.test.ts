@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest"
 import {
+  codexServerToInfo,
+} from "./providers/codex-mcp-provider"
+import {
+  buildCodexLegacyExecArgs,
+} from "./providers/codex-agent-provider"
+import {
   isCodexInteractiveEditorNoise,
   isCodexHeadlessAuthCheckError,
   parseCodexAuth,
   sanitizeCodexAuthError,
   summarizeCodexInteractiveEditorNoise,
-} from "./providers"
+} from "./providers/codex-auth"
 
 describe("providers codex auth parsing", () => {
   it("detects ChatGPT subscription auth", () => {
@@ -38,5 +44,80 @@ describe("providers codex auth parsing", () => {
     expect(isCodexInteractiveEditorNoise(output)).toBe(true)
     expect(summarizeCodexInteractiveEditorNoise(output)).toContain("interactive editor")
     expect(summarizeCodexInteractiveEditorNoise(output)).toContain(".instructions.md.swp")
+  })
+})
+
+describe("providers codex MCP mapping", () => {
+  it("maps streamable_http servers to http MCP metadata", () => {
+    expect(codexServerToInfo({
+      name: "linear",
+      enabled: true,
+      transport: {
+        type: "streamable_http",
+        url: "https://mcp.example.com",
+        http_headers: { Authorization: "Bearer token" },
+      },
+    })).toEqual({
+      name: "linear",
+      provider: "codex",
+      scope: "user",
+      type: "http",
+      command: undefined,
+      args: undefined,
+      url: "https://mcp.example.com",
+      env: undefined,
+      headers: { Authorization: "Bearer token" },
+      disabled: false,
+    })
+  })
+})
+
+describe("providers codex legacy exec args", () => {
+  it("builds prompt, safety flags, model and add-dir arguments", () => {
+    const result = buildCodexLegacyExecArgs({
+      prompt: "Implement the feature",
+      workdir: "/tmp/project",
+      model: "gpt-5.4",
+      addDirs: ["/tmp/project/docs", ""],
+      systemPrompts: ["Follow repo conventions."],
+      allowedTools: ["Read", "Edit"],
+      disallowedTools: ["Bash"],
+      extraArgs: ["--config", "profile=test"],
+    }, "workspace_auto")
+
+    expect(result.safetyProfile).toBe("workspace_auto")
+    expect(result.args).toEqual([
+      "exec",
+      "--json",
+      "--ephemeral",
+      "--color",
+      "never",
+      "--skip-git-repo-check",
+      "-C",
+      "/tmp/project",
+      "--sandbox",
+      "workspace-write",
+      "--ask-for-approval",
+      "on-request",
+      "-m",
+      "gpt-5.4",
+      "--add-dir",
+      "/tmp/project/docs",
+      "--config",
+      "profile=test",
+      "Follow repo conventions.\n\nAllowed tools: Read, Edit.\n\nDisallowed tools: Bash. Never use them.\n\nImplement the feature",
+    ])
+  })
+
+  it("forces safe_readonly for plan mode", () => {
+    const result = buildCodexLegacyExecArgs({
+      prompt: "Plan the migration",
+      workdir: "/tmp/project",
+      executionMode: "plan",
+    }, "dangerous")
+
+    expect(result.safetyProfile).toBe("safe_readonly")
+    expect(result.args).toContain("read-only")
+    expect(result.args).toContain("Plan the migration")
   })
 })
