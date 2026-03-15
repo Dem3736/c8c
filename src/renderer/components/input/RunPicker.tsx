@@ -102,14 +102,14 @@ export function RunPicker({ open, onOpenChange }: RunPickerProps) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-2 bg-surface-1/40">
+          <div className="ui-scroll-region flex-1 overflow-y-auto px-3 py-2 bg-surface-1/40">
             {completedRuns.length === 0 && (
-              <div className="text-center py-8 text-body-md text-muted-foreground">
+              <div className="ui-empty-state text-body-md text-muted-foreground">
                 No completed runs found.
               </div>
             )}
             {completedRuns.length > 0 && filtered.length === 0 && (
-              <div className="text-center py-8 text-body-md text-muted-foreground">
+              <div className="ui-empty-state text-body-md text-muted-foreground">
                 No results for &ldquo;{search}&rdquo;
               </div>
             )}

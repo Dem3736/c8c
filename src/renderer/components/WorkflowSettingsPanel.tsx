@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react"
 import { useAtom } from "jotai"
 import {
   currentWorkflowAtom,
   mcpServersAtom,
   mainViewAtom,
 } from "@/lib/store"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Server } from "lucide-react"
@@ -28,8 +30,32 @@ export function WorkflowSettingsPanel() {
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [mcpServers] = useAtom(mcpServersAtom)
   const [, setMainView] = useAtom(mainViewAtom)
+  const [approvedPluginMcpCount, setApprovedPluginMcpCount] = useState(0)
   const defaults = workflow.defaults || {}
-  const enabledMcpCount = mcpServers.filter((s) => !s.disabled).length
+  const enabledMcpCount = mcpServers.filter((s) => !s.disabled).length + approvedPluginMcpCount
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPluginMcpCount = async () => {
+      try {
+        const pluginServers = await window.api.mcpListPluginServers()
+        if (!cancelled) {
+          setApprovedPluginMcpCount(pluginServers.filter((server) => server.approved && !server.disabled).length)
+        }
+      } catch {
+        if (!cancelled) {
+          setApprovedPluginMcpCount(0)
+        }
+      }
+    }
+
+    void loadPluginMcpCount()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const updateDefaults = (patch: Partial<typeof defaults>) => {
     setWorkflow((prev) => ({
       ...prev,
@@ -166,12 +192,14 @@ export function WorkflowSettingsPanel() {
             }
           </span>
         </div>
-        <button
+        <Button
+          variant="link"
+          size="auto"
           onClick={() => setMainView("settings")}
-          className="text-body-sm text-accent hover:underline"
+          className="h-auto px-0 text-body-sm text-primary"
         >
           Manage
-        </button>
+        </Button>
       </div>
     </section>
   )

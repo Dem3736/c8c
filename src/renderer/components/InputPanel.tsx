@@ -151,7 +151,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
             {att.kind === "run" && <History size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
             {att.kind === "text" && <Type size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
             <span
-              className="truncate text-[11px]"
+              className="ui-meta-text truncate"
               title={att.kind === "file" ? att.path : att.kind === "run" ? `${att.workflowName} (${att.runId.slice(0, 8)})` : att.label}
               onClick={att.kind === "text" ? () => handleEditText(i) : undefined}
               role={att.kind === "text" ? "button" : undefined}
@@ -174,15 +174,15 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         ))}
       </div>
 
-      <div className={cn("control-cluster flex flex-wrap items-center gap-1.5 rounded-[1rem] px-1.5 py-1.5", compact && "gap-1")}>
+      <div className={cn("control-cluster control-cluster-compact flex flex-wrap items-center gap-1.5", compact && "gap-1")}>
         <div className="flex flex-wrap items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
-                className="h-7 w-7 rounded-full border-hairline bg-surface-1/85 text-muted-foreground shadow-inset-highlight-subtle hover:bg-surface-1 hover:text-foreground"
+                size="icon-xs"
+                className="control-pill-compact w-control-xs border-hairline bg-surface-1/85 text-muted-foreground shadow-inset-highlight-subtle hover:bg-surface-1 hover:text-foreground"
                 aria-label="Attach context"
               >
                 <Plus size={12} aria-hidden="true" />
@@ -213,20 +213,20 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
             })}
             codexEnabled={providerSettings.features.codexProvider}
             labelMode="short"
-            className="h-7 w-[104px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs shadow-inset-highlight-subtle"
+            className="control-pill-compact w-[104px] border-hairline bg-surface-1/85 shadow-inset-highlight-subtle"
             ariaLabel="Workflow provider"
           />
           <ProviderModelSelect
             provider={workflowProvider}
             value={workflowModel}
             onValueChange={(model) => updateWorkflowDefaults({ model })}
-            className="h-7 w-[124px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs tabular-nums shadow-inset-highlight-subtle"
+            className="control-pill-compact w-[124px] border-hairline bg-surface-1/85 tabular-nums shadow-inset-highlight-subtle"
             ariaLabel="Workflow model"
           />
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1">
           <span role="status" aria-live="polite">
-            <Badge variant="outline" className="control-badge rounded-full border-hairline bg-surface-1/80 px-2.5 text-label-xs">
+            <Badge variant="outline" size="compact" className="control-badge control-badge-compact rounded-full border-hairline bg-surface-1/80">
               Type: {inputTypeLabel}
             </Badge>
           </span>
@@ -236,7 +236,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
             </span>
           )}
           {resolvedInput.usedDefault && (
-            <Badge variant="secondary" className="control-badge rounded-full px-2.5 text-label-xs">Using default value</Badge>
+            <Badge variant="secondary" size="compact" className="control-badge control-badge-compact rounded-full">Using default value</Badge>
           )}
           <span id="input-hint" className="ui-meta-text text-muted-foreground">
             {compact

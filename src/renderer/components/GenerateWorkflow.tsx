@@ -157,8 +157,8 @@ export function GenerateWorkflow() {
 
           <div className="ui-meta-text text-muted-foreground pb-1">
             {skills.length > 0
-              ? `${skills.length} skills available from your projects and libraries`
-              : "No skills discovered — generic skill names will be used"}
+              ? `${skills.length} skills available from your project, plugins, and legacy libraries`
+              : "No skills discovered yet — generic skill names will be used"}
           </div>
         </CanvasDialogBody>
 

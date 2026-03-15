@@ -565,7 +565,7 @@ export function Toolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1.5"
+                      className="ui-fade-slide-in-trailing gap-1.5"
                       onClick={() => {
                         if (runId) {
                           void window.api.resumeRun(runId)
@@ -585,7 +585,7 @@ export function Toolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1.5"
+                      className="ui-fade-slide-in-trailing gap-1.5"
                       onClick={() => {
                         if (runId) {
                           void window.api.pauseRun(runId)
@@ -603,7 +603,13 @@ export function Toolbar({
               )}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="destructive" size="sm" onClick={() => void onCancel()} disabled={isCancelling || isStarting}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="ui-fade-slide-in-trailing"
+                    onClick={() => void onCancel()}
+                    disabled={isCancelling || isStarting}
+                  >
                     {isCancelling ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
                     {isCancelling ? "Stopping..." : isStarting ? "Connecting..." : "Stop"}
                   </Button>

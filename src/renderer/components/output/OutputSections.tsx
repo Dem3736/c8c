@@ -9,7 +9,6 @@ import {
   Loader2,
   AlertCircle,
   Clock,
-  ChevronDown,
   ChevronRight,
   Wrench,
   RotateCcw,
@@ -91,7 +90,13 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           aria-label={collapsed ? "Expand thinking block" : "Collapse thinking block"}
           className="flex items-center gap-1 ui-meta-text text-muted-foreground hover:text-foreground ui-pressable"
         >
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              !collapsed && "rotate-90",
+            )}
+          />
           <span className="italic">thinking...</span>
         </button>
         {!collapsed && (
@@ -126,10 +131,16 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           aria-label={collapsed ? `Expand ${toolDisplayName} input` : `Collapse ${toolDisplayName} input`}
           className="flex items-center gap-2 ui-meta-label text-foreground-subtle hover:text-foreground ui-pressable"
         >
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              !collapsed && "rotate-90",
+            )}
+          />
           <Wrench size={12} />
           <span>{toolDisplayName}</span>
-          {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0 border-accent/30 text-accent">{mcpServerLabel(entry.tool)}</Badge>}
+          {isMcp && <Badge variant="info" className="ui-meta-text px-1.5 py-0">{mcpServerLabel(entry.tool)}</Badge>}
         </button>
         {!collapsed && (
           <pre className="ui-meta-text text-muted-foreground whitespace-pre-wrap font-mono mt-1 max-h-60 overflow-y-auto ui-scroll-region">
@@ -166,14 +177,20 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           aria-label={collapsed ? `Expand ${toolDisplayName} result` : `Collapse ${toolDisplayName} result`}
           className={cn("flex items-center gap-2 ui-meta-label ui-pressable", textColor)}
         >
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              !collapsed && "rotate-90",
+            )}
+          />
           <span>
             {toolDisplayName} {isError ? "failed" : "result"}
           </span>
-          {isMcp && <Badge variant="outline" className="ui-meta-text px-1 py-0 border-accent/30 text-accent">{mcpServerLabel(entry.tool)}</Badge>}
+          {isMcp && <Badge variant="info" className="ui-meta-text px-1.5 py-0">{mcpServerLabel(entry.tool)}</Badge>}
         </button>
         {permissionHint && (
-          <div className="mt-1 rounded-md border border-status-warning/30 bg-status-warning/10 px-2 py-1.5">
+          <div className="mt-1 rounded-md surface-warning-soft px-2 py-1.5">
             <p className="ui-meta-text text-status-warning">
               Permission hint: add <span className="font-mono">{permissionHint.toolName}</span> to this skill step&apos;s
               {" "}Allowed Tools, then rerun this step.
@@ -208,7 +225,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           {entry.content}
         </pre>
         {permissionHint && (
-          <div className="mt-1 rounded-md border border-status-warning/30 bg-status-warning/10 px-2 py-1.5">
+          <div className="mt-1 rounded-md surface-warning-soft px-2 py-1.5">
             <p className="ui-meta-text text-status-warning">
               Permission hint: add <span className="font-mono">{permissionHint.toolName}</span> to this skill step&apos;s
               {" "}Allowed Tools, then rerun this step.
@@ -235,7 +252,13 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           aria-label={collapsed ? "Expand diff" : "Collapse diff"}
           className="flex items-center gap-2 ui-meta-label text-foreground-subtle hover:text-foreground ui-pressable"
         >
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          <ChevronRight
+            size={12}
+            className={cn(
+              "transition-transform ui-motion-fast",
+              !collapsed && "rotate-90",
+            )}
+          />
           <FileCode2 size={12} />
           <span>{entry.files.length} file{entry.files.length !== 1 ? "s" : ""} changed</span>
         </button>
@@ -255,7 +278,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
                   : line.startsWith("-") && !line.startsWith("---")
                     ? "text-status-danger"
                     : line.startsWith("@@")
-                      ? "text-accent"
+                      ? "text-status-info"
                       : "text-muted-foreground"
                 return (
                   <span key={i} className={color}>

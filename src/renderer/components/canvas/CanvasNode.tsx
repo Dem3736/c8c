@@ -13,13 +13,19 @@ import { NODE_ACCENTS, NODE_ICONS, NODE_ICON_TONES, STATUS_STYLES } from "@/lib/
 
 export type CanvasNodeType = Node<CanvasNodeData>
 
-const STATUS_DOT_STYLES: Record<string, string> = {
-  running: "bg-status-info animate-pulse",
-  completed: "bg-status-success",
-  failed: "bg-status-danger",
-  queued: "bg-muted-foreground/70",
-  skipped: "bg-status-warning",
-  waiting_approval: "bg-status-warning animate-pulse",
+const STATUS_DOT_STYLES: Record<string, { core: string; ring?: string }> = {
+  running: {
+    core: "bg-status-info",
+    ring: "bg-status-info/35",
+  },
+  completed: { core: "bg-status-success" },
+  failed: { core: "bg-status-danger" },
+  queued: { core: "bg-muted-foreground/70" },
+  skipped: { core: "bg-status-warning" },
+  waiting_approval: {
+    core: "bg-status-warning",
+    ring: "bg-status-warning/35",
+  },
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,7 +55,7 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
       : status === "waiting_approval"
         ? "ring-2 ring-status-warning/50"
         : ""
-  const statusDotStyle = showStatusDot ? STATUS_DOT_STYLES[status] || "bg-muted-foreground" : ""
+  const statusDotStyle = showStatusDot ? STATUS_DOT_STYLES[status] || { core: "bg-muted-foreground" } : null
   const terminalContainerStyle = isTerminal
     ? "min-w-[156px] max-w-[198px] rounded-md border border-hairline/70 bg-surface-1/80 px-2 py-1.5 ui-elevation-inset"
     : "min-w-[212px] max-w-[248px] rounded-lg border bg-gradient-to-b from-surface-1 to-surface-2/70 px-3 py-2 ui-elevation-base"
@@ -122,10 +128,17 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
           </div>
 
           {showStatusDot && (
-            <span
-              className={cn("mt-1 h-2.5 w-2.5 rounded-full border border-surface-1/80 shadow-sm", statusDotStyle)}
-              aria-hidden="true"
-            />
+            statusDotStyle?.ring ? (
+              <span className="ui-status-beacon mt-1" aria-hidden="true">
+                <span className={cn("ui-status-beacon-ring", statusDotStyle.ring)} />
+                <span className={cn("ui-status-beacon-core", statusDotStyle.core)} />
+              </span>
+            ) : (
+              <span
+                className={cn("mt-1 h-2.5 w-2.5 rounded-full border border-surface-1/80 shadow-sm", statusDotStyle?.core)}
+                aria-hidden="true"
+              />
+            )
           )}
         </div>
 

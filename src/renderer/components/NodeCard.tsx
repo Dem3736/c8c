@@ -26,7 +26,6 @@ import type { ErrorKind, NodeOnErrorPolicy, NodeRetryBackoff, NodeRuntimeConfig 
 import { getDefaultModelForProvider, modelLooksCompatible } from "@shared/provider-metadata"
 import {
   ChevronDown,
-  ChevronUp,
   ArrowUp,
   ArrowDown,
   X,
@@ -321,7 +320,7 @@ export function NodeCard({
         {!isTerminal && (
           <div
             className={cn(
-              "flex items-center gap-1 opacity-60 ui-transition-opacity ui-motion-fast group-hover:opacity-100 group-focus-within:opacity-100",
+              "ui-reveal-trailing-soft flex items-center gap-1",
               compact ? "pt-0" : "pt-0.5",
             )}
           >
@@ -410,7 +409,13 @@ export function NodeCard({
             aria-label={expanded ? "Collapse node settings" : "Expand node settings"}
             aria-expanded={expanded}
           >
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            <ChevronDown
+              size={14}
+              className={cn(
+                "transition-transform ui-motion-fast",
+                expanded && "rotate-180",
+              )}
+            />
           </Button>
         )}
       </div>
@@ -462,15 +467,15 @@ export function NodeCard({
               </Badge>
             ))}
           </div>
-          <div className="control-cluster flex flex-wrap items-center gap-1 rounded-[0.95rem] px-1.5 py-1.5">
+          <div className="control-cluster control-cluster-compact flex flex-wrap items-center gap-1">
             <div className="flex flex-wrap items-center gap-1">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
-                    size="icon"
-                    className="h-7 w-7 rounded-full border-hairline bg-surface-1/85 text-muted-foreground shadow-inset-highlight-subtle hover:bg-surface-1 hover:text-foreground"
+                    size="icon-xs"
+                    className="control-pill-compact w-control-xs border-hairline bg-surface-1/85 text-muted-foreground shadow-inset-highlight-subtle hover:bg-surface-1 hover:text-foreground"
                     aria-label="Attach context"
                   >
                     <Plus size={12} aria-hidden="true" />
@@ -501,19 +506,19 @@ export function NodeCard({
                 })}
                 codexEnabled={providerSettings.features.codexProvider}
                 labelMode="short"
-                className="h-7 w-[96px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs shadow-inset-highlight-subtle"
+                className="control-pill-compact w-[96px] border-hairline bg-surface-1/85 shadow-inset-highlight-subtle"
                 ariaLabel="Workflow provider"
               />
               <ProviderModelSelect
                 provider={workflowProvider}
                 value={workflowModel}
                 onValueChange={(model) => updateWorkflowDefaults({ model })}
-                className="h-7 w-[118px] rounded-full border-hairline bg-surface-1/85 px-2.5 text-label-xs tabular-nums shadow-inset-highlight-subtle"
+                className="control-pill-compact w-[118px] border-hairline bg-surface-1/85 tabular-nums shadow-inset-highlight-subtle"
                 ariaLabel="Workflow model"
               />
             </div>
-            <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              <Badge variant="outline" className="control-badge rounded-full border-hairline bg-surface-1/80 px-2 text-label-xs">
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              <Badge variant="outline" size="compact" className="control-badge control-badge-compact rounded-full border-hairline bg-surface-1/80">
                 Type: {inputTypeLabel}
               </Badge>
               {showInlineInputError && (

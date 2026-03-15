@@ -47,10 +47,8 @@ import { toast } from "sonner"
 import {
   ArrowUp,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Folder,
   FolderPlus,
   Loader2,
@@ -381,11 +379,13 @@ export function WorkflowCreatePage() {
                 aria-label="Select project"
               >
                 <span className="truncate">{targetProjectName || "Select project"}</span>
-                {projectPickerOpen ? (
-                  <ChevronUp size={20} className="shrink-0" />
-                ) : (
-                  <ChevronDown size={20} className="shrink-0" />
-                )}
+                <ChevronRight
+                  size={20}
+                  className={cn(
+                    "shrink-0 transition-transform ui-motion-fast",
+                    projectPickerOpen && "rotate-90",
+                  )}
+                />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

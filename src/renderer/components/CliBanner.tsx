@@ -20,20 +20,20 @@ export function CliBanner() {
   if (!message) return null
 
   return (
-    <div className="flex items-center gap-2 ui-alert-warning border-b">
+    <div className="mx-3 mt-3 flex items-center gap-2 ui-alert-warning">
       <AlertTriangle size={14} className="shrink-0 text-status-warning" />
-      <span className="flex-1 text-status-warning">{message}</span>
+      <span className="flex-1 text-body-sm text-status-warning">{message}</span>
       <Button
         variant="ghost"
         size="sm"
-        className="text-status-warning"
+        className="text-status-warning hover:text-status-warning"
         onClick={() => setMainView("settings")}
       >
         Open Settings
       </Button>
       <button
         type="button"
-        className="shrink-0 rounded p-0.5 text-status-warning hover:bg-status-warning/10"
+        className="ui-icon-button shrink-0 text-status-warning hover:bg-status-warning/10 hover:text-status-warning"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
       >

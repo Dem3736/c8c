@@ -286,14 +286,14 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
 
   return (
     <section
-      aria-label="Skills chain editor"
+      aria-label="Pipeline builder"
       className={cn(
         "rounded-lg surface-panel ui-fade-slide-in",
         compact ? "p-2.5 space-y-2" : "p-4 space-y-3",
       )}
     >
       <h2 className="section-kicker">
-        Skills Chain
+        Pipeline Builder
       </h2>
 
       <div className="space-y-0">

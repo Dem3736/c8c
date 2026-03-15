@@ -620,7 +620,7 @@ export function MultiRunDashboard() {
                         </dl>
 
                         {selectedEntry.approvalMessages.length > 0 && (
-                          <div className="mt-4 rounded-md border border-status-warning/20 bg-status-warning/8 p-3">
+                          <div className="mt-4 rounded-md surface-warning-soft p-3">
                             <p className="text-body-sm font-medium text-status-warning">Pending approvals</p>
                             <div className="mt-2 space-y-1.5">
                               {selectedEntry.approvalMessages.map((message, index) => (
@@ -633,7 +633,7 @@ export function MultiRunDashboard() {
                         )}
 
                         {selectedEntry.lastError && (
-                          <div className="mt-4 rounded-md border border-status-danger/20 bg-status-danger/8 p-3">
+                          <div className="mt-4 rounded-md surface-danger-soft p-3">
                             <div className="flex items-center gap-2 text-status-danger">
                               <AlertTriangle size={14} />
                               <p className="text-body-sm font-medium">Last error</p>
