@@ -30,11 +30,117 @@ export interface NodeRuntimeConfig {
 }
 
 export type PermissionMode = "plan" | "edit"
+export type ProviderId = "claude" | "codex"
+export type SafetyProfile =
+  | "safe_readonly"
+  | "workspace_auto"
+  | "workspace_untrusted"
+  | "ci_readonly"
+  | "dangerous"
+
+export interface ProviderHealth {
+  provider: ProviderId
+  available: boolean
+  executablePath?: string
+  version?: string
+  error?: string | null
+}
+
+export interface ProviderAuthStatus {
+  provider: ProviderId
+  authenticated: boolean
+  authMethod?: string | null
+  accountLabel?: string | null
+  apiKeyConfigured?: boolean
+  error?: string | null
+}
+
+export interface ProviderSettings {
+  defaultProvider: ProviderId
+  safetyProfile: SafetyProfile
+  features: {
+    codexProvider: boolean
+  }
+}
+
+export interface ProviderDiagnostics {
+  settings: ProviderSettings
+  health: Record<ProviderId, ProviderHealth>
+  auth: Record<ProviderId, ProviderAuthStatus>
+}
+
+export interface AgentRunOptions {
+  workdir: string
+  prompt: string
+  model?: string
+  maxTurns?: number
+  permissionMode?: string
+  executionMode?: PermissionMode
+  safetyProfile?: SafetyProfile
+  systemPrompts?: string[]
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  settingSources?: string[]
+  addDirs?: string[]
+  extraArgs?: string[]
+  extraEnv?: Record<string, string>
+  timeout?: number
+  abortSignal?: AbortSignal
+  onSpawn?: (pid: number) => void
+  onStdout?: (data: Buffer) => void
+  onStderr?: (data: Buffer) => void
+}
+
+export interface AgentRunResult {
+  success: boolean
+  exitCode: number | null
+  signal: string | null
+  killed: boolean
+  aborted: boolean
+  durationMs: number
+  pid?: number
+}
+
+export interface AgentUsage {
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface AgentExecutionSummary extends AgentRunResult {
+  error?: string | null
+  providerSessionId?: string | null
+}
+
+export type AgentExecutionEvent =
+  | { type: "start" }
+  | { type: "spawn"; pid: number }
+  | { type: "log-entry"; entry: LogEntry }
+  | { type: "usage"; usage: AgentUsage }
+  | { type: "stderr"; text: string }
+  | { type: "error"; text: string }
+  | { type: "finish"; summary: AgentExecutionSummary }
+
+export interface AgentExecutionHandle {
+  provider: ProviderId
+  events: AsyncIterable<AgentExecutionEvent>
+  abort(): void
+  done: Promise<AgentExecutionSummary>
+}
+
+export interface AgentProvider {
+  id: ProviderId
+  checkAvailability(): Promise<ProviderHealth>
+  getAuthStatus(): Promise<ProviderAuthStatus>
+  executeInteractive?(options: AgentRunOptions): Promise<AgentExecutionHandle>
+  executeTask?(options: AgentRunOptions): Promise<AgentExecutionHandle>
+  runInteractive(options: AgentRunOptions): Promise<AgentRunResult>
+  runTask(options: AgentRunOptions): Promise<AgentRunResult>
+  cancel(sessionId: string): Promise<boolean> | boolean
+}
 
 export interface SkillNodeConfig {
   skillRef: string
   prompt: string
-  model?: "sonnet" | "opus" | "haiku"
   outputMode?: "auto" | "stdout" | "content_file"
   maxTurns?: number
   permissionMode?: PermissionMode
@@ -57,7 +163,6 @@ export interface EvaluatorNodeConfig {
 export interface SplitterNodeConfig {
   strategy: string
   maxBranches?: number
-  model?: "sonnet" | "opus" | "haiku"
   runtime?: NodeRuntimeConfig
 }
 
@@ -129,6 +234,7 @@ export interface WorkflowEdge {
 // ── Workflow Definition ─────────────────────────────────
 
 export interface WorkflowDefaults {
+  provider?: ProviderId
   model?: string
   maxTurns?: number
   maxParallel?: number
@@ -163,6 +269,8 @@ export interface DiscoveredSkill {
   description: string
   category: string
   path: string
+  format?: "claude-markdown" | "codex-skill"
+  sourceScope?: "project" | "user" | "library"
   model?: string
   tools?: string[]
   maxTurns?: number
@@ -305,6 +413,11 @@ export type WorkflowEvent =
   | { type: "run-done"; runId: string; status: RunStatus; reportPath?: string; workspace?: string }
 
 // ── Input ───────────────────────────────────────────────
+
+export type InputAttachment =
+  | { kind: "file"; path: string; name: string }
+  | { kind: "run"; runId: string; workspace: string; workflowName: string }
+  | { kind: "text"; label: string; content: string }
 
 export type WorkflowInput =
   | { type: "text"; value: string }
@@ -510,6 +623,7 @@ export type McpServerScope = "local" | "project" | "user"
 export interface McpServerInfo {
   name: string
   scope: McpServerScope
+  provider?: ProviderId
   projectPath?: string
   type: McpTransportType
   command?: string
@@ -525,7 +639,13 @@ export interface McpToolInfo {
   name: string
   serverName: string
   qualifiedName: string
+  provider?: ProviderId
   description?: string
+}
+
+export interface McpMutationResult {
+  success: boolean
+  error?: string
 }
 
 export interface McpTestResult {
@@ -533,4 +653,16 @@ export interface McpTestResult {
   tools: McpToolInfo[]
   error?: string
   latencyMs: number
+}
+
+export interface McpProvider {
+  id: ProviderId
+  listServers(scope?: McpServerScope, projectPath?: string): Promise<McpServerInfo[]>
+  listAllServers?(): Promise<McpServerInfo[]>
+  addServer(server: McpServerInfo, projectPath?: string): Promise<McpMutationResult>
+  updateServer?(name: string, server: McpServerInfo, projectPath?: string): Promise<McpMutationResult>
+  removeServer(name: string, scope: McpServerScope, projectPath?: string): Promise<McpMutationResult>
+  toggleServer(name: string, scope: McpServerScope, disabled: boolean, projectPath?: string): Promise<McpMutationResult>
+  testServer(name: string, scope: McpServerScope, projectPath?: string): Promise<McpTestResult>
+  discoverTools(serverName?: string, projectPath?: string): Promise<McpToolInfo[]>
 }

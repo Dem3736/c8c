@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, type WebContents } from "electron"
-import { spawnClaude } from "@claude-tools/runner"
+import { existsSync } from "node:fs"
 import { getBuiltinTemplates } from "../lib/templates"
+import { drainExecutionHandle } from "../lib/agent-execution"
 import { LogParser } from "../lib/log-parser"
 import { buildGeneratorPrompt, parseGeneratedWorkflow } from "../lib/workflow-generator"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
@@ -13,7 +14,11 @@ import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { saveChain } from "../lib/chain-io"
 import { toWorkflowFileStem } from "@shared/workflow-name"
+import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
+import { buildProviderExtraArgs } from "../lib/mcp-config"
+import { getProviderSettings } from "../lib/provider-settings"
+import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-runtime"
 
 const activeGenerateControllers = new Map<number, AbortController>()
 const generateLifecycleBindings = new Set<number>()
@@ -114,35 +119,55 @@ export function registerTemplateHandlers() {
       }
 
       try {
-        let result: Awaited<ReturnType<typeof spawnClaude>>
+        const settings = await getProviderSettings()
+        const providerId = applyProviderFeatureFlags(
+          settings.defaultProvider,
+          settings.features.codexProvider,
+        )
+        const model = getDefaultModelForProvider(providerId)
+        const mcpConfigPath = projectPath && existsSync(join(projectPath, ".mcp.json"))
+          ? join(projectPath, ".mcp.json")
+          : undefined
+        let result
         try {
           logInfo("templates-ipc", "generate_started", { senderId, projectPath: projectPath || null })
-          result = await spawnClaude({
+          const handle = await startProviderTask(providerId, {
             workdir: safeWorkdir,
             prompt,
-            model: "sonnet",
+            model,
             maxTurns: 30,
-            systemPrompts: [
-              "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
-            ],
-            extraArgs: ["--verbose", "--output-format", "stream-json", "--disable-slash-commands", "--tools", ""],
+            systemPrompts: providerId === "codex"
+              ? [
+                  "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
+                ]
+              : [],
+            extraArgs: providerId === "claude"
+              ? [
+                  ...buildProviderExtraArgs("claude", mcpConfigPath),
+                  "--disable-slash-commands",
+                  "--tools", "",
+                ]
+              : buildProviderExtraArgs("codex", mcpConfigPath),
             timeout: 300_000,
             abortSignal,
-            onStdout: (data: Buffer) => {
-              const newEntries = logParser.feedChunk(data.toString())
-              for (const entry of newEntries) {
-                entryCount++
-                if (entry.type === "thinking") {
-                  sendProgress("thinking", entryCount)
-                } else if (entry.type === "text") {
-                  sendProgress("writing", entryCount)
-                } else if (entry.type === "tool_use" && "tool" in entry) {
-                  sendProgress(`using ${entry.tool}`, entryCount)
-                }
+          })
+          result = await drainExecutionHandle(handle, {
+            onLogEntry: (entry) => {
+              logParser.appendEntry(entry)
+              entryCount++
+              if (entry.type === "thinking") {
+                sendProgress("thinking", entryCount)
+              } else if (entry.type === "text") {
+                sendProgress("writing", entryCount)
+              } else if (entry.type === "tool_use" && "tool" in entry) {
+                sendProgress(`using ${entry.tool}`, entryCount)
               }
             },
-            onStderr: (data: Buffer) => {
-              stderrOutput += data.toString()
+            onUsage: (usage) => {
+              logParser.applyUsage(usage)
+            },
+            onStderr: (text) => {
+              stderrOutput += text
             },
           })
         } catch (err) {
@@ -150,7 +175,7 @@ export function registerTemplateHandlers() {
           if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
             throw new Error("Workflow generation timed out — try a simpler description")
           }
-          throw new Error(`Claude process failed: ${msg.slice(0, 200)}`)
+          throw new Error(`${providerId} process failed: ${msg.slice(0, 200)}`)
         } finally {
           if (activeGenerateControllers.get(senderId) === controller) {
             activeGenerateControllers.delete(senderId)

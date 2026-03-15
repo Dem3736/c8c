@@ -1,4 +1,3 @@
-import { spawnClaude, type ClaudeSpawnOptions, type ClaudeSpawnResult } from "@claude-tools/runner"
 import { execSync } from "node:child_process"
 import { mkdtemp, mkdir, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -6,6 +5,7 @@ import { join, dirname, basename } from "node:path"
 import { BrowserWindow } from "electron"
 import { trackTelemetryEvent } from "./telemetry/service"
 import { summarizeWorkflowSkillCoverage, workflowFingerprint } from "./telemetry/workflow-usage"
+import { drainExecutionHandle, type ExecutionEventSinks } from "./agent-execution"
 import { LogParser } from "./log-parser"
 import { classifyError, estimateCost, collectMetrics, buildNodeMeta } from "./observability"
 import {
@@ -16,7 +16,7 @@ import {
   getDownstreamNodeIds,
 } from "./graph-engine"
 import { parseEvaluatorOutput, buildEvaluatorPrompt } from "./evaluator"
-import { expandSplitter, type RuntimeWorkflow, type Subtask } from "./runtime-graph"
+import { expandSplitter, collapseSplitterExpansion, type RuntimeWorkflow, type Subtask } from "./runtime-graph"
 import { writeFileAtomic } from "./atomic-write"
 import {
   buildSplitterPrompt,
@@ -27,8 +27,9 @@ import {
   tryStructuredSplit,
 } from "./node-executors/splitter"
 import { mergeResults, buildMergerPrompt } from "./node-executors/merger"
-import { buildClaudeExtraArgs, prepareWorkspaceMcpConfig, type WebSearchBackend } from "./mcp-config"
+import { buildProviderExtraArgs, prepareWorkspaceMcpConfig, type WebSearchBackend } from "./mcp-config"
 import { scanAllSkills } from "./skill-scanner"
+import { resolveNodeProviderId, resolveWorkflowProviderId, startProviderTask } from "./provider-runtime"
 import {
   finalizeRunPidManifest,
   initRunPidManifest,
@@ -38,6 +39,8 @@ import {
 } from "./run-pid-manifest"
 import { logWarn } from "./structured-log"
 import type {
+  AgentRunOptions,
+  AgentExecutionSummary,
   Workflow,
   WorkflowNode,
   WorkflowEdge,
@@ -57,7 +60,9 @@ import type {
   NodeRuntimeConfig,
   NodeRetryBackoff,
   PermissionMode,
+  ProviderId,
 } from "@shared/types"
+import { getDefaultModelForProvider, resolveNodeProvider } from "@shared/provider-metadata"
 
 const activeRuns = new Map<string, AbortController>()
 
@@ -174,6 +179,77 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const CLAUDE_LIMIT_RE = /\b(rate limit(?:ed)?|usage limit|quota(?: exceeded)?|too many requests|http\s*429|status\s*429|credit balance|billing|exceeded (?:your )?(?:usage|rate|monthly|spend|token) limit|limit reached)\b/i
+
+function normalizeLimitLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim()
+}
+
+function collectClaudeFailureEvidence(logParser: LogParser, stderrText: string): string[] {
+  const evidence: string[] = []
+  if (stderrText.trim()) evidence.push(stderrText)
+
+  for (const entry of logParser.entries) {
+    if (entry.type === "error") {
+      evidence.push(entry.content)
+      continue
+    }
+    if (entry.type === "tool_result" && entry.status === "error") {
+      evidence.push(entry.output)
+    }
+  }
+
+  if (evidence.length === 0 && logParser.textContent.trim()) {
+    evidence.push(logParser.textContent)
+  }
+
+  return evidence
+}
+
+function detectClaudeLimitEvidence(logParser: LogParser, stderrText: string): string | undefined {
+  const evidence = collectClaudeFailureEvidence(logParser, stderrText)
+  for (const chunk of evidence) {
+    for (const rawLine of chunk.split(/\r?\n/)) {
+      const line = normalizeLimitLine(rawLine)
+      if (!line) continue
+      if (CLAUDE_LIMIT_RE.test(line)) {
+        return line.slice(0, 240)
+      }
+    }
+
+    const collapsed = normalizeLimitLine(chunk)
+    if (collapsed && CLAUDE_LIMIT_RE.test(collapsed)) {
+      return collapsed.slice(0, 240)
+    }
+  }
+  return undefined
+}
+
+function buildAgentFailureDetail(
+  providerId: ProviderId,
+  result: AgentExecutionSummary,
+  logParser: LogParser,
+  stderrText: string,
+): string {
+  if (result.exitCode === null) {
+    if (result.error?.trim()) {
+      return result.error.trim()
+    }
+    return providerId === "codex"
+      ? "Could not start Codex CLI — check that 'codex' is in your PATH and accessible"
+      : "Could not start Claude CLI — check that 'claude' is in your PATH and accessible"
+  }
+
+  const limitEvidence = providerId === "claude"
+    ? detectClaudeLimitEvidence(logParser, stderrText)
+    : undefined
+  if (limitEvidence && providerId === "claude") {
+    return `Claude usage limit reached: ${limitEvidence}. Wait for the limit window to reset or use an account/key with available quota, then rerun.`
+  }
+
+  return `exit code ${result.exitCode}`
+}
+
 interface SpawnTrackingContext {
   workspace: string
   runId: string
@@ -182,17 +258,26 @@ interface SpawnTrackingContext {
   nodeId?: string
 }
 
-async function spawnClaudeTracked(
-  options: ClaudeSpawnOptions,
+interface ExecutionTrackingCallbacks {
+  onSpawn?: (pid: number) => void
+  onLogEntry?: ExecutionEventSinks["onLogEntry"]
+  onUsage?: ExecutionEventSinks["onUsage"]
+  onStderr?: (text: string) => void
+  onError?: (text: string) => void
+}
+
+async function spawnProviderTracked(
+  providerId: ProviderId,
+  options: AgentRunOptions,
   tracking: SpawnTrackingContext,
-): Promise<ClaudeSpawnResult> {
-  const outerOnSpawn = options.onSpawn
+  callbacks: ExecutionTrackingCallbacks = {},
+): Promise<AgentExecutionSummary> {
   let trackedPid: number | undefined
-  const result = await spawnClaude({
-    ...options,
-    onSpawn: (pid: number) => {
+  const handle = await startProviderTask(providerId, options)
+  const result = await drainExecutionHandle(handle, {
+    onSpawn: (pid) => {
       trackedPid = pid
-      outerOnSpawn?.(pid)
+      callbacks.onSpawn?.(pid)
       void recordRunPidStart(
         tracking.workspace,
         tracking.runId,
@@ -202,6 +287,10 @@ async function spawnClaudeTracked(
         tracking.nodeId,
       )
     },
+    onLogEntry: callbacks.onLogEntry,
+    onUsage: callbacks.onUsage,
+    onStderr: callbacks.onStderr,
+    onError: callbacks.onError,
   })
 
   const pid = typeof trackedPid === "number" ? trackedPid : result.pid
@@ -242,10 +331,46 @@ function workflowNodeTypeCounts(workflow: Workflow): Record<string, number> {
   }
 }
 
+function workflowProviderCounts(
+  workflow: Workflow,
+  defaultProvider: ProviderId,
+): Record<string, number> {
+  let providerClaudeNodes = 0
+  let providerCodexNodes = 0
+
+  for (const node of workflow.nodes) {
+    const provider = resolveNodeProvider(node, workflow, defaultProvider)
+    if (provider === "codex") providerCodexNodes += 1
+    else providerClaudeNodes += 1
+  }
+
+  return {
+    providers_total_distinct: (providerClaudeNodes > 0 ? 1 : 0) + (providerCodexNodes > 0 ? 1 : 0),
+    provider_nodes_claude: providerClaudeNodes,
+    provider_nodes_codex: providerCodexNodes,
+  }
+}
+
+function workflowErrorKinds(
+  nodeStates: Record<string, NodeState>,
+): { errorKinds: string | null; errorKindsUnique: number } {
+  const kinds = Array.from(new Set(
+    Object.values(nodeStates)
+      .map((state) => state.errorKind)
+      .filter((kind): kind is ErrorKind => Boolean(kind)),
+  ))
+
+  return {
+    errorKinds: kinds.length > 0 ? kinds.join(",") : null,
+    errorKindsUnique: kinds.length,
+  }
+}
+
 function workflowRunStartTelemetry(
   workflow: Workflow,
   runId: string,
   mode: "run" | "rerun",
+  workflowProviderId: ProviderId,
 ): Record<string, string | number | boolean | null> {
   const skillCoverage = summarizeWorkflowSkillCoverage(workflow)
   return {
@@ -253,8 +378,10 @@ function workflowRunStartTelemetry(
     workflow_fingerprint: workflowFingerprint(workflow),
     workflow_version: workflow.version,
     run_mode: mode,
+    workflow_provider: workflowProviderId,
     nodes_total: workflow.nodes.length,
     ...workflowNodeTypeCounts(workflow),
+    ...workflowProviderCounts(workflow, workflowProviderId),
     skill_refs_total: skillCoverage.skillRefsTotal,
     skill_refs_unique: skillCoverage.skillRefsUnique,
     skill_refs: skillCoverage.skillRefsList,
@@ -842,7 +969,9 @@ export async function runWorkflow(
       const state = nodeStates[event.nodeId]
       const node = runtimeWorkflow.nodes.find((n) => n.id === event.nodeId)
       if (state && node) {
+        const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
         void trackTelemetryEvent("workflow_node_finished", {
+          provider: nodeProvider,
           node_type: node.type,
           status: state.status,
           duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
@@ -862,7 +991,15 @@ export async function runWorkflow(
   await mkdir(join(workspace, "outputs"), { recursive: true })
 
   const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
-  const claudeExtraArgs = buildClaudeExtraArgs(mcpConfigPath)
+  const workflowProviderId = await resolveWorkflowProviderId(workflow)
+  const providerExtraArgsCache = new Map<ProviderId, string[]>()
+  const getProviderExtraArgs = (providerId: ProviderId): string[] => {
+    const cached = providerExtraArgsCache.get(providerId)
+    if (cached) return cached
+    const next = buildProviderExtraArgs(providerId, mcpConfigPath)
+    providerExtraArgsCache.set(providerId, next)
+    return next
+  }
   const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
 
   const sanitizedInputValue = sanitizeInvalidUnicode(input.value)
@@ -894,7 +1031,7 @@ export async function runWorkflow(
   )
   await initRunPidManifest(workspace, runId, "run")
 
-  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "run"))
+  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "run", workflowProviderId))
 
   const inputContent = sanitizedInputValue
   let manifestStatus: RunStatus = "interrupted"
@@ -974,6 +1111,7 @@ export async function runWorkflow(
 
           case "skill": {
             const config = node.config as SkillNodeConfig
+            const nodeProviderId = await resolveNodeProviderId(node, workflow)
 
             // Check if this is a runtime fan-out copy
             const meta = runtimeWorkflow.runtimeMeta?.[node.id]
@@ -1024,6 +1162,10 @@ export async function runWorkflow(
               manifestLines.push(`- outputs/${sanitized}.md  (${label})`)
             }
 
+            const codexSkillContext = nodeProviderId === "codex"
+              ? await resolveEvaluatorSkillContext([config.skillRef])
+              : ""
+
             const prompt = sanitizeInvalidUnicode([
               `Workspace: ${workspace}`,
               `Content file: ${contentFile}`,
@@ -1032,9 +1174,10 @@ export async function runWorkflow(
                 ? ["Available upstream outputs:", ...manifestLines, ""]
                 : []),
               ...(retryFeedback ? [retryFeedback] : []),
+              ...(codexSkillContext ? ["Skill instructions:", codexSkillContext, ""] : []),
               config.prompt,
             ].join("\n"))
-            const skillModel = config.model || workflow.defaults?.model || "sonnet"
+            const skillModel = workflow.defaults?.model || getDefaultModelForProvider(nodeProviderId)
 
             const updateSkillMetricsAndMeta = () => {
               const metrics = collectMetrics(logParser, state.startedAt!)
@@ -1079,8 +1222,8 @@ export async function runWorkflow(
               ...planDisallowed,
             ])]
 
-            // Snapshot git state before running (edit mode only)
-            let preRunDiffStat = ""
+            // Snapshot HEAD before running to diff only node's commits (edit mode only)
+            let preRunHead = ""
             const isGitRepo = effectivePermissionMode === "edit" && (() => {
               try {
                 execSync("git rev-parse --is-inside-work-tree", { cwd: workdir, stdio: "pipe" })
@@ -1089,45 +1232,49 @@ export async function runWorkflow(
             })()
             if (isGitRepo) {
               try {
-                preRunDiffStat = execSync("git diff --stat", { cwd: workdir, encoding: "utf-8" })
+                preRunHead = execSync("git rev-parse HEAD", { cwd: workdir, encoding: "utf-8" }).trim()
               } catch { /* non-critical */ }
             }
 
-            const result = await spawnClaudeTracked({
+            let skillStderr = ""
+            const result = await spawnProviderTracked(nodeProviderId, {
               workdir,
               prompt,
-              model: config.model || workflow.defaults?.model || "sonnet",
+              model: skillModel,
               maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 60,
               permissionMode: "acceptEdits",
-              extraArgs: claudeExtraArgs,
+              executionMode: effectivePermissionMode,
+              extraArgs: getProviderExtraArgs(nodeProviderId),
               addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
               abortSignal: controller.signal,
               timeout: (workflow.defaults?.timeout_minutes || 30) * 60 * 1000,
-              onStdout: (data: Buffer) => {
-                const text = data.toString()
-                const entries = logParser.feedChunk(text)
-                for (const entry of entries) {
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                }
-              },
-              onStderr: (data: Buffer) => {
-                const entry = {
-                  type: "error" as const,
-                  content: data.toString(),
-                  timestamp: Date.now(),
-                }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
             }, {
               workspace,
               runId,
               mode: "run",
               role: "skill",
               nodeId: node.id,
+            }, {
+              onLogEntry: (entry) => {
+                logParser.appendEntry(entry)
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
+              onUsage: (usage) => {
+                logParser.applyUsage(usage)
+              },
+              onStderr: (text) => {
+                skillStderr += text
+                const entry = {
+                  type: "error" as const,
+                  content: text,
+                  timestamp: Date.now(),
+                }
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
             })
 
             // Flush remaining buffer
@@ -1139,29 +1286,30 @@ export async function runWorkflow(
 
             updateSkillMetricsAndMeta()
 
-            // Capture git diff after node execution (edit mode only)
-            if (isGitRepo) {
+            // Capture git diff of only the commits made by this node
+            if (isGitRepo && preRunHead) {
               try {
-                const postRunDiff = execSync("git diff", { cwd: workdir, encoding: "utf-8" })
-                if (postRunDiff.trim()) {
-                  const fileLines = execSync("git diff --name-only", { cwd: workdir, encoding: "utf-8" })
-                  const files = fileLines.trim().split("\n").filter(Boolean)
-                  const diffEntry = {
-                    type: "diff" as const,
-                    content: postRunDiff,
-                    files,
-                    timestamp: Date.now(),
+                const postRunHead = execSync("git rev-parse HEAD", { cwd: workdir, encoding: "utf-8" }).trim()
+                if (postRunHead !== preRunHead) {
+                  const postRunDiff = execSync(`git diff ${preRunHead}..${postRunHead}`, { cwd: workdir, encoding: "utf-8" })
+                  if (postRunDiff.trim()) {
+                    const fileLines = execSync(`git diff --name-only ${preRunHead}..${postRunHead}`, { cwd: workdir, encoding: "utf-8" })
+                    const files = fileLines.trim().split("\n").filter(Boolean)
+                    const diffEntry = {
+                      type: "diff" as const,
+                      content: postRunDiff,
+                      files,
+                      timestamp: Date.now(),
+                    }
+                    state.log.push(diffEntry)
+                    send({ type: "node-log", runId, nodeId: node.id, entry: diffEntry })
                   }
-                  state.log.push(diffEntry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry: diffEntry })
                 }
               } catch { /* non-critical */ }
             }
 
             if (!result.success && !controller.signal.aborted) {
-              const detail = result.exitCode === null
-                ? "Could not start Claude CLI — check that 'claude' is in your PATH and accessible"
-                : `exit code ${result.exitCode}`
+              const detail = buildAgentFailureDetail(nodeProviderId, result, logParser, skillStderr)
               throw new Error(`Skill node failed: ${detail}`)
             }
 
@@ -1180,42 +1328,50 @@ export async function runWorkflow(
           case "evaluator": {
             const evalConfig = node.config as EvaluatorNodeConfig
             const logParser = new LogParser()
+            let evaluatorStderr = ""
             const evalSkillContext = await resolveEvaluatorSkillContext(evalConfig.skillRefs)
+            const evalProviderId = workflowProviderId
             const evalPrompt = sanitizeInvalidUnicode(
               buildEvaluatorPrompt(evalConfig.criteria, incomingContent, evalSkillContext),
             )
 
-            const evalSpawnResult = await spawnClaudeTracked({
+            const evalModel = workflow.defaults?.model || getDefaultModelForProvider(evalProviderId)
+            const evalSpawnResult = await spawnProviderTracked(evalProviderId, {
               workdir: projectPath || workspace,
               prompt: evalPrompt,
-              model: workflow.defaults?.model || "sonnet",
+              model: evalModel,
               maxTurns: 1,
-              extraArgs: [...claudeExtraArgs, "--tools", ""],
+              executionMode: workflow.defaults?.permissionMode,
+              extraArgs: [...getProviderExtraArgs(evalProviderId), "--tools", ""],
               addDirs: [],
               abortSignal: controller.signal,
               timeout: 120_000,
-              onStdout: (data: Buffer) => {
-                const entries = logParser.feedChunk(data.toString())
-                for (const entry of entries) {
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                }
-              },
-              onStderr: (data: Buffer) => {
-                const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
             }, {
               workspace,
               runId,
               mode: "run",
               role: "evaluator",
               nodeId: node.id,
+            }, {
+              onLogEntry: (entry) => {
+                logParser.appendEntry(entry)
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
+              onUsage: (usage) => {
+                logParser.applyUsage(usage)
+              },
+              onStderr: (text) => {
+                evaluatorStderr += text
+                const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
             })
 
             if (!evalSpawnResult.success && !controller.signal.aborted) {
-              throw new Error(`Evaluator node failed with exit code ${evalSpawnResult.exitCode}`)
+              const detail = buildAgentFailureDetail(evalProviderId, evalSpawnResult, logParser, evaluatorStderr)
+              throw new Error(`Evaluator node failed: ${detail}`)
             }
 
             const remaining = logParser.flush()
@@ -1225,7 +1381,6 @@ export async function runWorkflow(
             }
 
             // Collect evaluator metrics
-            const evalModel = workflow.defaults?.model || "sonnet"
             const evalMetrics = collectMetrics(logParser, state.startedAt!)
             evalMetrics.cost_usd = estimateCost(evalModel, evalMetrics.tokens_in, evalMetrics.tokens_out)
             state.metrics = evalMetrics
@@ -1284,10 +1439,34 @@ export async function runWorkflow(
 
               state.output = { content: incomingContent, metadata: evalMetadata }
 
-              // Deactivate edges from retry target
-              for (const e of getOutgoingEdges(runtimeWorkflow, retryTargetId)) {
-                activatedEdges.delete(e.id)
+              // BFS from retry target to evaluator: reset ALL intermediate nodes
+              // This handles splitter→branches→merger chains where merger must be re-run
+              const toReset = new Set<string>()
+              const resetQueue = [retryTargetId]
+              while (resetQueue.length > 0) {
+                const id = resetQueue.shift()!
+                if (toReset.has(id) || id === node.id) continue // stop at evaluator
+                toReset.add(id)
+                for (const e of getOutgoingEdges(runtimeWorkflow, id)) {
+                  resetQueue.push(e.target)
+                }
               }
+
+              // Deactivate edges and reset states for all intermediate nodes
+              for (const id of toReset) {
+                for (const e of getOutgoingEdges(runtimeWorkflow, id)) {
+                  activatedEdges.delete(e.id)
+                }
+                if (nodeStates[id]) {
+                  nodeStates[id] = {
+                    status: "pending",
+                    attempts: nodeStates[id].attempts,
+                    log: [],
+                    output: undefined,
+                  }
+                }
+              }
+
               // Deactivate evaluator's outgoing edges
               for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
                 activatedEdges.delete(e.id)
@@ -1297,13 +1476,6 @@ export async function runWorkflow(
                 if (e.type === "fail") activatedEdges.add(e.id)
               }
 
-              // Reset retry target
-              nodeStates[retryTargetId] = {
-                status: "pending",
-                attempts: nodeStates[retryTargetId].attempts,
-                log: [],
-                output: undefined,
-              }
               // Reset evaluator (keep attempts)
               state.status = "pending"
               state.log = []
@@ -1321,7 +1493,8 @@ export async function runWorkflow(
 
           case "splitter": {
             const splitterConfig = node.config as SplitterNodeConfig
-            const splitterModel = splitterConfig.model || workflow.defaults?.model || "sonnet"
+            const splitterProviderId = await resolveNodeProviderId(node, workflow)
+            const splitterModel = workflow.defaults?.model || getDefaultModelForProvider(splitterProviderId)
             const maxBranches = splitterConfig.maxBranches || 8
             const splitterPrompts: string[] = []
             let totalTokensIn = 0
@@ -1333,33 +1506,36 @@ export async function runWorkflow(
               const sanitizedPrompt = sanitizeInvalidUnicode(prompt)
               splitterPrompts.push(sanitizedPrompt)
 
-              const result = await spawnClaudeTracked({
+              const result = await spawnProviderTracked(splitterProviderId, {
                 workdir: projectPath || workspace,
                 prompt: sanitizedPrompt,
                 model: splitterModel,
                 maxTurns: 1,
-                extraArgs: [...claudeExtraArgs, "--tools", ""],
+                executionMode: workflow.defaults?.permissionMode,
+                extraArgs: [...getProviderExtraArgs(splitterProviderId), "--tools", ""],
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 2 * 60 * 1000,
-                onStdout: (data: Buffer) => {
-                  const entries = logParser.feedChunk(data.toString())
-                  for (const entry of entries) {
-                    state.log.push(entry)
-                    send({ type: "node-log", runId, nodeId: node.id, entry })
-                  }
-                },
-                onStderr: (data: Buffer) => {
-                  const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
               }, {
                 workspace,
                 runId,
                 mode: "run",
                 role: "splitter",
                 nodeId: node.id,
+              }, {
+                onLogEntry: (entry) => {
+                  logParser.appendEntry(entry)
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
+                onUsage: (usage) => {
+                  logParser.applyUsage(usage)
+                },
+                onStderr: (text) => {
+                  const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
               })
 
               const remaining = logParser.flush()
@@ -1380,7 +1556,7 @@ export async function runWorkflow(
               if (!result.success) {
                 const entry = {
                   type: "error" as const,
-                  content: `[splitter] claude attempt failed (exitCode=${String(result.exitCode)}) - falling back\n`,
+                  content: `[splitter] ${splitterProviderId} attempt failed (exitCode=${String(result.exitCode)}) - falling back\n`,
                   timestamp: Date.now(),
                 }
                 state.log.push(entry)
@@ -1404,7 +1580,7 @@ export async function runWorkflow(
               subtasks = structuredSubtasks
             } else {
               const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-              console.log("[splitter] spawning claude...")
+              console.log(`[splitter] spawning ${splitterProviderId}...`)
               let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
               subtasks = parseSplitterOutput(splitterRawOutput)
 
@@ -1463,6 +1639,12 @@ export async function runWorkflow(
               latency_ms: Date.now() - state.startedAt!,
             }
             state.meta = buildNodeMeta(splitterPrompts.join("\n\n--- RETRY ---\n\n"), splitterModel)
+
+            // If this is a re-expansion (evaluator retry), collapse previous clones first
+            const removedCloneIds = collapseSplitterExpansion(runtimeWorkflow, workflow, node.id)
+            for (const id of removedCloneIds) {
+              delete nodeStates[id]
+            }
 
             // Expand runtime graph
             const expanded = expandSplitter(runtimeWorkflow, node.id, usedSubtasks)
@@ -1537,13 +1719,15 @@ export async function runWorkflow(
             }
 
             if (mergerConfig.strategy === "concatenate") {
+              const mergerProviderId = workflowProviderId
+              const mergerModel = workflow.defaults?.model || getDefaultModelForProvider(mergerProviderId)
               state.metrics = {
                 tokens_in: 0,
                 tokens_out: 0,
                 cost_usd: 0,
                 latency_ms: Date.now() - state.startedAt!,
               }
-              state.meta = buildNodeMeta("[merger concatenate]", workflow.defaults?.model || "sonnet")
+              state.meta = buildNodeMeta("[merger concatenate]", mergerModel)
               const merged = mergeResults(branchOutputs, "concatenate")
               output = { content: merged, metadata: { source: node.id } }
             } else {
@@ -1552,34 +1736,41 @@ export async function runWorkflow(
                 buildMergerPrompt(branchOutputs, mergerConfig.strategy, mergerConfig.prompt),
               )
               const logParser = new LogParser()
+              let mergerStderr = ""
+              const mergerProviderId = workflowProviderId
+              const mergerModel = workflow.defaults?.model || getDefaultModelForProvider(mergerProviderId)
 
-              const result = await spawnClaudeTracked({
+              const result = await spawnProviderTracked(mergerProviderId, {
                 workdir: projectPath || workspace,
                 prompt: mergePrompt,
-                model: workflow.defaults?.model || "sonnet",
+                model: mergerModel,
                 maxTurns: 20,
-                extraArgs: [...claudeExtraArgs, "--tools", ""],
+                executionMode: workflow.defaults?.permissionMode,
+                extraArgs: [...getProviderExtraArgs(mergerProviderId), "--tools", ""],
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 10 * 60 * 1000,
-                onStdout: (data: Buffer) => {
-                  const entries = logParser.feedChunk(data.toString())
-                  for (const entry of entries) {
-                    state.log.push(entry)
-                    send({ type: "node-log", runId, nodeId: node.id, entry })
-                  }
-                },
-                onStderr: (data: Buffer) => {
-                  const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
               }, {
                 workspace,
                 runId,
                 mode: "run",
                 role: "merger",
                 nodeId: node.id,
+              }, {
+                onLogEntry: (entry) => {
+                  logParser.appendEntry(entry)
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
+                onUsage: (usage) => {
+                  logParser.applyUsage(usage)
+                },
+                onStderr: (text) => {
+                  mergerStderr += text
+                  const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
               })
 
               const remaining = logParser.flush()
@@ -1589,11 +1780,11 @@ export async function runWorkflow(
               }
 
               if (!result.success && !controller.signal.aborted) {
-                throw new Error(`Merger failed with exit code ${result.exitCode}`)
+                const detail = buildAgentFailureDetail(mergerProviderId, result, logParser, mergerStderr)
+                throw new Error(`Merger failed: ${detail}`)
               }
 
               // Collect merger metrics
-              const mergerModel = workflow.defaults?.model || "sonnet"
               const mergerMetrics = collectMetrics(logParser, state.startedAt!)
               mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
               state.metrics = mergerMetrics
@@ -1963,12 +2154,17 @@ export async function runWorkflow(
     send({ type: "run-done", runId, status: finalStatus, reportPath, workspace })
 
     const nodesFailed = Object.values(nodeStates).filter((s) => s.status === "failed").length
+    const { errorKinds, errorKindsUnique } = workflowErrorKinds(nodeStates)
     void trackTelemetryEvent("workflow_run_finished", {
       run_mode: "run",
+      workflow_provider: workflowProviderId,
       status: finalStatus,
+      cancelled: finalStatus === "cancelled",
       duration_ms: durationMs,
       nodes_total: runtimeWorkflow.nodes.length,
       nodes_failed: nodesFailed,
+      error_kinds: errorKinds,
+      error_kinds_unique: errorKindsUnique,
       total_cost_usd: totalCost,
     })
 
@@ -2055,7 +2251,9 @@ export async function rerunFromNode(
       const state = nodeStates[event.nodeId]
       const node = runtimeWorkflow.nodes.find((n) => n.id === event.nodeId)
       if (state && node) {
+        const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
         void trackTelemetryEvent("workflow_node_finished", {
+          provider: nodeProvider,
           node_type: node.type,
           status: state.status,
           duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
@@ -2105,7 +2303,15 @@ export async function rerunFromNode(
   const inputContent = sanitizeInvalidUnicode(savedState.input?.value || "")
   await mkdir(join(workspace, "outputs"), { recursive: true })
   const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
-  const claudeExtraArgs = buildClaudeExtraArgs(mcpConfigPath)
+  const workflowProviderId = await resolveWorkflowProviderId(workflow)
+  const providerExtraArgsCache = new Map<ProviderId, string[]>()
+  const getProviderExtraArgs = (providerId: ProviderId): string[] => {
+    const cached = providerExtraArgsCache.get(providerId)
+    if (cached) return cached
+    const next = buildProviderExtraArgs(providerId, mcpConfigPath)
+    providerExtraArgsCache.set(providerId, next)
+    return next
+  }
   const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
   const rerunStartedAt = Date.now()
 
@@ -2117,7 +2323,7 @@ export async function rerunFromNode(
   )
   await initRunPidManifest(workspace, runId, "rerun")
 
-  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "rerun"))
+  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "rerun", workflowProviderId))
   let manifestStatus: RunStatus = "interrupted"
 
   try {
@@ -2238,15 +2444,21 @@ export async function rerunFromNode(
               manifestLines.push(`- outputs/${sanitized}.md  (${label})`)
             }
 
+            const nodeProviderId = await resolveNodeProviderId(node, workflow)
+            const codexSkillContext = nodeProviderId === "codex"
+              ? await resolveEvaluatorSkillContext([config.skillRef])
+              : ""
+
             const prompt = sanitizeInvalidUnicode([
               `Workspace: ${workspace}`,
               `Content file: ${contentFile}`,
               "",
               ...(manifestLines.length > 0 ? ["Available upstream outputs:", ...manifestLines, ""] : []),
               ...(retryFeedback ? [retryFeedback] : []),
+              ...(codexSkillContext ? ["Skill instructions:", codexSkillContext, ""] : []),
               config.prompt,
             ].join("\n"))
-            const skillModel = config.model || workflow.defaults?.model || "sonnet"
+            const skillModel = workflow.defaults?.model || getDefaultModelForProvider(nodeProviderId)
 
             const updateSkillMetricsAndMeta = () => {
               const metrics = collectMetrics(logParser, state.startedAt!)
@@ -2278,36 +2490,42 @@ export async function rerunFromNode(
               ? ["Edit", "Write", "NotebookEdit"]
               : []
             const mergedDisallowed = [...new Set([...(workflow.defaults?.disallowedTools || []), ...(config.disallowedTools || []), ...retryPlanDisallowed])]
+            let skillStderr = ""
 
-            const result = await spawnClaudeTracked({
+            const result = await spawnProviderTracked(nodeProviderId, {
               workdir,
               prompt,
-              model: config.model || workflow.defaults?.model || "sonnet",
+              model: skillModel,
               maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 60,
               permissionMode: "acceptEdits",
-              extraArgs: claudeExtraArgs,
+              executionMode: retryPermissionMode,
+              extraArgs: getProviderExtraArgs(nodeProviderId),
               addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
               abortSignal: controller.signal,
               timeout: (workflow.defaults?.timeout_minutes || 30) * 60 * 1000,
-              onStdout: (data: Buffer) => {
-                for (const entry of logParser.feedChunk(data.toString())) {
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                }
-              },
-              onStderr: (data: Buffer) => {
-                const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
             }, {
               workspace,
               runId,
               mode: "rerun",
               role: "skill",
               nodeId: node.id,
+            }, {
+              onLogEntry: (entry) => {
+                logParser.appendEntry(entry)
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
+              onUsage: (usage) => {
+                logParser.applyUsage(usage)
+              },
+              onStderr: (text) => {
+                skillStderr += text
+                const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
             })
 
             for (const entry of logParser.flush()) {
@@ -2318,9 +2536,7 @@ export async function rerunFromNode(
             updateSkillMetricsAndMeta()
 
             if (!result.success && !controller.signal.aborted) {
-              const detail = result.exitCode === null
-                ? "Could not start Claude CLI — check that 'claude' is in your PATH and accessible"
-                : `exit code ${result.exitCode}`
+              const detail = buildAgentFailureDetail(nodeProviderId, result, logParser, skillStderr)
               throw new Error(`Skill node failed: ${detail}`)
             }
 
@@ -2338,41 +2554,50 @@ export async function rerunFromNode(
           case "evaluator": {
             const evalConfig = node.config as EvaluatorNodeConfig
             const logParser = new LogParser()
+            let evaluatorStderr = ""
             const evalSkillContext = await resolveEvaluatorSkillContext(evalConfig.skillRefs)
+            const evalProviderId = workflowProviderId
             const evalPrompt = sanitizeInvalidUnicode(
               buildEvaluatorPrompt(evalConfig.criteria, incomingContent, evalSkillContext),
             )
 
-            const evalSpawnResult = await spawnClaudeTracked({
+            const evalModel = workflow.defaults?.model || getDefaultModelForProvider(evalProviderId)
+            const evalSpawnResult = await spawnProviderTracked(evalProviderId, {
               workdir: projectPath || workspace,
               prompt: evalPrompt,
-              model: workflow.defaults?.model || "sonnet",
+              model: evalModel,
               maxTurns: 1,
-              extraArgs: [...claudeExtraArgs, "--tools", ""],
+              executionMode: workflow.defaults?.permissionMode,
+              extraArgs: [...getProviderExtraArgs(evalProviderId), "--tools", ""],
               addDirs: [],
               abortSignal: controller.signal,
               timeout: 120_000,
-              onStdout: (data: Buffer) => {
-                for (const entry of logParser.feedChunk(data.toString())) {
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                }
-              },
-              onStderr: (data: Buffer) => {
-                const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
             }, {
               workspace,
               runId,
               mode: "rerun",
               role: "evaluator",
               nodeId: node.id,
+            }, {
+              onLogEntry: (entry) => {
+                logParser.appendEntry(entry)
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
+              onUsage: (usage) => {
+                logParser.applyUsage(usage)
+              },
+              onStderr: (text) => {
+                evaluatorStderr += text
+                const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                state.log.push(entry)
+                send({ type: "node-log", runId, nodeId: node.id, entry })
+              },
             })
 
             if (!evalSpawnResult.success && !controller.signal.aborted) {
-              throw new Error(`Evaluator node failed with exit code ${evalSpawnResult.exitCode}`)
+              const detail = buildAgentFailureDetail(evalProviderId, evalSpawnResult, logParser, evaluatorStderr)
+              throw new Error(`Evaluator node failed: ${detail}`)
             }
 
             for (const entry of logParser.flush()) {
@@ -2380,7 +2605,6 @@ export async function rerunFromNode(
               send({ type: "node-log", runId, nodeId: node.id, entry })
             }
 
-            const evalModel = workflow.defaults?.model || "sonnet"
             const evalMetrics = collectMetrics(logParser, state.startedAt!)
             evalMetrics.cost_usd = estimateCost(evalModel, evalMetrics.tokens_in, evalMetrics.tokens_out)
             state.metrics = evalMetrics
@@ -2429,7 +2653,8 @@ export async function rerunFromNode(
 
           case "splitter": {
             const splitterConfig = node.config as SplitterNodeConfig
-            const splitterModel = splitterConfig.model || workflow.defaults?.model || "sonnet"
+            const splitterProviderId = await resolveNodeProviderId(node, workflow)
+            const splitterModel = workflow.defaults?.model || getDefaultModelForProvider(splitterProviderId)
             const maxBranches = splitterConfig.maxBranches || 8
             const splitterPrompts: string[] = []
             let totalTokensIn = 0
@@ -2441,33 +2666,36 @@ export async function rerunFromNode(
               const sanitizedPrompt = sanitizeInvalidUnicode(prompt)
               splitterPrompts.push(sanitizedPrompt)
 
-              const result = await spawnClaudeTracked({
+              const result = await spawnProviderTracked(splitterProviderId, {
                 workdir: projectPath || workspace,
                 prompt: sanitizedPrompt,
                 model: splitterModel,
                 maxTurns: 1,
-                extraArgs: [...claudeExtraArgs, "--tools", ""],
+                executionMode: workflow.defaults?.permissionMode,
+                extraArgs: [...getProviderExtraArgs(splitterProviderId), "--tools", ""],
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 2 * 60 * 1000,
-                onStdout: (data: Buffer) => {
-                  const entries = logParser.feedChunk(data.toString())
-                  for (const entry of entries) {
-                    state.log.push(entry)
-                    send({ type: "node-log", runId, nodeId: node.id, entry })
-                  }
-                },
-                onStderr: (data: Buffer) => {
-                  const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
               }, {
                 workspace,
                 runId,
                 mode: "rerun",
                 role: "splitter",
                 nodeId: node.id,
+              }, {
+                onLogEntry: (entry) => {
+                  logParser.appendEntry(entry)
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
+                onUsage: (usage) => {
+                  logParser.applyUsage(usage)
+                },
+                onStderr: (text) => {
+                  const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
               })
 
               const remaining = logParser.flush()
@@ -2488,7 +2716,7 @@ export async function rerunFromNode(
               if (!result.success) {
                 const entry = {
                   type: "error" as const,
-                  content: `[splitter] claude attempt failed (exitCode=${String(result.exitCode)}) - falling back\n`,
+                  content: `[splitter] ${splitterProviderId} attempt failed (exitCode=${String(result.exitCode)}) - falling back\n`,
                   timestamp: Date.now(),
                 }
                 state.log.push(entry)
@@ -2512,7 +2740,7 @@ export async function rerunFromNode(
               subtasks = structuredSubtasks
             } else {
               const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-              console.log("[splitter] spawning claude...")
+              console.log(`[splitter] spawning ${splitterProviderId}...`)
               let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
               subtasks = parseSplitterOutput(splitterRawOutput)
 
@@ -2571,6 +2799,12 @@ export async function rerunFromNode(
               latency_ms: Date.now() - state.startedAt!,
             }
             state.meta = buildNodeMeta(splitterPrompts.join("\n\n--- RETRY ---\n\n"), splitterModel)
+
+            // If this is a re-expansion (evaluator retry), collapse previous clones first
+            const removedCloneIds = collapseSplitterExpansion(runtimeWorkflow, workflow, node.id)
+            for (const id of removedCloneIds) {
+              delete nodeStates[id]
+            }
 
             // Expand runtime graph
             const expanded = expandSplitter(runtimeWorkflow, node.id, usedSubtasks)
@@ -2645,13 +2879,15 @@ export async function rerunFromNode(
             }
 
             if (mergerConfig.strategy === "concatenate") {
+              const mergerProviderId = workflowProviderId
+              const mergerModel = workflow.defaults?.model || getDefaultModelForProvider(mergerProviderId)
               state.metrics = {
                 tokens_in: 0,
                 tokens_out: 0,
                 cost_usd: 0,
                 latency_ms: Date.now() - state.startedAt!,
               }
-              state.meta = buildNodeMeta("[merger concatenate]", workflow.defaults?.model || "sonnet")
+              state.meta = buildNodeMeta("[merger concatenate]", mergerModel)
               const merged = mergeResults(branchOutputs, "concatenate")
               output = { content: merged, metadata: { source: node.id } }
             } else {
@@ -2660,34 +2896,41 @@ export async function rerunFromNode(
                 buildMergerPrompt(branchOutputs, mergerConfig.strategy, mergerConfig.prompt),
               )
               const logParser = new LogParser()
+              let mergerStderr = ""
+              const mergerProviderId = workflowProviderId
+              const mergerModel = workflow.defaults?.model || getDefaultModelForProvider(mergerProviderId)
 
-              const result = await spawnClaudeTracked({
+              const result = await spawnProviderTracked(mergerProviderId, {
                 workdir: projectPath || workspace,
                 prompt: mergePrompt,
-                model: workflow.defaults?.model || "sonnet",
+                model: mergerModel,
                 maxTurns: 20,
-                extraArgs: [...claudeExtraArgs, "--tools", ""],
+                executionMode: workflow.defaults?.permissionMode,
+                extraArgs: [...getProviderExtraArgs(mergerProviderId), "--tools", ""],
                 addDirs: [],
                 abortSignal: controller.signal,
                 timeout: 10 * 60 * 1000,
-                onStdout: (data: Buffer) => {
-                  const entries = logParser.feedChunk(data.toString())
-                  for (const entry of entries) {
-                    state.log.push(entry)
-                    send({ type: "node-log", runId, nodeId: node.id, entry })
-                  }
-                },
-                onStderr: (data: Buffer) => {
-                  const entry = { type: "error" as const, content: data.toString(), timestamp: Date.now() }
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
               }, {
                 workspace,
                 runId,
                 mode: "rerun",
                 role: "merger",
                 nodeId: node.id,
+              }, {
+                onLogEntry: (entry) => {
+                  logParser.appendEntry(entry)
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
+                onUsage: (usage) => {
+                  logParser.applyUsage(usage)
+                },
+                onStderr: (text) => {
+                  mergerStderr += text
+                  const entry = { type: "error" as const, content: text, timestamp: Date.now() }
+                  state.log.push(entry)
+                  send({ type: "node-log", runId, nodeId: node.id, entry })
+                },
               })
 
               const remaining = logParser.flush()
@@ -2697,11 +2940,11 @@ export async function rerunFromNode(
               }
 
               if (!result.success && !controller.signal.aborted) {
-                throw new Error(`Merger failed with exit code ${result.exitCode}`)
+                const detail = buildAgentFailureDetail(mergerProviderId, result, logParser, mergerStderr)
+                throw new Error(`Merger failed: ${detail}`)
               }
 
               // Collect merger metrics
-              const mergerModel = workflow.defaults?.model || "sonnet"
               const mergerMetrics = collectMetrics(logParser, state.startedAt!)
               mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
               state.metrics = mergerMetrics
@@ -3002,12 +3245,17 @@ export async function rerunFromNode(
     send({ type: "run-done", runId, status: finalStatus, reportPath, workspace })
 
     const nodesFailed = Object.values(nodeStates).filter((s) => s.status === "failed").length
+    const { errorKinds, errorKindsUnique } = workflowErrorKinds(nodeStates)
     void trackTelemetryEvent("workflow_run_finished", {
       run_mode: "rerun",
+      workflow_provider: workflowProviderId,
       status: finalStatus,
+      cancelled: finalStatus === "cancelled",
       duration_ms: Date.now() - rerunStartedAt,
       nodes_total: runtimeWorkflow.nodes.length,
       nodes_failed: nodesFailed,
+      error_kinds: errorKinds,
+      error_kinds_unique: errorKindsUnique,
     })
   } finally {
     const fallbackStatus: RunStatus = controller.signal.aborted ? "cancelled" : "failed"

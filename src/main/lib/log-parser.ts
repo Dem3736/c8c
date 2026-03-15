@@ -258,6 +258,43 @@ export class LogParser {
     return { input_tokens: this._inputTokens, output_tokens: this._outputTokens }
   }
 
+  appendEntry(entry: LogEntry): void {
+    this.entries.push(entry)
+  }
+
+  appendEntries(entries: LogEntry[]): void {
+    this.entries.push(...entries)
+  }
+
+  applyUsage(
+    usage: Partial<UsageStats> & {
+      inputTokens?: number
+      outputTokens?: number
+    },
+  ): boolean {
+    const nextInput = typeof usage.input_tokens === "number"
+      ? usage.input_tokens
+      : typeof usage.inputTokens === "number"
+        ? usage.inputTokens
+        : undefined
+    const nextOutput = typeof usage.output_tokens === "number"
+      ? usage.output_tokens
+      : typeof usage.outputTokens === "number"
+        ? usage.outputTokens
+        : undefined
+
+    let changed = false
+    if (typeof nextInput === "number" && nextInput > this._inputTokens) {
+      this._inputTokens = nextInput
+      changed = true
+    }
+    if (typeof nextOutput === "number" && nextOutput > this._outputTokens) {
+      this._outputTokens = nextOutput
+      changed = true
+    }
+    return changed
+  }
+
   feed(line: string): LogEntry[] {
     this._rawLines.push(line)
     let parsed: unknown
@@ -270,8 +307,7 @@ export class LogParser {
     // Check for usage stats (message_start gives input, message_delta gives output)
     const usage = extractUsage(parsed)
     if (usage) {
-      if (usage.input_tokens > this._inputTokens) this._inputTokens = usage.input_tokens
-      if (usage.output_tokens > this._outputTokens) this._outputTokens = usage.output_tokens
+      this.applyUsage(usage)
     }
 
     const newEntries = parseEvent(parsed, this._ctx)

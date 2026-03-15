@@ -1,11 +1,13 @@
 import { BrowserWindow } from "electron"
-import { spawnClaude } from "@claude-tools/runner"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { LogParser } from "./log-parser"
 import { executeTool, getToolDefinitions } from "./chat-tools"
 import type { ToolContext } from "./chat-tools"
 import { buildCategoryTree, formatCategoryTreeSummary } from "./skill-category"
 import { loadChatHistory, saveChatHistory, createConversation } from "./chat-storage"
 import { sanitizeAssistantText, selectAssistantTurnText, type AssistantTurn } from "./chat-output-sanitizer"
+import { drainExecutionHandle } from "./agent-execution"
 import {
   parseToolCallsFromText,
   shouldExecuteToolCallsDirectly,
@@ -17,8 +19,12 @@ import type {
   ChatMessage,
   ChatConversation,
   ChatEvent,
+  ProviderId,
 } from "@shared/types"
+import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { scanAllSkills } from "./skill-scanner"
+import { buildProviderExtraArgs } from "./mcp-config"
+import { resolveWorkflowProviderId, startProviderInteractive } from "./provider-runtime"
 
 // Active sessions for cancellation
 const activeSessions = new Map<string, AbortController>()
@@ -49,7 +55,7 @@ function buildSystemPrompt(
   const toolDefs = getToolDefinitions()
 
   return `# Role
-You are a workflow pipeline editor for c8c — a desktop app for building Claude skill chains.
+You are a workflow pipeline editor for c8c — a desktop app for building provider-backed workflow chains.
 You help users discover skills, build workflows, and iterate on pipeline designs through conversation.
 
 # Current Workflow
@@ -144,6 +150,7 @@ function buildConversationPrompt(
  * Returns the assistant's text and any tool calls made.
  */
 async function runTurn(
+  providerId: ProviderId,
   prompt: string,
   systemPrompt: string,
   projectPath: string,
@@ -153,69 +160,69 @@ async function runTurn(
 ): Promise<{ text: string; aborted: boolean }> {
   const logParser = new LogParser()
   let stderrOutput = ""
-  let stdoutChunks = 0
+  let streamedEntries = 0
+  const providerModel = getDefaultModelForProvider(providerId)
+  const mcpConfigPath = existsSync(join(projectPath, ".mcp.json"))
+    ? join(projectPath, ".mcp.json")
+    : undefined
 
-  console.log("[runTurn] spawning claude...", {
+  console.log("[runTurn] spawning provider...", {
+    provider: providerId,
     workdir: projectPath,
-    model: "sonnet",
+    model: providerModel,
     maxTurns: 1,
     promptLen: prompt.length,
   })
 
-  let result: Awaited<ReturnType<typeof spawnClaude>>
-  try {
-    result = await spawnClaude({
-      workdir: projectPath,
-      prompt,
-      model: "sonnet",
-      maxTurns: 1,
-      systemPrompts: [],
-      extraArgs: [
-        "--verbose",
-        "--output-format", "stream-json",
-        "--disable-slash-commands",
-        "--tools", "",
-        "--system-prompt", systemPrompt,
-      ],
-      timeout: 120_000,
-      abortSignal,
-      onStdout: (data: Buffer) => {
-        stdoutChunks++
-        const chunk = data.toString()
-        if (stdoutChunks <= 3) {
-          console.log("[runTurn] stdout chunk #" + stdoutChunks + " (" + chunk.length + " bytes):", chunk.slice(0, 200))
-        }
-        const newEntries = logParser.feedChunk(chunk)
-        for (const entry of newEntries) {
-          if (entry.type === "text") {
-            sendChatEvent(window, {
-              type: "text-delta",
-              sessionId,
-              content: entry.content,
-            })
-          } else if (entry.type === "thinking") {
-            sendChatEvent(window, {
-              type: "thinking",
-              sessionId,
-              content: entry.content,
-            })
-          }
-        }
-      },
-      onStderr: (data: Buffer) => {
-        const chunk = data.toString()
-        stderrOutput += chunk
-        if (stderrOutput.length <= 500) {
-          console.log("[runTurn] stderr:", chunk.trimEnd())
-        }
-      },
-    })
-  } catch (err) {
-    console.error("[runTurn] spawnClaude threw:", err)
-    throw err
-  }
+  const handle = await startProviderInteractive(providerId, {
+    workdir: projectPath,
+    prompt,
+    model: providerModel,
+    maxTurns: 1,
+    systemPrompts: providerId === "codex" ? [systemPrompt] : [],
+    extraArgs: providerId === "claude"
+      ? [
+          ...buildProviderExtraArgs("claude", mcpConfigPath),
+          "--disable-slash-commands",
+          "--tools", "",
+          "--system-prompt", systemPrompt,
+        ]
+      : buildProviderExtraArgs("codex", mcpConfigPath),
+    timeout: 120_000,
+    abortSignal,
+  })
 
-  logParser.flush()
+  const result = await drainExecutionHandle(handle, {
+    onLogEntry: (entry) => {
+      streamedEntries++
+      logParser.appendEntry(entry)
+      if (entry.type === "text") {
+        sendChatEvent(window, {
+          type: "text-delta",
+          sessionId,
+          content: entry.content,
+        })
+      } else if (entry.type === "thinking") {
+        sendChatEvent(window, {
+          type: "thinking",
+          sessionId,
+          content: entry.content,
+        })
+      }
+    },
+    onUsage: (usage) => {
+      logParser.applyUsage(usage)
+    },
+    onStderr: (text) => {
+      stderrOutput += text
+      if (stderrOutput.length <= 500) {
+        console.log("[runTurn] stderr:", text.trimEnd())
+      }
+    },
+    onError: (text) => {
+      console.error("[runTurn] provider error:", text)
+    },
+  })
 
   console.log("[runTurn] spawnClaude finished:", {
     success: result.success,
@@ -223,7 +230,7 @@ async function runTurn(
     aborted: result.aborted,
     killed: result.killed,
     signal: result.signal,
-    stdoutChunks,
+    streamedEntries,
     stderrLen: stderrOutput.length,
     textContentLen: logParser.textContent.length,
     entriesCount: logParser.entries.length,
@@ -462,6 +469,7 @@ export async function handleChatMessage(
       console.log("[chat-agent] calling runTurn...")
 
       const { text, aborted } = await runTurn(
+        await resolveWorkflowProviderId(toolCtx.workflow),
         prompt,
         systemPrompt,
         projectPath,

@@ -1,10 +1,13 @@
-import { spawnClaude } from "@claude-tools/runner"
 import { mkdtemp, mkdir, readFile, readdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, dirname } from "node:path"
 import { BrowserWindow } from "electron"
+import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { writeFileAtomic } from "./atomic-write"
+import { drainExecutionHandle } from "./agent-execution"
 import { logWarn } from "./structured-log"
+import { getProviderSettings } from "./provider-settings"
+import { startProviderTask } from "./provider-runtime"
 
 export type StepMode = "analyze" | "rewrite" | "both"
 
@@ -129,6 +132,7 @@ export async function runChain(
 ): Promise<void> {
   const controller = new AbortController()
   activeRuns.set(runId, controller)
+  const providerId = (await getProviderSettings()).defaultProvider
 
   try {
     // Create workspace inside project dir when possible (so Claude has file access)
@@ -210,22 +214,25 @@ export async function runChain(
 
       let stepOutput = ""
 
-      const result = await spawnClaude({
+      const handle = await startProviderTask(providerId, {
         workdir,
         prompt: fullPrompt,
-        model: step.model || chain.defaults?.model || "sonnet",
+        model: chain.defaults?.model || getDefaultModelForProvider(providerId),
         maxTurns: step.maxTurns || chain.defaults?.maxTurns || 60,
         permissionMode: "acceptEdits",
+        executionMode: mode === "analyze" ? "plan" : "edit",
         addDirs: step.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
         abortSignal: controller.signal,
         timeout: (chain.defaults?.timeout_minutes || 30) * 60 * 1000,
-        onStdout: (data: Buffer) => {
-          const text = data.toString()
-          stepOutput += text
-          send({ type: "step-output", step: step.key, output: text })
+      })
+      const result = await drainExecutionHandle(handle, {
+        onLogEntry: (entry) => {
+          if (entry.type !== "text" && entry.type !== "thinking") return
+          stepOutput += entry.content
+          send({ type: "step-output", step: step.key, output: entry.content })
         },
-        onStderr: (data: Buffer) => {
-          send({ type: "step-error", step: step.key, error: data.toString() })
+        onStderr: (text) => {
+          send({ type: "step-error", step: step.key, error: text })
         },
       })
 

@@ -1,4 +1,4 @@
-import type { ClaudeSpawnResult } from "@claude-tools/runner"
+import type { AgentExecutionSummary } from "@shared/types"
 import type { RunStatus } from "@shared/types"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -141,7 +141,7 @@ export async function recordRunPidExit(
   runId: string,
   mode: RunPidManifestMode,
   pid: number,
-  result: Pick<ClaudeSpawnResult, "exitCode" | "signal">,
+  result: Pick<AgentExecutionSummary, "exitCode" | "signal">,
 ): Promise<void> {
   if (!Number.isFinite(pid) || pid <= 0) return
   await mutateManifest(workspace, runId, mode, (manifest) => {
