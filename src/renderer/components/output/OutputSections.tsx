@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { EvaluationResult } from "@/lib/store"
 import type { LogEntry, NodeState } from "@shared/types"
 import { cn } from "@/lib/cn"
+import { mergeLogEntriesForDisplay } from "@/lib/log-display"
 import { getToolPermissionHint } from "@/lib/tool-permission-hints"
 import {
   Check,
@@ -451,7 +452,8 @@ export function LogTab({
   const prevLogLengthRef = useRef(0)
   const prevSelectedNodeIdRef = useRef<string | null>(selectedNodeId)
   const state = selectedNodeId ? nodeStates[selectedNodeId] : null
-  const log = state?.log || []
+  const rawLog = state?.log || []
+  const log = useMemo(() => mergeLogEntriesForDisplay(rawLog), [rawLog])
 
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTypeFilters, setActiveTypeFilters] = useState<Set<LogEntryType>>(
@@ -488,7 +490,7 @@ export function LogTab({
   const hasActiveFilters = searchQuery !== "" || activeTypeFilters.size !== LOG_ENTRY_TYPES.length
 
   useEffect(() => {
-    prevLogLengthRef.current = log.length
+    prevLogLengthRef.current = rawLog.length
     prevSelectedNodeIdRef.current = selectedNodeId
   }, [selectedNodeId])
 
@@ -496,15 +498,15 @@ export function LogTab({
     // Avoid forcing scroll-to-bottom when the user switches between nodes.
     if (prevSelectedNodeIdRef.current !== selectedNodeId) {
       prevSelectedNodeIdRef.current = selectedNodeId
-      prevLogLengthRef.current = log.length
+      prevLogLengthRef.current = rawLog.length
       return
     }
-    const delta = log.length - prevLogLengthRef.current
-    prevLogLengthRef.current = log.length
+    const delta = rawLog.length - prevLogLengthRef.current
+    prevLogLengthRef.current = rawLog.length
     if (delta <= 0) return
     const behavior: ScrollBehavior = delta === 1 ? "smooth" : "auto"
     scrollRef.current?.scrollIntoView({ behavior, block: "end" })
-  }, [log.length, selectedNodeId])
+  }, [rawLog.length, selectedNodeId])
 
   if (!selectedNodeId) {
     return (
