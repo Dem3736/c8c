@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { createACPProviderMock, cleanupMock, getSessionIdMock, languageModelMock, streamTextMock } = vi.hoisted(() => ({
+const { createACPProviderMock, cleanupMock, execCodexMock, getSessionIdMock, languageModelMock, streamTextMock } = vi.hoisted(() => ({
   createACPProviderMock: vi.fn(),
   cleanupMock: vi.fn(),
+  execCodexMock: vi.fn(),
   getSessionIdMock: vi.fn(() => "codex-session-1"),
   languageModelMock: vi.fn(() => ({ modelId: "gpt-5-codex" })),
   streamTextMock: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("./provider-settings", () => ({
 
 vi.mock("./codex-cli", () => ({
   buildCodexEnv: vi.fn(async () => ({ PATH: process.env.PATH || "" })),
+  execCodex: execCodexMock,
 }))
 
 import { drainExecutionHandle } from "./agent-execution"
@@ -72,10 +74,12 @@ describe("canUseCodexAcpExecution", () => {
 describe("createCodexAcpExecutionHandle", () => {
   beforeEach(() => {
     cleanupMock.mockReset()
+    execCodexMock.mockReset()
     getSessionIdMock.mockClear()
     languageModelMock.mockClear()
     createACPProviderMock.mockReset()
     streamTextMock.mockReset()
+    execCodexMock.mockResolvedValue({ stdout: "[]", stderr: "" })
 
     createACPProviderMock.mockReturnValue({
       cleanup: cleanupMock,
@@ -86,6 +90,21 @@ describe("createCodexAcpExecutionHandle", () => {
   })
 
   it("maps ACP stream parts into the shared execution handle", async () => {
+    execCodexMock.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          name: "local-docs",
+          enabled: true,
+          transport: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/project/docs"],
+            env: { DOCS_ROOT: "/tmp/project/docs" },
+          },
+        },
+      ]),
+      stderr: "",
+    })
     streamTextMock.mockReturnValue({
       fullStream: (async function *() {
         yield { type: "text-delta", text: "Hello from ACP", id: "text-1" }
@@ -157,6 +176,22 @@ describe("createCodexAcpExecutionHandle", () => {
       providerSessionId: "codex-session-1",
       backend: "codex_acp",
     })
+    expect(execCodexMock).toHaveBeenCalledWith(["mcp", "list", "--json"], {
+      cwd: "/tmp/project",
+      timeout: 10_000,
+    })
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      session: expect.objectContaining({
+        cwd: "/tmp/project",
+        mcpServers: [
+          expect.objectContaining({
+            name: "local-docs",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/project/docs"],
+          }),
+        ],
+      }),
+    }))
     expect(languageModelMock).toHaveBeenCalledWith("gpt-5-codex", undefined)
     expect(cleanupMock).toHaveBeenCalled()
   })

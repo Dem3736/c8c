@@ -14,7 +14,7 @@ import type {
   AgentRunOptions,
   LogEntry,
 } from "@shared/types"
-import { buildCodexEnv } from "./codex-cli"
+import { buildCodexEnv, execCodex } from "./codex-cli"
 import { buildClaudeSdkMcpServers } from "./mcp-config"
 import { getCodexApiKey, getProviderSettings } from "./provider-settings"
 
@@ -37,6 +37,21 @@ interface CodexToolDescriptor {
   canonicalToolName: string
   detail: string
   isMcp: boolean
+}
+
+interface CodexMcpTransport {
+  type?: string
+  url?: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  http_headers?: Record<string, string> | null
+}
+
+interface CodexMcpServer {
+  name: string
+  enabled?: boolean
+  transport?: CodexMcpTransport
 }
 
 function isWithinRoot(candidatePath: string, rootPath: string): boolean {
@@ -173,6 +188,62 @@ function buildCodexAcpMcpServers(mcpConfigPath?: string): McpServer[] {
       env: recordToEnv(server.env),
     }
   })
+}
+
+function codexTransportType(transport?: CodexMcpTransport): "stdio" | "http" | "sse" {
+  if (!transport) return "stdio"
+  if (transport.type === "streamable_http" || transport.type === "http") return "http"
+  if (transport.type === "sse") return "sse"
+  return "stdio"
+}
+
+function codexServerToMcpServer(server: CodexMcpServer): McpServer | null {
+  if (server.enabled === false) return null
+
+  const transportType = codexTransportType(server.transport)
+  if ((transportType === "http" || transportType === "sse") && server.transport?.url) {
+    return {
+      name: server.name,
+      type: transportType,
+      url: server.transport.url,
+      headers: recordToHeaders(server.transport.http_headers || undefined),
+    }
+  }
+
+  if (transportType === "stdio" && server.transport?.command) {
+    return {
+      name: server.name,
+      command: server.transport.command,
+      args: server.transport.args || [],
+      env: recordToEnv(server.transport.env),
+    }
+  }
+
+  return null
+}
+
+async function resolveCodexAcpMcpServers(
+  workdir?: string,
+  mcpConfigPath?: string,
+): Promise<McpServer[]> {
+  try {
+    const { stdout } = await execCodex(["mcp", "list", "--json"], {
+      cwd: workdir,
+      timeout: 10_000,
+    })
+    const parsed = JSON.parse(stdout) as unknown
+    if (Array.isArray(parsed)) {
+      const runtimeServers = parsed
+        .filter((item): item is CodexMcpServer => Boolean(item && typeof item === "object"))
+        .map(codexServerToMcpServer)
+        .filter((server): server is McpServer => Boolean(server))
+      if (runtimeServers.length > 0) return runtimeServers
+    }
+  } catch {
+    // Fall back to the prepared session config file when Codex CLI MCP listing is unavailable.
+  }
+
+  return buildCodexAcpMcpServers(mcpConfigPath)
 }
 
 function getCodexAuthMethodId(apiKey?: string): "codex-api-key" | undefined {
@@ -447,6 +518,7 @@ export async function createCodexAcpExecutionHandle(
 
   const apiKey = await getCodexApiKey()
   const env = await buildCodexEnv(options.extraEnv)
+  const mcpServers = await resolveCodexAcpMcpServers(options.workdir, options.mcpConfigPath)
   const provider = createACPProvider({
     command: resolveCodexAcpBinaryPath(),
     env: Object.fromEntries(
@@ -455,7 +527,7 @@ export async function createCodexAcpExecutionHandle(
     authMethodId: getCodexAuthMethodId(apiKey),
     session: {
       cwd: options.workdir,
-      mcpServers: buildCodexAcpMcpServers(options.mcpConfigPath),
+      mcpServers,
     },
     persistSession: false,
   })
