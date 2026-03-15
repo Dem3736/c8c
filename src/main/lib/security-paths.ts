@@ -1,4 +1,5 @@
 import { ensureLibrariesDir } from "./libraries"
+import { ensurePluginMarketplacesDir } from "./plugins"
 import { loadProjectsConfig } from "./projects-config"
 import { ensureChainsDir } from "./yaml-io"
 import { join, relative, resolve } from "node:path"
@@ -50,6 +51,6 @@ export async function allowedOpenPathRoots(): Promise<string[]> {
   const projectRoots = await allowedProjectRoots()
   const globalChainsDir = await ensureChainsDir()
   const librariesDir = await ensureLibrariesDir()
-  return dedupeResolved([globalChainsDir, librariesDir, ...projectRoots])
+  const pluginMarketplacesDir = await ensurePluginMarketplacesDir()
+  return dedupeResolved([globalChainsDir, librariesDir, pluginMarketplacesDir, ...projectRoots])
 }
-

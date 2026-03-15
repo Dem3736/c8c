@@ -1,10 +1,13 @@
 import { ipcMain, BrowserWindow, type WebContents } from "electron"
-import { existsSync } from "node:fs"
-import { getBuiltinTemplates } from "../lib/templates"
+import { listTemplates as listTemplateCatalog } from "../lib/templates"
 import { drainExecutionHandle } from "../lib/agent-execution"
 import { LogParser } from "../lib/log-parser"
 import { buildGeneratorPrompt, parseGeneratedWorkflow } from "../lib/workflow-generator"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
+import {
+  listPopularTemplateIdsForProject,
+  recordProjectTemplateUsage,
+} from "../lib/project-template-usage"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import type { DiscoveredSkill, GenerationProgress, Workflow, WorkflowTemplate } from "@shared/types"
@@ -17,11 +20,19 @@ import { toWorkflowFileStem } from "@shared/workflow-name"
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
 import { withExecutionSlot } from "../lib/execution-pool"
+import { prepareTemporaryMcpConfig } from "../lib/mcp-config"
 import { getProviderSettings } from "../lib/provider-settings"
 import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-runtime"
 
 const activeGenerateControllers = new Map<number, AbortController>()
 const generateLifecycleBindings = new Set<number>()
+let templateUsageMutationQueue: Promise<unknown> = Promise.resolve()
+
+function runSerializedTemplateUsageMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = templateUsageMutationQueue.then(() => operation())
+  templateUsageMutationQueue = next.catch(() => undefined)
+  return next
+}
 
 function abortGenerationForSender(senderId: number): void {
   const controller = activeGenerateControllers.get(senderId)
@@ -57,8 +68,35 @@ async function resolveGenerateWorkdir(projectPath?: string): Promise<string> {
 
 export function registerTemplateHandlers() {
   ipcMain.handle("templates:list", async (): Promise<WorkflowTemplate[]> => {
-    return getBuiltinTemplates()
+    return listTemplateCatalog()
   })
+
+  ipcMain.handle(
+    "templates:list-popular-project",
+    async (_event, projectPath: string, limit = 5): Promise<WorkflowTemplate[]> => {
+      const safeProjectPath = await resolveGenerateWorkdir(projectPath)
+      const templates = await listTemplateCatalog()
+      const popularIds = await listPopularTemplateIdsForProject(safeProjectPath, limit)
+      if (popularIds.length === 0) return []
+
+      const templateById = new Map(templates.map((template) => [template.id, template]))
+      return popularIds
+        .map((templateId) => templateById.get(templateId))
+        .filter((template): template is WorkflowTemplate => Boolean(template))
+    },
+  )
+
+  ipcMain.handle(
+    "templates:record-usage",
+    async (_event, projectPath: string, templateId: string): Promise<void> => {
+      const safeProjectPath = await resolveGenerateWorkdir(projectPath)
+      const isKnownTemplate = (await listTemplateCatalog()).some((template) => template.id === templateId)
+      if (!isKnownTemplate) return
+      await runSerializedTemplateUsageMutation(() =>
+        recordProjectTemplateUsage(safeProjectPath, templateId),
+      )
+    },
+  )
 
   ipcMain.handle(
     "templates:save-user",
@@ -125,9 +163,7 @@ export function registerTemplateHandlers() {
           settings.features.codexProvider,
         )
         const model = getDefaultModelForProvider(providerId)
-        const mcpConfigPath = projectPath && existsSync(join(projectPath, ".mcp.json"))
-          ? join(projectPath, ".mcp.json")
-          : undefined
+        const runtimeMcpConfig = await prepareTemporaryMcpConfig(projectPath)
         let result
         try {
           logInfo("templates-ipc", "generate_started", { senderId, projectPath: projectPath || null })
@@ -146,7 +182,7 @@ export function registerTemplateHandlers() {
               systemPrompts: [
                 "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
               ],
-              mcpConfigPath,
+              mcpConfigPath: runtimeMcpConfig.path,
               disableBuiltInTools: providerId === "claude",
               disableSlashCommands: providerId === "claude",
               timeout: 300_000,
@@ -179,6 +215,7 @@ export function registerTemplateHandlers() {
           }
           throw new Error(`${providerId} process failed: ${msg.slice(0, 200)}`)
         } finally {
+          await runtimeMcpConfig.cleanup()
           if (activeGenerateControllers.get(senderId) === controller) {
             activeGenerateControllers.delete(senderId)
           }

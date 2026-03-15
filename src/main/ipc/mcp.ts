@@ -1,5 +1,7 @@
 import { ipcMain } from "electron"
 import type { McpServerInfo, McpServerScope, ProviderId } from "@shared/types"
+import { listPluginMcpServers } from "../lib/plugin-mcp"
+import { setPluginMcpServerApproved } from "../lib/plugins"
 import { resolveMcpProvider } from "../lib/providers"
 
 export function registerMcpHandlers() {
@@ -9,6 +11,10 @@ export function registerMcpHandlers() {
 
   ipcMain.handle("mcp:list-all-servers", async (_event, provider: ProviderId) => {
     return resolveMcpProvider(provider).listAllServers?.() ?? []
+  })
+
+  ipcMain.handle("mcp:list-plugin-servers", async () => {
+    return listPluginMcpServers()
   })
 
   ipcMain.handle(
@@ -63,4 +69,8 @@ export function registerMcpHandlers() {
       return resolveMcpProvider(provider).discoverTools(serverName, projectPath)
     },
   )
+
+  ipcMain.handle("mcp:set-plugin-server-approved", async (_event, serverId: string, approved: boolean) => {
+    return setPluginMcpServerApproved(serverId, approved)
+  })
 }

@@ -18,6 +18,19 @@ vi.mock("electron", () => ({
 
 vi.mock("../lib/skill-scanner", () => ({
   scanAllSkills: (...args: unknown[]) => scanAllSkillsMock(...args),
+  mergeDiscoveredSkills: (groups: DiscoveredSkill[][]) => {
+    const seen = new Set<string>()
+    const merged: DiscoveredSkill[] = []
+    for (const group of groups) {
+      for (const skill of group) {
+        const key = `${skill.type}:${skill.category}:${skill.name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        merged.push(skill)
+      }
+    }
+    return merged
+  },
 }))
 
 vi.mock("../lib/libraries", () => ({

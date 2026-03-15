@@ -7,9 +7,12 @@ import type {
   DesktopRuntimeInfo,
   DiscoveredSkill,
   GenerationProgress,
+  InstalledPlugin,
+  MarketplaceSource,
   McpServerInfo,
   McpTestResult,
   McpToolInfo,
+  PluginMcpServerInfo,
   ProviderDiagnostics,
   ProviderId,
   ProviderSettings,
@@ -54,7 +57,15 @@ export interface C8cApi {
   installLibrary: (id: string) => Promise<boolean>
   removeLibrary: (id: string) => Promise<boolean>
   scanLibraries: () => Promise<DiscoveredSkill[]>
+  listMarketplaces: () => Promise<MarketplaceSource[]>
+  installMarketplace: (id: string) => Promise<boolean>
+  updateMarketplace: (id: string) => Promise<boolean>
+  removeMarketplace: (id: string) => Promise<boolean>
+  scanPlugins: () => Promise<InstalledPlugin[]>
+  setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<boolean>
   listTemplates: () => Promise<WorkflowTemplate[]>
+  listPopularProjectTemplates: (projectPath: string, limit?: number) => Promise<WorkflowTemplate[]>
+  recordProjectTemplateUsage: (projectPath: string, templateId: string) => Promise<void>
   saveAsTemplate: (name: string, workflow: Workflow) => Promise<string>
   generateWorkflow: (
     description: string,
@@ -146,6 +157,7 @@ export interface C8cApi {
   ) => Promise<{ content: string; truncated: boolean }>
   mcpListServers: (provider: ProviderId, projectPath?: string) => Promise<McpServerInfo[]>
   mcpListAllServers: (provider: ProviderId) => Promise<McpServerInfo[]>
+  mcpListPluginServers: () => Promise<PluginMcpServerInfo[]>
   mcpAddServer: (
     provider: ProviderId,
     server: McpServerInfo,
@@ -181,6 +193,10 @@ export interface C8cApi {
     serverName?: string,
     projectPath?: string,
   ) => Promise<McpToolInfo[]>
+  mcpSetPluginServerApproved: (
+    serverId: string,
+    approved: boolean,
+  ) => Promise<boolean>
 }
 
 declare global {

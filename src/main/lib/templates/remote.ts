@@ -1,7 +1,7 @@
 import { net } from "electron"
 import YAML from "yaml"
 import type { WorkflowTemplate, WorkflowTemplateStage } from "@shared/types"
-import { parseTemplate } from "./index"
+import { parseTemplate } from "./parse"
 
 const HUB_BASE_URL = "https://c8c.app/hub/"
 const MAX_BODY_SIZE = 512 * 1024 // 512 KB

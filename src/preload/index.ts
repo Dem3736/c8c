@@ -10,6 +10,8 @@ import type {
   DesktopRuntimeInfo,
   DiscoveredSkill,
   GenerationProgress,
+  InstalledPlugin,
+  MarketplaceSource,
   McpServerInfo,
   McpTestResult,
   McpToolInfo,
@@ -162,9 +164,20 @@ const api: C8cApi = {
   installLibrary: (id: string) => ipcRenderer.invoke("libraries:install", id),
   removeLibrary: (id: string) => ipcRenderer.invoke("libraries:remove", id),
   scanLibraries: () => ipcRenderer.invoke("libraries:scan"),
+  listMarketplaces: () => ipcRenderer.invoke("plugins:list-marketplaces") as Promise<MarketplaceSource[]>,
+  installMarketplace: (id: string) => ipcRenderer.invoke("plugins:install-marketplace", id),
+  updateMarketplace: (id: string) => ipcRenderer.invoke("plugins:update-marketplace", id),
+  removeMarketplace: (id: string) => ipcRenderer.invoke("plugins:remove-marketplace", id),
+  scanPlugins: () => ipcRenderer.invoke("plugins:scan") as Promise<InstalledPlugin[]>,
+  setPluginEnabled: (pluginId: string, enabled: boolean) =>
+    ipcRenderer.invoke("plugins:set-enabled", pluginId, enabled),
 
   // Templates
   listTemplates: () => ipcRenderer.invoke("templates:list"),
+  listPopularProjectTemplates: (projectPath: string, limit?: number) =>
+    ipcRenderer.invoke("templates:list-popular-project", projectPath, limit),
+  recordProjectTemplateUsage: (projectPath: string, templateId: string) =>
+    ipcRenderer.invoke("templates:record-usage", projectPath, templateId),
   saveAsTemplate: (name: string, workflow: Workflow) =>
     ipcRenderer.invoke("templates:save-user", name, workflow),
   generateWorkflow: (
@@ -272,6 +285,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("mcp:list-servers", provider, projectPath),
   mcpListAllServers: (provider: ProviderId) =>
     ipcRenderer.invoke("mcp:list-all-servers", provider),
+  mcpListPluginServers: () =>
+    ipcRenderer.invoke("mcp:list-plugin-servers"),
   mcpAddServer: (provider: ProviderId, server: McpServerInfo, projectPath?: string) =>
     ipcRenderer.invoke("mcp:add-server", provider, server, projectPath),
   mcpUpdateServer: (provider: ProviderId, name: string, server: McpServerInfo, projectPath?: string) =>
@@ -284,6 +299,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("mcp:test-server", provider, name, scope, projectPath),
   mcpDiscoverTools: (provider: ProviderId, serverName?: string, projectPath?: string) =>
     ipcRenderer.invoke("mcp:discover-tools", provider, serverName, projectPath),
+  mcpSetPluginServerApproved: (serverId: string, approved: boolean) =>
+    ipcRenderer.invoke("mcp:set-plugin-server-approved", serverId, approved),
 }
 
 contextBridge.exposeInMainWorld("api", api)

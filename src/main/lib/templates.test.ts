@@ -22,6 +22,7 @@ describe("getBuiltinTemplates", () => {
       expect(t.workflow).toBeDefined()
       expect(t.workflow.nodes.length).toBeGreaterThan(0)
       expect(t.workflow.edges.length).toBeGreaterThan(0)
+      expect(t.source).toBe("builtin")
     }
   })
 

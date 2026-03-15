@@ -1,6 +1,4 @@
 import { BrowserWindow } from "electron"
-import { existsSync } from "node:fs"
-import { join } from "node:path"
 import { LogParser } from "./log-parser"
 import { executeTool, getToolDefinitions } from "./chat-tools"
 import type { ToolContext } from "./chat-tools"
@@ -22,6 +20,7 @@ import type {
   ProviderId,
 } from "@shared/types"
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
+import { prepareTemporaryMcpConfig } from "./mcp-config"
 import { scanAllSkills } from "./skill-scanner"
 import { resolveWorkflowProviderId, startProviderInteractive } from "./provider-runtime"
 
@@ -161,9 +160,7 @@ async function runTurn(
   let stderrOutput = ""
   let streamedEntries = 0
   const providerModel = getDefaultModelForProvider(providerId)
-  const mcpConfigPath = existsSync(join(projectPath, ".mcp.json"))
-    ? join(projectPath, ".mcp.json")
-    : undefined
+  const runtimeMcpConfig = await prepareTemporaryMcpConfig(projectPath)
 
   console.log("[runTurn] spawning provider...", {
     provider: providerId,
@@ -173,72 +170,76 @@ async function runTurn(
     promptLen: prompt.length,
   })
 
-  const handle = await startProviderInteractive(providerId, {
-    workdir: projectPath,
-    prompt,
-    model: providerModel,
-    maxTurns: 1,
-    systemPrompts: [systemPrompt],
-    mcpConfigPath,
-    disableBuiltInTools: providerId === "claude",
-    disableSlashCommands: providerId === "claude",
-    timeout: 120_000,
-    abortSignal,
-  })
+  try {
+    const handle = await startProviderInteractive(providerId, {
+      workdir: projectPath,
+      prompt,
+      model: providerModel,
+      maxTurns: 1,
+      systemPrompts: [systemPrompt],
+      mcpConfigPath: runtimeMcpConfig.path,
+      disableBuiltInTools: providerId === "claude",
+      disableSlashCommands: providerId === "claude",
+      timeout: 120_000,
+      abortSignal,
+    })
 
-  const result = await drainExecutionHandle(handle, {
-    onLogEntry: (entry) => {
-      streamedEntries++
-      logParser.appendEntry(entry)
-      if (entry.type === "text") {
-        sendChatEvent(window, {
-          type: "text-delta",
-          sessionId,
-          content: entry.content,
-        })
-      } else if (entry.type === "thinking") {
-        sendChatEvent(window, {
-          type: "thinking",
-          sessionId,
-          content: entry.content,
-        })
-      }
-    },
-    onUsage: (usage) => {
-      logParser.applyUsage(usage)
-    },
-    onStderr: (text) => {
-      stderrOutput += text
-      if (stderrOutput.length <= 500) {
-        console.log("[runTurn] stderr:", text.trimEnd())
-      }
-    },
-    onError: (text) => {
-      console.error("[runTurn] provider error:", text)
-    },
-  })
+    const result = await drainExecutionHandle(handle, {
+      onLogEntry: (entry) => {
+        streamedEntries++
+        logParser.appendEntry(entry)
+        if (entry.type === "text") {
+          sendChatEvent(window, {
+            type: "text-delta",
+            sessionId,
+            content: entry.content,
+          })
+        } else if (entry.type === "thinking") {
+          sendChatEvent(window, {
+            type: "thinking",
+            sessionId,
+            content: entry.content,
+          })
+        }
+      },
+      onUsage: (usage) => {
+        logParser.applyUsage(usage)
+      },
+      onStderr: (text) => {
+        stderrOutput += text
+        if (stderrOutput.length <= 500) {
+          console.log("[runTurn] stderr:", text.trimEnd())
+        }
+      },
+      onError: (text) => {
+        console.error("[runTurn] provider error:", text)
+      },
+    })
 
-  console.log("[runTurn] spawnClaude finished:", {
-    success: result.success,
-    exitCode: result.exitCode,
-    aborted: result.aborted,
-    killed: result.killed,
-    signal: result.signal,
-    streamedEntries,
-    stderrLen: stderrOutput.length,
-    textContentLen: logParser.textContent.length,
-    entriesCount: logParser.entries.length,
-  })
+    console.log("[runTurn] spawnClaude finished:", {
+      success: result.success,
+      exitCode: result.exitCode,
+      aborted: result.aborted,
+      killed: result.killed,
+      signal: result.signal,
+      streamedEntries,
+      stderrLen: stderrOutput.length,
+      textContentLen: logParser.textContent.length,
+      entriesCount: logParser.entries.length,
+    })
 
-  if (stderrOutput) {
-    console.log("[runTurn] stderr full:", stderrOutput.slice(0, 1000))
+    if (stderrOutput) {
+      console.log("[runTurn] stderr full:", stderrOutput.slice(0, 1000))
+    }
+
+    if (result.aborted) {
+      return { text: "", aborted: true }
+    }
+
+    return { text: logParser.textContent, aborted: false }
+  } finally {
+    await runtimeMcpConfig.cleanup()
   }
-
-  if (result.aborted) {
-    return { text: "", aborted: true }
-  }
-
-  return { text: logParser.textContent, aborted: false }
 }
 
 function executeParsedToolCall(

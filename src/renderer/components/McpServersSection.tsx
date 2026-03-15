@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAtom } from "jotai"
 import { mcpServersAtom, mcpServersLoadingAtom } from "@/lib/store"
+import { cn } from "@/lib/cn"
 import { SectionHeading } from "@/components/ui/page-shell"
-import { Button } from "@/components/ui/button"
+import { Button, type ButtonProps } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,7 @@ import type {
   McpServerScope,
   McpTransportType,
   McpTestResult,
+  PluginMcpServerInfo,
   ProviderId,
 } from "@shared/types"
 import { PROVIDER_LABELS } from "@shared/provider-metadata"
@@ -49,6 +52,24 @@ import {
 interface ServerTestState {
   loading: boolean
   result: McpTestResult | null
+}
+
+interface IconActionButtonProps extends ButtonProps {
+  label: string
+}
+
+function IconActionButton({ className, label, title, ...props }: IconActionButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-xs"
+      aria-label={label}
+      title={title ?? label}
+      className={cn("shrink-0 text-muted-foreground hover:text-foreground", className)}
+      {...props}
+    />
+  )
 }
 
 function McpServerRow({
@@ -110,18 +131,18 @@ function McpServerRow({
     <div className="group">
       {/* Main compact row */}
       <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-surface-2/50 -mx-2">
-        <button
+        <IconActionButton
           onClick={() => setExpanded(!expanded)}
-          className="text-muted-foreground hover:text-foreground shrink-0"
+          label={expanded ? `Collapse ${server.name}` : `Expand ${server.name}`}
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
+        </IconActionButton>
 
         <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>
           {server.name}
         </span>
 
-        <Badge variant="outline" className="text-[10px] font-medium uppercase tracking-wide shrink-0">
+        <Badge variant="outline" size="compact" className="font-medium uppercase tracking-wide shrink-0">
           {server.type}
         </Badge>
 
@@ -140,21 +161,30 @@ function McpServerRow({
 
         <span className="flex-1" />
 
-        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 ui-motion-fast">
-          <button
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 ui-transition-opacity ui-motion-fast">
+          <IconActionButton
             onClick={handleTest}
             disabled={testState.loading}
-            className="p-1 text-muted-foreground hover:text-foreground rounded"
+            label={`Test ${server.name}`}
             title="Test connection"
           >
             {testState.loading ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />}
-          </button>
-          <button onClick={() => onEdit(server)} className="p-1 text-muted-foreground hover:text-foreground rounded" title="Edit">
+          </IconActionButton>
+          <IconActionButton
+            onClick={() => onEdit(server)}
+            label={`Edit ${server.name}`}
+            title="Edit"
+          >
             <Pencil size={12} />
-          </button>
-          <button onClick={() => onRemove(server)} className="p-1 text-muted-foreground hover:text-status-danger rounded" title="Remove">
+          </IconActionButton>
+          <IconActionButton
+            onClick={() => onRemove(server)}
+            label={`Remove ${server.name}`}
+            title="Remove"
+            className="hover:bg-status-danger/20 hover:text-status-danger"
+          >
             <Trash2 size={12} />
-          </button>
+          </IconActionButton>
         </div>
 
         <Switch
@@ -162,7 +192,7 @@ function McpServerRow({
           disabled={toggling}
           aria-label={`Toggle ${server.name}`}
           onCheckedChange={handleToggle}
-          className="shrink-0 scale-[0.8]"
+          className="shrink-0"
         />
       </div>
 
@@ -408,13 +438,13 @@ function McpServerFormDialog({
             <Label htmlFor="mcp-env" className="ui-meta-text text-muted-foreground">
               Environment variables (one per line, KEY=VALUE)
             </Label>
-            <textarea
+            <Textarea
               id="mcp-env"
               value={form.env}
               onChange={(e) => update("env", e.target.value)}
               placeholder={"EXA_API_KEY=your-key\nOTHER_VAR=value"}
               rows={3}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-body-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="min-h-[5.25rem] font-mono"
             />
           </div>
 
@@ -436,7 +466,7 @@ function McpServerFormDialog({
           )}
 
           {!isEdit && provider === "codex" && (
-            <div className="rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2">
+            <div className="rounded-md surface-warning-soft px-3 py-2">
               <p className="text-body-sm text-status-warning">
                 Codex stores MCP servers in global CLI config only.
               </p>
@@ -488,17 +518,20 @@ function ServerGroupSection({
 
   return (
     <div className="space-y-0.5">
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="bare"
         onClick={() => setGroupOpen(!groupOpen)}
-        className="flex items-center gap-1.5 w-full text-left"
+        className="w-full !justify-start gap-1.5 text-left"
       >
         {groupOpen ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
         <span className="section-kicker">{group.label}</span>
-        <Badge variant="outline" className="text-[10px] text-muted-foreground">{group.servers.length}</Badge>
+        <Badge variant="outline" size="compact" className="text-muted-foreground">{group.servers.length}</Badge>
         {group.projectPath && (
           <span className="ui-meta-text text-muted-foreground truncate max-w-[250px] ml-1">{group.projectPath}</span>
         )}
-      </button>
+      </Button>
 
       {groupOpen && (
         <div className="pl-1">
@@ -513,12 +546,15 @@ function ServerGroupSection({
             />
           ))}
           {hiddenCount > 0 && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="bare"
               onClick={() => setShowAll(!showAll)}
-              className="ui-meta-text text-muted-foreground hover:text-foreground py-1 pl-7"
+              className="ui-meta-text py-1 pl-7 text-muted-foreground hover:text-foreground"
             >
               {showAll ? "Show less" : `Show ${hiddenCount} more...`}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -534,17 +570,121 @@ interface ServerGroup {
   servers: McpServerInfo[]
 }
 
+interface PluginServerGroup {
+  id: string
+  label: string
+  marketplaceName: string
+  servers: PluginMcpServerInfo[]
+}
+
+function PluginMcpServerRow({
+  server,
+  onApproveChange,
+}: {
+  server: PluginMcpServerInfo
+  onApproveChange: (serverId: string, approved: boolean) => Promise<void>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const transportSummary = server.type === "stdio"
+    ? [server.command, ...(server.args || [])].filter(Boolean).join(" ")
+    : server.url || ""
+
+  const handleApprove = async (approved: boolean) => {
+    setSaving(true)
+    try {
+      await onApproveChange(server.id, approved)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="group">
+      <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-surface-2/50 -mx-2">
+        <IconActionButton
+          onClick={() => setExpanded(!expanded)}
+          label={expanded ? `Collapse ${server.name}` : `Expand ${server.name}`}
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </IconActionButton>
+
+        <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>
+          {server.name}
+        </span>
+
+        <Badge variant="outline" size="compact" className="font-medium uppercase tracking-wide shrink-0">
+          {server.type}
+        </Badge>
+
+        <Badge variant={server.approved ? "default" : "outline"} size="compact" className="shrink-0">
+          {server.approved ? "approved" : "blocked"}
+        </Badge>
+
+        <span className="ui-meta-text text-muted-foreground truncate hidden sm:inline">
+          {transportSummary}
+        </span>
+
+        <span className="flex-1" />
+
+        <Switch
+          checked={server.approved}
+          disabled={saving || Boolean(server.disabled)}
+          aria-label={`Approve ${server.name}`}
+          onCheckedChange={handleApprove}
+          className="shrink-0"
+        />
+      </div>
+
+      {expanded && (
+        <div className="pl-7 pr-2 pb-2 space-y-1">
+          <div className="ui-meta-text text-muted-foreground space-y-0.5">
+            <p>
+              Plugin: <span className="text-foreground">{server.pluginName}</span>
+              {server.pluginVersion ? ` v${server.pluginVersion}` : ""}
+            </p>
+            <p>Marketplace: <span className="text-foreground">{server.marketplaceName}</span></p>
+            {server.type === "stdio" && (
+              <>
+                <p>Command: <span className="text-foreground font-mono">{server.command || "n/a"}</span></p>
+                {server.args?.length ? (
+                  <p>Args: <span className="text-foreground font-mono">{server.args.join(" ")}</span></p>
+                ) : null}
+              </>
+            )}
+            {(server.type === "http" || server.type === "sse") && (
+              <p>URL: <span className="text-foreground font-mono">{server.url || "n/a"}</span></p>
+            )}
+            {server.env && Object.keys(server.env).length > 0 && (
+              <p>Env: <span className="text-foreground font-mono">{Object.keys(server.env).join(", ")}</span></p>
+            )}
+            {server.disabled && (
+              <p className="text-status-warning">Disabled in plugin manifest</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function McpServersSection({ provider = "claude" }: { provider?: ProviderId }) {
   const [servers, setServers] = useAtom(mcpServersAtom)
   const [loading, setLoading] = useAtom(mcpServersLoadingAtom)
+  const [pluginServers, setPluginServers] = useState<PluginMcpServerInfo[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingServer, setEditingServer] = useState<McpServerInfo | null>(null)
 
   const refreshServers = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await window.api.mcpListAllServers(provider)
-      setServers(result)
+      const [providerServers, installedPluginServers] = await Promise.all([
+        window.api.mcpListAllServers(provider),
+        window.api.mcpListPluginServers(),
+      ])
+      setServers(providerServers)
+      setPluginServers(installedPluginServers)
     } finally {
       setLoading(false)
     }
@@ -581,6 +721,29 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
     return result
   }, [servers])
 
+  const pluginGroups = useMemo<PluginServerGroup[]>(() => {
+    const byPlugin = new Map<string, PluginMcpServerInfo[]>()
+    for (const server of pluginServers) {
+      const existing = byPlugin.get(server.pluginId)
+      if (existing) existing.push(server)
+      else byPlugin.set(server.pluginId, [server])
+    }
+
+    return [...byPlugin.entries()]
+      .map(([pluginId, items]) => ({
+        id: pluginId,
+        label: items[0]?.pluginName || pluginId,
+        marketplaceName: items[0]?.marketplaceName || "",
+        servers: items,
+      }))
+      .sort((left, right) => {
+        if (left.marketplaceName !== right.marketplaceName) {
+          return left.marketplaceName.localeCompare(right.marketplaceName)
+        }
+        return left.label.localeCompare(right.label)
+      })
+  }, [pluginServers])
+
   const handleAdd = () => {
     setEditingServer(null)
     setDialogOpen(true)
@@ -610,7 +773,14 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
     void refreshServers()
   }
 
-  const hasServers = servers.length > 0
+  const handlePluginApproveChange = async (serverId: string, approved: boolean) => {
+    await window.api.mcpSetPluginServerApproved(serverId, approved)
+    void refreshServers()
+  }
+
+  const hasProviderServers = servers.length > 0
+  const hasPluginServers = pluginServers.length > 0
+  const hasAnyServers = hasProviderServers || hasPluginServers
 
   return (
     <section className="space-y-3">
@@ -646,7 +816,7 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
         </article>
       )}
 
-      {!hasServers && !loading && (
+      {!hasAnyServers && !loading && (
         <article className="rounded-lg surface-panel p-6">
           <div className="ui-empty-state">
             <Server size={24} className="text-muted-foreground/60" />
@@ -660,14 +830,14 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
         </article>
       )}
 
-      {loading && !hasServers && (
+      {loading && !hasAnyServers && (
         <article className="rounded-lg surface-panel p-6 flex items-center justify-center gap-2">
           <Loader2 size={14} className="animate-spin text-muted-foreground" />
           <span className="text-body-sm text-muted-foreground">Loading servers...</span>
         </article>
       )}
 
-      {hasServers && (
+      {hasProviderServers && (
         <div className="rounded-lg surface-panel p-3 space-y-2">
           {groups.map((group) => (
             <ServerGroupSection
@@ -680,6 +850,41 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
             />
           ))}
         </div>
+      )}
+
+      {hasPluginServers && (
+        <article className="rounded-lg surface-panel p-3 space-y-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="section-kicker">Plugin MCP Packs</span>
+              <Badge variant="outline" size="compact">{pluginServers.length}</Badge>
+            </div>
+            <p className="ui-meta-text text-muted-foreground">
+              Plugin MCP servers are read-only here. Approval controls whether an enabled plugin pack is injected into runtime MCP config.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {pluginGroups.map((group) => (
+              <div key={group.id} className="space-y-1">
+                <div className="flex items-center gap-2 px-2">
+                  <span className="section-kicker">{group.label}</span>
+                  <Badge variant="outline" size="compact">{group.servers.length}</Badge>
+                  <span className="ui-meta-text text-muted-foreground truncate">{group.marketplaceName}</span>
+                </div>
+                <div className="pl-1">
+                  {group.servers.map((server) => (
+                    <PluginMcpServerRow
+                      key={server.id}
+                      server={server}
+                      onApproveChange={handlePluginApproveChange}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
       )}
 
       <McpServerFormDialog

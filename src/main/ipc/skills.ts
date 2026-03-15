@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { scanAllSkills } from "../lib/skill-scanner"
+import { mergeDiscoveredSkills, scanAllSkills } from "../lib/skill-scanner"
 import { scanAllLibraries } from "../lib/libraries"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
@@ -50,40 +50,32 @@ export function registerSkillsHandlers() {
       const startedAt = Date.now()
       const scanPromise = (async (): Promise<DiscoveredSkill[]> => {
         try {
-          const [projectSkills, librarySkills] = await Promise.all([
+          const [coreSkills, librarySkills] = await Promise.all([
             scanAllSkills(safeProjectPath),
             scanAllLibraries(),
           ])
 
-          // Merge: project skills take priority, then library skills
-          const seen = new Set<string>()
-          const merged: DiscoveredSkill[] = []
-
-          for (const skill of projectSkills) {
-            const key = `${skill.type}:${skill.category}:${skill.name}`
-            seen.add(key)
-            merged.push(skill)
-          }
-          for (const skill of librarySkills) {
-            const key = `${skill.type}:${skill.category}:${skill.name}`
-            if (!seen.has(key)) {
-              seen.add(key)
-              merged.push(skill)
-            }
-          }
+          const merged = mergeDiscoveredSkills([coreSkills, librarySkills])
+          const projectSkillsTotal = coreSkills.filter((skill) => skill.sourceScope === "project").length
+          const userSkillsTotal = coreSkills.filter((skill) => skill.sourceScope === "user").length
+          const pluginSkillsTotal = coreSkills.filter((skill) => skill.sourceScope === "plugin").length
 
           void trackTelemetryEvent("skill_scan_completed", {
             source: "manual",
             status: "success",
             deduped: false,
-            project_skills_total: projectSkills.length,
+            project_skills_total: projectSkillsTotal,
+            user_skills_total: userSkillsTotal,
+            plugin_skills_total: pluginSkillsTotal,
             library_skills_total: librarySkills.length,
             merged_skills_total: merged.length,
             duration_ms: Date.now() - startedAt,
           })
           logInfo("skills-ipc", "scan_completed", {
             projectPath: safeProjectPath,
-            projectSkillsTotal: projectSkills.length,
+            projectSkillsTotal,
+            userSkillsTotal,
+            pluginSkillsTotal,
             librarySkillsTotal: librarySkills.length,
             mergedSkillsTotal: merged.length,
           })

@@ -1,11 +1,22 @@
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+const listApprovedPluginMcpServersMock = vi.fn<() => Promise<Array<{
+  info: { name: string }
+  entry: Record<string, unknown>
+}>>>()
+
+vi.mock("./plugin-mcp", () => ({
+  listApprovedPluginMcpServers: () => listApprovedPluginMcpServersMock(),
+}))
+
 import {
   buildClaudeExtraArgs,
   buildClaudeSdkMcpServers,
   buildProviderExtraArgs,
+  prepareTemporaryMcpConfig,
   prepareWorkspaceMcpConfig,
 } from "./mcp-config"
 
@@ -27,6 +38,10 @@ describe("buildProviderExtraArgs", () => {
 })
 
 describe("prepareWorkspaceMcpConfig", () => {
+  beforeEach(() => {
+    listApprovedPluginMcpServersMock.mockResolvedValue([])
+  })
+
   it("copies project mcp config into workspace for builtin backend", async () => {
     const root = await mkdtemp(join(tmpdir(), "mcp-config-test-"))
     const project = join(root, "project")
@@ -69,6 +84,81 @@ describe("prepareWorkspaceMcpConfig", () => {
     expect(parsed.mcpServers.exa.command).toBe(process.execPath)
     expect(parsed.mcpServers.exa.args?.[0]).toContain("mcp-search-proxy")
     expect(parsed.mcpServers.exa.env?.ELECTRON_RUN_AS_NODE).toBe("1")
+  })
+
+  it("merges approved plugin MCP servers without overriding project config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mcp-config-test-"))
+    const project = join(root, "project")
+    const workspace = join(root, "workspace")
+    await mkdir(project, { recursive: true })
+    await mkdir(workspace, { recursive: true })
+
+    await writeFile(
+      join(project, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          github: {
+            command: "node",
+            args: ["./project-github.js"],
+          },
+        },
+      }),
+      "utf-8",
+    )
+
+    listApprovedPluginMcpServersMock.mockResolvedValue([
+      {
+        info: { name: "github" },
+        entry: {
+          command: "node",
+          args: ["./plugin-github.js"],
+        },
+      },
+      {
+        info: { name: "exa" },
+        entry: {
+          command: "node",
+          args: ["./plugin-exa.js"],
+        },
+      },
+    ])
+
+    const path = await prepareWorkspaceMcpConfig(workspace, project, "builtin")
+    const parsed = JSON.parse(await readFile(path!, "utf-8")) as {
+      mcpServers: Record<string, { command: string; args?: string[] }>
+    }
+
+    expect(parsed.mcpServers.github?.args).toEqual(["./project-github.js"])
+    expect(parsed.mcpServers.exa?.args).toEqual(["./plugin-exa.js"])
+  })
+})
+
+describe("prepareTemporaryMcpConfig", () => {
+  beforeEach(() => {
+    listApprovedPluginMcpServersMock.mockResolvedValue([])
+  })
+
+  it("creates an ephemeral config when plugin MCP servers are approved", async () => {
+    listApprovedPluginMcpServersMock.mockResolvedValue([
+      {
+        info: { name: "github" },
+        entry: {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+        },
+      },
+    ])
+
+    const handle = await prepareTemporaryMcpConfig(undefined, "builtin")
+    expect(handle.path).toBeTruthy()
+
+    const parsed = JSON.parse(await readFile(handle.path!, "utf-8")) as {
+      mcpServers: Record<string, { command: string; args?: string[] }>
+    }
+    expect(parsed.mcpServers.github?.command).toBe("npx")
+    expect(parsed.mcpServers.github?.args).toEqual(["-y", "@modelcontextprotocol/server-github"])
+
+    await handle.cleanup()
   })
 })
 

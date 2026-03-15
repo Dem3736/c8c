@@ -3,6 +3,8 @@ import { useAtom } from "jotai"
 import { skillsAtom } from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/cn"
+import { getSkillSourceLabel } from "@/lib/skill-source"
+import { overlayContentBase, overlayItem } from "@/lib/overlay-styles"
 
 interface SkillRefInputProps {
   id?: string
@@ -96,7 +98,7 @@ export function SkillRefInput({ id, value, onChange, placeholder, className }: S
           id={listboxId}
           role="listbox"
           aria-label="Skill suggestions"
-          className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-hairline bg-popover shadow-lg ui-scroll-region"
+          className={cn(overlayContentBase, "absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto ui-scroll-region")}
         >
           {suggestions.map((skill, i) => (
             <div
@@ -105,18 +107,17 @@ export function SkillRefInput({ id, value, onChange, placeholder, className }: S
               role="option"
               aria-selected={i === focusIndex}
               className={cn(
-                "w-full text-left px-2 py-1.5 text-body-sm ui-transition-colors ui-motion-fast cursor-pointer",
-                i === focusIndex ? "bg-accent text-accent-foreground" : "hover:bg-surface-3",
+                overlayItem,
+                "w-full cursor-pointer text-left",
               )}
+              data-highlighted={i === focusIndex ? "" : undefined}
               onMouseDown={(e) => {
                 e.preventDefault()
                 selectSuggestion(skill)
               }}
             >
               <span className="font-mono font-medium">{skill.category}/{skill.name}</span>
-              {skill.library && (
-                <span className="ml-2 ui-meta-text text-muted-foreground">{skill.library}</span>
-              )}
+              <span className="ml-2 ui-meta-text text-muted-foreground">{getSkillSourceLabel(skill)}</span>
             </div>
           ))}
         </div>

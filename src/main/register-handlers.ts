@@ -4,6 +4,7 @@ import { registerSkillsHandlers } from "./ipc/skills"
 import { registerWorkflowsHandlers } from "./ipc/workflows"
 import { registerExecutorHandlers } from "./ipc/executor"
 import { registerLibrariesHandlers } from "./ipc/libraries"
+import { registerPluginsHandlers } from "./ipc/plugins"
 import { registerTemplateHandlers } from "./ipc/templates"
 import {
   registerSystemHandlers,
@@ -24,6 +25,7 @@ export function registerMainHandlers(
     ["workflows", registerWorkflowsHandlers],
     ["executor", registerExecutorHandlers],
     ["libraries", registerLibrariesHandlers],
+    ["plugins", registerPluginsHandlers],
     ["templates", registerTemplateHandlers],
     ["system", registerSystemHandlers],
     ["chat", registerChatHandlers],

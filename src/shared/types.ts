@@ -277,13 +277,18 @@ export interface DiscoveredSkill {
   category: string
   path: string
   format?: "claude-markdown" | "codex-skill"
-  sourceScope?: "project" | "user" | "library"
+  sourceScope?: "project" | "user" | "library" | "plugin"
   model?: string
   tools?: string[]
   maxTurns?: number
   allowedTools?: string[]
   disallowedTools?: string[]
   library?: string
+  pluginId?: string
+  pluginName?: string
+  marketplaceId?: string
+  marketplaceName?: string
+  pluginVersion?: string
 }
 
 export interface SkillLibrary {
@@ -293,6 +298,43 @@ export interface SkillLibrary {
   repo: string
   enabled: boolean
   installed: boolean
+}
+
+export type PluginCapability = "skill" | "template" | "mcp"
+
+export interface PluginAssetSummary {
+  capability: PluginCapability
+  count: number
+}
+
+export interface MarketplaceSource {
+  id: string
+  name: string
+  description: string
+  repo: string
+  installed: boolean
+  owner?: string
+  version?: string
+}
+
+export interface InstalledPlugin {
+  id: string
+  name: string
+  description: string
+  version?: string
+  marketplaceId: string
+  marketplaceName: string
+  marketplaceRepo?: string
+  pluginPath: string
+  manifestPath?: string
+  homepage?: string
+  repository?: string
+  author?: string
+  category?: string
+  tags?: string[]
+  enabled: boolean
+  capabilities: PluginCapability[]
+  assets: PluginAssetSummary[]
 }
 
 export type WorkflowTemplateStage =
@@ -315,6 +357,13 @@ export interface WorkflowTemplate {
   output: string
   steps: string[]
   workflow: Workflow
+  source?: "builtin" | "plugin" | "user"
+  pluginId?: string
+  pluginName?: string
+  marketplaceId?: string
+  marketplaceName?: string
+  pluginVersion?: string
+  templatePath?: string
 }
 
 // ── Execution State ─────────────────────────────────────
@@ -674,6 +723,26 @@ export interface McpServerInfo {
   headers?: Record<string, string>
   disabled?: boolean
   autoApprove?: string[]
+}
+
+export interface PluginMcpServerInfo {
+  id: string
+  name: string
+  type: McpTransportType
+  command?: string
+  args?: string[]
+  url?: string
+  env?: Record<string, string>
+  headers?: Record<string, string>
+  disabled?: boolean
+  autoApprove?: string[]
+  approved: boolean
+  pluginId: string
+  pluginName: string
+  pluginVersion?: string
+  pluginPath: string
+  marketplaceId: string
+  marketplaceName: string
 }
 
 export interface McpToolInfo {

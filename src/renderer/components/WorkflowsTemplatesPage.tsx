@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAtom } from "jotai"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   CanvasDialogBody,
@@ -26,29 +26,25 @@ import {
   projectsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
-  workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
   workflowsAtom,
-  generateDialogOpenAtom,
   type WorkflowTemplate,
 } from "@/lib/store"
 import { toast } from "sonner"
 import {
-  Loader2,
-  Plus,
-  RefreshCw,
-  Search,
   Sparkles,
   X,
 } from "lucide-react"
 import { PageHeader, PageShell } from "@/components/ui/page-shell"
-import { createEmptyWorkflow } from "@/lib/default-workflow"
+import { CollectionToolbar } from "@/components/ui/collection-toolbar"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
+import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { STAGE_ORDER, STAGE_META } from "@/lib/template-stages"
 import type { WorkflowTemplateStage } from "@shared/types"
+import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 
 function TemplateCard({
   template,
@@ -60,21 +56,28 @@ function TemplateCard({
   onSelect: (template: WorkflowTemplate) => void
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="bare"
       onClick={() => onSelect(template)}
-      className={`ui-interactive-card rounded-lg surface-panel p-4 flex items-start gap-3 text-left ui-transition-colors ui-motion-fast ${
+      className={`ui-interactive-card w-full !items-start !justify-start gap-3 rounded-lg surface-panel p-4 text-left !whitespace-normal ui-transition-colors ui-motion-fast ${
         isSelected ? "ring-2 ring-foreground/20 bg-surface-3" : ""
       }`}
     >
       <span className="text-xl flex-shrink-0 mt-0.5" aria-hidden>{template.emoji}</span>
       <div className="min-w-0 flex-1">
         <h3 className="text-body-md font-semibold">{template.headline}</h3>
+        <div className="mt-1 flex flex-wrap gap-1">
+          <Badge variant="secondary" size="compact">
+            {getTemplateSourceLabel(template)}
+          </Badge>
+        </div>
         <p className="text-body-sm text-muted-foreground mt-0.5 line-clamp-2">
           {template.how}
         </p>
       </div>
-    </button>
+    </Button>
   )
 }
 
@@ -82,51 +85,98 @@ function TemplateDetailPanel({
   template,
   onUse,
   disabled,
+  onClose,
 }: {
   template: WorkflowTemplate
   onUse: (template: WorkflowTemplate) => void
   disabled?: boolean
+  onClose: () => void
 }) {
-  return (
-    <aside className="w-[320px] flex-shrink-0 rounded-lg surface-panel p-4 overflow-y-auto ui-scroll-region space-y-4">
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="text-xl" aria-hidden>{template.emoji}</span>
-          <h3 className="text-body-md font-semibold">{template.name}</h3>
-        </div>
-        <Badge variant="outline" className="mt-2">
-          {STAGE_META[template.stage].label}
-        </Badge>
-        {template.description && (
-          <p className="text-body-sm text-muted-foreground mt-2">
-            {template.description}
-          </p>
-        )}
-      </div>
+  const stageMeta = STAGE_META[template.stage]
+  const sourceKind = getTemplateSourceKind(template)
+  const sourceLabel = getTemplateSourceLabel(template)
 
-      <div className="space-y-3">
+  return (
+    <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
+      <header className="border-b border-border px-4 py-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-control-lg w-control-lg shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 text-lg">
+            <span aria-hidden>{template.emoji}</span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-body-md font-semibold text-foreground">{template.name}</h3>
+              <Badge variant="outline" size="compact">
+                {stageMeta.label}
+              </Badge>
+              <Badge variant="secondary" size="compact">
+                {sourceLabel}
+              </Badge>
+            </div>
+            <p className="ui-meta-text mt-1 text-muted-foreground">{template.headline}</p>
+            {template.description && (
+              <p className="mt-2 text-body-sm text-muted-foreground">
+                {template.description}
+              </p>
+            )}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="shrink-0"
+            aria-label="Close template details"
+          >
+            <X size={16} />
+          </Button>
+        </div>
+      </header>
+
+      <div className="border-b border-border px-4 py-3 space-y-3">
         <div>
           <span className="ui-meta-label text-muted-foreground">You provide</span>
-          <p className="text-body-sm mt-0.5">{template.input}</p>
+          <p className="mt-1 text-body-sm">{template.input}</p>
         </div>
         <div>
           <span className="ui-meta-label text-muted-foreground">You get</span>
-          <p className="text-body-sm mt-0.5">{template.output}</p>
+          <p className="mt-1 text-body-sm">{template.output}</p>
+        </div>
+        {(sourceKind === "plugin" || sourceKind === "user") && (
+          <div>
+            <span className="ui-meta-label text-muted-foreground">Source</span>
+            <p className="mt-1 text-body-sm">
+              {sourceLabel}
+              {template.marketplaceName ? ` via ${template.marketplaceName}` : ""}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto ui-scroll-region px-4 py-4">
+        <div className="space-y-4">
+          <div>
+            <span className="ui-meta-label text-muted-foreground">How it works</span>
+            <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
+          </div>
+
+          <div>
+            <span className="ui-meta-label text-muted-foreground">Steps</span>
+            <ol className="mt-2 list-decimal space-y-2 pl-5 text-body-sm">
+              {template.steps.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
+            </ol>
+          </div>
         </div>
       </div>
 
-      <div>
-        <span className="ui-meta-label text-muted-foreground">How it works</span>
-        <ol className="list-decimal list-inside space-y-1 mt-1">
-          {template.steps.map((step, i) => (
-            <li key={i} className="text-body-sm">{step}</li>
-          ))}
-        </ol>
+      <div className="border-t border-border px-4 py-3">
+        <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
+          Use template
+        </Button>
       </div>
-
-      <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
-        Use template
-      </Button>
     </aside>
   )
 }
@@ -140,16 +190,15 @@ export function WorkflowsTemplatesPage() {
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
-  const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
-  const [workflows, setWorkflows] = useAtom(workflowsAtom)
+  const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setMainView] = useAtom(mainViewAtom)
-  const [, setGenerateDialogOpen] = useAtom(generateDialogOpenAtom)
   const [targetProjectPath, setTargetProjectPath] = useState<string | null>(selectedProject)
-  const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
+  const { unsavedChangesDialog } = useUnsavedChangesDialog()
+  const { openWorkflowCreate } = useWorkflowCreateNavigation()
 
   useEffect(() => {
     if (!pendingTemplate) return
@@ -180,7 +229,7 @@ export function WorkflowsTemplatesPage() {
     const q = query.trim().toLowerCase()
     if (!q) return templates
     return templates.filter((template) =>
-      `${template.name} ${template.description} ${template.headline} ${template.how} ${template.stage}`
+      `${template.name} ${template.description} ${template.headline} ${template.how} ${template.stage} ${getTemplateSourceLabel(template)} ${template.marketplaceName || ""}`
         .toLowerCase()
         .includes(q),
     )
@@ -246,6 +295,7 @@ export function WorkflowsTemplatesPage() {
       const filePath = await window.api.createWorkflow(projectPath, template.name, nextWorkflow)
       const loadedWorkflow = await window.api.loadWorkflow(filePath)
       const refreshed = await window.api.listProjectWorkflows(projectPath)
+      await window.api.recordProjectTemplateUsage(projectPath, template.id).catch(() => undefined)
       setWorkflows(refreshed)
       setSelectedProject(projectPath)
       setSelectedWorkflowPath(filePath)
@@ -259,39 +309,8 @@ export function WorkflowsTemplatesPage() {
     }
   }
 
-  const createWorkflow = async () => {
-    if (!selectedProject) {
-      toast("Select a project in Projects first")
-      return
-    }
-
-    if (!(await confirmDiscard("create a new workflow", workflowDirty))) {
-      return
-    }
-
-    const existingNames = new Set(workflows.map((item) => item.name.toLowerCase()))
-    let index = 1
-    let name = "new-workflow"
-    while (existingNames.has(name.toLowerCase())) {
-      index += 1
-      name = `new-workflow-${index}`
-    }
-    const chain = createEmptyWorkflow()
-
-    try {
-      const filePath = await window.api.createWorkflow(selectedProject, name, chain)
-      setWorkflows((prev) => [{ name, path: filePath, updatedAt: Date.now() }, ...prev])
-      setSelectedWorkflowPath(filePath)
-      setWorkflow(chain)
-      setWorkflowSavedSnapshot(workflowSnapshot(chain))
-      setMainView("thread")
-    } catch (error) {
-      toast.error(`Failed to create workflow: ${String(error)}`)
-    }
-  }
-
   const renderTemplateGrid = (items: WorkflowTemplate[]) => (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {items.map((template) => (
         <TemplateCard
           key={template.id}
@@ -308,62 +327,28 @@ export function WorkflowsTemplatesPage() {
       <PageHeader
         title="Templates"
         subtitle="Start from a template, then tailor the workflow to your project."
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void loadTemplates()}
-              disabled={loading}
-              aria-label={loading ? "Refreshing templates" : "Refresh templates"}
-            >
-              {loading ? (
-                <Loader2 size={14} className="animate-spin" aria-hidden />
-              ) : (
-                <RefreshCw size={14} aria-hidden />
-              )}
-              Refresh
-            </Button>
-
-            <div className="relative">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search templates"
-                aria-label="Search templates"
-                className="w-56 pl-8 bg-surface-2"
-              />
-            </div>
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setGenerateDialogOpen(true)}
-              disabled={!selectedProject}
-            >
-              <Sparkles size={14} />
-              Generate with AI
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void createWorkflow()}
-              disabled={!selectedProject}
-            >
-              <Plus size={14} />
-              New workflow
-            </Button>
-          </>
-        }
       />
 
-      <section aria-busy={loading} aria-live="polite">
-        {/* Stage tabs */}
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <CollectionToolbar
+        ariaLabel="Template controls"
+        query={query}
+        onQueryChange={setQuery}
+        searchPlaceholder="Search templates"
+        searchAriaLabel="Search templates"
+        summary={`${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`}
+        action={(
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => openWorkflowCreate()}
+            className="shrink-0"
+          >
+            <Sparkles size={14} />
+            Create with Agent
+          </Button>
+        )}
+        filters={(
+          <>
           <Button
             variant={activeStage === "all" ? "secondary" : "outline"}
             size="xs"
@@ -389,29 +374,28 @@ export function WorkflowsTemplatesPage() {
               Clear
             </Button>
           )}
-        </div>
+          </>
+        )}
+      />
 
-        <div className="flex gap-4">
+      <section aria-busy={loading} aria-live="polite">
+        <div className="flex flex-col gap-4 lg:flex-row">
           {/* Main grid */}
           <div className="flex-1 min-w-0">
             {loading ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, idx) => (
-                  <div
-                    key={`skeleton-${idx}`}
-                    className="rounded-lg surface-panel p-4 flex items-start gap-3 animate-pulse"
-                    aria-hidden="true"
-                  >
-                    <div className="h-6 w-6 rounded bg-surface-2 flex-shrink-0" />
+                  <div key={`skeleton-${idx}`} className="rounded-lg surface-panel p-4 flex items-start gap-3" aria-hidden="true">
+                    <Skeleton className="h-6 w-6 flex-shrink-0" />
                     <div className="min-w-0 flex-1 space-y-2">
-                      <div className="h-4 w-2/3 rounded bg-surface-2" />
-                      <div className="h-3 w-full rounded bg-surface-2" />
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="h-3 w-full" />
                     </div>
                   </div>
                 ))}
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <div className="rounded-lg surface-panel px-4 py-8 text-body-sm text-muted-foreground text-center">
+              <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
                 No templates match this filter.
               </div>
             ) : groupedTemplates ? (
@@ -437,6 +421,7 @@ export function WorkflowsTemplatesPage() {
               template={selectedTemplate}
               onUse={confirmApplyTemplate}
               disabled={projects.length === 0}
+              onClose={() => setSelectedTemplateId(null)}
             />
           )}
         </div>

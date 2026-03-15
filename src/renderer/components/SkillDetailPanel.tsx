@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/cn"
+import { getSkillSourceKind, getSkillSourceLabel } from "@/lib/skill-source"
 import type { DiscoveredSkill } from "@shared/types"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -14,6 +14,8 @@ import {
   RotateCw,
   FolderOpen,
   Library,
+  Package,
+  type LucideIcon,
 } from "lucide-react"
 
 const MARKDOWN_COMPONENTS: MarkdownComponents = {
@@ -71,16 +73,9 @@ export function SkillDetailPanel({
     void loadContent()
   }, [loadContent])
 
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [onClose])
-
-  const metaItems: Array<{ icon: typeof Cpu; label: string; value: string }> = []
+  const metaItems: Array<{ icon: LucideIcon; label: string; value: string }> = []
+  const sourceKind = getSkillSourceKind(skill)
+  const sourceLabel = getSkillSourceLabel(skill)
 
   if (skill.model) {
     metaItems.push({ icon: Cpu, label: "Model", value: skill.model })
@@ -88,145 +83,156 @@ export function SkillDetailPanel({
   if (skill.maxTurns != null) {
     metaItems.push({ icon: RotateCw, label: "Max turns", value: String(skill.maxTurns) })
   }
-  if (skill.library) {
-    metaItems.push({ icon: Library, label: "Library", value: skill.library })
+  if (sourceKind === "library") {
+    metaItems.push({ icon: Library, label: "Library", value: skill.library || "library" })
+  }
+  if (sourceKind === "plugin") {
+    metaItems.push({ icon: Package, label: "Plugin", value: sourceLabel })
+    if (skill.marketplaceName) {
+      metaItems.push({ icon: Library, label: "Marketplace", value: skill.marketplaceName })
+    }
   }
 
   const toolsList = skill.tools ?? skill.allowedTools ?? []
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-[var(--overlay-scrim)] ui-motion-fast animate-in fade-in-0"
-        onClick={onClose}
-      />
+    <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
+      <header className="border-b border-border px-4 py-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-control-lg w-control-lg shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2">
+            <Wrench size={16} className="text-muted-foreground" />
+          </div>
 
-      {/* Panel */}
-      <aside
-        className={cn(
-          "fixed right-0 top-0 z-50 h-full w-[min(32rem,100vw-2rem)]",
-          "surface-elevated flex flex-col",
-          "animate-in slide-in-from-right duration-[var(--motion-slow)]",
-        )}
-      >
-        {/* Header */}
-        <header className="flex items-start gap-3 px-5 pt-5 pb-4 border-b border-border">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-title-md text-foreground truncate">{skill.name}</h2>
-              <Badge variant="outline" className="ui-meta-text px-1.5 py-0 shrink-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-body-md font-semibold text-foreground">{skill.name}</h2>
+              <Badge variant="outline" size="compact">
                 {skill.type}
               </Badge>
+              <Badge variant="secondary" size="compact">
+                {sourceLabel}
+              </Badge>
             </div>
-            {skill.description && (
-              <p className="text-body-sm text-muted-foreground mt-1 line-clamp-2">
-                {skill.description}
-              </p>
-            )}
             <p className="ui-meta-text text-muted-foreground mt-1">
               {skill.category}/{skill.name}
             </p>
+            {skill.description && (
+              <p className="text-body-sm text-muted-foreground mt-2">
+                {skill.description}
+              </p>
+            )}
           </div>
-          {onAddToWorkflow && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onAddToWorkflow}
-              disabled={!canAddToWorkflow}
-              title={addDisabledReason || "Add this skill to the current workflow."}
-              className="shrink-0 mt-0.5"
-            >
-              Add to workflow
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="shrink-0 mt-0.5"
+            className="shrink-0"
             aria-label="Close detail panel"
           >
             <X size={16} />
           </Button>
-        </header>
+        </div>
+      </header>
 
-        {/* Metadata */}
-        {(metaItems.length > 0 || toolsList.length > 0) && (
-          <div className="px-5 py-3 border-b border-border space-y-2.5">
-            {metaItems.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-center gap-2 text-body-sm">
-                <Icon size={14} className="text-muted-foreground shrink-0" />
-                <span className="ui-meta-label">{label}:</span>
-                <span className="text-foreground font-medium">{value}</span>
-              </div>
-            ))}
+      {(metaItems.length > 0 || toolsList.length > 0) && (
+        <div className="border-b border-border px-4 py-3 space-y-3">
+          {metaItems.length > 0 && (
+            <div className="space-y-2.5">
+              {metaItems.map(({ icon: Icon, label, value }) => (
+                <div key={label} className="flex items-center gap-2 text-body-sm">
+                  <Icon size={14} className="text-muted-foreground shrink-0" />
+                  <span className="ui-meta-label">{label}:</span>
+                  <span className="text-foreground font-medium">{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-            {toolsList.length > 0 && (
-              <div className="flex items-start gap-2 text-body-sm">
-                <Wrench size={14} className="text-muted-foreground shrink-0 mt-0.5" />
-                <div>
-                  <span className="ui-meta-label">Tools:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {toolsList.map((tool) => (
-                      <Badge key={tool} variant="secondary" className="ui-meta-text font-mono px-1.5 py-0">
-                        {tool}
-                      </Badge>
-                    ))}
-                  </div>
+          {toolsList.length > 0 && (
+            <div className="flex items-start gap-2 text-body-sm">
+              <Wrench size={14} className="text-muted-foreground shrink-0 mt-0.5" />
+              <div>
+                <span className="ui-meta-label">Tools:</span>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {toolsList.map((tool) => (
+                    <Badge key={tool} variant="secondary" size="compact" className="font-mono">
+                      {tool}
+                    </Badge>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* File path */}
-        <div className="px-5 py-2.5 border-b border-border">
+      <div className="border-b border-border px-4 py-3">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 text-body-sm">
             <FileText size={14} className="text-muted-foreground shrink-0" />
             <span className="ui-meta-label">File:</span>
-            <button
+            <Button
               type="button"
-              className="text-foreground font-mono ui-meta-text truncate hover:underline cursor-pointer ui-transition-colors ui-motion-fast"
+              variant="link"
+              size="bare"
+              className="min-w-0 !justify-start font-mono ui-meta-text text-foreground"
               title={skill.path}
               onClick={() => void window.api.showInFinder(skill.path)}
             >
               {skill.path}
-            </button>
+            </Button>
           </div>
-          {skill.library && (
-            <div className="flex items-center gap-2 text-body-sm mt-1">
-              <FolderOpen size={14} className="text-muted-foreground shrink-0" />
+          {(sourceKind === "library" || sourceKind === "plugin" || sourceKind === "user") && (
+            <div className="flex items-center gap-2 text-body-sm">
+              {sourceKind === "plugin" ? (
+                <Package size={14} className="text-muted-foreground shrink-0" />
+              ) : (
+                <FolderOpen size={14} className="text-muted-foreground shrink-0" />
+              )}
               <span className="ui-meta-label">Source:</span>
-              <span className="text-foreground">{skill.library}</span>
+              <span className="text-foreground">{sourceLabel}</span>
             </div>
           )}
         </div>
+      </div>
 
-        {/* Content area */}
-        <div className="flex-1 min-h-0 overflow-y-auto ui-scroll-region px-5 py-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <Loader2 size={18} className="animate-spin mr-2" />
-              Loading skill content...
-            </div>
-          ) : error ? (
-            <div className="rounded-lg surface-danger-soft px-4 py-3 text-body-sm text-status-danger">
-              Failed to load skill content: {error}
-            </div>
-          ) : content ? (
-            <div className="prose-c8c">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                {content}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <div className="text-body-sm text-muted-foreground py-8 text-center">
-              No content available.
-            </div>
-          )}
+      <div className="min-h-0 flex-1 overflow-y-auto ui-scroll-region px-4 py-4">
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <Loader2 size={18} className="mr-2 animate-spin" />
+            Loading skill content...
+          </div>
+        ) : error ? (
+          <div className="rounded-lg surface-danger-soft px-4 py-3 text-body-sm text-status-danger">
+            Failed to load skill content: {error}
+          </div>
+        ) : content ? (
+          <div className="prose-c8c">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+              {content}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-body-sm text-muted-foreground">
+            No content available.
+          </div>
+        )}
+      </div>
+
+      {onAddToWorkflow && (
+        <div className="border-t border-border px-4 py-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onAddToWorkflow}
+            disabled={!canAddToWorkflow}
+            title={addDisabledReason || "Add this skill to the current workflow."}
+            className="w-full"
+          >
+            Add to workflow
+          </Button>
         </div>
-      </aside>
-    </>
+      )}
+    </aside>
   )
 }

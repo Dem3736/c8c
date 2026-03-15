@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "node:fs"
-import { readFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
+import { tmpdir } from "node:os"
 import type { ProviderId } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
+import { listApprovedPluginMcpServers } from "./plugin-mcp"
 
 export type WebSearchBackend = "builtin" | "exa"
 
@@ -40,6 +42,11 @@ export type ClaudeSdkMcpServerConfig =
 
 function getProcessResourcesPath(): string | undefined {
   return (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+}
+
+export interface PreparedMcpConfigHandle {
+  path?: string
+  cleanup: () => Promise<void>
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -264,12 +271,11 @@ export function buildClaudeExtraArgs(mcpConfigPath?: string): string[] {
   return buildProviderExtraArgs("claude", mcpConfigPath)
 }
 
-export async function prepareWorkspaceMcpConfig(
-  workspace: string,
+async function buildRuntimeMcpConfig(
   projectPath?: string,
+  workspaceMcpPath?: string,
   backend?: WebSearchBackend,
-): Promise<string | undefined> {
-  const workspaceMcpPath = join(workspace, ".mcp.json")
+): Promise<McpConfig | null> {
   const sources = [
     projectPath ? join(projectPath, ".mcp.json") : undefined,
     workspaceMcpPath,
@@ -285,12 +291,59 @@ export async function prepareWorkspaceMcpConfig(
     }
   }
 
+  const pluginServers = await listApprovedPluginMcpServers()
+  if (pluginServers.length > 0) {
+    config = config ?? { mcpServers: {} }
+    for (const server of pluginServers) {
+      if (config.mcpServers[server.info.name]) continue
+      config.mcpServers[server.info.name] = {
+        type: server.entry.type,
+        command: server.entry.command,
+        args: server.entry.args,
+        url: server.entry.url,
+        env: server.entry.env,
+        headers: server.entry.headers,
+        disabled: server.entry.disabled,
+        autoApprove: server.entry.autoApprove,
+      }
+    }
+  }
+
   if (backend === "exa") {
     config = withExaServer(config ?? { mcpServers: {} }, projectPath)
   }
 
-  if (!config) return undefined
+  return config
+}
 
+export async function prepareWorkspaceMcpConfig(
+  workspace: string,
+  projectPath?: string,
+  backend?: WebSearchBackend,
+): Promise<string | undefined> {
+  const workspaceMcpPath = join(workspace, ".mcp.json")
+  const config = await buildRuntimeMcpConfig(projectPath, workspaceMcpPath, backend)
+  if (!config) return undefined
   await writeFileAtomic(workspaceMcpPath, JSON.stringify(config, null, 2))
   return workspaceMcpPath
+}
+
+export async function prepareTemporaryMcpConfig(
+  projectPath?: string,
+  backend?: WebSearchBackend,
+): Promise<PreparedMcpConfigHandle> {
+  const config = await buildRuntimeMcpConfig(projectPath, undefined, backend)
+  if (!config) {
+    return { path: undefined, cleanup: async () => undefined }
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), "c8c-mcp-"))
+  const mcpPath = join(tempDir, ".mcp.json")
+  await writeFileAtomic(mcpPath, JSON.stringify(config, null, 2))
+  return {
+    path: mcpPath,
+    cleanup: async () => {
+      await rm(tempDir, { recursive: true, force: true })
+    },
+  }
 }

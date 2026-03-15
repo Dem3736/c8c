@@ -3,9 +3,17 @@ import { useAtom } from "jotai"
 import { mcpDiscoveredToolsAtom } from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { X, Plus } from "lucide-react"
+import { cn } from "@/lib/cn"
+import {
+  overlayContentBase,
+  overlayItemBase,
+  overlayItemFocus,
+  overlayItemHighlighted,
+  overlayItemHover,
+  overlayItemTransition,
+} from "@/lib/overlay-styles"
+import { X } from "lucide-react"
 import type { McpToolInfo } from "@shared/types"
 
 // Well-known built-in tools
@@ -79,6 +87,7 @@ export function McpToolPicker({
   const [highlightIndex, setHighlightIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const dropdownId = `tool-picker-${nodeId}-listbox`
 
   const normalizedValues = values.filter(Boolean)
   const suggestions = buildSuggestions(mcpTools)
@@ -200,15 +209,16 @@ export function McpToolPicker({
               <Badge
                 key={value}
                 variant="outline"
-                className="text-[11px] gap-1 pr-1"
+                className="gap-1 pr-1"
               >
                 <span className="font-mono">{display.label}</span>
                 {display.server && (
-                  <span className="text-muted-foreground font-normal text-[9px]">{display.server}</span>
+                  <span className="ui-meta-text font-normal text-muted-foreground">{display.server}</span>
                 )}
                 <button
+                  type="button"
                   onClick={() => removeValue(value)}
-                  className="ml-0.5 rounded hover:bg-surface-3 p-0.5"
+                  className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-sm p-0.5 text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
                   aria-label={`Remove ${display.label}`}
                 >
                   <X size={10} />
@@ -231,6 +241,15 @@ export function McpToolPicker({
           }}
           onFocus={() => setShowDropdown(true)}
           onKeyDown={handleKeyDown}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showDropdown && flatFiltered.length > 0}
+          aria-controls={dropdownId}
+          aria-activedescendant={
+            showDropdown && flatFiltered[highlightIndex]
+              ? `${dropdownId}-option-${highlightIndex}`
+              : undefined
+          }
           placeholder={placeholder}
           className="h-control-sm font-mono text-body-sm"
         />
@@ -238,7 +257,13 @@ export function McpToolPicker({
         {showDropdown && flatFiltered.length > 0 && (
           <div
             ref={dropdownRef}
-            className="absolute z-50 top-full mt-1 left-0 right-0 max-h-[240px] overflow-y-auto rounded-md border border-border surface-elevated shadow-lg"
+            id={dropdownId}
+            role="listbox"
+            aria-multiselectable="true"
+            className={cn(
+              overlayContentBase,
+              "absolute left-0 right-0 top-full mt-1 max-h-[240px] overflow-y-auto ui-scroll-region",
+            )}
           >
             {[...grouped.entries()].map(([group, items]) => (
               <div key={group}>
@@ -249,10 +274,20 @@ export function McpToolPicker({
                   const idx = flatFiltered.indexOf(item)
                   return (
                     <button
+                      id={`${dropdownId}-option-${idx}`}
                       key={item.value}
-                      className={`w-full text-left px-2 py-1 text-body-sm hover:bg-accent/50 ${
-                        idx === highlightIndex ? "bg-accent/50" : ""
-                      }`}
+                      type="button"
+                      role="option"
+                      aria-selected={idx === highlightIndex}
+                      data-highlighted={idx === highlightIndex ? "" : undefined}
+                      className={cn(
+                        overlayItemBase,
+                        overlayItemHover,
+                        overlayItemFocus,
+                        overlayItemHighlighted,
+                        overlayItemTransition,
+                        "w-full text-left",
+                      )}
                       onMouseDown={(e) => {
                         e.preventDefault()
                         addValue(item.value)
@@ -261,7 +296,7 @@ export function McpToolPicker({
                     >
                       <span className="font-mono">{item.label}</span>
                       {item.description && (
-                        <span className="text-muted-foreground ml-2 text-[11px]">{item.description}</span>
+                        <span className="ml-2 ui-meta-text text-muted-foreground">{item.description}</span>
                       )}
                     </button>
                   )

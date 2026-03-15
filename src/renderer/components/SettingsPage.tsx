@@ -1,5 +1,6 @@
 import { useAtom } from "jotai"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -229,15 +230,15 @@ export function SettingsPage() {
   }, [telemetrySettings])
   const telemetryStatusBadge = useMemo(() => {
     if (telemetrySettingsLoading && !telemetrySettings) {
-      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-2/70 px-2 py-1">Checking...</span>
+      return <Badge variant="outline" className="ui-meta-text px-2 py-1 text-muted-foreground">Checking...</Badge>
     }
     if (!telemetryAvailable) {
-      return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled in build</span>
+      return <Badge variant="outline" className="ui-meta-text px-2 py-1 text-muted-foreground">Disabled in build</Badge>
     }
     if (telemetryChecked) {
-      return <span className="ui-meta-text rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 text-status-success">Enabled</span>
+      return <Badge variant="success" className="ui-meta-text px-2 py-1">Enabled</Badge>
     }
-    return <span className="ui-meta-text text-muted-foreground rounded-md border border-hairline bg-surface-1/70 px-2 py-1">Disabled</span>
+    return <Badge variant="outline" className="ui-meta-text px-2 py-1 text-muted-foreground">Disabled</Badge>
   }, [telemetryAvailable, telemetryChecked, telemetrySettings, telemetrySettingsLoading])
   const providers = useMemo(() => ["claude", "codex"] as ProviderId[], [])
 
@@ -327,7 +328,7 @@ export function SettingsPage() {
                 You can download the latest version from{" "}
                 <a
                   href="https://github.com/c8c-ai/c8c/releases"
-                  className="underline text-accent"
+                  className="text-primary underline"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -540,17 +541,18 @@ export function SettingsPage() {
                         {health?.version || "CLI version unknown"}
                       </p>
                     </div>
-                    <span className={`ui-meta-text rounded-md border px-2 py-1 ${
-                      authenticated
-                        ? "border-status-success/30 bg-status-success/10 text-status-success"
-                        : authState === "unknown"
-                          ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
-                        : available
-                          ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
-                          : "border-status-danger/30 bg-status-danger/10 text-status-danger"
-                    }`}>
+                    <Badge
+                      variant={
+                        authenticated
+                          ? "success"
+                          : authState === "unknown" || available
+                            ? "warning"
+                            : "destructive"
+                      }
+                      className="ui-meta-text px-2 py-1"
+                    >
                       {statusLabel}
-                    </span>
+                    </Badge>
                   </div>
 
                   <div className="grid grid-cols-1 gap-2 text-body-sm text-muted-foreground sm:grid-cols-2">

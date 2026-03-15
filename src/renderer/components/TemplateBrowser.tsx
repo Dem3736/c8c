@@ -12,15 +12,17 @@ import {
   CanvasDialogFooter,
   CanvasDialogHeader,
   Dialog,
+  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/cn"
-import { Layers } from "lucide-react"
+import { AlertTriangle, Layers, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
+import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
 import { STAGE_META } from "@/lib/template-stages"
 
 interface TemplateBrowserProps {
@@ -35,16 +37,34 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   const [templates, setTemplates] = useState<WorkflowTemplate[]>(initialTemplates ?? [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [confirmPending, setConfirmPending] = useState<WorkflowTemplate | null>(null)
 
-  useEffect(() => {
-    if (open && !initialTemplates) {
-      setIsLoading(true)
-      window.api.listTemplates().then(setTemplates).catch((err) => {
-        console.error("Failed to load templates:", err)
-      }).finally(() => setIsLoading(false))
+  const loadTemplates = useCallback(async () => {
+    if (initialTemplates) {
+      setTemplates(initialTemplates)
+      setLoadError(null)
+      return
     }
-  }, [open, initialTemplates])
+
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      setTemplates(await window.api.listTemplates())
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error("Failed to load templates:", err)
+      setTemplates([])
+      setLoadError(message || "Could not load templates.")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [initialTemplates])
+
+  useEffect(() => {
+    if (!open) return
+    void loadTemplates()
+  }, [loadTemplates, open])
 
   const selected = templates.find((t) => t.id === selectedId)
   const selectedOptionId = selectedId ? `template-option-${selectedId}` : undefined
@@ -121,6 +141,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       <CanvasDialogContent size="xl" className="max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
         <CanvasDialogHeader className="surface-depth-header">
           <DialogTitle>Workflow Templates</DialogTitle>
+          <DialogDescription className="sr-only">
+            Browse templates, preview their structure, and apply one to the current workflow.
+          </DialogDescription>
         </CanvasDialogHeader>
 
         <CanvasDialogBody className="grid grid-cols-1 lg:grid-cols-[1.4fr,1fr] gap-3 flex-1 pt-4 min-h-0 bg-surface-1/30">
@@ -135,7 +158,26 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             {isLoading && (
               <p className="text-body-md text-muted-foreground px-1 py-4 text-center">Loading templates…</p>
             )}
-            {!isLoading && templates.length === 0 && (
+            {!isLoading && loadError && (
+              <div className="rounded-lg surface-danger-soft px-4 py-4 text-center">
+                <div className="mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-full bg-status-danger/10 text-status-danger">
+                  <AlertTriangle size={18} />
+                </div>
+                <p className="mt-3 text-body-md font-medium text-foreground">Could not load templates</p>
+                <p className="mt-1 text-body-sm text-status-danger">{loadError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => void loadTemplates()}
+                >
+                  <RefreshCw size={14} />
+                  Retry
+                </Button>
+              </div>
+            )}
+            {!isLoading && !loadError && templates.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                 <Layers size={24} className="opacity-40" />
                 <p className="text-body-md">No templates available</p>
@@ -168,8 +210,11 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     <div className="flex-1 min-w-0">
                       <div className="ui-badge-row">
                         <span className="text-body-md font-medium truncate">{template.headline}</span>
-                        <Badge className="px-2 py-0" variant="outline">
+                        <Badge size="compact" variant="outline">
                           {STAGE_META[template.stage].label}
+                        </Badge>
+                        <Badge size="compact" variant="secondary">
+                          {getTemplateSourceLabel(template)}
                         </Badge>
                       </div>
                       <p className="ui-meta-text mt-1">
@@ -185,12 +230,19 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
           <div className="rounded-lg surface-soft p-3 overflow-y-auto ui-scroll-region min-h-[180px]">
             {!selected ? (
               <p className="text-body-md text-muted-foreground">
-                Select a template to preview details before applying.
+                {loadError
+                  ? "Retry loading templates to preview details before applying."
+                  : "Select a template to preview details before applying."}
               </p>
             ) : (
               <div className="space-y-3">
                 <div>
-                  <h4 className="text-body-md font-medium">{selected.name}</h4>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-body-md font-medium">{selected.name}</h4>
+                    <Badge size="compact" variant="secondary">
+                      {getTemplateSourceLabel(selected)}
+                    </Badge>
+                  </div>
                   <p className="ui-meta-text mt-1">
                     {selected.description}
                   </p>
@@ -215,13 +267,19 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     ))}
                   </ol>
                 </div>
+                {getTemplateSourceKind(selected) === "plugin" && (
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">Marketplace</span>
+                    <p className="text-body-sm">{selected.marketplaceName || "plugin marketplace"}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </CanvasDialogBody>
 
         {confirmPending ? (
-          <div className="rounded-lg border border-status-warning/30 bg-status-warning/10 p-3 mt-2 mx-6">
+          <div className="mx-6 mt-2 rounded-lg surface-warning-soft p-3">
             <p className="text-body-md">
               Replace the current workflow with <strong>{confirmPending.name}</strong>?
             </p>
@@ -245,7 +303,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             <Button
               variant="default"
               onClick={() => applyTemplate()}
-              disabled={!selected}
+              disabled={!selected || Boolean(loadError)}
             >
               Use Template
             </Button>

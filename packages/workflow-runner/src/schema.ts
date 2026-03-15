@@ -257,13 +257,18 @@ export interface DiscoveredSkill {
   category: string
   path: string
   format?: "claude-markdown" | "codex-skill"
-  sourceScope?: "project" | "user" | "library"
+  sourceScope?: "project" | "user" | "library" | "plugin"
   model?: string
   tools?: string[]
   maxTurns?: number
   allowedTools?: string[]
   disallowedTools?: string[]
   library?: string
+  pluginId?: string
+  pluginName?: string
+  marketplaceId?: string
+  marketplaceName?: string
+  pluginVersion?: string
 }
 
 export type NodeStatus =
