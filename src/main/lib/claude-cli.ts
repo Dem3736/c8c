@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import { promisify } from "node:util"
+import { withExecutionSlot } from "./execution-pool"
 
 const execFile = promisify(execFileCb)
 
@@ -88,6 +89,7 @@ export function findClaudeExecutable(): string | null {
 export interface ExecClaudeResult {
   stdout: string
   stderr: string
+  queueWaitMs?: number
 }
 
 export async function execClaude(
@@ -96,10 +98,12 @@ export async function execClaude(
 ): Promise<ExecClaudeResult> {
   const executable = findClaudeExecutable() || "claude"
   const env = buildClaudeEnv()
-  const { stdout, stderr } = await execFile(executable, args, {
-    timeout: opts?.timeout ?? 15_000,
-    env,
-    cwd: opts?.cwd,
+  return withExecutionSlot(async (ticket) => {
+    const { stdout, stderr } = await execFile(executable, args, {
+      timeout: opts?.timeout ?? 15_000,
+      env,
+      cwd: opts?.cwd,
+    })
+    return { stdout, stderr, queueWaitMs: ticket.queueWaitMs }
   })
-  return { stdout, stderr }
 }

@@ -1,9 +1,10 @@
-import { app, safeStorage } from "electron"
 import { mkdir, readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import type { ProviderId, ProviderSettings, SafetyProfile } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
+import { runSerialTask } from "./serial-task"
 
 interface ProviderSettingsState {
   settings: ProviderSettings
@@ -28,12 +29,43 @@ const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   },
 }
 
+interface ElectronAppLike {
+  getPath(name: "home"): string
+}
+
+interface ElectronSafeStorageLike {
+  isEncryptionAvailable(): boolean
+  encryptString(value: string): Buffer
+  decryptString(value: Buffer): string
+}
+
+const require = createRequire(import.meta.url)
+
+function getElectronBindings(): {
+  app?: ElectronAppLike
+  safeStorage?: ElectronSafeStorageLike
+} {
+  try {
+    const electron = require("electron") as {
+      app?: ElectronAppLike
+      safeStorage?: ElectronSafeStorageLike
+    }
+
+    return {
+      app: electron.app,
+      safeStorage: electron.safeStorage,
+    }
+  } catch {
+    return {}
+  }
+}
+
 function resolveHomeDir(): string {
   try {
-    const home = app.getPath("home")
+    const home = getElectronBindings().app?.getPath("home")
     if (home) return home
   } catch {
-    // app.getPath can throw before Electron finishes initialization.
+    // Electron app.getPath can throw before initialization.
   }
   return homedir()
 }
@@ -41,6 +73,8 @@ function resolveHomeDir(): string {
 function providerSettingsPath(): string {
   return join(resolveHomeDir(), ".c8c", "provider-settings.json")
 }
+
+const PROVIDER_SETTINGS_SERIAL_KEY = "provider-settings"
 
 function normalizeProviderId(value: unknown): ProviderId | undefined {
   return value === "claude" || value === "codex" ? value : undefined
@@ -57,19 +91,29 @@ function normalizeSafetyProfile(value: unknown): SafetyProfile | undefined {
 }
 
 function encodeSecret(secret: string): { encrypted?: string; plain?: string } {
-  if (safeStorage.isEncryptionAvailable()) {
-    return {
-      encrypted: safeStorage.encryptString(secret).toString("base64"),
+  try {
+    const storage = getElectronBindings().safeStorage
+    if (storage?.isEncryptionAvailable()) {
+      return {
+        encrypted: storage.encryptString(secret).toString("base64"),
+      }
     }
+  } catch {
+    // Fall back to plaintext storage outside Electron or before safeStorage is ready.
   }
+
   return { plain: secret }
 }
 
 function decodeSecret(payload: PersistedProviderSettings): string | undefined {
   if (typeof payload.codexApiKeyEncrypted === "string" && payload.codexApiKeyEncrypted.trim()) {
     try {
+      const storage = getElectronBindings().safeStorage
+      if (!storage?.isEncryptionAvailable()) {
+        return undefined
+      }
       const buffer = Buffer.from(payload.codexApiKeyEncrypted, "base64")
-      return safeStorage.decryptString(buffer)
+      return storage.decryptString(buffer)
     } catch {
       // Fall through to plaintext fallback.
     }
@@ -123,6 +167,17 @@ async function saveProviderState(state: ProviderSettingsState): Promise<void> {
   await writeFileAtomic(path, JSON.stringify(payload, null, 2))
 }
 
+async function mutateProviderState<T>(
+  mutation: (state: ProviderSettingsState) => Promise<T> | T,
+): Promise<T> {
+  return runSerialTask(PROVIDER_SETTINGS_SERIAL_KEY, async () => {
+    const state = await loadProviderState()
+    const result = await mutation(state)
+    await saveProviderState(state)
+    return result
+  })
+}
+
 export async function getProviderSettings(): Promise<ProviderSettings> {
   return (await loadProviderState()).settings
 }
@@ -130,18 +185,18 @@ export async function getProviderSettings(): Promise<ProviderSettings> {
 export async function updateProviderSettings(
   patch: Partial<ProviderSettings>,
 ): Promise<ProviderSettings> {
-  const state = await loadProviderState()
-  state.settings = {
-    defaultProvider: normalizeProviderId(patch.defaultProvider) || state.settings.defaultProvider,
-    safetyProfile: normalizeSafetyProfile(patch.safetyProfile) || state.settings.safetyProfile,
-    features: {
-      codexProvider: typeof patch.features?.codexProvider === "boolean"
-        ? patch.features.codexProvider
-        : state.settings.features.codexProvider,
-    },
-  }
-  await saveProviderState(state)
-  return state.settings
+  return mutateProviderState((state) => {
+    state.settings = {
+      defaultProvider: normalizeProviderId(patch.defaultProvider) || state.settings.defaultProvider,
+      safetyProfile: normalizeSafetyProfile(patch.safetyProfile) || state.settings.safetyProfile,
+      features: {
+        codexProvider: typeof patch.features?.codexProvider === "boolean"
+          ? patch.features.codexProvider
+          : state.settings.features.codexProvider,
+      },
+    }
+    return state.settings
+  })
 }
 
 export async function getCodexApiKey(): Promise<string | undefined> {
@@ -154,16 +209,16 @@ export async function hasCodexApiKey(): Promise<boolean> {
 
 export async function setCodexApiKey(apiKey: string): Promise<boolean> {
   const normalized = apiKey.trim()
-  const state = await loadProviderState()
-  state.codexApiKey = normalized || undefined
-  await saveProviderState(state)
-  return Boolean(normalized)
+  return mutateProviderState((state) => {
+    state.codexApiKey = normalized || undefined
+    return Boolean(normalized)
+  })
 }
 
 export async function clearCodexApiKey(): Promise<boolean> {
-  const state = await loadProviderState()
-  const hadValue = Boolean(state.codexApiKey)
-  state.codexApiKey = undefined
-  await saveProviderState(state)
-  return hadValue
+  return mutateProviderState((state) => {
+    const hadValue = Boolean(state.codexApiKey)
+    state.codexApiKey = undefined
+    return hadValue
+  })
 }

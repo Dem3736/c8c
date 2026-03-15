@@ -16,6 +16,7 @@ import { saveChain } from "../lib/chain-io"
 import { toWorkflowFileStem } from "@shared/workflow-name"
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
+import { withExecutionSlot } from "../lib/execution-pool"
 import { getProviderSettings } from "../lib/provider-settings"
 import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-runtime"
 
@@ -130,38 +131,46 @@ export function registerTemplateHandlers() {
         let result
         try {
           logInfo("templates-ipc", "generate_started", { senderId, projectPath: projectPath || null })
-          const handle = await startProviderTask(providerId, {
-            workdir: safeWorkdir,
-            prompt,
-            model,
-            maxTurns: 30,
-            systemPrompts: [
-              "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
-            ],
-            mcpConfigPath,
-            disableBuiltInTools: providerId === "claude",
-            disableSlashCommands: providerId === "claude",
-            timeout: 300_000,
-            abortSignal,
-          })
-          result = await drainExecutionHandle(handle, {
-            onLogEntry: (entry) => {
-              logParser.appendEntry(entry)
-              entryCount++
-              if (entry.type === "thinking") {
-                sendProgress("thinking", entryCount)
-              } else if (entry.type === "text") {
-                sendProgress("writing", entryCount)
-              } else if (entry.type === "tool_use" && "tool" in entry) {
-                sendProgress(`using ${entry.tool}`, entryCount)
-              }
-            },
-            onUsage: (usage) => {
-              logParser.applyUsage(usage)
-            },
-            onStderr: (text) => {
-              stderrOutput += text
-            },
+          result = await withExecutionSlot(async (ticket) => {
+            if (ticket.queueWaitMs > 0) {
+              logInfo("templates-ipc", "generate_waited_for_execution_slot", {
+                senderId,
+                queueWaitMs: ticket.queueWaitMs,
+              })
+            }
+            const handle = await startProviderTask(providerId, {
+              workdir: safeWorkdir,
+              prompt,
+              model,
+              maxTurns: 30,
+              systemPrompts: [
+                "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
+              ],
+              mcpConfigPath,
+              disableBuiltInTools: providerId === "claude",
+              disableSlashCommands: providerId === "claude",
+              timeout: 300_000,
+              abortSignal,
+            })
+            return drainExecutionHandle(handle, {
+              onLogEntry: (entry) => {
+                logParser.appendEntry(entry)
+                entryCount++
+                if (entry.type === "thinking") {
+                  sendProgress("thinking", entryCount)
+                } else if (entry.type === "text") {
+                  sendProgress("writing", entryCount)
+                } else if (entry.type === "tool_use" && "tool" in entry) {
+                  sendProgress(`using ${entry.tool}`, entryCount)
+                }
+              },
+              onUsage: (usage) => {
+                logParser.applyUsage(usage)
+              },
+              onStderr: (text) => {
+                stderrOutput += text
+              },
+            })
           })
         } catch (err) {
           const msg = String(err)

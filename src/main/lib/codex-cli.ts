@@ -1,17 +1,24 @@
-import { execFile as execFileCb, execFileSync } from "node:child_process"
+import { execFile as execFileCb } from "node:child_process"
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import { promisify } from "node:util"
+import { withExecutionSlot } from "./execution-pool"
 import { getCodexApiKey } from "./provider-settings"
 
 const execFile = promisify(execFileCb)
 let codexExecSupportPromise: Promise<boolean> | null = null
 let codexShellEnvPromise: Promise<Record<string, string>> | null = null
+let codexExecutablePromise: Promise<string | null> | null = null
+
+function getProcessResourcesPath(): string | undefined {
+  return (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+}
 
 export interface ExecCodexResult {
   stdout: string
   stderr: string
+  queueWaitMs?: number
 }
 
 function bundledCodexBinaryName(): string {
@@ -20,9 +27,10 @@ function bundledCodexBinaryName(): string {
 
 function bundledCodexResourceDirs(): string[] {
   const dirs: string[] = []
+  const resourcesPath = getProcessResourcesPath()
 
-  if (process.resourcesPath) {
-    dirs.push(join(process.resourcesPath, "bin"))
+  if (resourcesPath) {
+    dirs.push(join(resourcesPath, "bin"))
   }
 
   dirs.push(join(process.cwd(), "resources", "bin", `${process.platform}-${process.arch}`))
@@ -175,30 +183,44 @@ export function findCodexExecutable(): string | null {
     if (existsSync(candidate)) return candidate
   }
 
-  try {
-    const resolved = execFileSync("which", ["codex"], {
-      encoding: "utf-8",
-      env: { ...process.env, PATH: buildCodexPath(process.env.PATH) },
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim()
-    return resolved || null
-  } catch {
-    return null
+  return null
+}
+
+async function resolveCodexExecutable(): Promise<string | null> {
+  const found = findCodexExecutable()
+  if (found) return found
+
+  if (!codexExecutablePromise) {
+    codexExecutablePromise = withExecutionSlot(async () => {
+      try {
+        const { stdout } = await execFile("which", ["codex"], {
+          encoding: "utf8",
+          env: { ...process.env, PATH: buildCodexPath(process.env.PATH) },
+        })
+        return stdout.trim() || null
+      } catch {
+        return null
+      }
+    })
   }
+
+  return codexExecutablePromise
 }
 
 export async function execCodex(
   args: string[],
   opts?: { timeout?: number; cwd?: string; extraEnv?: Record<string, string> },
 ): Promise<ExecCodexResult> {
-  const executable = findCodexExecutable() || "codex"
+  const executable = (await resolveCodexExecutable()) || "codex"
   const env = await buildCodexEnv(opts?.extraEnv)
-  const { stdout, stderr } = await execFile(executable, args, {
-    timeout: opts?.timeout ?? 15_000,
-    env,
-    cwd: opts?.cwd,
+  return withExecutionSlot(async (ticket) => {
+    const { stdout, stderr } = await execFile(executable, args, {
+      timeout: opts?.timeout ?? 15_000,
+      env,
+      cwd: opts?.cwd,
+    })
+    return { stdout, stderr, queueWaitMs: ticket.queueWaitMs }
   })
-  return { stdout, stderr }
 }
 
 export async function supportsCodexExecSubcommand(): Promise<boolean> {

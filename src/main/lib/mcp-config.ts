@@ -38,6 +38,10 @@ export type ClaudeSdkMcpServerConfig =
       headers?: Record<string, string>
     }
 
+function getProcessResourcesPath(): string | undefined {
+  return (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
@@ -82,10 +86,11 @@ function findUpwards(startDir: string, relativePath: string): string | undefined
 }
 
 function resolveExaProxyScriptPath(): string | undefined {
+  const resourcesPath = getProcessResourcesPath()
   const candidates = [
     resolve(process.cwd(), "node_modules/@claude-tools/mcp-search-proxy/dist/exa.js"),
     resolve(process.cwd(), "packages/shared-claude-tools/packages/mcp-search-proxy/dist/exa.js"),
-    resolve(process.resourcesPath || "", "app.asar.unpacked/node_modules/@claude-tools/mcp-search-proxy/dist/exa.js"),
+    resolve(resourcesPath || "", "app.asar.unpacked/node_modules/@claude-tools/mcp-search-proxy/dist/exa.js"),
   ]
 
   for (const candidate of candidates) {

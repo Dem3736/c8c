@@ -1,7 +1,10 @@
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { execClaude } from "./claude-cli"
+import { writeFileAtomic } from "./atomic-write"
+import { logWarn } from "./structured-log"
+import { runSerialTask } from "./serial-task"
 import type { McpServerInfo, McpServerScope, McpTestResult, McpToolInfo, McpTransportType } from "@shared/types"
 
 // ── Config file paths ───────────────────────────────────
@@ -38,11 +41,21 @@ interface ClaudeConfigFile {
   }>
 }
 
+function isMissingFile(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && String((error as { code?: unknown }).code) === "ENOENT"
+}
+
 async function readClaudeConfig(): Promise<ClaudeConfigFile | null> {
   try {
     const raw = await readFile(userMcpPath(), "utf-8")
     return JSON.parse(raw) as ClaudeConfigFile
-  } catch {
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      logWarn("mcp-manager", "read_claude_config_failed", { error: String(error) })
+    }
     return null
   }
 }
@@ -76,13 +89,24 @@ async function readMcpJson(filePath: string): Promise<McpJsonFile | null> {
   try {
     const raw = await readFile(filePath, "utf-8")
     return JSON.parse(raw) as McpJsonFile
-  } catch {
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      logWarn("mcp-manager", "read_mcp_json_failed", { filePath, error: String(error) })
+    }
     return null
   }
 }
 
 async function writeMcpJson(filePath: string, data: McpJsonFile): Promise<void> {
-  await writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8")
+  await writeFileAtomic(filePath, JSON.stringify(data, null, 2) + "\n")
+}
+
+async function mutateJsonFile<T>(filePath: string, mutation: (raw: string) => Promise<T> | T): Promise<T> {
+  return runSerialTask(`mcp-json:${filePath}`, async () => {
+    const raw = await readFile(filePath, "utf-8").catch(() => "{}")
+    const result = await mutation(raw)
+    return result
+  })
 }
 
 // ── Public API ──────────────────────────────────────────
@@ -214,40 +238,51 @@ export async function toggleMcpServer(
       } else {
         delete config.mcpServers[name].disabled
       }
-      await writeMcpJson(filePath, config)
+      await runSerialTask(`mcp-json:${filePath}`, async () => {
+        const latest = await readMcpJson(filePath)
+        if (!latest?.mcpServers?.[name]) {
+          throw new Error(`Server "${name}" not found in local config.`)
+        }
+        if (disabled) {
+          latest.mcpServers[name].disabled = true
+        } else {
+          delete latest.mcpServers[name].disabled
+        }
+        await writeMcpJson(filePath, latest)
+      })
     } else {
       // Project or user scope: both live in ~/.claude.json
       const filePath = userMcpPath()
-      const raw = await readFile(filePath, "utf-8").catch(() => "{}")
-      const claudeConfig = JSON.parse(raw) as ClaudeConfigFile
+      await mutateJsonFile(filePath, async (raw) => {
+        const claudeConfig = JSON.parse(raw) as ClaudeConfigFile
 
-      if (scope === "project") {
-        if (!projectPath) {
-          return { success: false, error: "Project path required for project scope." }
-        }
-        const entry = claudeConfig.projects?.[projectPath]?.mcpServers?.[name]
-        if (!entry) {
-          return { success: false, error: `Server "${name}" not found in project config.` }
-        }
-        if (disabled) {
-          entry.disabled = true
+        if (scope === "project") {
+          if (!projectPath) {
+            throw new Error("Project path required for project scope.")
+          }
+          const entry = claudeConfig.projects?.[projectPath]?.mcpServers?.[name]
+          if (!entry) {
+            throw new Error(`Server "${name}" not found in project config.`)
+          }
+          if (disabled) {
+            entry.disabled = true
+          } else {
+            delete entry.disabled
+          }
         } else {
-          delete entry.disabled
+          const entry = claudeConfig.mcpServers?.[name]
+          if (!entry) {
+            throw new Error(`Server "${name}" not found in user config.`)
+          }
+          if (disabled) {
+            entry.disabled = true
+          } else {
+            delete entry.disabled
+          }
         }
-      } else {
-        // user scope
-        const entry = claudeConfig.mcpServers?.[name]
-        if (!entry) {
-          return { success: false, error: `Server "${name}" not found in user config.` }
-        }
-        if (disabled) {
-          entry.disabled = true
-        } else {
-          delete entry.disabled
-        }
-      }
 
-      await writeFile(filePath, JSON.stringify(claudeConfig, null, 2) + "\n", "utf-8")
+        await writeFileAtomic(filePath, JSON.stringify(claudeConfig, null, 2) + "\n")
+      })
     }
 
     return { success: true }
