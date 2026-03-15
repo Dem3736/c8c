@@ -1,28 +1,12 @@
 import {
   app,
   BrowserWindow,
-  Notification,
   screen,
   shell,
   type BrowserWindowConstructorOptions,
-  type Rectangle,
 } from "electron"
-import { join, resolve } from "path"
-import { readFile, mkdir } from "node:fs/promises"
-import { registerIpcHandlers } from "./ipc/projects"
-import { registerSkillsHandlers } from "./ipc/skills"
-import { registerWorkflowsHandlers } from "./ipc/workflows"
-import { registerExecutorHandlers } from "./ipc/executor"
-import { registerLibrariesHandlers } from "./ipc/libraries"
-import { registerTemplateHandlers } from "./ipc/templates"
-import {
-  emitDesktopRuntimeUpdate,
-  registerSystemHandlers,
-  setDesktopRuntimeWindowProvider,
-} from "./ipc/system"
-import { registerChatHandlers } from "./ipc/chat"
-import { registerMcpHandlers } from "./ipc/mcp"
-import { registerFilesHandlers } from "./ipc/files"
+import { join } from "path"
+import { emitDesktopRuntimeUpdate } from "./ipc/system"
 import {
   flushTelemetryService,
   initTelemetryService,
@@ -30,17 +14,25 @@ import {
 } from "./lib/telemetry/service"
 import { initUpdater, shutdownUpdater } from "./lib/updater"
 import { recoverRuntimeState } from "./lib/run-recovery"
-import { writeFileAtomic } from "./lib/atomic-write"
-import { fetchRemoteTemplate } from "./lib/templates/remote"
+import {
+  configureDeepLinkProtocol,
+  extractDeepLinkUrl,
+  handleDeepLink,
+} from "./deep-links"
+import { registerMainHandlers } from "./register-handlers"
+import {
+  areBoundsEqual,
+  loadWindowState,
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+  normalizeBounds,
+  normalizeWindowState,
+  persistWindowState,
+} from "./window-state"
 
 app.name = "c8c"
 
-// ── Protocol registration ─────────────────────────────
-if (!app.isPackaged && process.argv[1]) {
-  app.setAsDefaultProtocolClient("c8c", process.execPath, [resolve(process.argv[1])])
-} else {
-  app.setAsDefaultProtocolClient("c8c")
-}
+configureDeepLinkProtocol()
 
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
@@ -51,140 +43,6 @@ let mainWindow: BrowserWindow | null = null
 let pendingDeepLinkUrl: string | null = null
 const processStartedAt = Date.now()
 
-interface PersistedWindowState {
-  width: number
-  height: number
-  x?: number
-  y?: number
-  isMaximized: boolean
-}
-
-const DEFAULT_WINDOW_STATE: PersistedWindowState = {
-  width: 1280,
-  height: 840,
-  isMaximized: false,
-}
-
-const MIN_WINDOW_WIDTH = 900
-const MIN_WINDOW_HEIGHT = 640
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
-}
-
-function intersectionArea(a: Rectangle, b: Rectangle): number {
-  const xOverlap = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x))
-  const yOverlap = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y))
-  return xOverlap * yOverlap
-}
-
-function normalizeBounds(bounds: Rectangle): Rectangle {
-  const nearestDisplay = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y }).workArea
-  const width = clamp(bounds.width, MIN_WINDOW_WIDTH, Math.max(MIN_WINDOW_WIDTH, nearestDisplay.width))
-  const height = clamp(bounds.height, MIN_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, nearestDisplay.height))
-
-  const candidate: Rectangle = { x: bounds.x, y: bounds.y, width, height }
-  const isVisible = screen.getAllDisplays().some((display) => {
-    const visibleArea = intersectionArea(candidate, display.workArea)
-    return visibleArea >= Math.min(candidate.width * candidate.height * 0.15, 120_000)
-  })
-
-  if (!isVisible) {
-    const primary = screen.getPrimaryDisplay().workArea
-    const centeredWidth = clamp(width, MIN_WINDOW_WIDTH, Math.max(MIN_WINDOW_WIDTH, primary.width))
-    const centeredHeight = clamp(height, MIN_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, primary.height))
-    return {
-      x: Math.round(primary.x + (primary.width - centeredWidth) / 2),
-      y: Math.round(primary.y + (primary.height - centeredHeight) / 2),
-      width: centeredWidth,
-      height: centeredHeight,
-    }
-  }
-
-  const display = screen.getDisplayMatching(candidate).workArea
-  const maxX = display.x + Math.max(0, display.width - width)
-  const maxY = display.y + Math.max(0, display.height - height)
-
-  return {
-    x: clamp(candidate.x, display.x, maxX),
-    y: clamp(candidate.y, display.y, maxY),
-    width,
-    height,
-  }
-}
-
-function normalizeWindowState(saved: PersistedWindowState): PersistedWindowState {
-  const hasPosition = typeof saved.x === "number" && typeof saved.y === "number"
-  if (!hasPosition) {
-    const primary = screen.getPrimaryDisplay().workArea
-    return {
-      ...saved,
-      width: clamp(saved.width, MIN_WINDOW_WIDTH, Math.max(MIN_WINDOW_WIDTH, primary.width)),
-      height: clamp(saved.height, MIN_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, primary.height)),
-    }
-  }
-
-  const x = saved.x as number
-  const y = saved.y as number
-  const normalized = normalizeBounds({
-    x,
-    y,
-    width: saved.width,
-    height: saved.height,
-  })
-
-  return {
-    ...saved,
-    x: normalized.x,
-    y: normalized.y,
-    width: normalized.width,
-    height: normalized.height,
-  }
-}
-
-function areBoundsEqual(a: Rectangle, b: Rectangle): boolean {
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
-}
-
-function windowStatePath() {
-  return join(app.getPath("userData"), "window-state.json")
-}
-
-async function loadWindowState(): Promise<PersistedWindowState> {
-  try {
-    const raw = await readFile(windowStatePath(), "utf-8")
-    const parsed = JSON.parse(raw) as Partial<PersistedWindowState>
-    return {
-      width: typeof parsed.width === "number" ? Math.max(MIN_WINDOW_WIDTH, Math.round(parsed.width)) : DEFAULT_WINDOW_STATE.width,
-      height: typeof parsed.height === "number" ? Math.max(MIN_WINDOW_HEIGHT, Math.round(parsed.height)) : DEFAULT_WINDOW_STATE.height,
-      x: typeof parsed.x === "number" ? Math.round(parsed.x) : undefined,
-      y: typeof parsed.y === "number" ? Math.round(parsed.y) : undefined,
-      isMaximized: Boolean(parsed.isMaximized),
-    }
-  } catch {
-    return DEFAULT_WINDOW_STATE
-  }
-}
-
-async function persistWindowState(window: BrowserWindow): Promise<void> {
-  const isMaximized = window.isMaximized()
-  const bounds: Rectangle = isMaximized ? window.getNormalBounds() : window.getBounds()
-  const payload: PersistedWindowState = {
-    width: bounds.width,
-    height: bounds.height,
-    x: bounds.x,
-    y: bounds.y,
-    isMaximized,
-  }
-
-  try {
-    await mkdir(app.getPath("userData"), { recursive: true })
-    await writeFileAtomic(windowStatePath(), JSON.stringify(payload, null, 2))
-  } catch (error) {
-    console.error("[main] failed to persist window state:", error)
-  }
-}
-
 function isSafeExternalUrl(rawUrl: string): boolean {
   try {
     const url = new URL(rawUrl)
@@ -194,115 +52,11 @@ function isSafeExternalUrl(rawUrl: string): boolean {
   }
 }
 
-// ── OS Notifications for workflow events ──────────────
-
-function handleWorkflowNotification(
-  window: BrowserWindow,
-  event: Record<string, unknown>,
-): void {
-  // Only notify when the window is not focused
-  if (window.isFocused()) return
-
-  const eventType = event.type as string
-
-  if (eventType === "run-done") {
-    const status = event.status as string
-    if (status === "completed") {
-      const notification = new Notification({
-        title: "c8c",
-        body: "Workflow completed",
-      })
-      notification.on("click", () => {
-        window.show()
-        window.focus()
-      })
-      notification.show()
-
-      if (process.platform === "darwin" && app.dock) {
-        app.dock.bounce("informational")
-      }
-    } else if (status === "failed" || status === "interrupted") {
-      const notification = new Notification({
-        title: "c8c",
-        body: "Workflow failed",
-      })
-      notification.on("click", () => {
-        window.show()
-        window.focus()
-      })
-      notification.show()
-    }
-  } else if (eventType === "approval-requested") {
-    const nodeId = event.nodeId as string
-    const notification = new Notification({
-      title: "c8c",
-      body: `Approval needed: ${nodeId}`,
-    })
-    notification.on("click", () => {
-      window.show()
-      window.focus()
-    })
-    notification.show()
-
-    window.flashFrame(true)
-    if (process.platform === "darwin" && app.dock) {
-      app.dock.bounce("critical")
-    }
-  }
-}
-
-// ── Deep link handling ─────────────────────────────────
-
-const TEMPLATE_ID_RE = /^\/([a-zA-Z0-9_-]+)$/
-
-async function handleDeepLink(rawUrl: string): Promise<void> {
-  let parsed: URL
-  try {
-    parsed = new URL(rawUrl)
-  } catch {
-    console.warn("[main] malformed deep link URL:", rawUrl)
-    return
-  }
-
-  if (parsed.protocol !== "c8c:" || parsed.hostname !== "hub") {
-    console.warn("[main] unsupported deep link:", rawUrl)
-    return
-  }
-
-  const match = parsed.pathname.match(TEMPLATE_ID_RE)
-  if (!match) {
-    console.warn("[main] invalid template id in deep link:", parsed.pathname)
-    return
-  }
-
-  const templateId = match[1]
-  const window = mainWindow
-
-  if (!window || window.isDestroyed()) {
-    console.warn("[main] no window available for deep link")
-    return
-  }
-
-  try {
-    const template = await fetchRemoteTemplate(templateId)
-    window.webContents.send("template:deep-link", template)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    window.webContents.send("template:deep-link-error", { templateId, error: message })
-  }
-
-  window.show()
-  window.focus()
-  if (process.platform === "darwin" && app.dock) {
-    app.dock.bounce("informational")
-  }
-}
-
 // macOS: open-url fires before whenReady on cold launch
 app.on("open-url", (event, url) => {
   event.preventDefault()
   if (mainWindow && !mainWindow.isDestroyed()) {
-    void handleDeepLink(url)
+    void handleDeepLink(url, mainWindow)
   } else {
     pendingDeepLinkUrl = url
   }
@@ -310,8 +64,8 @@ app.on("open-url", (event, url) => {
 
 // Windows/Linux: second instance receives URL via argv
 app.on("second-instance", (_event, argv) => {
-  const url = argv.find((arg) => arg.startsWith("c8c://"))
-  if (url) void handleDeepLink(url)
+  const url = extractDeepLinkUrl(argv)
+  if (url) void handleDeepLink(url, mainWindow)
   if (mainWindow) {
     mainWindow.show()
     mainWindow.focus()
@@ -347,15 +101,6 @@ function createWindow() {
 
     mainWindow = new BrowserWindow(windowOptions)
     const window = mainWindow
-
-    // Wrap webContents.send to intercept workflow events for OS notifications
-    const originalSend = window.webContents.send.bind(window.webContents)
-    window.webContents.send = (channel: string, ...args: unknown[]) => {
-      if (channel === "workflow:event" && args[0] && typeof args[0] === "object") {
-        handleWorkflowNotification(window, args[0] as Record<string, unknown>)
-      }
-      return originalSend(channel, ...args)
-    }
 
     const emitRuntime = () => emitDesktopRuntimeUpdate(window)
     let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -421,7 +166,7 @@ function createWindow() {
     window.webContents.on("did-finish-load", () => {
       emitRuntime()
       if (pendingDeepLinkUrl) {
-        void handleDeepLink(pendingDeepLinkUrl)
+        void handleDeepLink(pendingDeepLinkUrl, window)
         pendingDeepLinkUrl = null
       }
     })
@@ -487,29 +232,7 @@ app.whenReady().then(async () => {
   }
 
   console.log("[main] app ready, registering IPC handlers...")
-  setDesktopRuntimeWindowProvider(() => mainWindow)
-
-  const handlers = [
-    ["projects", registerIpcHandlers],
-    ["skills", registerSkillsHandlers],
-    ["workflows", registerWorkflowsHandlers],
-    ["executor", registerExecutorHandlers],
-    ["libraries", registerLibrariesHandlers],
-    ["templates", registerTemplateHandlers],
-    ["system", registerSystemHandlers],
-    ["chat", registerChatHandlers],
-    ["mcp", registerMcpHandlers],
-    ["files", registerFilesHandlers],
-  ] as const
-
-  for (const [name, register] of handlers) {
-    try {
-      register()
-      console.log(`[main] ✓ ${name} handlers registered`)
-    } catch (err) {
-      console.error(`[main] ✗ FAILED to register ${name} handlers:`, err)
-    }
-  }
+  registerMainHandlers(() => mainWindow)
 
   console.log("[main] all handlers registered, creating window...")
   createWindow()

@@ -30,6 +30,7 @@ import { mergeResults, buildMergerPrompt } from "./node-executors/merger"
 import { prepareWorkspaceMcpConfig, type WebSearchBackend } from "./mcp-config"
 import { scanAllSkills } from "./skill-scanner"
 import { resolveNodeProviderId, resolveWorkflowProviderId, startProviderTask } from "./provider-runtime"
+import { sendWorkflowEvent } from "../workflow-notifications"
 import {
   finalizeRunPidManifest,
   initRunPidManifest,
@@ -923,15 +924,126 @@ export function cancelWorkflowRun(runId: string): boolean {
   return false
 }
 
-export async function runWorkflow(
-  runId: string,
-  workflow: Workflow,
-  input: WorkflowInput,
+type WorkflowExecutionMode = "run" | "rerun"
+
+interface WorkflowExecutionSession {
+  runId: string
+  mode: WorkflowExecutionMode
+  workflow: Workflow
+  persistedInput: WorkflowInput
+  window: BrowserWindow
+  workspace: string
+  nodeStates: Record<string, NodeState>
+  runtimeWorkflow: RuntimeWorkflow
+  activatedEdges: Set<string>
+  projectPath?: string
+  workflowPath?: string
+  webSearchBackend?: WebSearchBackend
+}
+
+function emitWorkflowEvent(
   window: BrowserWindow,
-  projectPath?: string,
-  workflowPath?: string,
-  webSearchBackend?: WebSearchBackend,
-): Promise<WorkflowRunSummary> {
+  event: WorkflowEvent,
+  onError?: (error: unknown) => void,
+): void {
+  try {
+    if (!window.isDestroyed()) {
+      sendWorkflowEvent(window, event)
+    }
+  } catch (error) {
+    onError?.(error)
+  }
+}
+
+function createWorkflowEventSender({
+  window,
+  runId,
+  workspace,
+  nodeStates,
+  workflowProviderId,
+  getRuntimeWorkflow,
+}: {
+  window: BrowserWindow
+  runId: string
+  workspace: string
+  nodeStates: Record<string, NodeState>
+  workflowProviderId: ProviderId
+  getRuntimeWorkflow: () => RuntimeWorkflow
+}): (event: WorkflowEvent) => void {
+  return (event: WorkflowEvent) => {
+    emitWorkflowEvent(window, event, (error) => {
+      logWarn("workflow-runner", "send_workflow_event_failed", {
+        runId,
+        workspace,
+        eventType: event.type,
+        error: errorMessage(error),
+      })
+    })
+
+    if (event.type !== "node-done" && event.type !== "node-error") return
+
+    const state = nodeStates[event.nodeId]
+    const runtimeWorkflow = getRuntimeWorkflow()
+    const node = runtimeWorkflow.nodes.find((candidate) => candidate.id === event.nodeId)
+    if (!state || !node) return
+
+    const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
+    void trackTelemetryEvent("workflow_node_finished", {
+      provider: nodeProvider,
+      backend: state.meta?.backend ?? null,
+      node_type: node.type,
+      status: state.status,
+      duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
+      error_kind: state.errorKind ?? null,
+    })
+  }
+}
+
+async function writeRunResultSnapshot(
+  workspace: string,
+  payload: {
+    runId: string
+    status: RunStatus | "running"
+    workflowName: string
+    workflowPath: string
+    startedAt: number
+    completedAt: number
+    reportPath: string
+    totalCost?: number
+    totalTokensIn?: number
+    totalTokensOut?: number
+    evalScores?: Record<string, number>
+    durationMs?: number
+  },
+): Promise<void> {
+  await writeFileAtomic(
+    join(workspace, "run-result.json"),
+    JSON.stringify({
+      ...payload,
+      workspace,
+      totalCost: payload.totalCost ?? 0,
+      totalTokensIn: payload.totalTokensIn ?? 0,
+      totalTokensOut: payload.totalTokensOut ?? 0,
+      evalScores: payload.evalScores ?? {},
+      durationMs: payload.durationMs ?? 0,
+    }, null, 2),
+  )
+}
+
+async function executeWorkflowSession(session: WorkflowExecutionSession): Promise<WorkflowRunSummary> {
+  const {
+    runId,
+    mode,
+    workflow,
+    window,
+    workspace,
+    nodeStates,
+    activatedEdges,
+    projectPath,
+    workflowPath,
+    webSearchBackend,
+  } = session
+
   const controller = new AbortController()
   activeRuns.set(runId, controller)
   pausedRuns.set(runId, { paused: false, resume: null })
@@ -939,121 +1051,69 @@ export async function runWorkflow(
   const onWindowClosed = () => controller.abort()
   window.on("closed", onWindowClosed)
 
-  const nodeStates = createInitialNodeStates(workflow)
-  const activatedEdges = new Set<string>()
-
-  // Runtime workflow — may be expanded when splitters are processed
-  let runtimeWorkflow: RuntimeWorkflow = {
-    ...workflow,
-    nodes: [...workflow.nodes],
-    edges: [...workflow.edges],
-    runtimeMeta: {},
-  }
-
-  const send = (event: WorkflowEvent) => {
-    try {
-      if (!window.isDestroyed()) {
-        window.webContents.send("workflow:event", event)
-      }
-    } catch (error) {
-      logWarn("workflow-runner", "send_workflow_event_failed", {
-        runId,
-        workspace,
-        eventType: event.type,
-        error: errorMessage(error),
-      })
-    }
-
-    // Track node completion telemetry
-    if (event.type === "node-done" || event.type === "node-error") {
-      const state = nodeStates[event.nodeId]
-      const node = runtimeWorkflow.nodes.find((n) => n.id === event.nodeId)
-      if (state && node) {
-        const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
-        void trackTelemetryEvent("workflow_node_finished", {
-          provider: nodeProvider,
-          backend: state.meta?.backend ?? null,
-          node_type: node.type,
-          status: state.status,
-          duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
-          error_kind: state.errorKind ?? null,
-        })
-      }
-    }
-  }
-
-  // Create workspace inside project dir when possible (so Claude has file access)
-  const workspaceBase = projectPath
-    ? join(projectPath, ".c8c", "runs")
-    : join(tmpdir(), "c8c-ws")
-  await mkdir(workspaceBase, { recursive: true })
-  const workspace = await mkdtemp(join(workspaceBase, `${runId}-`))
-  await mkdir(join(workspace, "reports"), { recursive: true })
-  await mkdir(join(workspace, "outputs"), { recursive: true })
-
-  const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
+  let runtimeWorkflow = session.runtimeWorkflow
   const workflowProviderId = await resolveWorkflowProviderId(workflow)
-  const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
-
-  const sanitizedInputValue = sanitizeInvalidUnicode(input.value)
-
-  // Write initial input to workspace/content.md
-  await writeFileAtomic(join(workspace, "content.md"), sanitizedInputValue)
-
-  // Write initial run-result.json so interrupted runs are detectable
-  const startedAt = Date.now()
-  await writeFileAtomic(
-    join(workspace, "run-result.json"),
-    JSON.stringify({
-      runId,
-      status: "running",
-      workflowName: workflow.name,
-      workflowPath: workflowPath || "",
-      startedAt,
-      completedAt: 0,
-      reportPath: "",
-      workspace,
-    }, null, 2),
-  )
-
-  await persistRunState(
+  const send = createWorkflowEventSender({
+    window,
+    runId,
     workspace,
     nodeStates,
-    runtimeWorkflow,
-    { type: "text", value: sanitizedInputValue },
-  )
-  await initRunPidManifest(workspace, runId, "run")
+    workflowProviderId,
+    getRuntimeWorkflow: () => runtimeWorkflow,
+  })
+  const startedAt = Date.now()
+  const inputContent = sanitizeInvalidUnicode(session.persistedInput.value)
+  const persistedInput = {
+    ...session.persistedInput,
+    value: inputContent,
+  }
 
-  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "run", workflowProviderId))
+  await mkdir(join(workspace, "reports"), { recursive: true })
+  await mkdir(join(workspace, "outputs"), { recursive: true })
+  await writeFileAtomic(join(workspace, "content.md"), inputContent)
 
-  const inputContent = sanitizedInputValue
+  const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
+  const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
+
+  await writeRunResultSnapshot(workspace, {
+    runId,
+    status: "running",
+    workflowName: workflow.name,
+    workflowPath: workflowPath || "",
+    startedAt,
+    completedAt: 0,
+    reportPath: "",
+  })
+
+  await persistRunState(workspace, nodeStates, runtimeWorkflow, persistedInput)
+  await initRunPidManifest(workspace, runId, mode)
+
+  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, mode, workflowProviderId))
+
   let manifestStatus: RunStatus = "interrupted"
 
   try {
     const maxParallel = workflow.defaults?.maxParallel || 8
 
-    // Process a single node — extracted as a helper
-    // Returns true if an evaluator retry was triggered (need to re-check ready nodes)
-    // Accumulated cost tracker for budget enforcement
     const getAccumulatedCost = (): number => {
       let total = 0
-      for (const s of Object.values(nodeStates)) {
-        if (s.metrics?.cost_usd) total += s.metrics.cost_usd
+      for (const state of Object.values(nodeStates)) {
+        if (state.metrics?.cost_usd) total += state.metrics.cost_usd
       }
       return total
     }
 
     const getAccumulatedTokens = (): number => {
       let total = 0
-      for (const s of Object.values(nodeStates)) {
-        if (s.metrics) total += s.metrics.tokens_in + s.metrics.tokens_out
+      for (const state of Object.values(nodeStates)) {
+        if (state.metrics) total += state.metrics.tokens_in + state.metrics.tokens_out
       }
       return total
     }
 
     const processNode = async (nodeId: string): Promise<void> => {
       if (controller.signal.aborted) return
-      const node = runtimeWorkflow.nodes.find((n) => n.id === nodeId)!
+      const node = runtimeWorkflow.nodes.find((candidate) => candidate.id === nodeId)!
       const isRuntimeClone = Boolean(runtimeWorkflow.runtimeMeta?.[node.id])
       const runtimePolicy = resolveRuntimePolicy(node, isRuntimeClone)
       const state = nodeStates[node.id]
@@ -1065,7 +1125,6 @@ export async function runWorkflow(
 
       send({ type: "node-start", runId, nodeId: node.id })
 
-      // Budget check — skip node if budget exceeded
       if (node.type !== "input" && node.type !== "output") {
         const budgetCost = workflow.defaults?.budget_cost_usd
         const budgetTokens = workflow.defaults?.budget_tokens
@@ -1091,8 +1150,7 @@ export async function runWorkflow(
       let incomingContent = inputContent
 
       try {
-        // Gather input from completed upstream nodes
-        const incoming = runtimeWorkflow.edges.filter((e) => e.target === node.id)
+        const incoming = runtimeWorkflow.edges.filter((edge) => edge.target === node.id)
         incomingContent = selectIncomingContent(incoming, nodeStates, inputContent)
 
         let output: NodeInput
@@ -1105,53 +1163,45 @@ export async function runWorkflow(
           case "skill": {
             const config = node.config as SkillNodeConfig
             const nodeProviderId = await resolveNodeProviderId(node, workflow)
-
-            // Check if this is a runtime fan-out copy
             const meta = runtimeWorkflow.runtimeMeta?.[node.id]
-
-            // If runtime copy, inject subtask content into the incoming content
             const effectiveInputRaw = meta
               ? `Subtask: ${meta.subtaskKey}\n\n${meta.subtaskContent}\n\n--- Original Content ---\n${incomingContent}`
               : incomingContent
             const effectiveInput = sanitizeInvalidUnicode(effectiveInputRaw)
-
-            // Use per-node content file to avoid races in parallel execution
             const contentFile = join(workspace, `content-${node.id.replace(/[^a-zA-Z0-9-]/g, "_")}.md`)
             await writeFileAtomic(contentFile, effectiveInput)
 
             const workdir = projectPath || workspace
             const logParser = new LogParser()
 
-            // Check for retry feedback from evaluator fail edges
             let retryFeedback = ""
             for (const edge of incoming) {
-              if (edge.type === "fail") {
-                const evalOutput = nodeStates[edge.source]?.output
-                if (evalOutput?.metadata?.score != null) {
-                  const lines = [
-                    "## Retry Instructions",
-                    `Your previous output scored ${evalOutput.metadata.score}/10.`,
-                    `Feedback: ${evalOutput.metadata.reason}`,
-                  ]
-                  if (evalOutput.metadata.fix_instructions) {
-                    lines.push("", "**What to fix:**", evalOutput.metadata.fix_instructions)
-                  }
-                  lines.push(
-                    "",
-                    `Attempt ${(evalOutput.metadata.iteration || 0) + 1}. Please improve based on this feedback.`,
-                    "",
-                  )
-                  retryFeedback = lines.join("\n")
-                }
+              if (edge.type !== "fail") continue
+              const evalOutput = nodeStates[edge.source]?.output
+              if (evalOutput?.metadata?.score == null) continue
+
+              const lines = [
+                "## Retry Instructions",
+                `Your previous output scored ${evalOutput.metadata.score}/10.`,
+                `Feedback: ${evalOutput.metadata.reason}`,
+              ]
+              if (evalOutput.metadata.fix_instructions) {
+                lines.push("", "**What to fix:**", evalOutput.metadata.fix_instructions)
               }
+              lines.push(
+                "",
+                `Attempt ${(evalOutput.metadata.iteration || 0) + 1}. Please improve based on this feedback.`,
+                "",
+              )
+              retryFeedback = lines.join("\n")
             }
 
             const upstreamIds = collectUpstreamIds(node.id, runtimeWorkflow.edges, nodeStates)
             const manifestLines: string[] = []
-            for (const uid of upstreamIds) {
-              const upNode = runtimeWorkflow.nodes.find((n) => n.id === uid)
-              const sanitized = uid.replace(/[^a-zA-Z0-9-]/g, "_")
-              const label = (upNode?.config as Record<string, unknown>)?.label || upNode?.type || uid
+            for (const upstreamId of upstreamIds) {
+              const upstreamNode = runtimeWorkflow.nodes.find((candidate) => candidate.id === upstreamId)
+              const sanitized = upstreamId.replace(/[^a-zA-Z0-9-]/g, "_")
+              const label = (upstreamNode?.config as Record<string, unknown>)?.label || upstreamNode?.type || upstreamId
               manifestLines.push(`- outputs/${sanitized}.md  (${label})`)
             }
 
@@ -1181,7 +1231,6 @@ export async function runWorkflow(
             }
 
             recoverOutputOnError = async () => {
-              // On transport/model failures we still persist best-effort output for downstream nodes.
               const remaining = logParser.flush()
               for (const entry of remaining) {
                 state.log.push(entry)
@@ -1198,11 +1247,9 @@ export async function runWorkflow(
               )
             }
 
-            // Resolve effective permission mode: node override → workflow default → "edit"
             const effectivePermissionMode: PermissionMode =
               config.permissionMode ?? workflow.defaults?.permissionMode ?? "edit"
 
-            // Merge allowed/disallowed tools from node config and workflow defaults
             const mergedAllowed = [...new Set([
               ...(workflow.defaults?.allowedTools || []),
               ...(config.allowedTools || []),
@@ -1216,18 +1263,22 @@ export async function runWorkflow(
               ...planDisallowed,
             ])]
 
-            // Snapshot HEAD before running to diff only node's commits (edit mode only)
             let preRunHead = ""
             const isGitRepo = effectivePermissionMode === "edit" && (() => {
               try {
                 execSync("git rev-parse --is-inside-work-tree", { cwd: workdir, stdio: "pipe" })
                 return true
-              } catch { return false }
+              } catch {
+                return false
+              }
             })()
+
             if (isGitRepo) {
               try {
                 preRunHead = execSync("git rev-parse HEAD", { cwd: workdir, encoding: "utf-8" }).trim()
-              } catch { /* non-critical */ }
+              } catch {
+                // Non-critical
+              }
             }
 
             let skillStderr = ""
@@ -1239,7 +1290,7 @@ export async function runWorkflow(
               permissionMode: "acceptEdits",
               executionMode: effectivePermissionMode,
               mcpConfigPath,
-              addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
+              addDirs: config.skillPaths?.map((path) => (path.endsWith(".md") ? dirname(path) : path)),
               allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
               disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
               abortSignal: controller.signal,
@@ -1247,7 +1298,7 @@ export async function runWorkflow(
             }, {
               workspace,
               runId,
-              mode: "run",
+              mode,
               role: "skill",
               nodeId: node.id,
             }, {
@@ -1272,16 +1323,13 @@ export async function runWorkflow(
             })
             skillBackend = result.backend
 
-            // Flush remaining buffer
-            const remaining = logParser.flush()
-            for (const entry of remaining) {
+            for (const entry of logParser.flush()) {
               state.log.push(entry)
               send({ type: "node-log", runId, nodeId: node.id, entry })
             }
 
             updateSkillMetricsAndMeta()
 
-            // Capture git diff of only the commits made by this node
             if (isGitRepo && preRunHead) {
               try {
                 const postRunHead = execSync("git rev-parse HEAD", { cwd: workdir, encoding: "utf-8" }).trim()
@@ -1300,7 +1348,9 @@ export async function runWorkflow(
                     send({ type: "node-log", runId, nodeId: node.id, entry: diffEntry })
                   }
                 }
-              } catch { /* non-critical */ }
+              } catch {
+                // Non-critical
+              }
             }
 
             if (!result.success && !controller.signal.aborted) {
@@ -1315,7 +1365,6 @@ export async function runWorkflow(
               effectiveInput,
               node.id,
             )
-            console.log(`[skill] ${node.id} output: ${output.content.length} chars (source: ${output.metadata.output_source || "input_fallback"})`)
             recoverOutputOnError = undefined
             break
           }
@@ -1345,7 +1394,7 @@ export async function runWorkflow(
             }, {
               workspace,
               runId,
-              mode: "run",
+              mode,
               role: "evaluator",
               nodeId: node.id,
             }, {
@@ -1370,13 +1419,11 @@ export async function runWorkflow(
               throw new Error(`Evaluator node failed: ${detail}`)
             }
 
-            const remaining = logParser.flush()
-            for (const entry of remaining) {
+            for (const entry of logParser.flush()) {
               state.log.push(entry)
               send({ type: "node-log", runId, nodeId: node.id, entry })
             }
 
-            // Collect evaluator metrics
             const evalMetrics = collectMetrics(logParser, state.startedAt!)
             evalMetrics.cost_usd = estimateCost(evalModel, evalMetrics.tokens_in, evalMetrics.tokens_out)
             state.metrics = evalMetrics
@@ -1384,9 +1431,10 @@ export async function runWorkflow(
 
             const evalResult = parseEvaluatorOutput(state.log)
             if (!evalResult) {
-              const rawExcerpt = (state.log ?? "").slice(0, 500)
+              const rawExcerpt = String(state.log ?? "").slice(0, 500)
               throw new Error(`Evaluator output parse failed. Expected JSON with numeric 'score' field. Actual output: ${rawExcerpt}`)
             }
+
             const score = evalResult.score
             const reason = evalResult.reason
             const fixInstructions = evalResult.fix_instructions
@@ -1414,44 +1462,38 @@ export async function runWorkflow(
             }
 
             if (passed) {
-              // PASS — activate pass edges, complete normally
               output = { content: incomingContent, metadata: evalMetadata }
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                if (e.type === "pass" || e.type === "default") activatedEdges.add(e.id)
+              for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
               }
             } else if (state.attempts < evalConfig.maxRetries && evalConfig.retryFrom) {
-              // FAIL with retries left — reset and retry
               const retryTargetId = evalConfig.retryFrom
               const retryTargetState = nodeStates[retryTargetId]
 
               if (!retryTargetState || retryTargetState.status === "running") {
-                // Can't retry — node missing or still running. Treat as exhausted.
                 output = { content: incomingContent, metadata: evalMetadata }
-                for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                  if (e.type === "pass" || e.type === "default") activatedEdges.add(e.id)
+                for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                  if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
                 }
                 break
               }
 
               state.output = { content: incomingContent, metadata: evalMetadata }
 
-              // BFS from retry target to evaluator: reset ALL intermediate nodes
-              // This handles splitter→branches→merger chains where merger must be re-run
               const toReset = new Set<string>()
               const resetQueue = [retryTargetId]
               while (resetQueue.length > 0) {
                 const id = resetQueue.shift()!
-                if (toReset.has(id) || id === node.id) continue // stop at evaluator
+                if (toReset.has(id) || id === node.id) continue
                 toReset.add(id)
-                for (const e of getOutgoingEdges(runtimeWorkflow, id)) {
-                  resetQueue.push(e.target)
+                for (const edge of getOutgoingEdges(runtimeWorkflow, id)) {
+                  resetQueue.push(edge.target)
                 }
               }
 
-              // Deactivate edges and reset states for all intermediate nodes
               for (const id of toReset) {
-                for (const e of getOutgoingEdges(runtimeWorkflow, id)) {
-                  activatedEdges.delete(e.id)
+                for (const edge of getOutgoingEdges(runtimeWorkflow, id)) {
+                  activatedEdges.delete(edge.id)
                 }
                 if (nodeStates[id]) {
                   nodeStates[id] = {
@@ -1463,25 +1505,21 @@ export async function runWorkflow(
                 }
               }
 
-              // Deactivate evaluator's outgoing edges
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                activatedEdges.delete(e.id)
+              for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                activatedEdges.delete(edge.id)
               }
-              // Activate fail edges
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                if (e.type === "fail") activatedEdges.add(e.id)
+              for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                if (edge.type === "fail") activatedEdges.add(edge.id)
               }
 
-              // Reset evaluator (keep attempts)
               state.status = "pending"
               state.log = []
 
-              return // Skip normal completion, main loop will re-check ready nodes
+              return
             } else {
-              // Max retries exhausted — pass through as-is
               output = { content: incomingContent, metadata: evalMetadata }
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                if (e.type === "pass" || e.type === "default") activatedEdges.add(e.id)
+              for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
               }
             }
             break
@@ -1517,7 +1555,7 @@ export async function runWorkflow(
               }, {
                 workspace,
                 runId,
-                mode: "run",
+                mode,
                 role: "splitter",
                 nodeId: node.id,
               }, {
@@ -1536,8 +1574,7 @@ export async function runWorkflow(
                 },
               })
 
-              const remaining = logParser.flush()
-              for (const entry of remaining) {
+              for (const entry of logParser.flush()) {
                 state.log.push(entry)
                 send({ type: "node-log", runId, nodeId: node.id, entry })
               }
@@ -1564,11 +1601,9 @@ export async function runWorkflow(
               return logParser.textContent
             }
 
-            // Fast-path: if input is already structured, skip Claude entirely
             const structuredSubtasks = tryStructuredSplit(incomingContent, maxBranches)
             let subtasks: Subtask[]
             if (structuredSubtasks) {
-              console.log(`[splitter] using structured input directly (${structuredSubtasks.length} subtasks)`)
               const entry = {
                 type: "text" as const,
                 content: `[splitter] using structured input directly (${structuredSubtasks.length} subtasks)\n`,
@@ -1579,12 +1614,10 @@ export async function runWorkflow(
               subtasks = structuredSubtasks
             } else {
               const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-              console.log(`[splitter] spawning ${splitterProviderId}...`)
               let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
               subtasks = parseSplitterOutput(splitterRawOutput)
 
               if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
-                console.warn(`[splitter] ${node.id} returned suspicious single subtask, retrying with stricter prompt`)
                 const recoveryPrompt = buildSplitterRecoveryPrompt(
                   splitterConfig.strategy,
                   incomingContent,
@@ -1595,7 +1628,7 @@ export async function runWorkflow(
               }
 
               const beforeFilterCount = subtasks.length
-              subtasks = subtasks.filter((s) => s.content.trim().length > 0)
+              subtasks = subtasks.filter((subtask) => subtask.content.trim().length > 0)
               if (beforeFilterCount !== subtasks.length) {
                 const dropped = beforeFilterCount - subtasks.length
                 const entry = {
@@ -1608,12 +1641,11 @@ export async function runWorkflow(
               }
 
               const shouldFallbackToHeuristic = subtasks.length === 0 || (
-                maxBranches > 1 &&
-                shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
+                maxBranches > 1
+                && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
               )
 
               if (shouldFallbackToHeuristic) {
-                console.warn(`[splitter] ${node.id} using heuristic fallback decomposition`)
                 subtasks = heuristicSplitInput(incomingContent, maxBranches)
               }
             }
@@ -1630,7 +1662,6 @@ export async function runWorkflow(
               send({ type: "node-log", runId, nodeId: node.id, entry })
             }
 
-            // Collect splitter metrics (include retry attempts)
             state.metrics = {
               tokens_in: totalTokensIn,
               tokens_out: totalTokensOut,
@@ -1644,42 +1675,38 @@ export async function runWorkflow(
               splitterBackend,
             )
 
-            // If this is a re-expansion (evaluator retry), collapse previous clones first
             const removedCloneIds = collapseSplitterExpansion(runtimeWorkflow, workflow, node.id)
             for (const id of removedCloneIds) {
               delete nodeStates[id]
             }
 
-            // Expand runtime graph
             const expanded = expandSplitter(runtimeWorkflow, node.id, usedSubtasks)
             runtimeWorkflow = expanded
 
-            // Initialize states for new runtime nodes
             const newNodeIds: string[] = []
             const runtimeMeta: Record<string, { subtaskKey: string; branchIndex: number; totalBranches: number; templateId: string }> = {}
-            for (const rn of expanded.nodes) {
-              if (!nodeStates[rn.id]) {
-                nodeStates[rn.id] = { status: "pending", attempts: 0, log: [] }
-                newNodeIds.push(rn.id)
-                if (expanded.runtimeMeta[rn.id]) {
-                  runtimeMeta[rn.id] = {
-                    subtaskKey: expanded.runtimeMeta[rn.id].subtaskKey,
-                    branchIndex: expanded.runtimeMeta[rn.id].branchIndex,
-                    totalBranches: expanded.runtimeMeta[rn.id].totalBranches,
-                    templateId: expanded.runtimeMeta[rn.id].templateId,
+            for (const runtimeNode of expanded.nodes) {
+              if (!nodeStates[runtimeNode.id]) {
+                nodeStates[runtimeNode.id] = { status: "pending", attempts: 0, log: [] }
+                newNodeIds.push(runtimeNode.id)
+                if (expanded.runtimeMeta[runtimeNode.id]) {
+                  runtimeMeta[runtimeNode.id] = {
+                    subtaskKey: expanded.runtimeMeta[runtimeNode.id].subtaskKey,
+                    branchIndex: expanded.runtimeMeta[runtimeNode.id].branchIndex,
+                    totalBranches: expanded.runtimeMeta[runtimeNode.id].totalBranches,
+                    templateId: expanded.runtimeMeta[runtimeNode.id].templateId,
                   }
                 }
               }
             }
 
-            // Notify renderer about new runtime nodes + full expanded graph
             send({
               type: "nodes-expanded",
               runId,
               newNodeIds,
               runtimeMeta,
-              nodes: expanded.nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config }) as WorkflowNode),
-              edges: expanded.edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type })),
+              nodes: expanded.nodes.map((runtimeNode) => ({ id: runtimeNode.id, type: runtimeNode.type, position: runtimeNode.position, config: runtimeNode.config }) as WorkflowNode),
+              edges: expanded.edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, type: edge.type })),
             })
 
             output = {
@@ -1696,9 +1723,7 @@ export async function runWorkflow(
 
           case "merger": {
             const mergerConfig = node.config as MergerNodeConfig
-
-            // Gather ALL incoming branch outputs
-            const incomingEdges = runtimeWorkflow.edges.filter((e) => e.target === node.id)
+            const incomingEdges = runtimeWorkflow.edges.filter((edge) => edge.target === node.id)
             const branchOutputs: NodeInput[] = []
             for (const edge of incomingEdges) {
               const sourceState = nodeStates[edge.source]
@@ -1710,8 +1735,7 @@ export async function runWorkflow(
               throw new Error("Merger has no branch outputs to combine")
             }
 
-            // Log which branches failed so the user has visibility
-            const failedBranches = incomingEdges.filter((e) => nodeStates[e.source]?.status === "failed")
+            const failedBranches = incomingEdges.filter((edge) => nodeStates[edge.source]?.status === "failed")
             if (failedBranches.length > 0) {
               const entry = {
                 type: "text" as const,
@@ -1735,7 +1759,6 @@ export async function runWorkflow(
               const merged = mergeResults(branchOutputs, "concatenate")
               output = { content: merged, metadata: { source: node.id } }
             } else {
-              // AI-based merge (summarize or select_best)
               const mergePrompt = sanitizeInvalidUnicode(
                 buildMergerPrompt(branchOutputs, mergerConfig.strategy, mergerConfig.prompt),
               )
@@ -1758,7 +1781,7 @@ export async function runWorkflow(
               }, {
                 workspace,
                 runId,
-                mode: "run",
+                mode,
                 role: "merger",
                 nodeId: node.id,
               }, {
@@ -1778,8 +1801,7 @@ export async function runWorkflow(
                 },
               })
 
-              const remaining = logParser.flush()
-              for (const entry of remaining) {
+              for (const entry of logParser.flush()) {
                 state.log.push(entry)
                 send({ type: "node-log", runId, nodeId: node.id, entry })
               }
@@ -1789,7 +1811,6 @@ export async function runWorkflow(
                 throw new Error(`Merger failed: ${detail}`)
               }
 
-              // Collect merger metrics
               const mergerMetrics = collectMetrics(logParser, state.startedAt!)
               mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
               state.metrics = mergerMetrics
@@ -1813,7 +1834,6 @@ export async function runWorkflow(
               allowEdit: approvalConfig.allow_edit,
             })
 
-            // Wait for user decision (with optional timeout)
             const decision = await waitForApproval(
               runId,
               node.id,
@@ -1840,7 +1860,6 @@ export async function runWorkflow(
               const finalContent = decision.editedContent ?? incomingContent
               output = { content: finalContent, metadata: { source: node.id } }
             } else {
-              // Rejected — fail the node
               state.status = "failed"
               state.completedAt = Date.now()
               state.error = decision.timedOut
@@ -1867,36 +1886,35 @@ export async function runWorkflow(
         state.completedAt = Date.now()
         state.output = output
 
-        // Write output file for upstream context passing
         await writeNodeOutputFile(workspace, node.id, output.content)
 
-        // Activate outgoing edges for non-evaluator nodes
-        // (evaluator handles its own edge activation inside the switch case)
         if (node.type !== "evaluator") {
-          for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-            activatedEdges.add(e.id)
+          for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+            activatedEdges.add(edge.id)
           }
         }
 
         send({ type: "node-done", runId, nodeId: node.id, output })
-      } catch (err) {
+      } catch (error) {
         if (controller.signal.aborted) {
           state.status = "failed"
           return
         }
+
         let partialOutput: NodeInput | undefined
         if (recoverOutputOnError) {
           try {
             partialOutput = await recoverOutputOnError()
-          } catch (recoveryErr) {
-            console.error(`[workflow-runner] failed to recover partial output for ${node.id}:`, recoveryErr)
+          } catch (recoveryError) {
+            console.error(`[workflow-runner] failed to recover partial output for ${node.id}:`, recoveryError)
           }
         }
-        const errMsg = String(err)
-        const timedOut = errMsg.includes("timed out") || errMsg.includes("ETIMEDOUT") || errMsg.includes("timeout")
+
+        const errorText = String(error)
+        const timedOut = errorText.includes("timed out") || errorText.includes("ETIMEDOUT") || errorText.includes("timeout")
         state.completedAt = Date.now()
-        state.error = errMsg
-        state.errorKind = classifyError(err, timedOut)
+        state.error = errorText
+        state.errorKind = classifyError(error, timedOut)
 
         const canRetry = runtimePolicy.retry.enabled
           && state.retriesUsed! < runtimePolicy.retry.maxTries - 1
@@ -1930,12 +1948,12 @@ export async function runWorkflow(
           if (partialOutput) {
             try {
               await writeNodeOutputFile(workspace, node.id, partialOutput.content)
-            } catch (writeErr) {
-              console.error(`[workflow-runner] failed to persist partial output for ${node.id}:`, writeErr)
+            } catch (writeError) {
+              console.error(`[workflow-runner] failed to persist partial output for ${node.id}:`, writeError)
             }
             send({ type: "node-done", runId, nodeId: node.id, output: partialOutput })
           }
-          send({ type: "node-error", runId, nodeId: node.id, error: errMsg })
+          send({ type: "node-error", runId, nodeId: node.id, error: errorText })
           return
         }
 
@@ -1945,7 +1963,7 @@ export async function runWorkflow(
             incomingContent,
             partialOutput,
             state.errorKind,
-            errMsg,
+            errorText,
             state.attempts,
           )
           : buildContinueOutput(node.id, incomingContent, partialOutput)
@@ -1955,25 +1973,19 @@ export async function runWorkflow(
 
         try {
           await writeNodeOutputFile(workspace, node.id, output.content)
-        } catch (writeErr) {
-          console.error(`[workflow-runner] failed to persist policy output for ${node.id}:`, writeErr)
+        } catch (writeError) {
+          console.error(`[workflow-runner] failed to persist policy output for ${node.id}:`, writeError)
         }
 
-        for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-          activatedEdges.add(e.id)
+        for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+          activatedEdges.add(edge.id)
         }
 
         send({ type: "node-done", runId, nodeId: node.id, output })
-        send({ type: "node-error", runId, nodeId: node.id, error: errMsg })
-        return
+        send({ type: "node-error", runId, nodeId: node.id, error: errorText })
       } finally {
         try {
-          await persistRunState(
-            workspace,
-            nodeStates,
-            runtimeWorkflow,
-            { type: "text", value: inputContent },
-          )
+          await persistRunState(workspace, nodeStates, runtimeWorkflow, persistedInput)
         } catch (error) {
           logWarn("workflow-runner", "persist_run_state_checkpoint_failed", {
             runId,
@@ -1985,29 +1997,24 @@ export async function runWorkflow(
       }
     }
 
-    // Main execution loop — parallel with maxParallel limit
     const runningPromises = new Map<string, Promise<void>>()
     let activeSplitterNodeId: string | null = null
-    const STALL_TIMEOUT_MS = (workflow.defaults?.timeout_minutes || 30) * 60 * 1000 + 60_000 // node timeout + 1 min buffer
+    const stallTimeoutMs = (workflow.defaults?.timeout_minutes || 30) * 60 * 1000 + 60_000
     let lastProgressAt = Date.now()
 
     while (!controller.signal.aborted) {
-      // If paused, wait until resumed (or cancelled)
       await waitIfPaused(runId, controller.signal)
       if (controller.signal.aborted) break
 
       const readyNodes = findReadyNodes(runtimeWorkflow, nodeStates, activatedEdges)
-      const newReady = readyNodes.filter((n) => !runningPromises.has(n.id))
+      const newReady = readyNodes.filter((node) => !runningPromises.has(node.id))
 
       if (newReady.length === 0 && runningPromises.size === 0) break
 
-      // Launch new nodes up to maxParallel
       for (const node of newReady) {
         if (controller.signal.aborted) break
         if (runningPromises.size >= maxParallel) break
 
-        // Splitter expansion mutates runtimeWorkflow. Run splitters exclusively to avoid
-        // concurrent graph mutations from parallel splitter nodes.
         if (node.type === "splitter") {
           if (activeSplitterNodeId && activeSplitterNodeId !== node.id) continue
           if (runningPromises.size > 0) continue
@@ -2032,38 +2039,34 @@ export async function runWorkflow(
         runningPromises.set(node.id, promise)
       }
 
-      // Wait for at least one to complete before checking again
       if (runningPromises.size > 0) {
         const sizeBefore = runningPromises.size
         await Promise.race(runningPromises.values())
         if (runningPromises.size < sizeBefore) {
           lastProgressAt = Date.now()
         }
-        if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
-          // Identify stalled nodes and emit descriptive errors before aborting
+        if (Date.now() - lastProgressAt > stallTimeoutMs) {
           for (const stalledNodeId of runningPromises.keys()) {
-            const stalledNode = runtimeWorkflow.nodes.find((n) => n.id === stalledNodeId)
+            const stalledNode = runtimeWorkflow.nodes.find((candidate) => candidate.id === stalledNodeId)
             const stalledState = nodeStates[stalledNodeId]
-            if (stalledNode && stalledState) {
-              const nodeLabel = stalledNode.type === "skill"
-                ? (stalledNode.config as SkillNodeConfig).skillRef || "skill"
-                : stalledNode.type
-              const elapsedMs = stalledState.startedAt ? Date.now() - stalledState.startedAt : Date.now() - lastProgressAt
-              const elapsedMinutes = Math.round(elapsedMs / 60_000)
-              const stallError = `Node '${nodeLabel}' (${stalledNode.type}) stopped responding after ${elapsedMinutes} minutes. Run was stopped.`
-              console.error(`[workflow-runner] stall detected: ${stallError}`)
-              stalledState.status = "failed"
-              stalledState.completedAt = Date.now()
-              stalledState.error = stallError
-              send({ type: "node-error", runId, nodeId: stalledNodeId, error: stallError })
-            }
+            if (!stalledNode || !stalledState) continue
+
+            const nodeLabel = stalledNode.type === "skill"
+              ? (stalledNode.config as SkillNodeConfig).skillRef || "skill"
+              : stalledNode.type
+            const elapsedMs = stalledState.startedAt ? Date.now() - stalledState.startedAt : Date.now() - lastProgressAt
+            const elapsedMinutes = Math.round(elapsedMs / 60_000)
+            const stallError = `Node '${nodeLabel}' (${stalledNode.type}) stopped responding after ${elapsedMinutes} minutes. Run was stopped.`
+            stalledState.status = "failed"
+            stalledState.completedAt = Date.now()
+            stalledState.error = stallError
+            send({ type: "node-error", runId, nodeId: stalledNodeId, error: stallError })
           }
           controller.abort()
         }
       }
     }
 
-    // Mark unresolved nodes as skipped so isRunComplete returns true
     for (const [nodeId, state] of Object.entries(nodeStates)) {
       if (
         state.status === "pending"
@@ -2076,10 +2079,9 @@ export async function runWorkflow(
       }
     }
 
-    const criticalNodeFailed = Object.entries(nodeStates).some(([id, s]) => {
-      if (s.status !== "failed") return false
-      // Runtime clone (splitter branch) failures are non-fatal if the merger/output completed
-      if (runtimeWorkflow.runtimeMeta?.[id]) return false
+    const criticalNodeFailed = Object.entries(nodeStates).some(([nodeId, state]) => {
+      if (state.status !== "failed") return false
+      if (runtimeWorkflow.runtimeMeta?.[nodeId]) return false
       return true
     })
 
@@ -2097,71 +2099,59 @@ export async function runWorkflow(
     const evalScores: Record<string, number> = {}
     let completedAt = Date.now()
     let durationMs = completedAt - startedAt
+
     try {
-      // Save report.md from output node
-      const outputNode = runtimeWorkflow.nodes.find((n) => n.type === "output")
+      const outputNode = runtimeWorkflow.nodes.find((node) => node.type === "output")
       if (outputNode && nodeStates[outputNode.id]?.output?.content) {
         const reportFile = join(workspace, "report.md")
         await writeFileAtomic(reportFile, nodeStates[outputNode.id].output!.content)
         reportPath = reportFile
       }
 
-      // Collect aggregate metrics for run comparison
-      for (const [id, s] of Object.entries(nodeStates)) {
-        if (s.metrics) {
-          totalCost += s.metrics.cost_usd
-          totalTokensIn += s.metrics.tokens_in
-          totalTokensOut += s.metrics.tokens_out
+      for (const [nodeId, state] of Object.entries(nodeStates)) {
+        if (state.metrics) {
+          totalCost += state.metrics.cost_usd
+          totalTokensIn += state.metrics.tokens_in
+          totalTokensOut += state.metrics.tokens_out
         }
-        if (s.output?.metadata?.score != null) {
-          evalScores[id] = s.output.metadata.score
+        if (state.output?.metadata?.score != null) {
+          evalScores[nodeId] = state.output.metadata.score
         }
       }
 
       completedAt = Date.now()
       durationMs = completedAt - startedAt
 
-      // Update run-result.json with final status and metrics
-      await writeFileAtomic(
-        join(workspace, "run-result.json"),
-        JSON.stringify({
-          runId,
-          status: finalStatus,
-          workflowName: workflow.name,
-          workflowPath: workflowPath || "",
-          startedAt,
-          completedAt,
-          reportPath: reportPath || "",
-          workspace,
-          totalCost,
-          totalTokensIn,
-          totalTokensOut,
-          evalScores,
-          durationMs,
-        }, null, 2),
-      )
-    } catch (err) {
-      console.error("[workflow-runner] failed to save report/result:", err)
+      await writeRunResultSnapshot(workspace, {
+        runId,
+        status: finalStatus,
+        workflowName: workflow.name,
+        workflowPath: workflowPath || "",
+        startedAt,
+        completedAt,
+        reportPath: reportPath || "",
+        totalCost,
+        totalTokensIn,
+        totalTokensOut,
+        evalScores,
+        durationMs,
+      })
+    } catch (error) {
+      console.error("[workflow-runner] failed to save report/result:", error)
     }
 
-    // Save run state for selective rerun
     try {
-      await persistRunState(
-        workspace,
-        nodeStates,
-        runtimeWorkflow,
-        { type: "text", value: inputContent },
-      )
-    } catch (err) {
-      console.error("[workflow-runner] failed to save run state:", err)
+      await persistRunState(workspace, nodeStates, runtimeWorkflow, persistedInput)
+    } catch (error) {
+      console.error("[workflow-runner] failed to save run state:", error)
     }
 
     send({ type: "run-done", runId, status: finalStatus, reportPath, workspace })
 
-    const nodesFailed = Object.values(nodeStates).filter((s) => s.status === "failed").length
+    const nodesFailed = Object.values(nodeStates).filter((state) => state.status === "failed").length
     const { errorKinds, errorKindsUnique } = workflowErrorKinds(nodeStates)
     void trackTelemetryEvent("workflow_run_finished", {
-      run_mode: "run",
+      run_mode: mode,
       workflow_provider: workflowProviderId,
       status: finalStatus,
       cancelled: finalStatus === "cancelled",
@@ -2186,7 +2176,7 @@ export async function runWorkflow(
     }
   } finally {
     const fallbackStatus: RunStatus = controller.signal.aborted ? "cancelled" : "failed"
-    await finalizeRunPidManifest(workspace, runId, "run", manifestStatus === "interrupted" ? fallbackStatus : manifestStatus)
+    await finalizeRunPidManifest(workspace, runId, mode, manifestStatus === "interrupted" ? fallbackStatus : manifestStatus)
     resolvePendingApprovalsForRun(runId, false)
     activeRuns.delete(runId)
     pausedRuns.delete(runId)
@@ -2200,6 +2190,45 @@ export async function runWorkflow(
       })
     }
   }
+}
+
+export async function runWorkflow(
+  runId: string,
+  workflow: Workflow,
+  input: WorkflowInput,
+  window: BrowserWindow,
+  projectPath?: string,
+  workflowPath?: string,
+  webSearchBackend?: WebSearchBackend,
+): Promise<WorkflowRunSummary> {
+  const nodeStates = createInitialNodeStates(workflow)
+  const activatedEdges = new Set<string>()
+  const runtimeWorkflow: RuntimeWorkflow = {
+    ...workflow,
+    nodes: [...workflow.nodes],
+    edges: [...workflow.edges],
+    runtimeMeta: {},
+  }
+
+  const workspaceBase = projectPath
+    ? join(projectPath, ".c8c", "runs")
+    : join(tmpdir(), "c8c-ws")
+  await mkdir(workspaceBase, { recursive: true })
+  const workspace = await mkdtemp(join(workspaceBase, `${runId}-`))
+  return executeWorkflowSession({
+    runId,
+    mode: "run",
+    workflow,
+    persistedInput: { type: "text", value: input.value },
+    window,
+    workspace,
+    nodeStates,
+    runtimeWorkflow,
+    activatedEdges,
+    projectPath,
+    workflowPath,
+    webSearchBackend,
+  })
 }
 
 /**
@@ -2216,74 +2245,26 @@ export async function rerunFromNode(
   workflowPath?: string,
   webSearchBackend?: WebSearchBackend,
 ): Promise<void> {
-  // Load saved run state
-  let savedState: {
-    nodeStates: Record<string, NodeState>
-    runtimeNodes?: WorkflowNode[]
-    runtimeEdges?: WorkflowEdge[]
-    runtimeMeta?: Record<string, RuntimeMetaEntry>
-    input?: WorkflowInput
-  }
+  let savedState: PersistedRunState
   try {
     const raw = await readFile(join(workspace, "run-state.json"), "utf-8")
-    savedState = JSON.parse(raw)
+    savedState = JSON.parse(raw) as PersistedRunState
   } catch (error) {
     throw new Error(`Cannot rerun: run state not found in ${workspace} (${errorMessage(error)})`)
   }
 
-  const controller = new AbortController()
-  activeRuns.set(runId, controller)
-  pausedRuns.set(runId, { paused: false, resume: null })
-
-  const onWindowClosed = () => controller.abort()
-  window.on("closed", onWindowClosed)
-
-  const send = (event: WorkflowEvent) => {
-    try {
-      if (!window.isDestroyed()) {
-        window.webContents.send("workflow:event", event)
-      }
-    } catch (error) {
-      logWarn("workflow-runner", "send_workflow_event_failed", {
-        runId,
-        workspace,
-        eventType: event.type,
-        error: errorMessage(error),
-      })
-    }
-
-    if (event.type === "node-done" || event.type === "node-error") {
-      const state = nodeStates[event.nodeId]
-      const node = runtimeWorkflow.nodes.find((n) => n.id === event.nodeId)
-      if (state && node) {
-        const nodeProvider = resolveNodeProvider(node, runtimeWorkflow, workflowProviderId)
-        void trackTelemetryEvent("workflow_node_finished", {
-          provider: nodeProvider,
-          backend: state.meta?.backend ?? null,
-          node_type: node.type,
-          status: state.status,
-          duration_ms: state.completedAt && state.startedAt ? state.completedAt - state.startedAt : 0,
-          error_kind: state.errorKind ?? null,
-        })
-      }
-    }
-  }
-
-  // Reconstruct runtime workflow
-  let runtimeWorkflow: RuntimeWorkflow = {
+  const runtimeWorkflow: RuntimeWorkflow = {
     ...workflow,
     nodes: savedState.runtimeNodes || [...workflow.nodes],
     edges: savedState.runtimeEdges || [...workflow.edges],
     runtimeMeta: (savedState.runtimeMeta || {}) as RuntimeWorkflow["runtimeMeta"],
   }
 
-  // Restore nodeStates, adding back log arrays (not serialized)
   const nodeStates: Record<string, NodeState> = {}
   for (const [id, s] of Object.entries(savedState.nodeStates)) {
     nodeStates[id] = { ...s, log: [] } as NodeState
   }
 
-  // Find all downstream nodes (including fromNodeId itself) and reset them
   const downstreamIds = new Set(getDownstreamNodeIds(runtimeWorkflow, fromNodeId))
   for (const id of downstreamIds) {
     if (nodeStates[id]) {
@@ -2291,7 +2272,6 @@ export async function rerunFromNode(
     }
   }
 
-  // Rebuild activatedEdges from completed upstream nodes
   const activatedEdges = new Set<string>()
   for (const edge of runtimeWorkflow.edges) {
     if (!downstreamIds.has(edge.source) && nodeStates[edge.source]?.status === "completed") {
@@ -2299,995 +2279,52 @@ export async function rerunFromNode(
     }
   }
 
-  // Notify UI about the reset
   for (const id of downstreamIds) {
-    send({ type: "node-start", runId, nodeId: id })
-    // Immediately mark as pending (the node-start was to signal reset)
-    send({ type: "node-log", runId, nodeId: id, entry: { type: "text", content: "[rerun] resetting node\n", timestamp: Date.now() } })
+    emitWorkflowEvent(window, { type: "node-start", runId, nodeId: id }, (error) => {
+      logWarn("workflow-runner", "send_workflow_event_failed", {
+        runId,
+        workspace,
+        eventType: "node-start",
+        error: errorMessage(error),
+      })
+    })
+    emitWorkflowEvent(window, {
+      type: "node-log",
+      runId,
+      nodeId: id,
+      entry: { type: "text", content: "[rerun] resetting node\n", timestamp: Date.now() },
+    }, (error) => {
+      logWarn("workflow-runner", "send_workflow_event_failed", {
+        runId,
+        workspace,
+        eventType: "node-log",
+        error: errorMessage(error),
+      })
+    })
   }
 
-  const inputContent = sanitizeInvalidUnicode(savedState.input?.value || "")
-  await mkdir(join(workspace, "outputs"), { recursive: true })
-  const mcpConfigPath = await prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
-  const workflowProviderId = await resolveWorkflowProviderId(workflow)
-  const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(projectPath, workspace)
-  const rerunStartedAt = Date.now()
-
-  await persistRunState(
+  await executeWorkflowSession({
+    runId,
+    mode: "rerun",
+    workflow,
+    persistedInput: savedState.input || { type: "text", value: "" },
+    window,
     workspace,
     nodeStates,
     runtimeWorkflow,
-    savedState.input || { type: "text", value: inputContent },
-  )
-  await initRunPidManifest(workspace, runId, "rerun")
-
-  void trackTelemetryEvent("workflow_run_started", workflowRunStartTelemetry(workflow, runId, "rerun", workflowProviderId))
-  let manifestStatus: RunStatus = "interrupted"
-
-  try {
-    const maxParallel = workflow.defaults?.maxParallel || 8
-
-    const getAccumulatedCost = (): number => {
-      let total = 0
-      for (const s of Object.values(nodeStates)) {
-        if (s.metrics?.cost_usd) total += s.metrics.cost_usd
-      }
-      return total
-    }
-
-    const getAccumulatedTokens = (): number => {
-      let total = 0
-      for (const s of Object.values(nodeStates)) {
-        if (s.metrics) total += s.metrics.tokens_in + s.metrics.tokens_out
-      }
-      return total
-    }
-
-    // === Inline execution loop (same as runWorkflow's processNode) ===
-    // This is a re-entry into the main loop with pre-existing state.
-
-    const processNode = async (nodeId: string): Promise<void> => {
-      if (controller.signal.aborted) return
-      const node = runtimeWorkflow.nodes.find((n) => n.id === nodeId)!
-      const isRuntimeClone = Boolean(runtimeWorkflow.runtimeMeta?.[node.id])
-      const runtimePolicy = resolveRuntimePolicy(node, isRuntimeClone)
-      const state = nodeStates[node.id]
-      state.status = "running"
-      state.startedAt = Date.now()
-      state.attempts++
-      state.policyApplied = undefined
-      state.retriesUsed = state.retriesUsed || 0
-
-      send({ type: "node-start", runId, nodeId: node.id })
-
-      let recoverOutputOnError: (() => Promise<NodeInput | undefined>) | undefined
-      let incomingContent = inputContent
-
-      try {
-        // Budget check — skip node if budget exceeded
-        if (node.type !== "input" && node.type !== "output") {
-          const budgetCost = workflow.defaults?.budget_cost_usd
-          const budgetTokens = workflow.defaults?.budget_tokens
-          if (budgetCost != null && getAccumulatedCost() >= budgetCost) {
-            state.status = "skipped"
-            state.completedAt = Date.now()
-            state.errorKind = "policy"
-            state.error = `Budget exceeded: $${getAccumulatedCost().toFixed(4)} >= $${budgetCost}`
-            send({ type: "node-error", runId, nodeId: node.id, error: state.error })
-            return
-          }
-          if (budgetTokens != null && getAccumulatedTokens() >= budgetTokens) {
-            state.status = "skipped"
-            state.completedAt = Date.now()
-            state.errorKind = "policy"
-            state.error = `Token budget exceeded: ${getAccumulatedTokens()} >= ${budgetTokens}`
-            send({ type: "node-error", runId, nodeId: node.id, error: state.error })
-            return
-          }
-        }
-
-        const incoming = runtimeWorkflow.edges.filter((e) => e.target === node.id)
-        incomingContent = selectIncomingContent(incoming, nodeStates, inputContent)
-
-        let output: NodeInput
-
-        switch (node.type) {
-          case "input":
-            output = { content: inputContent, metadata: { source: node.id } }
-            break
-
-          case "skill": {
-            const config = node.config as SkillNodeConfig
-            const meta = runtimeWorkflow.runtimeMeta?.[node.id]
-            const effectiveInputRaw = meta
-              ? `Subtask: ${meta.subtaskKey}\n\n${meta.subtaskContent}\n\n--- Original Content ---\n${incomingContent}`
-              : incomingContent
-            const effectiveInput = sanitizeInvalidUnicode(effectiveInputRaw)
-
-            const contentFile = join(workspace, `content-${node.id.replace(/[^a-zA-Z0-9-]/g, "_")}.md`)
-            await writeFileAtomic(contentFile, effectiveInput)
-
-            const workdir = projectPath || workspace
-            const logParser = new LogParser()
-
-            let retryFeedback = ""
-            for (const edge of incoming) {
-              if (edge.type === "fail") {
-                const evalOutput = nodeStates[edge.source]?.output
-                if (evalOutput?.metadata?.score != null) {
-                  const lines = [
-                    "## Retry Instructions",
-                    `Your previous output scored ${evalOutput.metadata.score}/10.`,
-                    `Feedback: ${evalOutput.metadata.reason}`,
-                  ]
-                  if (evalOutput.metadata.fix_instructions) {
-                    lines.push("", "**What to fix:**", evalOutput.metadata.fix_instructions)
-                  }
-                  lines.push(
-                    "",
-                    `Attempt ${(evalOutput.metadata.iteration || 0) + 1}. Please improve based on this feedback.`,
-                    "",
-                  )
-                  retryFeedback = lines.join("\n")
-                }
-              }
-            }
-
-            const upstreamIds = collectUpstreamIds(node.id, runtimeWorkflow.edges, nodeStates)
-            const manifestLines: string[] = []
-            for (const uid of upstreamIds) {
-              const upNode = runtimeWorkflow.nodes.find((n) => n.id === uid)
-              const sanitized = uid.replace(/[^a-zA-Z0-9-]/g, "_")
-              const label = (upNode?.config as Record<string, unknown>)?.label || upNode?.type || uid
-              manifestLines.push(`- outputs/${sanitized}.md  (${label})`)
-            }
-
-            const nodeProviderId = await resolveNodeProviderId(node, workflow)
-            const codexSkillContext = nodeProviderId === "codex"
-              ? await resolveEvaluatorSkillContext([config.skillRef])
-              : ""
-
-            const prompt = sanitizeInvalidUnicode([
-              `Workspace: ${workspace}`,
-              `Content file: ${contentFile}`,
-              "",
-              ...(manifestLines.length > 0 ? ["Available upstream outputs:", ...manifestLines, ""] : []),
-              ...(retryFeedback ? [retryFeedback] : []),
-              ...(codexSkillContext ? ["Skill instructions:", codexSkillContext, ""] : []),
-              config.prompt,
-            ].join("\n"))
-            const skillModel = workflow.defaults?.model || getDefaultModelForProvider(nodeProviderId)
-            let skillBackend: AgentExecutionSummary["backend"]
-
-            const updateSkillMetricsAndMeta = () => {
-              const metrics = collectMetrics(logParser, state.startedAt!)
-              metrics.cost_usd = estimateCost(skillModel, metrics.tokens_in, metrics.tokens_out)
-              state.metrics = metrics
-              state.meta = buildNodeMeta(prompt, skillModel, config.skillRef, skillBackend)
-            }
-
-            recoverOutputOnError = async () => {
-              for (const entry of logParser.flush()) {
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              }
-              updateSkillMetricsAndMeta()
-              return buildSkillNodeOutput(
-                config,
-                logParser.textContent,
-                contentFile,
-                effectiveInput,
-                node.id,
-                true,
-              )
-            }
-
-            const retryPermissionMode: PermissionMode =
-              config.permissionMode ?? workflow.defaults?.permissionMode ?? "edit"
-            const mergedAllowed = [...new Set([...(workflow.defaults?.allowedTools || []), ...(config.allowedTools || [])])]
-            const retryPlanDisallowed = retryPermissionMode === "plan"
-              ? ["Edit", "Write", "NotebookEdit"]
-              : []
-            const mergedDisallowed = [...new Set([...(workflow.defaults?.disallowedTools || []), ...(config.disallowedTools || []), ...retryPlanDisallowed])]
-            let skillStderr = ""
-
-            const result = await spawnProviderTracked(nodeProviderId, {
-              workdir,
-              prompt,
-              model: skillModel,
-              maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 60,
-              permissionMode: "acceptEdits",
-              executionMode: retryPermissionMode,
-              mcpConfigPath,
-              addDirs: config.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),
-              allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
-              disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
-              abortSignal: controller.signal,
-              timeout: (workflow.defaults?.timeout_minutes || 30) * 60 * 1000,
-            }, {
-              workspace,
-              runId,
-              mode: "rerun",
-              role: "skill",
-              nodeId: node.id,
-            }, {
-              onLogEntry: (entry) => {
-                logParser.appendEntry(entry)
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
-              onUsage: (usage) => {
-                logParser.applyUsage(usage)
-              },
-              onStderr: (text) => {
-                skillStderr += text
-                const entry = { type: "error" as const, content: text, timestamp: Date.now() }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
-            })
-            skillBackend = result.backend
-
-            for (const entry of logParser.flush()) {
-              state.log.push(entry)
-              send({ type: "node-log", runId, nodeId: node.id, entry })
-            }
-
-            updateSkillMetricsAndMeta()
-
-            if (!result.success && !controller.signal.aborted) {
-              const detail = buildAgentFailureDetail(nodeProviderId, result, logParser, skillStderr)
-              throw new Error(`Skill node failed: ${detail}`)
-            }
-
-            output = await buildSkillNodeOutput(
-              config,
-              logParser.textContent,
-              contentFile,
-              effectiveInput,
-              node.id,
-            )
-            recoverOutputOnError = undefined
-            break
-          }
-
-          case "evaluator": {
-            const evalConfig = node.config as EvaluatorNodeConfig
-            const logParser = new LogParser()
-            let evaluatorStderr = ""
-            const evalSkillContext = await resolveEvaluatorSkillContext(evalConfig.skillRefs)
-            const evalProviderId = workflowProviderId
-            const evalPrompt = sanitizeInvalidUnicode(
-              buildEvaluatorPrompt(evalConfig.criteria, incomingContent, evalSkillContext),
-            )
-
-            const evalModel = workflow.defaults?.model || getDefaultModelForProvider(evalProviderId)
-            const evalSpawnResult = await spawnProviderTracked(evalProviderId, {
-              workdir: projectPath || workspace,
-              prompt: evalPrompt,
-              model: evalModel,
-              maxTurns: 1,
-              executionMode: workflow.defaults?.permissionMode,
-              mcpConfigPath,
-              disableBuiltInTools: evalProviderId === "claude",
-              addDirs: [],
-              abortSignal: controller.signal,
-              timeout: 120_000,
-            }, {
-              workspace,
-              runId,
-              mode: "rerun",
-              role: "evaluator",
-              nodeId: node.id,
-            }, {
-              onLogEntry: (entry) => {
-                logParser.appendEntry(entry)
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
-              onUsage: (usage) => {
-                logParser.applyUsage(usage)
-              },
-              onStderr: (text) => {
-                evaluatorStderr += text
-                const entry = { type: "error" as const, content: text, timestamp: Date.now() }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              },
-            })
-
-            if (!evalSpawnResult.success && !controller.signal.aborted) {
-              const detail = buildAgentFailureDetail(evalProviderId, evalSpawnResult, logParser, evaluatorStderr)
-              throw new Error(`Evaluator node failed: ${detail}`)
-            }
-
-            for (const entry of logParser.flush()) {
-              state.log.push(entry)
-              send({ type: "node-log", runId, nodeId: node.id, entry })
-            }
-
-            const evalMetrics = collectMetrics(logParser, state.startedAt!)
-            evalMetrics.cost_usd = estimateCost(evalModel, evalMetrics.tokens_in, evalMetrics.tokens_out)
-            state.metrics = evalMetrics
-            state.meta = buildNodeMeta(evalPrompt, evalModel, undefined, evalSpawnResult.backend)
-
-            const evalResult = parseEvaluatorOutput(state.log)
-            if (!evalResult) {
-              const rawExcerpt = (state.log ?? "").slice(0, 500)
-              throw new Error(`Evaluator output parse failed. Expected JSON with numeric 'score' field. Actual output: ${rawExcerpt}`)
-            }
-            const score = evalResult.score
-            const reason = evalResult.reason
-            const fixInstructions = evalResult.fix_instructions
-            const evalCriteria = evalResult.criteria
-            const passed = score >= evalConfig.threshold
-
-            send({ type: "eval-result", runId, nodeId: node.id, score, reason, passed, attempt: state.attempts, fix_instructions: fixInstructions, criteria: evalCriteria })
-
-            const evalMetadata = { source: node.id, score, reason, iteration: state.attempts, fix_instructions: fixInstructions }
-
-            if (passed) {
-              output = { content: incomingContent, metadata: evalMetadata }
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                if (e.type === "pass" || e.type === "default") activatedEdges.add(e.id)
-              }
-            } else if (state.attempts < evalConfig.maxRetries && evalConfig.retryFrom) {
-              state.output = { content: incomingContent, metadata: evalMetadata }
-              for (const e of getOutgoingEdges(runtimeWorkflow, evalConfig.retryFrom)) activatedEdges.delete(e.id)
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) activatedEdges.delete(e.id)
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                if (e.type === "fail") activatedEdges.add(e.id)
-              }
-              const retryTargetId = evalConfig.retryFrom
-              nodeStates[retryTargetId] = { status: "pending", attempts: nodeStates[retryTargetId].attempts, log: [] }
-              state.status = "pending"
-              state.log = []
-              return
-            } else {
-              output = { content: incomingContent, metadata: evalMetadata }
-              for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                if (e.type === "pass" || e.type === "default") activatedEdges.add(e.id)
-              }
-            }
-            break
-          }
-
-          case "splitter": {
-            const splitterConfig = node.config as SplitterNodeConfig
-            const splitterProviderId = await resolveNodeProviderId(node, workflow)
-            const splitterModel = workflow.defaults?.model || getDefaultModelForProvider(splitterProviderId)
-            const maxBranches = splitterConfig.maxBranches || 8
-            const splitterPrompts: string[] = []
-            let splitterBackend: AgentExecutionSummary["backend"]
-            let totalTokensIn = 0
-            let totalTokensOut = 0
-            let totalCostUsd = 0
-
-            const runSplitterAttempt = async (prompt: string): Promise<string> => {
-              const logParser = new LogParser()
-              const sanitizedPrompt = sanitizeInvalidUnicode(prompt)
-              splitterPrompts.push(sanitizedPrompt)
-
-              const result = await spawnProviderTracked(splitterProviderId, {
-                workdir: projectPath || workspace,
-                prompt: sanitizedPrompt,
-                model: splitterModel,
-                maxTurns: 1,
-                executionMode: workflow.defaults?.permissionMode,
-                mcpConfigPath,
-                disableBuiltInTools: splitterProviderId === "claude",
-                addDirs: [],
-                abortSignal: controller.signal,
-                timeout: 2 * 60 * 1000,
-              }, {
-                workspace,
-                runId,
-                mode: "rerun",
-                role: "splitter",
-                nodeId: node.id,
-              }, {
-                onLogEntry: (entry) => {
-                  logParser.appendEntry(entry)
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
-                onUsage: (usage) => {
-                  logParser.applyUsage(usage)
-                },
-                onStderr: (text) => {
-                  const entry = { type: "error" as const, content: text, timestamp: Date.now() }
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
-              })
-
-              const remaining = logParser.flush()
-              for (const entry of remaining) {
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              }
-
-              const attemptMetrics = collectMetrics(logParser, state.startedAt!)
-              totalTokensIn += attemptMetrics.tokens_in
-              totalTokensOut += attemptMetrics.tokens_out
-              totalCostUsd += estimateCost(splitterModel, attemptMetrics.tokens_in, attemptMetrics.tokens_out)
-
-              if (controller.signal.aborted) {
-                throw new Error("Splitter aborted")
-              }
-
-              if (!result.success) {
-                const entry = {
-                  type: "error" as const,
-                  content: `[splitter] ${splitterProviderId} attempt failed (exitCode=${String(result.exitCode)}) - falling back\n`,
-                  timestamp: Date.now(),
-                }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              }
-              splitterBackend = result.backend
-              return logParser.textContent
-            }
-
-            // Fast-path: if input is already structured, skip Claude entirely
-            const structuredSubtasks = tryStructuredSplit(incomingContent, maxBranches)
-            let subtasks: Subtask[]
-            if (structuredSubtasks) {
-              console.log(`[splitter] using structured input directly (${structuredSubtasks.length} subtasks)`)
-              const entry = {
-                type: "text" as const,
-                content: `[splitter] using structured input directly (${structuredSubtasks.length} subtasks)\n`,
-                timestamp: Date.now(),
-              }
-              state.log.push(entry)
-              send({ type: "node-log", runId, nodeId: node.id, entry })
-              subtasks = structuredSubtasks
-            } else {
-              const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-              console.log(`[splitter] spawning ${splitterProviderId}...`)
-              let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
-              subtasks = parseSplitterOutput(splitterRawOutput)
-
-              if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
-                console.warn(`[splitter] ${node.id} returned suspicious single subtask, retrying with stricter prompt`)
-                const recoveryPrompt = buildSplitterRecoveryPrompt(
-                  splitterConfig.strategy,
-                  incomingContent,
-                  maxBranches,
-                )
-                splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
-                subtasks = parseSplitterOutput(splitterRawOutput)
-              }
-
-              const beforeFilterCount = subtasks.length
-              subtasks = subtasks.filter((s) => s.content.trim().length > 0)
-              if (beforeFilterCount !== subtasks.length) {
-                const dropped = beforeFilterCount - subtasks.length
-                const entry = {
-                  type: "text" as const,
-                  content: `[splitter] dropped ${dropped} empty subtasks\n`,
-                  timestamp: Date.now(),
-                }
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              }
-
-              const shouldFallbackToHeuristic = subtasks.length === 0 || (
-                maxBranches > 1 &&
-                shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)
-              )
-
-              if (shouldFallbackToHeuristic) {
-                console.warn(`[splitter] ${node.id} using heuristic fallback decomposition`)
-                subtasks = heuristicSplitInput(incomingContent, maxBranches)
-              }
-            }
-
-            const totalSubtasks = subtasks.length
-            const usedSubtasks = subtasks.slice(0, maxBranches)
-            if (totalSubtasks > usedSubtasks.length) {
-              const entry = {
-                type: "text" as const,
-                content: `[splitter] produced ${totalSubtasks} subtasks, limited to ${usedSubtasks.length} by maxBranches=${maxBranches}\n`,
-                timestamp: Date.now(),
-              }
-              state.log.push(entry)
-              send({ type: "node-log", runId, nodeId: node.id, entry })
-            }
-
-            // Collect splitter metrics (include retry attempts)
-            state.metrics = {
-              tokens_in: totalTokensIn,
-              tokens_out: totalTokensOut,
-              cost_usd: totalCostUsd,
-              latency_ms: Date.now() - state.startedAt!,
-            }
-            state.meta = buildNodeMeta(
-              splitterPrompts.join("\n\n--- RETRY ---\n\n"),
-              splitterModel,
-              undefined,
-              splitterBackend,
-            )
-
-            // If this is a re-expansion (evaluator retry), collapse previous clones first
-            const removedCloneIds = collapseSplitterExpansion(runtimeWorkflow, workflow, node.id)
-            for (const id of removedCloneIds) {
-              delete nodeStates[id]
-            }
-
-            // Expand runtime graph
-            const expanded = expandSplitter(runtimeWorkflow, node.id, usedSubtasks)
-            runtimeWorkflow = expanded
-
-            // Initialize states for new runtime nodes
-            const newNodeIds: string[] = []
-            const runtimeMeta: Record<string, { subtaskKey: string; branchIndex: number; totalBranches: number; templateId: string }> = {}
-            for (const rn of expanded.nodes) {
-              if (!nodeStates[rn.id]) {
-                nodeStates[rn.id] = { status: "pending", attempts: 0, log: [] }
-                newNodeIds.push(rn.id)
-                if (expanded.runtimeMeta[rn.id]) {
-                  runtimeMeta[rn.id] = {
-                    subtaskKey: expanded.runtimeMeta[rn.id].subtaskKey,
-                    branchIndex: expanded.runtimeMeta[rn.id].branchIndex,
-                    totalBranches: expanded.runtimeMeta[rn.id].totalBranches,
-                    templateId: expanded.runtimeMeta[rn.id].templateId,
-                  }
-                }
-              }
-            }
-
-            // Notify renderer about new runtime nodes + full expanded graph
-            send({
-              type: "nodes-expanded",
-              runId,
-              newNodeIds,
-              runtimeMeta,
-              nodes: expanded.nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config }) as WorkflowNode),
-              edges: expanded.edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type })),
-            })
-
-            output = {
-              content: JSON.stringify(usedSubtasks),
-              metadata: {
-                source: node.id,
-                splitter_total_subtasks: totalSubtasks,
-                splitter_used_subtasks: usedSubtasks.length,
-                splitter_truncated: totalSubtasks > usedSubtasks.length,
-              },
-            }
-            break
-          }
-
-          case "merger": {
-            const mergerConfig = node.config as MergerNodeConfig
-
-            // Gather ALL incoming branch outputs
-            const incomingEdges = runtimeWorkflow.edges.filter((e) => e.target === node.id)
-            const branchOutputs: NodeInput[] = []
-            for (const edge of incomingEdges) {
-              const sourceState = nodeStates[edge.source]
-              if (sourceState?.output) {
-                branchOutputs.push(sourceState.output)
-              }
-            }
-            if (incomingEdges.length > 0 && branchOutputs.length === 0) {
-              throw new Error("Merger has no branch outputs to combine")
-            }
-
-            // Log which branches failed so the user has visibility
-            const failedBranches = incomingEdges.filter((e) => nodeStates[e.source]?.status === "failed")
-            if (failedBranches.length > 0) {
-              const entry = {
-                type: "text" as const,
-                content: `[merger] ${failedBranches.length}/${incomingEdges.length} branches failed, merging ${branchOutputs.length} successful outputs\n`,
-                timestamp: Date.now(),
-              }
-              state.log.push(entry)
-              send({ type: "node-log", runId, nodeId: node.id, entry })
-            }
-
-            if (mergerConfig.strategy === "concatenate") {
-              const mergerProviderId = workflowProviderId
-              const mergerModel = workflow.defaults?.model || getDefaultModelForProvider(mergerProviderId)
-              state.metrics = {
-                tokens_in: 0,
-                tokens_out: 0,
-                cost_usd: 0,
-                latency_ms: Date.now() - state.startedAt!,
-              }
-              state.meta = buildNodeMeta("[merger concatenate]", mergerModel)
-              const merged = mergeResults(branchOutputs, "concatenate")
-              output = { content: merged, metadata: { source: node.id } }
-            } else {
-              // AI-based merge (summarize or select_best)
-              const mergePrompt = sanitizeInvalidUnicode(
-                buildMergerPrompt(branchOutputs, mergerConfig.strategy, mergerConfig.prompt),
-              )
-              const logParser = new LogParser()
-              let mergerStderr = ""
-              const mergerProviderId = workflowProviderId
-              const mergerModel = workflow.defaults?.model || getDefaultModelForProvider(mergerProviderId)
-
-              const result = await spawnProviderTracked(mergerProviderId, {
-                workdir: projectPath || workspace,
-                prompt: mergePrompt,
-                model: mergerModel,
-                maxTurns: 20,
-                executionMode: workflow.defaults?.permissionMode,
-                mcpConfigPath,
-                disableBuiltInTools: mergerProviderId === "claude",
-                addDirs: [],
-                abortSignal: controller.signal,
-                timeout: 10 * 60 * 1000,
-              }, {
-                workspace,
-                runId,
-                mode: "rerun",
-                role: "merger",
-                nodeId: node.id,
-              }, {
-                onLogEntry: (entry) => {
-                  logParser.appendEntry(entry)
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
-                onUsage: (usage) => {
-                  logParser.applyUsage(usage)
-                },
-                onStderr: (text) => {
-                  mergerStderr += text
-                  const entry = { type: "error" as const, content: text, timestamp: Date.now() }
-                  state.log.push(entry)
-                  send({ type: "node-log", runId, nodeId: node.id, entry })
-                },
-              })
-
-              const remaining = logParser.flush()
-              for (const entry of remaining) {
-                state.log.push(entry)
-                send({ type: "node-log", runId, nodeId: node.id, entry })
-              }
-
-              if (!result.success && !controller.signal.aborted) {
-                const detail = buildAgentFailureDetail(mergerProviderId, result, logParser, mergerStderr)
-                throw new Error(`Merger failed: ${detail}`)
-              }
-
-              // Collect merger metrics
-              const mergerMetrics = collectMetrics(logParser, state.startedAt!)
-              mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
-              state.metrics = mergerMetrics
-              state.meta = buildNodeMeta(mergePrompt, mergerModel, undefined, result.backend)
-
-              output = { content: logParser.textContent, metadata: { source: node.id } }
-            }
-            break
-          }
-
-          case "approval": {
-            const approvalConfig = node.config as ApprovalNodeConfig
-            state.status = "waiting_approval"
-
-            send({
-              type: "approval-requested",
-              runId,
-              nodeId: node.id,
-              content: approvalConfig.show_content ? incomingContent : "",
-              message: approvalConfig.message,
-              allowEdit: approvalConfig.allow_edit,
-            })
-
-            // Wait for user decision (with optional timeout)
-            const decision = await waitForApproval(
-              runId,
-              node.id,
-              approvalConfig.timeout_minutes,
-              approvalConfig.timeout_action ?? "auto_reject",
-            )
-
-            if (decision.timedOut) {
-              const action = approvalConfig.timeout_action ?? "auto_reject"
-              const minutes = approvalConfig.timeout_minutes ?? 60
-              send({
-                type: "node-log",
-                runId,
-                nodeId: node.id,
-                entry: {
-                  type: "text",
-                  content: `Approval timed out after ${minutes} minutes. Auto-${action.replace("auto_", "")} applied.\n`,
-                  timestamp: Date.now(),
-                },
-              })
-            }
-
-            if (decision.approved) {
-              const finalContent = decision.editedContent ?? incomingContent
-              output = { content: finalContent, metadata: { source: node.id } }
-            } else {
-              // Rejected — fail the node
-              state.status = "failed"
-              state.completedAt = Date.now()
-              state.error = decision.timedOut
-                ? `Approval timed out (${approvalConfig.timeout_action ?? "auto_reject"})`
-                : "Rejected by user"
-              send({ type: "node-error", runId, nodeId: node.id, error: state.error })
-              return
-            }
-            break
-          }
-
-          case "output":
-            output = { content: incomingContent, metadata: { source: node.id } }
-            break
-        }
-
-        state.status = "completed"
-        state.completedAt = Date.now()
-        state.output = output
-
-        await writeNodeOutputFile(workspace, node.id, output.content)
-
-        if (node.type !== "evaluator") {
-          for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-            activatedEdges.add(e.id)
-          }
-        }
-
-        send({ type: "node-done", runId, nodeId: node.id, output })
-      } catch (err) {
-        if (controller.signal.aborted) {
-          state.status = "failed"
-          return
-        }
-        let partialOutput: NodeInput | undefined
-        if (recoverOutputOnError) {
-          try {
-            partialOutput = await recoverOutputOnError()
-          } catch (recoveryErr) {
-            console.error(`[workflow-runner] failed to recover partial output for ${node.id}:`, recoveryErr)
-          }
-        }
-        const errMsg = String(err)
-        const timedOut = errMsg.includes("timed out") || errMsg.includes("ETIMEDOUT") || errMsg.includes("timeout")
-        state.completedAt = Date.now()
-        state.error = errMsg
-        state.errorKind = classifyError(err, timedOut)
-        const canRetry = runtimePolicy.retry.enabled
-          && state.retriesUsed! < runtimePolicy.retry.maxTries - 1
-          && runtimePolicy.retry.retryOn.has(state.errorKind)
-        if (canRetry) {
-          state.retriesUsed = (state.retriesUsed || 0) + 1
-          const retryDelayMs = computeRetryDelayMs(runtimePolicy.retry, state.retriesUsed)
-          const retryErrorKind = state.errorKind
-          state.status = "pending"
-          state.error = undefined
-          state.errorKind = undefined
-          state.completedAt = undefined
-          const retryLog = {
-            type: "text" as const,
-            content: `[runtime-retry] attempt ${state.retriesUsed + 1}/${runtimePolicy.retry.maxTries} in ${retryDelayMs}ms after ${retryErrorKind} error\n`,
-            timestamp: Date.now(),
-          }
-          state.log.push(retryLog)
-          send({ type: "node-log", runId, nodeId: node.id, entry: retryLog })
-          state.attempts = Math.max(0, state.attempts - 1)
-          await sleep(retryDelayMs)
-          return processNode(node.id)
-        }
-
-        const onError = runtimePolicy.onError
-        state.policyApplied = onError
-
-        if (onError === "stop") {
-          state.status = "failed"
-          state.output = partialOutput
-          if (partialOutput) {
-            try {
-              await writeNodeOutputFile(workspace, node.id, partialOutput.content)
-            } catch (writeErr) {
-              console.error(`[workflow-runner] failed to persist partial output for ${node.id}:`, writeErr)
-            }
-            send({ type: "node-done", runId, nodeId: node.id, output: partialOutput })
-          }
-          send({ type: "node-error", runId, nodeId: node.id, error: errMsg })
-          return
-        }
-
-        const output = onError === "continue_error_output"
-          ? buildErrorEnvelopeOutput(
-            node.id,
-            incomingContent,
-            partialOutput,
-            state.errorKind,
-            errMsg,
-            state.attempts,
-          )
-          : buildContinueOutput(node.id, incomingContent, partialOutput)
-
-        state.status = "completed"
-        state.output = output
-
-        try {
-          await writeNodeOutputFile(workspace, node.id, output.content)
-        } catch (writeErr) {
-          console.error(`[workflow-runner] failed to persist policy output for ${node.id}:`, writeErr)
-        }
-
-        for (const e of getOutgoingEdges(runtimeWorkflow, node.id)) {
-          activatedEdges.add(e.id)
-        }
-
-        send({ type: "node-done", runId, nodeId: node.id, output })
-        send({ type: "node-error", runId, nodeId: node.id, error: errMsg })
-        return
-      } finally {
-        try {
-          await persistRunState(
-            workspace,
-            nodeStates,
-            runtimeWorkflow,
-            savedState.input || { type: "text", value: inputContent },
-          )
-        } catch (error) {
-          logWarn("workflow-runner", "persist_run_state_checkpoint_failed", {
-            runId,
-            workspace,
-            nodeId: node.id,
-            error: errorMessage(error),
-          })
-        }
-      }
-    }
-
-    // Main execution loop
-    const runningPromises = new Map<string, Promise<void>>()
-    let activeSplitterNodeId: string | null = null
-
-    while (!controller.signal.aborted) {
-      // If paused, wait until resumed (or cancelled)
-      await waitIfPaused(runId, controller.signal)
-      if (controller.signal.aborted) break
-
-      const readyNodes = findReadyNodes(runtimeWorkflow, nodeStates, activatedEdges)
-      const newReady = readyNodes.filter((n) => !runningPromises.has(n.id))
-
-      if (newReady.length === 0 && runningPromises.size === 0) break
-
-      for (const node of newReady) {
-        if (controller.signal.aborted) break
-        if (runningPromises.size >= maxParallel) break
-
-        if (node.type === "splitter") {
-          if (activeSplitterNodeId && activeSplitterNodeId !== node.id) continue
-          if (runningPromises.size > 0) continue
-        } else if (activeSplitterNodeId) {
-          continue
-        }
-
-        if (nodeStates[node.id]?.status === "pending") {
-          nodeStates[node.id].status = "queued"
-        }
-
-        if (node.type === "splitter") {
-          activeSplitterNodeId = node.id
-        }
-
-        const promise = processNode(node.id).finally(() => {
-          runningPromises.delete(node.id)
-          if (activeSplitterNodeId === node.id) {
-            activeSplitterNodeId = null
-          }
-        })
-        runningPromises.set(node.id, promise)
-      }
-
-      if (runningPromises.size > 0) {
-        await Promise.race(runningPromises.values())
-      }
-    }
-
-    // Mark unresolved nodes as skipped
-    for (const [nodeId, state] of Object.entries(nodeStates)) {
-      if (
-        state.status === "pending"
-        || state.status === "queued"
-        || state.status === "running"
-        || state.status === "waiting_approval"
-      ) {
-        state.status = "skipped"
-        send({ type: "node-done", runId, nodeId, output: { content: "", metadata: { source: nodeId, skipped: true } } })
-      }
-    }
-
-    const criticalNodeFailed = Object.entries(nodeStates).some(([id, s]) => {
-      if (s.status !== "failed") return false
-      // Runtime clone (splitter branch) failures are non-fatal if the merger/output completed
-      if (runtimeWorkflow.runtimeMeta?.[id]) return false
-      return true
-    })
-
-    const finalStatus: RunStatus = controller.signal.aborted
-      ? "cancelled"
-      : isRunComplete(nodeStates) && !criticalNodeFailed
-        ? "completed"
-        : "failed"
-    manifestStatus = finalStatus
-
-    let reportPath: string | undefined
-    const outputNode = runtimeWorkflow.nodes.find((n) => n.type === "output")
-    if (outputNode && nodeStates[outputNode.id]?.output?.content) {
-      const reportFile = join(workspace, "report.md")
-      await writeFileAtomic(reportFile, nodeStates[outputNode.id].output!.content)
-      reportPath = reportFile
-    }
-
-    await writeFileAtomic(
-      join(workspace, "run-result.json"),
-      JSON.stringify({
-        runId,
-        status: finalStatus,
-        workflowName: workflow.name,
-        workflowPath: workflowPath || "",
-        startedAt: Date.now(),
-        completedAt: Date.now(),
-        reportPath: reportPath || "",
-        workspace,
-      }, null, 2),
-    )
-
-    // Save updated run state
-    try {
-      await persistRunState(
-        workspace,
-        nodeStates,
-        runtimeWorkflow,
-        savedState.input || { type: "text", value: inputContent },
-      )
-    } catch (error) {
-      logWarn("workflow-runner", "persist_run_state_final_failed", {
-        runId,
-        workspace,
-        error: errorMessage(error),
-      })
-    }
-
-    send({ type: "run-done", runId, status: finalStatus, reportPath, workspace })
-
-    const nodesFailed = Object.values(nodeStates).filter((s) => s.status === "failed").length
-    const { errorKinds, errorKindsUnique } = workflowErrorKinds(nodeStates)
-    void trackTelemetryEvent("workflow_run_finished", {
-      run_mode: "rerun",
-      workflow_provider: workflowProviderId,
-      status: finalStatus,
-      cancelled: finalStatus === "cancelled",
-      duration_ms: Date.now() - rerunStartedAt,
-      nodes_total: runtimeWorkflow.nodes.length,
-      nodes_failed: nodesFailed,
-      error_kinds: errorKinds,
-      error_kinds_unique: errorKindsUnique,
-    })
-  } finally {
-    const fallbackStatus: RunStatus = controller.signal.aborted ? "cancelled" : "failed"
-    await finalizeRunPidManifest(workspace, runId, "rerun", manifestStatus === "interrupted" ? fallbackStatus : manifestStatus)
-    resolvePendingApprovalsForRun(runId, false)
-    activeRuns.delete(runId)
-    pausedRuns.delete(runId)
-    try {
-      window.removeListener("closed", onWindowClosed)
-    } catch (error) {
-      logWarn("workflow-runner", "remove_window_listener_failed", {
-        runId,
-        workspace,
-        error: errorMessage(error),
-      })
-    }
-  }
+    activatedEdges,
+    projectPath,
+    workflowPath,
+    webSearchBackend,
+  })
 }
 
 interface PersistedRunState {
   nodeStates: Record<string, NodeState>
   runtimeNodes?: WorkflowNode[]
+  runtimeEdges?: WorkflowEdge[]
+  runtimeMeta?: Record<string, RuntimeMetaEntry>
+  input?: WorkflowInput
 }
 
 const RESUMABLE_NODE_STATUSES = new Set(["pending", "queued", "running", "waiting_approval"])

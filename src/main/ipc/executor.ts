@@ -24,6 +24,7 @@ import {
   providerReadinessError,
   resolveWorkflowProviderId,
 } from "../lib/provider-runtime"
+import { sendWorkflowEvent } from "../workflow-notifications"
 
 let runCounter = 0
 let batchCounter = 0
@@ -205,13 +206,13 @@ export function registerExecutorHandlers() {
       runWorkflow(runId, workflow, input, window, projectPath, workflowPath, webSearchBackend).catch((err) => {
         try {
           if (!window.isDestroyed()) {
-            window.webContents.send("workflow:event", {
+            sendWorkflowEvent(window, {
               runId,
               type: "node-error",
               nodeId: "__global",
               error: String(err),
             })
-            window.webContents.send("workflow:event", {
+            sendWorkflowEvent(window, {
               runId,
               type: "run-done",
               status: "failed",
@@ -296,13 +297,13 @@ export function registerExecutorHandlers() {
       ).catch((err) => {
         try {
           if (!window.isDestroyed()) {
-            window.webContents.send("workflow:event", {
+            sendWorkflowEvent(window, {
               runId,
               type: "node-error",
               nodeId: "__global",
               error: String(err),
             })
-            window.webContents.send("workflow:event", {
+            sendWorkflowEvent(window, {
               runId,
               type: "run-done",
               status: "failed",
@@ -373,13 +374,13 @@ export function registerExecutorHandlers() {
       ).catch((err) => {
         try {
           if (!window.isDestroyed()) {
-            window.webContents.send("workflow:event", {
+            sendWorkflowEvent(window, {
               runId,
               type: "node-error",
               nodeId: "__global",
               error: String(err),
             })
-            window.webContents.send("workflow:event", {
+            sendWorkflowEvent(window, {
               runId,
               type: "run-done",
               status: "failed",
