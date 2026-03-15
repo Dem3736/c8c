@@ -19,6 +19,7 @@ import { resolveSafetyProfile } from "@shared/provider-metadata"
 import { spawnClaude, type ClaudeSpawnOptions } from "@claude-tools/runner"
 import { createLegacyExecutionHandle } from "./agent-execution"
 import { createClaudeSdkExecutionHandle } from "./claude-sdk-runtime"
+import { createCodexAcpExecutionHandle } from "./codex-acp-runtime"
 import { getClaudeCodeSubscriptionStatus } from "./claude-subscription"
 import { execClaude, findClaudeExecutable } from "./claude-cli"
 import { buildCodexEnv, execCodex, findCodexExecutable } from "./codex-cli"
@@ -413,6 +414,22 @@ class CodexAgentProvider implements AgentProvider {
 
   async runTask(options: AgentRunOptions): Promise<AgentRunResult> {
     return this.runCodex(options)
+  }
+
+  async executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    try {
+      return await createCodexAcpExecutionHandle(options)
+    } catch {
+      return createLegacyExecutionHandle(this.id, options, this.runInteractive.bind(this))
+    }
+  }
+
+  async executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    try {
+      return await createCodexAcpExecutionHandle(options)
+    } catch {
+      return createLegacyExecutionHandle(this.id, options, this.runTask.bind(this))
+    }
   }
 
   cancel(_sessionId: string): boolean {
