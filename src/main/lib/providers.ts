@@ -39,6 +39,7 @@ import {
   toggleMcpServer,
   updateMcpServer,
 } from "./mcp-manager"
+import { logInfo, logWarn } from "./structured-log"
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -188,6 +189,25 @@ export function sanitizeCodexAuthError(text: string): string {
   }
 
   return normalized
+}
+
+export function isCodexInteractiveEditorNoise(text: string): boolean {
+  const normalized = normalizeCliText(text)
+  if (!normalized) return false
+
+  return normalized.includes("Vim: Warning:")
+    || normalized.includes("E325: ATTENTION")
+    || normalized.includes("Swap file")
+    || normalized.includes(".codex/instructions.md")
+}
+
+export function summarizeCodexInteractiveEditorNoise(text: string): string {
+  const normalized = normalizeCliText(text)
+  const swapMatch = normalized.match(/swap file\s+"?([^"\s]+)"?/i)
+  const swapFile = swapMatch?.[1] || null
+  const swapSuffix = swapFile ? ` Swap file: ${swapFile}.` : ""
+
+  return `Codex CLI attempted to open ~/.codex/instructions.md in an interactive editor during headless legacy execution.${swapSuffix}`
 }
 
 export function parseCodexAuth(output: string, apiKeyConfigured: boolean): ProviderAuthStatus {
@@ -404,32 +424,61 @@ class CodexAgentProvider implements AgentProvider {
     }
   }
 
-  async executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+  private async createExecutionHandle(
+    mode: "interactive" | "task",
+    options: AgentRunOptions,
+  ): Promise<AgentExecutionHandle> {
     const settings = await getProviderSettings()
     const support = canUseCodexAcpExecution(options, settings.safetyProfile)
+
+    logInfo("codex-provider", "backend-selection", {
+      mode,
+      workdir: options.workdir,
+      model: options.model ?? null,
+      executionMode: options.executionMode ?? null,
+      requestedSafetyProfile: options.safetyProfile ?? null,
+      configuredSafetyProfile: settings.safetyProfile,
+      addDirCount: options.addDirs?.length ?? 0,
+      hasMcpConfigPath: Boolean(options.mcpConfigPath),
+      acpSupported: support.supported,
+      acpUnsupportedReason: support.reason ?? null,
+    })
+
     if (!support.supported) {
+      logWarn("codex-provider", "legacy-fallback", {
+        mode,
+        reason: support.reason ?? "unknown",
+        workdir: options.workdir,
+        hasMcpConfigPath: Boolean(options.mcpConfigPath),
+      })
       return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
     }
 
     try {
-      return await createCodexAcpExecutionHandle(options)
-    } catch {
+      const handle = await createCodexAcpExecutionHandle(options)
+      logInfo("codex-provider", "acp-selected", {
+        mode,
+        workdir: options.workdir,
+        hasMcpConfigPath: Boolean(options.mcpConfigPath),
+      })
+      return handle
+    } catch (error) {
+      logWarn("codex-provider", "acp-init-failed", {
+        mode,
+        workdir: options.workdir,
+        hasMcpConfigPath: Boolean(options.mcpConfigPath),
+        error: errorMessage(error),
+      })
       return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
     }
   }
 
-  async executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle> {
-    const settings = await getProviderSettings()
-    const support = canUseCodexAcpExecution(options, settings.safetyProfile)
-    if (!support.supported) {
-      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
-    }
+  async executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    return this.createExecutionHandle("interactive", options)
+  }
 
-    try {
-      return await createCodexAcpExecutionHandle(options)
-    } catch {
-      return createLegacyExecutionHandle(this.id, "codex_exec", options, this.runLegacyCodex.bind(this))
-    }
+  async executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    return this.createExecutionHandle("task", options)
   }
 
   cancel(_sessionId: string): boolean {
@@ -465,8 +514,9 @@ class CodexAgentProvider implements AgentProvider {
       args.push("--add-dir", dir)
     }
 
+    const mcpOverrideArgs = buildProviderExtraArgs("codex", options.mcpConfigPath)
     const legacyExtraArgs = [
-      ...buildProviderExtraArgs("codex", options.mcpConfigPath),
+      ...mcpOverrideArgs,
       ...(options.extraArgs || []),
     ]
     if (legacyExtraArgs.length > 0) {
@@ -476,6 +526,17 @@ class CodexAgentProvider implements AgentProvider {
     args.push(prompt)
 
     const env = await buildCodexEnv(options.extraEnv)
+
+    logWarn("codex-provider", "legacy-exec-start", {
+      workdir: options.workdir,
+      model: options.model ?? null,
+      resolvedSafetyProfile: safetyProfile,
+      addDirCount: options.addDirs?.length ?? 0,
+      hasMcpConfigPath: Boolean(options.mcpConfigPath),
+      mcpOverrideArgCount: mcpOverrideArgs.length,
+      hasCodexConfigOverrides: mcpOverrideArgs.length > 0,
+      extraArgCount: options.extraArgs?.length ?? 0,
+    })
 
     return new Promise<AgentRunResult>((resolve, reject) => {
       const startedAt = Date.now()
@@ -488,6 +549,7 @@ class CodexAgentProvider implements AgentProvider {
       let stdoutBuffer = ""
       let killed = false
       let aborted = Boolean(options.abortSignal?.aborted)
+      let sawInteractiveEditorNoise = false
 
       if (child.pid) {
         options.onSpawn?.(child.pid)
@@ -534,6 +596,21 @@ class CodexAgentProvider implements AgentProvider {
       })
 
       child.stderr.on("data", (data: Buffer) => {
+        const text = data.toString("utf-8")
+        if (isCodexInteractiveEditorNoise(text)) {
+          const summary = summarizeCodexInteractiveEditorNoise(text)
+          if (!sawInteractiveEditorNoise) {
+            sawInteractiveEditorNoise = true
+            logWarn("codex-provider", "legacy-exec-interactive-editor", {
+              workdir: options.workdir,
+              hasMcpConfigPath: Boolean(options.mcpConfigPath),
+              mcpOverrideArgCount: mcpOverrideArgs.length,
+              stderr: normalizeCliText(text).slice(0, 500),
+            })
+            options.onStderr?.(Buffer.from(`${summary}\n`))
+          }
+          return
+        }
         options.onStderr?.(data)
       })
 
@@ -548,6 +625,15 @@ class CodexAgentProvider implements AgentProvider {
             options.onStdout?.(Buffer.from(`${eventLine}\n`))
           }
         }
+
+        logInfo("codex-provider", "legacy-exec-finished", {
+          workdir: options.workdir,
+          exitCode: code,
+          signal,
+          aborted,
+          killed: killed || child.killed,
+          sawInteractiveEditorNoise,
+        })
 
         resolve({
           success: code === 0 && !aborted,
