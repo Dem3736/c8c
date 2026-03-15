@@ -46,12 +46,16 @@ interface CodexMcpTransport {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  env_vars?: string[]
   http_headers?: Record<string, string> | null
+  env_http_headers?: Record<string, string>
+  bearer_token_env_var?: string | null
 }
 
 interface CodexMcpServer {
   name: string
   enabled?: boolean
+  auth_status?: string | null
   transport?: CodexMcpTransport
 }
 
@@ -281,6 +285,77 @@ function buildCodexAcpMcpServers(mcpConfigPath?: string): McpServer[] {
   })
 }
 
+function getCodexMcpAuthState(authStatus: string | null | undefined): {
+  supportsAuth: boolean
+  authenticated: boolean
+  needsAuth: boolean
+} {
+  const normalized = (authStatus || "").trim().toLowerCase()
+
+  switch (normalized) {
+    case "":
+    case "none":
+    case "unsupported":
+      return { supportsAuth: false, authenticated: false, needsAuth: false }
+    case "not_logged_in":
+      return { supportsAuth: true, authenticated: false, needsAuth: true }
+    case "bearer_token":
+    case "o_auth":
+      return { supportsAuth: true, authenticated: true, needsAuth: false }
+    default:
+      return { supportsAuth: true, authenticated: false, needsAuth: false }
+  }
+}
+
+function resolveCodexStdioEnv(transport?: CodexMcpTransport): Record<string, string> | undefined {
+  if (!transport) return undefined
+
+  const merged: Record<string, string> = {}
+  for (const [name, value] of Object.entries(transport.env || {})) {
+    if (typeof name === "string" && typeof value === "string") {
+      merged[name] = value
+    }
+  }
+
+  for (const envName of transport.env_vars || []) {
+    const value = process.env[envName]
+    if (typeof value === "string" && value.length > 0 && !merged[envName]) {
+      merged[envName] = value
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+function resolveCodexHttpHeaders(transport?: CodexMcpTransport): Record<string, string> | undefined {
+  if (!transport) return undefined
+
+  const merged: Record<string, string> = {}
+  for (const [name, value] of Object.entries(transport.http_headers || {})) {
+    if (typeof name === "string" && typeof value === "string") {
+      merged[name] = value
+    }
+  }
+
+  for (const [headerName, envName] of Object.entries(transport.env_http_headers || {})) {
+    if (typeof headerName !== "string" || typeof envName !== "string") continue
+    const value = process.env[envName]
+    if (typeof value === "string" && value.length > 0) {
+      merged[headerName] = value
+    }
+  }
+
+  const bearerEnvVar = transport.bearer_token_env_var?.trim()
+  if (bearerEnvVar && !merged.Authorization) {
+    const token = process.env[bearerEnvVar]?.trim()
+    if (token) {
+      merged.Authorization = `Bearer ${token}`
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
 function codexTransportType(transport?: CodexMcpTransport): "stdio" | "http" | "sse" {
   if (!transport) return "stdio"
   if (transport.type === "streamable_http" || transport.type === "http") return "http"
@@ -293,20 +368,22 @@ function codexServerToMcpServer(server: CodexMcpServer): McpServer | null {
 
   const transportType = codexTransportType(server.transport)
   if ((transportType === "http" || transportType === "sse") && server.transport?.url) {
+    const headers = resolveCodexHttpHeaders(server.transport)
     return {
       name: server.name,
       type: transportType,
       url: server.transport.url,
-      headers: recordToHeaders(server.transport.http_headers || undefined),
+      headers: recordToHeaders(headers),
     }
   }
 
   if (transportType === "stdio" && server.transport?.command) {
+    const env = resolveCodexStdioEnv(server.transport)
     return {
       name: server.name,
       command: server.transport.command,
       args: server.transport.args || [],
-      env: recordToEnv(server.transport.env),
+      env: recordToEnv(env),
     }
   }
 
@@ -326,6 +403,11 @@ async function resolveCodexAcpMcpServers(
     if (Array.isArray(parsed)) {
       const runtimeServers = parsed
         .filter((item): item is CodexMcpServer => Boolean(item && typeof item === "object"))
+        .filter((server) => {
+          if (server.enabled === false) return false
+          const authState = getCodexMcpAuthState(server.auth_status)
+          return !authState.needsAuth
+        })
         .map(codexServerToMcpServer)
         .filter((server): server is McpServer => Boolean(server))
       if (runtimeServers.length > 0) return runtimeServers
@@ -337,8 +419,8 @@ async function resolveCodexAcpMcpServers(
   return buildCodexAcpMcpServers(mcpConfigPath)
 }
 
-function getCodexAuthMethodId(apiKey?: string): "chatgpt" | "codex-api-key" {
-  return apiKey?.trim() ? "codex-api-key" : "chatgpt"
+function getCodexAuthMethodId(apiKey?: string): "codex-api-key" | undefined {
+  return apiKey?.trim() ? "codex-api-key" : undefined
 }
 
 function buildCodexToolPolicyPrefix(options: AgentRunOptions): string {

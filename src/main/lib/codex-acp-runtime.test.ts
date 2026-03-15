@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   createACPProviderMock,
@@ -81,6 +81,9 @@ describe("canUseCodexAcpExecution", () => {
 })
 
 describe("createCodexAcpExecutionHandle", () => {
+  const originalLinearToken = process.env.LINEAR_API_TOKEN
+  const originalDocsRoot = process.env.DOCS_ROOT
+
   beforeEach(() => {
     cleanupMock.mockReset()
     execCodexMock.mockReset()
@@ -115,6 +118,20 @@ describe("createCodexAcpExecutionHandle", () => {
       languageModel: languageModelMock,
       tools: {},
     })
+  })
+
+  afterEach(() => {
+    if (originalLinearToken === undefined) {
+      delete process.env.LINEAR_API_TOKEN
+    } else {
+      process.env.LINEAR_API_TOKEN = originalLinearToken
+    }
+
+    if (originalDocsRoot === undefined) {
+      delete process.env.DOCS_ROOT
+    } else {
+      process.env.DOCS_ROOT = originalDocsRoot
+    }
   })
 
   it("maps ACP stream parts into the shared execution handle", async () => {
@@ -245,5 +262,73 @@ describe("createCodexAcpExecutionHandle", () => {
     await drainExecutionHandle(handle)
 
     expect(languageModelMock).toHaveBeenCalledWith("gpt-5.3-codex/xhigh", undefined)
+  })
+
+  it("resolves MCP env vars and bearer token headers from the runtime environment", async () => {
+    process.env.LINEAR_API_TOKEN = "linear-secret"
+    process.env.DOCS_ROOT = "/tmp/project/docs"
+
+    execCodexMock.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          name: "docs",
+          enabled: true,
+          auth_status: "unsupported",
+          transport: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem"],
+            env_vars: ["DOCS_ROOT"],
+          },
+        },
+        {
+          name: "linear",
+          enabled: true,
+          auth_status: "bearer_token",
+          transport: {
+            type: "http",
+            url: "https://mcp.linear.app/sse",
+            bearer_token_env_var: "LINEAR_API_TOKEN",
+          },
+        },
+      ]),
+      stderr: "",
+    })
+
+    streamTextMock.mockReturnValue({
+      fullStream: (async function *() {
+        yield { type: "finish", finishReason: "stop" }
+      })(),
+      totalUsage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+      }),
+      finishReason: Promise.resolve("stop"),
+    })
+
+    const handle = await createCodexAcpExecutionHandle({
+      workdir: "/tmp/project",
+      prompt: "Inspect the file",
+      model: "gpt-5.4",
+    })
+
+    await drainExecutionHandle(handle)
+
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      session: expect.objectContaining({
+        mcpServers: expect.arrayContaining([
+          expect.objectContaining({
+            name: "docs",
+            command: "npx",
+            env: [{ name: "DOCS_ROOT", value: "/tmp/project/docs" }],
+          }),
+          expect.objectContaining({
+            name: "linear",
+            type: "http",
+            headers: [{ name: "Authorization", value: "Bearer linear-secret" }],
+          }),
+        ]),
+      }),
+    }))
   })
 })

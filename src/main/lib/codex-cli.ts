@@ -7,6 +7,7 @@ import { getCodexApiKey } from "./provider-settings"
 
 const execFile = promisify(execFileCb)
 let codexExecSupportPromise: Promise<boolean> | null = null
+let codexShellEnvPromise: Promise<Record<string, string>> | null = null
 
 export interface ExecCodexResult {
   stdout: string
@@ -33,27 +34,71 @@ export function buildCodexPath(existingPath: string | undefined): string {
   return [...new Set(merged.filter(Boolean))].join(delimiter)
 }
 
+function collectStringEnv(source: NodeJS.ProcessEnv | Record<string, string | undefined>): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === "string") {
+      env[key] = value
+    }
+  }
+  return env
+}
+
+function parseNullDelimitedEnv(raw: string): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const pair of raw.split("\u0000")) {
+    if (!pair) continue
+    const equalsIndex = pair.indexOf("=")
+    if (equalsIndex <= 0) continue
+    const key = pair.slice(0, equalsIndex)
+    const value = pair.slice(equalsIndex + 1)
+    env[key] = value
+  }
+  return env
+}
+
+export async function getCodexShellEnv(): Promise<Record<string, string>> {
+  if (codexShellEnvPromise) {
+    return codexShellEnvPromise
+  }
+
+  codexShellEnvPromise = (async () => {
+    if (process.platform === "win32") {
+      return collectStringEnv(process.env)
+    }
+
+    const shell = process.env.SHELL || "/bin/zsh"
+
+    try {
+      const { stdout } = await execFile(shell, ["-lc", "env -0"], {
+        timeout: 5_000,
+        maxBuffer: 1024 * 1024 * 8,
+        env: {
+          ...process.env,
+          PATH: buildCodexPath(process.env.PATH),
+        },
+      })
+
+      const parsed = parseNullDelimitedEnv(stdout)
+      if (Object.keys(parsed).length > 0) {
+        return parsed
+      }
+    } catch {
+      // Fall back to the current process environment.
+    }
+
+    return collectStringEnv(process.env)
+  })()
+
+  return codexShellEnvPromise
+}
+
 export async function buildCodexEnv(
   extraEnv?: Record<string, string>,
 ): Promise<NodeJS.ProcessEnv> {
   const env: NodeJS.ProcessEnv = {
-    HOME: process.env.HOME,
-    USER: process.env.USER,
-    LOGNAME: process.env.LOGNAME,
-    USERPROFILE: process.env.USERPROFILE,
-    SHELL: process.env.SHELL,
-    TMPDIR: process.env.TMPDIR,
-    TMP: process.env.TMP,
-    TEMP: process.env.TEMP,
-    LANG: process.env.LANG,
-    LC_ALL: process.env.LC_ALL,
-    LC_CTYPE: process.env.LC_CTYPE,
-    SystemRoot: process.env.SystemRoot,
-    SYSTEMROOT: process.env.SYSTEMROOT,
-    ComSpec: process.env.ComSpec,
-    COMSPEC: process.env.COMSPEC,
-    APPDATA: process.env.APPDATA,
-    LOCALAPPDATA: process.env.LOCALAPPDATA,
+    ...collectStringEnv(process.env),
+    ...(await getCodexShellEnv()),
     PATH: buildCodexPath(process.env.PATH),
     ...extraEnv,
   }
