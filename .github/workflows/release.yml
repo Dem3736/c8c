@@ -45,19 +45,23 @@ jobs:
           npm run build:shared
           npm run build
 
-      - name: Package & publish (macOS arm64, unsigned)
+      - name: Package (macOS arm64, unsigned)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx electron-builder --mac --arm64 --publish always
+        run: npx electron-builder --mac --arm64 --publish never
 
       - name: Generate checksums
         run: |
           cd release
           shasum -a 256 *.dmg *.zip 2>/dev/null > SHA256SUMS || true
 
-      - name: Upload checksums
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: release/SHA256SUMS
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+            release/SHA256SUMS
 
