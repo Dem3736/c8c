@@ -178,6 +178,9 @@ describe("createCodexAcpExecutionHandle", () => {
     })
     expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
       authMethodId: undefined,
+      env: expect.objectContaining({
+        ACP_AI_PROVIDER_WARN_MISSING_AUTH_METHOD: "0",
+      }),
       session: expect.objectContaining({
         mcpServers: [],
       }),
@@ -474,11 +477,10 @@ describe("createCodexAcpExecutionHandle", () => {
         {
           name: "linear",
           enabled: true,
-          auth_status: "bearer_token",
+          auth_status: "unsupported",
           transport: {
-            type: "http",
-            url: "https://mcp.linear.app/sse",
-            bearer_token_env_var: "LINEAR_API_TOKEN",
+            type: "streamable_http",
+            url: "https://mcp.linear.app/mcp",
           },
         },
       ]),
@@ -514,6 +516,48 @@ describe("createCodexAcpExecutionHandle", () => {
             headers: [{ name: "Authorization", value: "Bearer linear-secret" }],
           }),
         ],
+      }),
+    }))
+  })
+
+  it("skips remote runtime MCP servers with unsupported auth when they were not explicitly configured", async () => {
+    execCodexMock.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          name: "linear",
+          enabled: true,
+          auth_status: "unsupported",
+          transport: {
+            type: "streamable_http",
+            url: "https://mcp.linear.app/mcp",
+          },
+        },
+      ]),
+      stderr: "",
+    })
+
+    streamTextMock.mockReturnValue({
+      fullStream: (async function *() {
+        yield { type: "finish", finishReason: "stop" }
+      })(),
+      totalUsage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+      }),
+      finishReason: Promise.resolve("stop"),
+    })
+
+    const handle = await createCodexAcpExecutionHandle({
+      workdir: "/tmp/project",
+      prompt: "Inspect the file",
+      model: "gpt-5.4",
+    })
+
+    await drainExecutionHandle(handle)
+
+    expect(createACPProviderMock).toHaveBeenCalledWith(expect.objectContaining({
+      session: expect.objectContaining({
+        mcpServers: [],
       }),
     }))
   })

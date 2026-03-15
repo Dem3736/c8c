@@ -491,16 +491,25 @@ async function resolveCodexAcpMcpServers(
         .filter((server) => {
           if (server.enabled === false) return false
           const authState = getCodexMcpAuthState(server.auth_status)
-          if (authState.needsAuth) return false
-
           const transportType = codexTransportType(server.transport)
           const isRemoteTransport = transportType === "http" || transportType === "sse"
-          if (isRemoteTransport && authState.supportsAuth && !explicitServerNames.has(server.name)) {
+
+          if (authState.needsAuth) {
             logInfo("codex-provider", "mcp-server-skipped", {
               name: server.name,
               transportType,
               authStatus: server.auth_status || null,
-              reason: "auth-backed remote MCP server was not explicitly configured for this run",
+              reason: "MCP server requires authentication before it can join the ACP session",
+            })
+            return false
+          }
+
+          if (isRemoteTransport && !explicitServerNames.has(server.name)) {
+            logInfo("codex-provider", "mcp-server-skipped", {
+              name: server.name,
+              transportType,
+              authStatus: server.auth_status || null,
+              reason: "remote MCP server was not explicitly configured for this run",
             })
             return false
           }
@@ -515,9 +524,7 @@ async function resolveCodexAcpMcpServers(
         mergedServers.set(server.name, server)
       }
       for (const server of explicitServers) {
-        if (!mergedServers.has(server.name)) {
-          mergedServers.set(server.name, server)
-        }
+        mergedServers.set(server.name, server)
       }
 
       if (mergedServers.size > 0) {
@@ -560,11 +567,13 @@ function buildCodexAcpProcessEnv(
   )
 
   if (authSelection.authMethod === "api_key") {
+    filtered.ACP_AI_PROVIDER_WARN_MISSING_AUTH_METHOD = "0"
     return filtered
   }
 
   delete filtered.CODEX_API_KEY
   delete filtered.OPENAI_API_KEY
+  filtered.ACP_AI_PROVIDER_WARN_MISSING_AUTH_METHOD = "0"
   return filtered
 }
 

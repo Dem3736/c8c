@@ -9,7 +9,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "build:shared": "npm run build -w @claude-tools/mcp-search-proxy && npm run build -w @claude-tools/runner",
-    "postinstall": "node scripts/patch-electron-name.js",
+    "postinstall": "node scripts/patch-electron-name.js && node scripts/patch-acp-stack.mjs",
     "predev": "npm run build:shared",
     "dev": "electron-vite dev",
     "dev:telemetry": "C8C_TELEMETRY_LOCAL_TEST=1 electron-vite dev",
