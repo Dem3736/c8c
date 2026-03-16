@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -8,8 +7,8 @@ import {
 import type { DiscoveredSkill, Workflow, WorkflowFile } from "@shared/types"
 import { toast } from "sonner"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
-import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { restoreSelectedWorkflowIfNeeded, shouldRestoreSelectedWorkflow } from "./workflowRestore"
 
 interface UseProjectSidebarDataParams {
   selectedProject: string | null
@@ -42,7 +41,6 @@ export function useProjectSidebarData({
 }: UseProjectSidebarDataParams) {
   const [projectWorkflowsCache, setProjectWorkflowsCache] = useState<Record<string, WorkflowFile[]>>({})
   const [globalWorkflows, setGlobalWorkflows] = useState<WorkflowFile[]>([])
-  const restoredWorkflowPathRef = useRef<string | null>(null)
 
   useEffect(() => {
     window.api.listProjects().then(setProjects)
@@ -69,22 +67,16 @@ export function useProjectSidebarData({
   }, [])
 
   useEffect(() => {
-    if (!selectedWorkflowPath) {
-      restoredWorkflowPathRef.current = null
-      return
-    }
-    if (workflowHasMeaningfulContent(currentWorkflow)) {
-      return
-    }
-    if (restoredWorkflowPathRef.current === selectedWorkflowPath) {
-      return
-    }
+    if (!shouldRestoreSelectedWorkflow(selectedWorkflowPath, currentWorkflow)) return
 
     let cancelled = false
-    restoredWorkflowPathRef.current = selectedWorkflowPath
 
-    void window.api.loadWorkflow(selectedWorkflowPath).then((loadedWorkflow) => {
-      if (cancelled) return
+    void restoreSelectedWorkflowIfNeeded({
+      selectedWorkflowPath,
+      currentWorkflow,
+      loadWorkflow: (workflowPath) => window.api.loadWorkflow(workflowPath),
+    }).then((loadedWorkflow) => {
+      if (cancelled || !loadedWorkflow) return
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
     }).catch((error) => {
