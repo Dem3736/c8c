@@ -8,6 +8,9 @@ import type {
   DesktopRuntimeInfo,
   DiscoveredSkill,
   GenerationProgress,
+  HumanTaskSnapshot,
+  HumanTaskSubmitInput,
+  HumanTaskSummary,
   InstalledPlugin,
   MarketplaceSource,
   McpServerInfo,
@@ -135,6 +138,10 @@ export interface C8cApi {
   chatClearHistory: (workflowPath: string) => Promise<void>
   approveNode: (runId: string, nodeId: string, editedContent?: string) => Promise<boolean>
   rejectNode: (runId: string, nodeId: string) => Promise<boolean>
+  listHumanTasks: (projectPath?: string) => Promise<HumanTaskSummary[]>
+  loadHumanTask: (taskId: string, workspace: string) => Promise<HumanTaskSnapshot | null>
+  submitHumanTask: (taskId: string, workspace: string, input: HumanTaskSubmitInput) => Promise<boolean>
+  rejectHumanTask: (taskId: string, workspace: string, comment?: string, idempotencyKey?: string) => Promise<boolean>
   runBatch: (
     workflow: Workflow,
     inputs: WorkflowInput[],

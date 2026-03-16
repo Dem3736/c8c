@@ -5,8 +5,11 @@ export {
   encodeWorkflowHilTaskRef,
   getWorkflowHilTask,
   getWorkflowHilTaskByRef,
+  humanTaskId,
   listWorkflowHilTasks,
+  markWorkflowHilTaskConsumed,
   resolveWorkflowHilTaskByRef,
+  upsertHumanHilTask,
   writeWorkflowHilTaskResponse,
   type WorkflowHilTaskField,
   type WorkflowHilTaskKind,
@@ -19,5 +22,6 @@ export {
   type WorkflowHilTaskStatus,
   type WorkflowHilTaskSummary,
   type WorkflowHilTaskTokenPayload,
+  type UpsertHumanHilTaskRequest,
 } from "./hil-store.js"
 export * from "./schema.js"

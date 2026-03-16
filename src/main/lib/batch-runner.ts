@@ -124,11 +124,11 @@ export async function runBatch(
       })
       return
     }
-    if (workflow.nodes.some((node) => node.type === "approval")) {
+    if (workflow.nodes.some((node) => node.type === "approval" || node.type === "human")) {
       send(window, {
         type: "batch-error",
         batchId,
-        error: "Batch run does not support approval nodes. Remove approval steps or run a single execution.",
+        error: "Batch run does not support human review nodes. Remove approval/human steps or run a single execution.",
       })
       return
     }

@@ -1,6 +1,7 @@
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
+  HumanNodeConfig,
   NodeInput,
   MergerNodeConfig,
   RuntimeMetaEntry,
@@ -177,6 +178,26 @@ export function getRuntimeStagePresentation(
       title: compactCopy(config.message, 42) || "Review and continue",
       outcomeLabel: "Approves",
       outcomeText: buildArtifactOutcomeText(artifactRole || "decision", artifactLabel, "A human decision before the flow can continue."),
+      artifactLabel,
+      artifactRoleLabel: getRuntimeArtifactRoleLabel(artifactRole || "decision"),
+    }
+  }
+
+  if (node.type === "human") {
+    const config = node.config as HumanNodeConfig
+    const artifactLabel = artifactOverrideLabel || "Human response"
+    return {
+      kind: "Gate",
+      group: config.mode === "approval" ? "Review gate" : "Human input",
+      title: compactCopy(config.staticRequest?.title, 42) || (config.mode === "approval" ? "Review and continue" : "Provide input"),
+      outcomeLabel: config.mode === "approval" ? "Approves" : "Collects",
+      outcomeText: buildArtifactOutcomeText(
+        artifactRole || "decision",
+        artifactLabel,
+        config.mode === "approval"
+          ? "A human decision before the flow can continue."
+          : "Structured answers from a human before the flow can continue.",
+      ),
       artifactLabel,
       artifactRoleLabel: getRuntimeArtifactRoleLabel(artifactRole || "decision"),
     }

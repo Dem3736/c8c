@@ -50,6 +50,37 @@ const APPROVAL_WORKFLOW: Workflow = {
   ],
 }
 
+const HUMAN_WORKFLOW: Workflow = {
+  version: 1,
+  name: "Human",
+  defaults: { model: "sonnet" },
+  nodes: [
+    { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+    {
+      id: "human-1",
+      type: "human",
+      position: { x: 300, y: 0 },
+      config: {
+        mode: "form",
+        requestSource: "static",
+        staticRequest: {
+          version: 1,
+          kind: "form",
+          title: "Review content",
+          fields: [
+            { id: "reviewer", type: "text", label: "Reviewer", required: true },
+          ],
+        },
+      },
+    },
+    { id: "output-1", type: "output", position: { x: 600, y: 0 }, config: {} },
+  ],
+  edges: [
+    { id: "e1", source: "input-1", target: "human-1", type: "default" },
+    { id: "e2", source: "human-1", target: "output-1", type: "default" },
+  ],
+}
+
 async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void> {
   const start = Date.now()
   while (!predicate()) {
@@ -254,6 +285,24 @@ describe("batch-runner", () => {
     const inputs: WorkflowInput[] = [{ type: "text", value: "A" }]
 
     await runBatch("batch-approval", APPROVAL_WORKFLOW, inputs, 1, false, mockWindow)
+
+    const errorEvent = events.find((e) => e.type === "batch-error")
+    expect(errorEvent).toBeDefined()
+    expect(mockRunWorkflow).not.toHaveBeenCalled()
+  })
+
+  it("emits batch-error when workflow contains human review nodes", async () => {
+    mockRunWorkflow.mockResolvedValue({
+      status: "completed",
+      evalScores: {},
+      totalCost: 0,
+      durationMs: 50,
+    })
+
+    const { runBatch } = await import("./batch-runner")
+    const inputs: WorkflowInput[] = [{ type: "text", value: "A" }]
+
+    await runBatch("batch-human", HUMAN_WORKFLOW, inputs, 1, false, mockWindow)
 
     const errorEvent = events.find((e) => e.type === "batch-error")
     expect(errorEvent).toBeDefined()

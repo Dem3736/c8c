@@ -200,6 +200,44 @@ describe("workflow execution state", () => {
     })
   })
 
+  it("tracks human-task lifecycle events in node state", () => {
+    const workflow = createWorkflow()
+    const previousState = createExecutionStartState(
+      createEmptyWorkflowExecutionState(),
+      workflow,
+      "/tmp/research.chain",
+      "/tmp/project",
+      123,
+    )
+
+    const created = reduceWorkflowExecutionEvent(previousState, {
+      type: "human-task-created",
+      runId: "run-1",
+      nodeId: "input",
+      taskId: "human-input",
+      title: "Review draft",
+    })
+
+    expect(created.nextState.nodeStates.input.status).toBe("waiting_human")
+    expect(created.nextState.nodeStates.input.humanTask).toEqual({
+      taskId: "human-input",
+      status: "open",
+    })
+
+    const resolved = reduceWorkflowExecutionEvent(created.nextState, {
+      type: "human-task-resolved",
+      runId: "run-1",
+      nodeId: "input",
+      taskId: "human-input",
+      resolution: "submitted",
+    })
+
+    expect(resolved.nextState.nodeStates.input.humanTask).toEqual({
+      taskId: "human-input",
+      status: "answered",
+    })
+  })
+
   it("marks a run as finished and requests history refresh", () => {
     const previousState = {
       ...createEmptyWorkflowExecutionState(),
@@ -235,6 +273,28 @@ describe("workflow execution state", () => {
     expect(transition.effects.runFinished).toBe(true)
   })
 
+  it("treats blocked runs as a finished outcome", () => {
+    const transition = reduceWorkflowExecutionEvent(
+      {
+        ...createEmptyWorkflowExecutionState(),
+        runStatus: "running",
+        runId: "run-1",
+      },
+      {
+        type: "run-done",
+        runId: "run-1",
+        status: "blocked",
+        workspace: "/tmp/run-workspace",
+      },
+      undefined,
+      999,
+    )
+
+    expect(transition.nextState.runStatus).toBe("done")
+    expect(transition.nextState.runOutcome).toBe("blocked")
+    expect(transition.effects.runFinished).toBe(true)
+  })
+
   it("returns a separate failure message for global run errors", () => {
     const transition = reduceWorkflowExecutionEvent(createEmptyWorkflowExecutionState(), {
       type: "node-error",
@@ -259,6 +319,7 @@ describe("workflow execution state", () => {
         input: { status: "completed" as const, attempts: 1, log: [] },
         branch: { status: "running" as const, attempts: 0, log: [] },
         approval: { status: "waiting_approval" as const, attempts: 0, log: [] },
+        review: { status: "waiting_human" as const, attempts: 0, log: [] },
       },
     }
 
@@ -269,6 +330,7 @@ describe("workflow execution state", () => {
     expect(nextState.activeNodeId).toBeNull()
     expect(nextState.nodeStates.branch.status).toBe("skipped")
     expect(nextState.nodeStates.approval.status).toBe("skipped")
+    expect(nextState.nodeStates.review.status).toBe("skipped")
     expect(nextState.nodeStates.input.status).toBe("completed")
   })
 })

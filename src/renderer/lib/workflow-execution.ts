@@ -148,6 +148,8 @@ export function createCancelledExecutionState(previousState: WorkflowExecutionSt
   for (const [nodeId, nodeState] of Object.entries(nodeStates)) {
     if (nodeState.status === "running" || nodeState.status === "queued" || nodeState.status === "waiting_approval") {
       nodeStates[nodeId] = { ...nodeState, status: "skipped" }
+    } else if (nodeState.status === "waiting_human") {
+      nodeStates[nodeId] = { ...nodeState, status: "skipped" }
     }
   }
 
@@ -324,11 +326,48 @@ export function reduceWorkflowExecutionEvent(
         },
       }
 
+    case "human-task-created":
+      return {
+        nextState: {
+          ...previousState,
+          nodeStates: {
+            ...previousState.nodeStates,
+            [event.nodeId]: {
+              ...getNodeState(previousState, event.nodeId),
+              status: "waiting_human",
+              humanTask: {
+                taskId: event.taskId,
+                status: "open",
+              },
+            },
+          },
+        },
+        effects: {},
+      }
+
+    case "human-task-resolved":
+      return {
+        nextState: {
+          ...previousState,
+          nodeStates: {
+            ...previousState.nodeStates,
+            [event.nodeId]: {
+              ...getNodeState(previousState, event.nodeId),
+              humanTask: {
+                taskId: event.taskId,
+                status: event.resolution === "submitted" ? "answered" : event.resolution,
+              },
+            },
+          },
+        },
+        effects: {},
+      }
+
     case "run-done":
       return {
         nextState: {
           ...previousState,
-          runStatus: event.status === "completed" || event.status === "cancelled" ? "done" : "error",
+          runStatus: event.status === "completed" || event.status === "cancelled" || event.status === "blocked" ? "done" : "error",
           runOutcome: event.status,
           runStartedAt: null,
           completedAt,

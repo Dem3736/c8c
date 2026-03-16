@@ -6,6 +6,7 @@ import {
   GitFork,
   Hand,
   Merge,
+  MessageSquare,
   type LucideIcon,
   Zap,
 } from "lucide-react"
@@ -18,6 +19,7 @@ export const NODE_ICONS: Record<NodeType, LucideIcon> = {
   splitter: GitFork,
   merger: Merge,
   approval: Hand,
+  human: MessageSquare,
 }
 
 export const NODE_LABELS: Record<NodeType, string> = {
@@ -28,6 +30,7 @@ export const NODE_LABELS: Record<NodeType, string> = {
   splitter: "Fan-out",
   merger: "Merge",
   approval: "Approval",
+  human: "Human",
 }
 
 export const NODE_ICON_TONES: Record<NodeType, string> = {
@@ -38,6 +41,7 @@ export const NODE_ICON_TONES: Record<NodeType, string> = {
   splitter: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
   merger: "border-foreground/20 bg-foreground/10 text-foreground-subtle",
   approval: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+  human: "border-status-warning/30 bg-status-warning/10 text-status-warning",
 }
 
 export const NODE_ACCENTS: Partial<Record<NodeType, string>> = {
@@ -48,6 +52,7 @@ export const NODE_ACCENTS: Partial<Record<NodeType, string>> = {
   splitter: "border-foreground/20",
   merger: "border-foreground/20",
   approval: "border-status-warning/50",
+  human: "border-status-warning/50",
 }
 
 export const STATUS_STYLES: Partial<Record<NodeStatus, string>> = {
@@ -56,4 +61,5 @@ export const STATUS_STYLES: Partial<Record<NodeStatus, string>> = {
   failed: "border-status-danger/60",
   skipped: "border-status-warning/50",
   waiting_approval: "border-status-warning/60",
+  waiting_human: "border-status-warning/60",
 }

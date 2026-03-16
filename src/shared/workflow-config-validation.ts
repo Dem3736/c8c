@@ -13,6 +13,10 @@ const INPUT_TYPES = new Set(["auto", "text", "url", "directory"])
 const MERGER_STRATEGIES = new Set(["concatenate", "summarize", "select_best"])
 const OUTPUT_FORMATS = new Set(["markdown", "text"])
 const TIMEOUT_ACTIONS = new Set(["auto_approve", "auto_reject", "skip"])
+const HUMAN_MODES = new Set(["form", "approval"])
+const HUMAN_REQUEST_SOURCES = new Set(["upstream_json", "static"])
+const HUMAN_TIMEOUT_ACTIONS = new Set(["fail_node", "complete_with_timeout_response"])
+const HUMAN_REJECT_ACTIONS = new Set(["fail_node", "complete_with_reject_response"])
 
 const ALLOWED_CONFIG_KEYS = {
   input: new Set(["inputType", "required", "defaultValue", "placeholder", "runtime"]),
@@ -21,6 +25,7 @@ const ALLOWED_CONFIG_KEYS = {
   splitter: new Set(["strategy", "maxBranches", "runtime"]),
   merger: new Set(["strategy", "prompt", "runtime"]),
   approval: new Set(["message", "show_content", "allow_edit", "timeout_minutes", "timeout_action", "runtime"]),
+  human: new Set(["mode", "requestSource", "staticRequest", "timeoutMinutes", "timeoutAction", "submitAction", "rejectAction", "allowRevisions", "autoContinue", "runtime"]),
   output: new Set(["title", "format", "runtime"]),
 } as const
 
@@ -192,6 +197,33 @@ export function validateWorkflowNodeConfig(node: WorkflowNode): WorkflowConfigIs
       }
       if (hasOwn(config, "timeout_action") && !TIMEOUT_ACTIONS.has(String(config.timeout_action))) {
         pushIssue(issues, node.id, "config.timeout_action", "timeout_action must be auto_approve, auto_reject, or skip.")
+      }
+      break
+    }
+    case "human": {
+      if (!HUMAN_MODES.has(String(config.mode))) {
+        pushIssue(issues, node.id, "config.mode", "mode must be form or approval.")
+      }
+      if (!HUMAN_REQUEST_SOURCES.has(String(config.requestSource))) {
+        pushIssue(issues, node.id, "config.requestSource", "requestSource must be upstream_json or static.")
+      }
+      if (config.requestSource === "static" && !isRecord(config.staticRequest)) {
+        pushIssue(issues, node.id, "config.staticRequest", "staticRequest must be an object when requestSource is static.")
+      }
+      if (hasOwn(config, "timeoutMinutes") && !isPositiveInteger(config.timeoutMinutes)) {
+        pushIssue(issues, node.id, "config.timeoutMinutes", "timeoutMinutes must be a positive integer.")
+      }
+      if (hasOwn(config, "timeoutAction") && !HUMAN_TIMEOUT_ACTIONS.has(String(config.timeoutAction))) {
+        pushIssue(issues, node.id, "config.timeoutAction", "timeoutAction must be fail_node or complete_with_timeout_response.")
+      }
+      if (hasOwn(config, "rejectAction") && !HUMAN_REJECT_ACTIONS.has(String(config.rejectAction))) {
+        pushIssue(issues, node.id, "config.rejectAction", "rejectAction must be fail_node or complete_with_reject_response.")
+      }
+      if (hasOwn(config, "allowRevisions") && typeof config.allowRevisions !== "boolean") {
+        pushIssue(issues, node.id, "config.allowRevisions", "allowRevisions must be a boolean.")
+      }
+      if (hasOwn(config, "autoContinue") && typeof config.autoContinue !== "boolean") {
+        pushIssue(issues, node.id, "config.autoContinue", "autoContinue must be a boolean.")
       }
       break
     }

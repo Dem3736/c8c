@@ -39,7 +39,11 @@ import {
 import { writeFileAtomic } from "../../../src/main/lib/atomic-write.js"
 import {
   approvalTaskId,
+  getWorkflowHilTask,
+  humanTaskId,
+  markWorkflowHilTaskConsumed,
   upsertApprovalHilTask,
+  upsertHumanHilTask,
   writeWorkflowHilTaskResponse,
 } from "./hil-store.js"
 import {
@@ -55,6 +59,8 @@ import type {
   DiscoveredSkill,
   ErrorKind,
   EvaluatorNodeConfig,
+  HumanNodeConfig,
+  HumanTaskRequest,
   LogEntry,
   MergerNodeConfig,
   NodeInput,
@@ -129,6 +135,9 @@ export interface PersistedRunManifest {
   updatedAt: number
   status: RunStatus | "running"
   mode: RunPidManifestMode | "continue"
+  chainId?: string
+  blockedByTaskId?: string
+  lastBlockingNodeId?: string
 }
 
 interface PersistedRunState {
@@ -137,6 +146,7 @@ interface PersistedRunState {
   runtimeEdges?: WorkflowEdge[]
   runtimeMeta?: Record<string, RuntimeMetaEntry>
   input?: WorkflowInput
+  humanTasks?: Record<string, NodeState["humanTask"]>
 }
 
 interface PersistedRunResult {
@@ -255,6 +265,7 @@ interface WorkflowExecutionSession {
   workflowPath?: string
   webSearchBackend?: WebSearchBackend
   approvalBehavior?: ApprovalBehavior
+  chainId: string
 }
 
 interface WorkflowRuntimeContext {
@@ -305,7 +316,7 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
 }
 
 const RETRYABLE_ERROR_KINDS: ErrorKind[] = ["tool", "model", "timeout", "unknown"]
-const RESUMABLE_NODE_STATUSES = new Set(["pending", "queued", "running", "waiting_approval"])
+const RESUMABLE_NODE_STATUSES = new Set(["pending", "queued", "running", "waiting_approval", "waiting_human"])
 const CLAUDE_LIMIT_RE = /\b(rate limit(?:ed)?|usage limit|quota(?: exceeded)?|too many requests|http\s*429|status\s*429|credit balance|billing|exceeded (?:your )?(?:usage|rate|monthly|spend|token) limit|limit reached)\b/i
 
 function createDefaultLogger(): WorkflowLogger {
@@ -581,6 +592,12 @@ function buildArtifactMetadata(
       return {
         artifact_type: "approved_content",
         artifact_label: "Approved content",
+        artifact_role: "decision",
+      }
+    case "human":
+      return {
+        artifact_type: "human_response",
+        artifact_label: "Human response",
         artifact_role: "decision",
       }
     case "output": {
@@ -899,6 +916,16 @@ function serializeNodeStates(nodeStates: Record<string, NodeState>): PersistedRu
   return serializableStates
 }
 
+function serializeHumanTasks(nodeStates: Record<string, NodeState>): PersistedRunState["humanTasks"] {
+  const humanTasks: PersistedRunState["humanTasks"] = {}
+  for (const [id, state] of Object.entries(nodeStates)) {
+    if (state.humanTask) {
+      humanTasks[id] = state.humanTask
+    }
+  }
+  return humanTasks
+}
+
 async function persistRunState(
   workspace: string,
   nodeStates: Record<string, NodeState>,
@@ -913,6 +940,7 @@ async function persistRunState(
       runtimeEdges: runtimeWorkflow.edges,
       runtimeMeta: runtimeWorkflow.runtimeMeta,
       input,
+      humanTasks: serializeHumanTasks(nodeStates),
     }, null, 2),
   )
 }
@@ -1160,6 +1188,124 @@ export async function writeWorkflowApprovalDecision(
   }
 }
 
+function isHumanTaskRequest(value: unknown): value is HumanTaskRequest {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const candidate = value as Partial<HumanTaskRequest>
+  return candidate.version === 1
+    && (candidate.kind === "form" || candidate.kind === "approval")
+    && typeof candidate.title === "string"
+    && Array.isArray(candidate.fields)
+}
+
+function buildStaticApprovalHumanTaskRequest(
+  nodeId: string,
+  config: HumanNodeConfig,
+  incomingContent: string,
+): HumanTaskRequest {
+  const instructions = typeof config.staticRequest?.instructions === "string"
+    ? config.staticRequest.instructions
+    : undefined
+  const title = config.staticRequest?.title || `Review ${nodeId}`
+  return {
+    version: 1,
+    kind: "approval",
+    title,
+    instructions,
+    summary: config.staticRequest?.summary,
+    fields: [
+      {
+        id: "approved",
+        type: "boolean",
+        label: "Approve and continue",
+        required: true,
+      },
+      ...(config.staticRequest?.metadata?.allowEdit
+        ? [{
+            id: "editedContent",
+            type: "textarea" as const,
+            label: "Edited content",
+            description: "Optional edits to use when continuing this flow.",
+          }]
+        : []),
+    ],
+    defaults: {
+      approved: true,
+      ...(config.staticRequest?.metadata?.allowEdit ? { editedContent: incomingContent } : {}),
+    },
+    metadata: {
+      ...config.staticRequest?.metadata,
+      generatedByNodeId: nodeId,
+    },
+  }
+}
+
+function buildHumanTaskRequest(
+  node: WorkflowNode,
+  config: HumanNodeConfig,
+  incomingContent: string,
+): HumanTaskRequest {
+  if (config.requestSource === "static") {
+    if (config.mode === "approval") {
+      return buildStaticApprovalHumanTaskRequest(node.id, config, incomingContent)
+    }
+    if (!config.staticRequest) {
+      throw new Error(`Human node ${node.id} requires staticRequest when requestSource=static`)
+    }
+    if (!isHumanTaskRequest(config.staticRequest)) {
+      throw new Error(`Human node ${node.id} has invalid staticRequest`)
+    }
+    return {
+      ...config.staticRequest,
+      metadata: {
+        ...config.staticRequest.metadata,
+        generatedByNodeId: config.staticRequest.metadata?.generatedByNodeId || node.id,
+      },
+    }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(incomingContent)
+  } catch {
+    throw new Error(`Human node ${node.id} requires valid upstream JSON request`)
+  }
+  if (!isHumanTaskRequest(parsed)) {
+    throw new Error(`Human node ${node.id} upstream JSON is not a valid HumanTaskRequest`)
+  }
+  return {
+    ...parsed,
+    metadata: {
+      ...parsed.metadata,
+      generatedByNodeId: parsed.metadata?.generatedByNodeId || node.id,
+    },
+  }
+}
+
+async function readHumanTaskResponse(
+  workspace: string,
+  nodeId: string,
+): Promise<{
+  taskId: string
+  resolution: "submitted" | "rejected" | "timed_out"
+  answers: Record<string, unknown>
+} | null> {
+  const record = await getWorkflowHilTask(workspace, humanTaskId(nodeId))
+  if (!record?.latestResponse) return null
+  const { latestResponse } = record
+  if (
+    latestResponse.resolution !== "submitted"
+    && latestResponse.resolution !== "rejected"
+    && latestResponse.resolution !== "timed_out"
+  ) {
+    return null
+  }
+  return {
+    taskId: record.taskId,
+    resolution: latestResponse.resolution,
+    answers: latestResponse.answers,
+  }
+}
+
 export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
   const logger = deps.logger || createDefaultLogger()
   const workspaceStore = deps.workspaceStore || createFilesystemWorkspaceStore()
@@ -1301,6 +1447,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       webSearchBackend,
       approvalBehavior = "wait",
       activatedEdges,
+      chainId,
     } = session
 
     activeRuns.set(runId, runtime.controller)
@@ -1331,6 +1478,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       workspace,
       startedAt,
       mode,
+      chainId,
     }
 
     await writeManifest(workspace, {
@@ -1369,6 +1517,8 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
     await initRunPidManifest(workspace, runId, mode)
 
     let manifestStatus: RunStatus = "interrupted"
+    let blockedByTaskId: string | undefined
+    let blockedByNodeId: string | undefined
 
     try {
       const maxParallel = workflow.defaults?.maxParallel || 8
@@ -1432,7 +1582,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
           const incoming = runtimeWorkflow.edges.filter((edge) => edge.target === node.id)
           incomingContent = selectIncomingContent(incoming, nodeStates, inputContent)
 
-          let output: NodeInput
+          let output: NodeInput | null = null
 
           switch (node.type) {
             case "input":
@@ -2181,23 +2331,115 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               break
             }
 
+            case "human": {
+              const humanConfig = node.config as HumanNodeConfig
+              state.status = "waiting_human"
+              const resolvedTask = await readHumanTaskResponse(workspace, node.id)
+
+              if (!resolvedTask) {
+                const taskRequest = buildHumanTaskRequest(node, humanConfig, incomingContent)
+                const taskRecord = await upsertHumanHilTask({
+                  workspace,
+                  runId,
+                  workflowName: workflow.name,
+                  workflowPath,
+                  projectPath,
+                  nodeId: node.id,
+                  request: taskRequest,
+                })
+                state.humanTask = {
+                  taskId: taskRecord.taskId,
+                  status: taskRecord.state.status,
+                }
+                await persistRunState(workspace, nodeStates, runtimeWorkflow, persistedInput)
+                await runtime.emitEvent({
+                  type: "human-task-created",
+                  runId,
+                  nodeId: node.id,
+                  taskId: taskRecord.taskId,
+                  title: taskRecord.state.title,
+                })
+                blockedForHuman = true
+                blockedByTaskId = taskRecord.taskId
+                blockedByNodeId = node.id
+                return
+              }
+
+              await runtime.emitEvent({
+                type: "human-task-resolved",
+                runId,
+                nodeId: node.id,
+                taskId: resolvedTask.taskId,
+                resolution: resolvedTask.resolution,
+              })
+
+              state.humanTask = {
+                taskId: resolvedTask.taskId,
+                status: resolvedTask.resolution === "submitted"
+                  ? "answered"
+                  : resolvedTask.resolution,
+              }
+
+              const buildHumanEnvelope = (ok: boolean) => createNodeOutput(
+                node,
+                JSON.stringify({
+                  ok,
+                  taskId: resolvedTask.taskId,
+                  resolution: resolvedTask.resolution,
+                  answers: resolvedTask.answers,
+                }, null, 2),
+              )
+
+              if (resolvedTask.resolution === "submitted") {
+                output = buildHumanEnvelope(true)
+              } else if (
+                resolvedTask.resolution === "rejected"
+                && humanConfig.rejectAction === "complete_with_reject_response"
+              ) {
+                output = buildHumanEnvelope(false)
+              } else if (
+                resolvedTask.resolution === "timed_out"
+                && humanConfig.timeoutAction === "complete_with_timeout_response"
+              ) {
+                output = buildHumanEnvelope(false)
+              } else {
+                state.status = "failed"
+                state.completedAt = Date.now()
+                state.error = resolvedTask.resolution === "timed_out"
+                  ? "Human task timed out"
+                  : "Rejected by human reviewer"
+                await runtime.emitEvent({ type: "node-error", runId, nodeId: node.id, error: state.error })
+                await markWorkflowHilTaskConsumed(workspace, resolvedTask.taskId)
+                return
+              }
+
+              await markWorkflowHilTaskConsumed(workspace, resolvedTask.taskId)
+              break
+            }
+
             case "output":
               output = createNodeOutput(node, incomingContent)
               break
           }
 
+          if (!output) {
+            throw new Error(`Node '${node.id}' did not produce output`)
+          }
+
+          const completedOutput = output
+
           state.status = "completed"
           state.completedAt = Date.now()
-          state.output = output
+          state.output = completedOutput
 
-          await writeNodeOutputFile(workspace, node.id, output.content)
+          await writeNodeOutputFile(workspace, node.id, completedOutput.content)
           if (node.type !== "evaluator") {
             for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
               activatedEdges.add(edge.id)
             }
           }
 
-          await runtime.emitEvent({ type: "node-done", runId, nodeId: node.id, output })
+          await runtime.emitEvent({ type: "node-done", runId, nodeId: node.id, output: completedOutput })
         } catch (error) {
           if (runtime.controller.signal.aborted) {
             state.status = "failed"
@@ -2308,12 +2550,13 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       const stallTimeoutMs = (workflow.defaults?.timeout_minutes || 30) * 60 * 1000 + 60_000
       let lastProgressAt = Date.now()
       let suspendedForApproval = false
+      let blockedForHuman = false
       let approvalRejected = false
 
       while (!runtime.controller.signal.aborted) {
         await waitIfPaused(runId, runtime.controller.signal)
         if (runtime.controller.signal.aborted) break
-        if (suspendedForApproval && runningPromises.size === 0) break
+        if ((suspendedForApproval || blockedForHuman) && runningPromises.size === 0) break
 
         const readyNodes = findReadyNodes(runtimeWorkflow, nodeStates, activatedEdges)
         const newReady = readyNodes.filter((node) => !runningPromises.has(node.id))
@@ -2366,9 +2609,15 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         }
       }
 
-      if (!suspendedForApproval) {
+      if (!suspendedForApproval && !blockedForHuman) {
         for (const [nodeId, state] of Object.entries(nodeStates)) {
-          if (state.status === "pending" || state.status === "queued" || state.status === "running" || state.status === "waiting_approval") {
+          if (
+            state.status === "pending"
+            || state.status === "queued"
+            || state.status === "running"
+            || state.status === "waiting_approval"
+            || state.status === "waiting_human"
+          ) {
             state.status = "skipped"
             const runtimeNode = runtimeWorkflow.nodes.find((candidate) => candidate.id === nodeId)
             await runtime.emitEvent({
@@ -2389,8 +2638,10 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         return true
       })
 
-      const finalStatus: RunStatus = suspendedForApproval
-        ? "paused"
+      const finalStatus: RunStatus = blockedForHuman
+        ? "blocked"
+        : suspendedForApproval
+          ? "paused"
         : approvalRejected
           ? "cancelled"
           : runtime.controller.signal.aborted
@@ -2449,6 +2700,8 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         ...manifestBase,
         status: finalStatus,
         updatedAt: Date.now(),
+        blockedByTaskId,
+        lastBlockingNodeId: blockedByNodeId,
       })
 
       await runtime.emitEvent({ type: "run-done", runId, status: finalStatus, reportPath, workspace })
@@ -2476,6 +2729,8 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         ...manifestBase,
         status: manifestStatus === "interrupted" ? fallbackStatus : manifestStatus,
         updatedAt: Date.now(),
+        blockedByTaskId,
+        lastBlockingNodeId: blockedByNodeId,
       })
       resolvePendingApprovalsForRun(runId, false)
       activeRuns.delete(runId)
@@ -2569,6 +2824,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         workflowPath: request.workflowPath,
         webSearchBackend: request.webSearchBackend,
         approvalBehavior: request.approvalBehavior,
+        chainId: workspace,
       }, runtime))
     },
 
@@ -2648,6 +2904,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
           workflowPath: request.workflowPath,
           webSearchBackend: request.webSearchBackend,
           approvalBehavior: request.approvalBehavior,
+          chainId: request.workspace,
         }, runtime)
       })
 

@@ -107,6 +107,7 @@ const OUTPUT_STATUS_LABELS: Record<string, string> = {
   failed: "Needs attention",
   skipped: "Skipped",
   waiting_approval: "Waiting for approval",
+  waiting_human: "Waiting for input",
 }
 
 function formatOutputStatusLabel(status: string | null) {

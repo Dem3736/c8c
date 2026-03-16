@@ -11,6 +11,9 @@ import type {
   DesktopRuntimeInfo,
   DiscoveredSkill,
   GenerationProgress,
+  HumanTaskSnapshot,
+  HumanTaskSubmitInput,
+  HumanTaskSummary,
   InstalledPlugin,
   MarketplaceSource,
   McpServerInfo,
@@ -249,6 +252,14 @@ const api: C8cApi = {
     ipcRenderer.invoke("executor:approve", runId, nodeId, editedContent),
   rejectNode: (runId: string, nodeId: string) =>
     ipcRenderer.invoke("executor:reject", runId, nodeId),
+  listHumanTasks: (projectPath?: string) =>
+    ipcRenderer.invoke("executor:list-human-tasks", projectPath) as Promise<HumanTaskSummary[]>,
+  loadHumanTask: (taskId: string, workspace: string) =>
+    ipcRenderer.invoke("executor:load-human-task", taskId, workspace) as Promise<HumanTaskSnapshot | null>,
+  submitHumanTask: (taskId: string, workspace: string, input: HumanTaskSubmitInput) =>
+    ipcRenderer.invoke("executor:submit-human-task", taskId, workspace, input),
+  rejectHumanTask: (taskId: string, workspace: string, comment?: string, idempotencyKey?: string) =>
+    ipcRenderer.invoke("executor:reject-human-task", taskId, workspace, comment, idempotencyKey),
 
   // Batch runs
   runBatch: (

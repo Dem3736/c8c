@@ -28,6 +28,7 @@ const STATUS_ICONS: Record<string, typeof Clock> = {
   failed: AlertCircle,
   skipped: Clock,
   waiting_approval: Clock,
+  waiting_human: Clock,
 }
 
 const ERROR_KIND_LABELS: Record<string, string> = {
@@ -41,6 +42,7 @@ const ERROR_KIND_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   queued: "waiting",
   waiting_approval: "waiting for approval",
+  waiting_human: "waiting for input",
 }
 
 const LOG_ENTRY_TYPES = ["thinking", "text", "tool_use", "tool_result", "error", "diff"] as const
@@ -531,6 +533,8 @@ export function LogTab({
           ? "Waiting to execute..."
           : state?.status === "running"
             ? "Running... output will appear here soon."
+            : state?.status === "waiting_human"
+              ? "Waiting for human input..."
             : state?.status === "waiting_approval"
               ? "Waiting for approval..."
             : "No log entries"}

@@ -6,6 +6,7 @@ import {
   approvalTaskId,
   createWorkflowRunner,
   getWorkflowHilTask,
+  humanTaskId,
   listWorkflowHilTasks,
   resolveWorkflowHilTaskByRef,
   writeWorkflowApprovalDecision,
@@ -33,6 +34,70 @@ const APPROVAL_WORKFLOW: Workflow = {
   edges: [
     { id: "edge-1", source: "input-1", target: "approval-1", type: "default" },
     { id: "edge-2", source: "approval-1", target: "output-1", type: "default" },
+  ],
+}
+
+const HUMAN_FORM_WORKFLOW: Workflow = {
+  version: 1,
+  name: "Human Form Workflow",
+  nodes: [
+    { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+    {
+      id: "human-1",
+      type: "human",
+      position: { x: 200, y: 0 },
+      config: {
+        mode: "form",
+        requestSource: "static",
+        staticRequest: {
+          version: 1,
+          kind: "form",
+          title: "Review generated draft",
+          instructions: "Capture the final reviewer decision.",
+          fields: [
+            { id: "reviewer", type: "text", label: "Reviewer", required: true },
+            { id: "notes", type: "textarea", label: "Notes" },
+          ],
+        },
+      },
+    },
+    { id: "output-1", type: "output", position: { x: 400, y: 0 }, config: {} },
+  ],
+  edges: [
+    { id: "edge-1", source: "input-1", target: "human-1", type: "default" },
+    { id: "edge-2", source: "human-1", target: "output-1", type: "default" },
+  ],
+}
+
+const HUMAN_APPROVAL_WORKFLOW: Workflow = {
+  version: 1,
+  name: "Human Approval Workflow",
+  nodes: [
+    { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+    {
+      id: "human-approval-1",
+      type: "human",
+      position: { x: 200, y: 0 },
+      config: {
+        mode: "approval",
+        requestSource: "static",
+        staticRequest: {
+          version: 1,
+          kind: "approval",
+          title: "Approve draft",
+          instructions: "Approve the edited draft before publishing.",
+          fields: [],
+          metadata: {
+            allowEdit: true,
+          },
+        },
+      },
+    },
+    { id: "output-1", type: "output", position: { x: 400, y: 0 }, config: {} },
+  ],
+  edges: [
+    { id: "edge-1", source: "input-1", target: "human-approval-1", type: "default" },
+    { id: "edge-2", source: "human-approval-1", target: "output-1", type: "default" },
   ],
 }
 
@@ -175,8 +240,8 @@ describe("openclaw workflow runner compatibility", () => {
       source: "cli",
     })
 
-    expect(resolved.state.status).toBe("resolved")
-    expect(resolved.latestResponse?.data.editedContent).toBe("Edited from HIL task")
+    expect(resolved.state.status).toBe("answered")
+    expect(resolved.latestResponse?.answers.editedContent).toBe("Edited from HIL task")
 
     const secondWrite = await resolveWorkflowHilTaskByRef(tasks[0].task, {
       data: {
@@ -189,7 +254,7 @@ describe("openclaw workflow runner compatibility", () => {
     })
 
     expect(secondWrite.latestResponse?.metadata.revision).toBe(1)
-    expect(secondWrite.latestResponse?.data.editedContent).toBe("Edited from HIL task")
+    expect(secondWrite.latestResponse?.answers.editedContent).toBe("Edited from HIL task")
 
     const resumedHandle = await runner.resumeRun({
       workflow: APPROVAL_WORKFLOW,
@@ -199,5 +264,115 @@ describe("openclaw workflow runner compatibility", () => {
 
     const { summary } = await collectRun(resumedHandle)
     expect(summary).toMatchObject({ status: "completed", workspace })
+  })
+
+  it("blocks on human form nodes and resumes after a generic HIL response", async () => {
+    const workspace = await createWorkspace("c8c-openclaw-human-form-")
+    const runner = createApprovalRunner(workspace)
+
+    const firstHandle = await runner.startRun({
+      workflow: HUMAN_FORM_WORKFLOW,
+      input: { type: "text", value: "Generated draft" },
+      approvalBehavior: "suspend",
+    })
+
+    const firstRun = await collectRun(firstHandle)
+    const firstSnapshot = await runner.getSnapshot(firstHandle.runId)
+
+    expect(firstRun.summary).toMatchObject({ status: "blocked", workspace })
+    expect(firstRun.events.some((event) => event.type === "human-task-created" && event.nodeId === "human-1")).toBe(true)
+    expect(firstSnapshot?.state?.nodeStates["human-1"]?.status).toBe("waiting_human")
+
+    const tasks = (await listWorkflowHilTasks([dirname(workspace)])).filter((task) => task.workspace === workspace)
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({
+      kind: "form",
+      status: "open",
+      nodeId: "human-1",
+    })
+
+    const resolved = await resolveWorkflowHilTaskByRef(tasks[0].task, {
+      data: {
+        answers: {
+          reviewer: "vitest",
+          notes: "Ship it",
+        },
+      },
+      idempotencyKey: "human-form-key",
+      answeredBy: "vitest",
+      source: "cli",
+    })
+
+    expect(resolved.state.status).toBe("answered")
+    expect(resolved.latestResponse?.answers).toEqual({
+      reviewer: "vitest",
+      notes: "Ship it",
+    })
+
+    const resumedHandle = await runner.resumeRun({
+      workflow: HUMAN_FORM_WORKFLOW,
+      workspace,
+      approvalBehavior: "suspend",
+    })
+
+    const resumedRun = await collectRun(resumedHandle)
+    const resumedSnapshot = await runner.getSnapshot(resumedHandle.runId)
+    const task = await getWorkflowHilTask(workspace, humanTaskId("human-1"))
+
+    expect(resumedRun.summary).toMatchObject({ status: "completed", workspace })
+    expect(JSON.parse(resumedSnapshot?.state?.nodeStates["human-1"]?.output?.content || "{}")).toMatchObject({
+      ok: true,
+      resolution: "submitted",
+      answers: {
+        reviewer: "vitest",
+        notes: "Ship it",
+      },
+    })
+    expect(task?.state.status).toBe("consumed")
+  })
+
+  it("supports approval-style human nodes through HIL approval responses", async () => {
+    const workspace = await createWorkspace("c8c-openclaw-human-approval-")
+    const runner = createApprovalRunner(workspace)
+
+    const firstHandle = await runner.startRun({
+      workflow: HUMAN_APPROVAL_WORKFLOW,
+      input: { type: "text", value: "Generated draft" },
+      approvalBehavior: "suspend",
+    })
+
+    await collectRun(firstHandle)
+    const task = await getWorkflowHilTask(workspace, humanTaskId("human-approval-1"))
+    expect(task?.request.kind).toBe("approval")
+
+    await resolveWorkflowHilTaskByRef(task!.task, {
+      data: {
+        approved: true,
+        editedContent: "Edited by human reviewer",
+      },
+      idempotencyKey: "human-approval-key",
+      answeredBy: "vitest",
+      source: "cli",
+    })
+
+    const resumedHandle = await runner.resumeRun({
+      workflow: HUMAN_APPROVAL_WORKFLOW,
+      workspace,
+      approvalBehavior: "suspend",
+    })
+
+    const resumedRun = await collectRun(resumedHandle)
+    const resumedSnapshot = await runner.getSnapshot(resumedHandle.runId)
+    const humanOutput = JSON.parse(resumedSnapshot?.state?.nodeStates["human-approval-1"]?.output?.content || "{}")
+
+    expect(resumedRun.summary).toMatchObject({ status: "completed", workspace })
+    expect(humanOutput).toMatchObject({
+      ok: true,
+      resolution: "submitted",
+      answers: {
+        approved: true,
+        editedContent: "Edited by human reviewer",
+      },
+    })
   })
 })

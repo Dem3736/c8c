@@ -1,6 +1,6 @@
 // ── Node Types ──────────────────────────────────────────
 
-export type NodeType = "input" | "skill" | "evaluator" | "splitter" | "merger" | "output" | "approval"
+export type NodeType = "input" | "skill" | "evaluator" | "splitter" | "merger" | "output" | "approval" | "human"
 
 export interface NodePosition {
   x: number
@@ -188,6 +188,55 @@ export interface ApprovalNodeConfig {
   runtime?: NodeRuntimeConfig
 }
 
+export type HumanTaskFieldType = "text" | "textarea" | "number" | "boolean" | "select" | "multiselect" | "json"
+
+export interface HumanTaskFieldOption {
+  value: string
+  label: string
+}
+
+export interface HumanTaskField {
+  id: string
+  type: HumanTaskFieldType
+  label: string
+  description?: string
+  required?: boolean
+  options?: HumanTaskFieldOption[]
+  placeholder?: string
+  min?: number
+  max?: number
+}
+
+export interface HumanTaskRequest {
+  version: 1
+  kind: "form" | "approval"
+  title: string
+  instructions?: string
+  summary?: string
+  fields: HumanTaskField[]
+  defaults?: Record<string, unknown>
+  metadata?: {
+    externalRef?: string
+    generatedByNodeId?: string
+    suggestedAssignee?: string
+    priority?: "low" | "normal" | "high"
+    allowEdit?: boolean
+  }
+}
+
+export interface HumanNodeConfig {
+  mode: "form" | "approval"
+  requestSource: "upstream_json" | "static"
+  staticRequest?: HumanTaskRequest
+  timeoutMinutes?: number
+  timeoutAction?: "fail_node" | "complete_with_timeout_response"
+  submitAction?: "complete_node"
+  rejectAction?: "fail_node" | "complete_with_reject_response"
+  allowRevisions?: boolean
+  autoContinue?: boolean
+  runtime?: NodeRuntimeConfig
+}
+
 export interface InputNodeConfig {
   inputType?: "auto" | "text" | "url" | "directory"
   required?: boolean
@@ -215,6 +264,7 @@ export type SplitterWorkflowNode = BaseWorkflowNode<"splitter", SplitterNodeConf
 export type MergerWorkflowNode = BaseWorkflowNode<"merger", MergerNodeConfig>
 export type OutputWorkflowNode = BaseWorkflowNode<"output", OutputNodeConfig>
 export type ApprovalWorkflowNode = BaseWorkflowNode<"approval", ApprovalNodeConfig>
+export type HumanWorkflowNode = BaseWorkflowNode<"human", HumanNodeConfig>
 
 export type WorkflowNode =
   | InputWorkflowNode
@@ -224,6 +274,7 @@ export type WorkflowNode =
   | MergerWorkflowNode
   | OutputWorkflowNode
   | ApprovalWorkflowNode
+  | HumanWorkflowNode
 
 export type NodeConfig = WorkflowNode["config"]
 
@@ -368,9 +419,16 @@ export interface WorkflowTemplate {
 
 // ── Execution State ─────────────────────────────────────
 
-export type NodeStatus = "pending" | "queued" | "running" | "completed" | "failed" | "skipped" | "waiting_approval"
+export type HumanTaskLifecycleStatus = "open" | "answered" | "rejected" | "timed_out" | "consumed"
 
-export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled" | "interrupted"
+export interface HumanTaskPointer {
+  taskId: string
+  status: HumanTaskLifecycleStatus
+}
+
+export type NodeStatus = "pending" | "queued" | "running" | "completed" | "failed" | "skipped" | "waiting_approval" | "waiting_human"
+
+export type RunStatus = "running" | "paused" | "blocked" | "completed" | "failed" | "cancelled" | "interrupted"
 
 export interface NodeInput {
   content: string
@@ -424,6 +482,7 @@ export interface NodeState {
   metrics?: NodeMetrics
   errorKind?: ErrorKind
   meta?: NodeMeta
+  humanTask?: HumanTaskPointer
 }
 
 export interface WorkflowRun {
@@ -460,6 +519,52 @@ export interface EvaluationResult {
   criteria?: EvalCriterion[]
 }
 
+export interface HumanTaskResponse {
+  version: 1
+  taskId: string
+  resolution: "submitted" | "rejected" | "timed_out"
+  answers: Record<string, unknown>
+  comment?: string
+  metadata: {
+    answeredBy?: string
+    answeredAt: number
+    revision: number
+    idempotencyKey: string
+  }
+}
+
+export interface HumanTaskSnapshot {
+  task: string
+  taskId: string
+  kind: "approval" | "form"
+  status: HumanTaskLifecycleStatus
+  workspace: string
+  chainId: string
+  sourceRunId: string
+  nodeId: string
+  workflowName: string
+  workflowPath?: string
+  projectPath?: string
+  title: string
+  instructions?: string
+  summary?: string
+  createdAt: number
+  updatedAt: number
+  consumedAt?: number
+  responseRevision: number
+  request: HumanTaskRequest
+  latestResponse: HumanTaskResponse | null
+}
+
+export type HumanTaskSummary = Omit<HumanTaskSnapshot, "request" | "latestResponse">
+
+export interface HumanTaskSubmitInput {
+  answers: Record<string, unknown>
+  comment?: string
+  answeredBy?: string
+  idempotencyKey?: string
+}
+
 // ── Structured Log ──────────────────────────────────────
 
 export type LogEntry =
@@ -487,6 +592,14 @@ export type WorkflowEvent =
       edges: WorkflowEdge[]
     }
   | { type: "approval-requested"; runId: string; nodeId: string; content: string; message?: string; allowEdit: boolean }
+  | { type: "human-task-created"; runId: string; nodeId: string; taskId: string; title: string }
+  | {
+      type: "human-task-resolved"
+      runId: string
+      nodeId: string
+      taskId: string
+      resolution: "submitted" | "rejected" | "timed_out"
+    }
   | { type: "run-done"; runId: string; status: RunStatus; reportPath?: string; workspace?: string }
 
 // ── Input ───────────────────────────────────────────────
@@ -537,6 +650,7 @@ export interface PersistedRunSnapshot {
   runtimeMeta?: WorkflowRuntimeMeta
   input?: WorkflowInput
   evalResults?: Record<string, EvaluationResult[]>
+  humanTasks?: Record<string, HumanTaskPointer>
 }
 
 export interface LoadedRunResult extends RunResult {

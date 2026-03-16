@@ -1,6 +1,7 @@
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
+  HumanNodeConfig,
   MergerNodeConfig,
   SkillNodeConfig,
   WorkflowNode,
@@ -22,6 +23,10 @@ export function getWorkflowNodeLabel(node: WorkflowNode): string {
   if (node.type === "approval") {
     const cfg = node.config as ApprovalNodeConfig
     return cfg.message || "approval"
+  }
+  if (node.type === "human") {
+    const cfg = node.config as HumanNodeConfig
+    return cfg.staticRequest?.title || `${cfg.mode} task`
   }
   return node.type
 }

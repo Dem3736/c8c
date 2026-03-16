@@ -9,6 +9,11 @@ import {
   continueRunFromWorkspace,
   getWorkflowRunSnapshot,
 } from "../lib/workflow-runner"
+import {
+  getWorkflowHilTask,
+  listWorkflowHilTasks,
+  writeWorkflowHilTaskResponse,
+} from "@c8c/workflow-runner"
 import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch, getActiveBatchSnapshot } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
@@ -22,6 +27,9 @@ import type {
   ActiveExecutionSnapshot,
   ActiveWorkflowRun,
   EvaluationResult,
+  HumanTaskSnapshot,
+  HumanTaskSubmitInput,
+  HumanTaskSummary,
   LoadedRunResult,
   PersistedRunSnapshot,
   WorkflowEvent,
@@ -163,6 +171,13 @@ async function assertRunWorkspacePath(workspace: string): Promise<string> {
   return assertWithinRoots(resolve(workspace), reportRoots, "Run workspace")
 }
 
+function assertHumanTaskId(taskId: string): string {
+  if (!taskId.startsWith("human-")) {
+    throw new Error("Human task id must start with 'human-'")
+  }
+  return taskId
+}
+
 async function assertReportPath(reportPath: string): Promise<string> {
   const reportRoots = await allowedReportRoots()
   return assertWithinRoots(resolve(reportPath), reportRoots, "Report path")
@@ -235,6 +250,85 @@ async function loadPersistedEvalResults(workspace: string): Promise<Record<strin
       })
     }
     return {}
+  }
+}
+
+function mapHilTaskSummary(summary: Awaited<ReturnType<typeof listWorkflowHilTasks>>[number]): HumanTaskSummary {
+  const taskRecord = summary as typeof summary & {
+    instructions?: string
+    summary?: string
+    sourceRunId?: string
+    allowEdit?: boolean
+    consumedAt?: number
+  }
+  return {
+    task: summary.task,
+    taskId: summary.taskId,
+    kind: summary.kind,
+    status: summary.status,
+    workspace: summary.workspace,
+    chainId: summary.chainId,
+    sourceRunId: taskRecord.sourceRunId || "",
+    nodeId: summary.nodeId,
+    workflowName: summary.workflowName,
+    workflowPath: summary.workflowPath,
+    projectPath: summary.projectPath,
+    title: summary.title,
+    instructions: taskRecord.instructions,
+    summary: taskRecord.summary,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    consumedAt: taskRecord.consumedAt,
+    responseRevision: 0,
+    allowEdit: taskRecord.allowEdit,
+  }
+}
+
+function mapHilTaskSnapshot(record: NonNullable<Awaited<ReturnType<typeof getWorkflowHilTask>>>): HumanTaskSnapshot {
+  const state = record.state as typeof record.state & {
+    instructions?: string
+    summary?: string
+    sourceRunId?: string
+    consumedAt?: number
+    responseRevision?: number
+  }
+  const latestResponse = record.latestResponse
+    ? {
+        version: 1 as const,
+        taskId: record.latestResponse.taskId,
+        resolution: record.latestResponse.resolution === "approved" ? "submitted" : record.latestResponse.resolution,
+        answers: record.latestResponse.answers,
+        comment: record.latestResponse.comment,
+        metadata: {
+          answeredAt: record.latestResponse.metadata.answeredAt,
+          answeredBy: record.latestResponse.metadata.answeredBy,
+          revision: record.latestResponse.metadata.revision,
+          idempotencyKey: record.latestResponse.metadata.idempotencyKey,
+        },
+      }
+    : null
+
+  return {
+    task: record.task,
+    taskId: record.taskId,
+    kind: record.request.kind,
+    status: record.state.status,
+    workspace: state.workspace,
+    chainId: state.chainId,
+    sourceRunId: state.sourceRunId || "",
+    nodeId: state.nodeId,
+    workflowName: state.workflowName,
+    workflowPath: state.workflowPath,
+    projectPath: state.projectPath,
+    title: state.title,
+    instructions: state.instructions,
+    summary: state.summary,
+    createdAt: state.createdAt,
+    updatedAt: state.updatedAt,
+    consumedAt: state.consumedAt,
+    responseRevision: state.responseRevision || 0,
+    request: record.request,
+    latestResponse,
   }
 }
 
@@ -703,6 +797,86 @@ export function registerExecutorHandlers() {
     "executor:reject",
     async (_e, runId: string, nodeId: string) => {
       return resolveApproval(runId, nodeId, false)
+    },
+  )
+
+  ipcMain.handle("executor:list-human-tasks", async (_e, projectPath?: string): Promise<HumanTaskSummary[]> => {
+    const roots = projectPath
+      ? [join(await assertProjectPath(projectPath), ".c8c", "runs")]
+      : await allowedReportRoots()
+    const tasks = await listWorkflowHilTasks(roots)
+    return tasks
+      .filter((task) => task.taskId.startsWith("human-"))
+      .map(mapHilTaskSummary)
+  })
+
+  ipcMain.handle("executor:load-human-task", async (_e, taskId: string, workspace: string): Promise<HumanTaskSnapshot | null> => {
+    const safeTaskId = assertHumanTaskId(taskId)
+    const safeWorkspace = await assertRunWorkspacePath(workspace)
+    const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
+    return task ? mapHilTaskSnapshot(task) : null
+  })
+
+  ipcMain.handle(
+    "executor:submit-human-task",
+    async (_e, taskId: string, workspace: string, input: HumanTaskSubmitInput): Promise<boolean> => {
+      const safeTaskId = assertHumanTaskId(taskId)
+      const safeWorkspace = await assertRunWorkspacePath(workspace)
+      try {
+        const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
+        if (!task) return false
+        await writeWorkflowHilTaskResponse({
+          workspace: safeWorkspace,
+          taskId: safeTaskId,
+          data: task.request.kind === "approval"
+            ? {
+                approved: Boolean(input.answers.approved),
+                ...(typeof input.answers.editedContent === "string"
+                  ? { editedContent: input.answers.editedContent }
+                  : {}),
+              }
+            : { answers: input.answers },
+          comment: input.comment,
+          answeredBy: input.answeredBy,
+          idempotencyKey: input.idempotencyKey,
+          source: "runtime",
+        })
+        return true
+      } catch (error) {
+        logWarn("executor-ipc", "submit_human_task_failed", {
+          workspace: safeWorkspace,
+          taskId,
+          error: errorMessage(error),
+        })
+        return false
+      }
+    },
+  )
+
+  ipcMain.handle(
+    "executor:reject-human-task",
+    async (_e, taskId: string, workspace: string, comment?: string, idempotencyKey?: string): Promise<boolean> => {
+      const safeTaskId = assertHumanTaskId(taskId)
+      const safeWorkspace = await assertRunWorkspacePath(workspace)
+      try {
+        await writeWorkflowHilTaskResponse({
+          workspace: safeWorkspace,
+          taskId: safeTaskId,
+          data: { answers: {} },
+          resolution: "rejected",
+          comment,
+          idempotencyKey,
+          source: "runtime",
+        })
+        return true
+      } catch (error) {
+        logWarn("executor-ipc", "reject_human_task_failed", {
+          workspace: safeWorkspace,
+          taskId,
+          error: errorMessage(error),
+        })
+        return false
+      }
     },
   )
 }

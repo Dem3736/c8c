@@ -118,6 +118,7 @@ export function buildRunProgressSummary({
   let completedSteps = 0
   let runningSteps = 0
   let waitingApprovalSteps = 0
+  let waitingHumanSteps = 0
   let failedSteps = 0
 
   for (const nodeId of orderedStepIds) {
@@ -125,6 +126,7 @@ export function buildRunProgressSummary({
     if (status === "completed" || status === "skipped") completedSteps += 1
     if (status === "running") runningSteps += 1
     if (status === "waiting_approval") waitingApprovalSteps += 1
+    if (status === "waiting_human") waitingHumanSteps += 1
     if (status === "failed") failedSteps += 1
   }
 
@@ -136,6 +138,7 @@ export function buildRunProgressSummary({
   }).length
 
   const fallbackActiveNodeId = activeNodeId
+    || orderedStepIds.find((nodeId) => nodeStates[nodeId]?.status === "waiting_human")
     || orderedStepIds.find((nodeId) => nodeStates[nodeId]?.status === "waiting_approval")
     || orderedStepIds.find((nodeId) => nodeStates[nodeId]?.status === "failed")
     || orderedStepIds.find((nodeId) => nodeStates[nodeId]?.status === "running")
@@ -153,7 +156,10 @@ export function buildRunProgressSummary({
     phaseLabel = "Paused"
     tone = "warning"
   } else if (runStatus === "running") {
-    if (waitingApprovalSteps > 0) {
+    if (waitingHumanSteps > 0) {
+      phaseLabel = "Waiting for input"
+      tone = "warning"
+    } else if (waitingApprovalSteps > 0) {
       phaseLabel = "Waiting for approval"
       tone = "warning"
     } else if (failedSteps > 0) {
@@ -185,7 +191,7 @@ export function buildRunProgressSummary({
     totalSteps,
     completedSteps,
     runningSteps,
-    waitingApprovalSteps,
+    waitingApprovalSteps: waitingApprovalSteps + waitingHumanSteps,
     failedSteps,
     phaseLabel,
     tone,

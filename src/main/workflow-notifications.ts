@@ -51,6 +51,14 @@ function handleWorkflowNotification(window: BrowserWindow, event: WorkflowEvent)
       flash: true,
     })
   }
+
+  if (event.type === "human-task-created") {
+    showNotification(window, {
+      body: `Human input needed: ${event.title}`,
+      bounce: "critical",
+      flash: true,
+    })
+  }
 }
 
 export function sendWorkflowEvent(window: BrowserWindow, event: WorkflowEvent): void {
