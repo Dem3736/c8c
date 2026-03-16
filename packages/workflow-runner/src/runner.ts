@@ -210,6 +210,12 @@ interface ApprovalResolve {
   resolve: (result: { approved: boolean; editedContent?: string; timedOut?: boolean }) => void
 }
 
+interface ApprovalResolution {
+  approved: boolean
+  editedContent?: string
+  timedOut?: boolean
+}
+
 interface ResolvedRetryPolicy {
   enabled: boolean
   maxTries: number
@@ -1111,8 +1117,8 @@ function approvalDecisionPath(workspace: string, nodeId: string): string {
 async function readApprovalDecision(
   workspace: string,
   nodeId: string,
-): Promise<{ approved: boolean; editedContent?: string } | null> {
-  return readJsonFile<{ approved: boolean; editedContent?: string }>(approvalDecisionPath(workspace, nodeId))
+): Promise<ApprovalResolution | null> {
+  return readJsonFile<ApprovalResolution>(approvalDecisionPath(workspace, nodeId))
 }
 
 async function persistApprovalDecision(
@@ -1203,13 +1209,13 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
     nodeId: string,
     timeoutMinutes?: number,
     timeoutAction: "auto_approve" | "auto_reject" | "skip" = "auto_reject",
-  ): Promise<{ approved: boolean; editedContent?: string; timedOut?: boolean }> {
+  ): Promise<ApprovalResolution> {
     const persisted = await readApprovalDecision(workspace, nodeId)
     if (persisted) return persisted
 
     const key = `${runId}:${nodeId}`
     const minutes = timeoutMinutes ?? 60
-    return new Promise<{ approved: boolean; editedContent?: string; timedOut?: boolean }>((resolve) => {
+    return new Promise<ApprovalResolution>((resolve) => {
       let settled = false
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined
       const finish = (result: { approved: boolean; editedContent?: string; timedOut?: boolean }) => {
@@ -1274,6 +1280,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       projectPath,
       workflowPath,
       webSearchBackend,
+      approvalBehavior = "wait",
       activatedEdges,
     } = session
 
@@ -2084,22 +2091,32 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
             case "approval": {
               const approvalConfig = node.config as ApprovalNodeConfig
               state.status = "waiting_approval"
-              await runtime.emitEvent({
-                type: "approval-requested",
-                runId,
-                nodeId: node.id,
-                content: approvalConfig.show_content ? incomingContent : "",
-                message: approvalConfig.message,
-                allowEdit: approvalConfig.allow_edit,
-              })
+              const approvalContent = approvalConfig.show_content ? incomingContent : ""
+              let decision = await readApprovalDecision(workspace, node.id)
 
-              const decision = await waitForApproval(
-                runId,
-                workspace,
-                node.id,
-                approvalConfig.timeout_minutes,
-                approvalConfig.timeout_action ?? "auto_reject",
-              )
+              if (!decision) {
+                await runtime.emitEvent({
+                  type: "approval-requested",
+                  runId,
+                  nodeId: node.id,
+                  content: approvalContent,
+                  message: approvalConfig.message,
+                  allowEdit: approvalConfig.allow_edit,
+                })
+
+                if (approvalBehavior === "suspend") {
+                  suspendedForApproval = true
+                  return
+                }
+
+                decision = await waitForApproval(
+                  runId,
+                  workspace,
+                  node.id,
+                  approvalConfig.timeout_minutes,
+                  approvalConfig.timeout_action ?? "auto_reject",
+                )
+              }
 
               if (decision.timedOut) {
                 const action = approvalConfig.timeout_action ?? "auto_reject"
@@ -2119,6 +2136,9 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               if (decision.approved) {
                 output = createNodeOutput(node, decision.editedContent ?? incomingContent)
               } else {
+                if (!decision.timedOut) {
+                  approvalRejected = true
+                }
                 state.status = "failed"
                 state.completedAt = Date.now()
                 state.error = decision.timedOut
@@ -2256,10 +2276,13 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       let activeSplitterNodeId: string | null = null
       const stallTimeoutMs = (workflow.defaults?.timeout_minutes || 30) * 60 * 1000 + 60_000
       let lastProgressAt = Date.now()
+      let suspendedForApproval = false
+      let approvalRejected = false
 
       while (!runtime.controller.signal.aborted) {
         await waitIfPaused(runId, runtime.controller.signal)
         if (runtime.controller.signal.aborted) break
+        if (suspendedForApproval && runningPromises.size === 0) break
 
         const readyNodes = findReadyNodes(runtimeWorkflow, nodeStates, activatedEdges)
         const newReady = readyNodes.filter((node) => !runningPromises.has(node.id))
@@ -2312,18 +2335,20 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         }
       }
 
-      for (const [nodeId, state] of Object.entries(nodeStates)) {
-        if (state.status === "pending" || state.status === "queued" || state.status === "running" || state.status === "waiting_approval") {
-          state.status = "skipped"
-          const runtimeNode = runtimeWorkflow.nodes.find((candidate) => candidate.id === nodeId)
-          await runtime.emitEvent({
-            type: "node-done",
-            runId,
-            nodeId,
-            output: runtimeNode
-              ? createNodeOutput(runtimeNode, "", { skipped: true })
-              : { content: "", metadata: { source: nodeId, skipped: true } },
-          })
+      if (!suspendedForApproval) {
+        for (const [nodeId, state] of Object.entries(nodeStates)) {
+          if (state.status === "pending" || state.status === "queued" || state.status === "running" || state.status === "waiting_approval") {
+            state.status = "skipped"
+            const runtimeNode = runtimeWorkflow.nodes.find((candidate) => candidate.id === nodeId)
+            await runtime.emitEvent({
+              type: "node-done",
+              runId,
+              nodeId,
+              output: runtimeNode
+                ? createNodeOutput(runtimeNode, "", { skipped: true })
+                : { content: "", metadata: { source: nodeId, skipped: true } },
+            })
+          }
         }
       }
 
@@ -2333,11 +2358,15 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         return true
       })
 
-      const finalStatus: RunStatus = runtime.controller.signal.aborted
-        ? "cancelled"
-        : isRunComplete(nodeStates) && !criticalNodeFailed
-          ? "completed"
-          : "failed"
+      const finalStatus: RunStatus = suspendedForApproval
+        ? "paused"
+        : approvalRejected
+          ? "cancelled"
+          : runtime.controller.signal.aborted
+            ? "cancelled"
+            : isRunComplete(nodeStates) && !criticalNodeFailed
+              ? "completed"
+              : "failed"
       manifestStatus = finalStatus
 
       let reportPath: string | undefined
@@ -2508,6 +2537,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         projectPath: request.projectPath,
         workflowPath: request.workflowPath,
         webSearchBackend: request.webSearchBackend,
+        approvalBehavior: request.approvalBehavior,
       }, runtime))
     },
 
@@ -2586,6 +2616,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
           projectPath: request.projectPath,
           workflowPath: request.workflowPath,
           webSearchBackend: request.webSearchBackend,
+          approvalBehavior: request.approvalBehavior,
         }, runtime)
       })
 
