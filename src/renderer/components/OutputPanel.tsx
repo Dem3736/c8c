@@ -365,6 +365,12 @@ export function OutputPanel({
             )}
             disabled={!hasResult}
           >
+            {resultReadyPulse && activeTab !== "result" && (
+              <span className="ui-status-beacon mr-1.5" aria-hidden="true">
+                <span className="ui-status-beacon-ring bg-status-success/35" />
+                <span className="ui-status-beacon-core bg-status-success" />
+              </span>
+            )}
             Result
           </TabsTrigger>
           <TabsTrigger value="history" className="px-3 py-1 text-body-sm" disabled={pastRuns.length === 0}>
@@ -417,13 +423,16 @@ export function OutputPanel({
                   <div className="ui-progress-track">
                     <div
                       className="ui-progress-bar"
-                      style={{ width: `${branchesProgressPct}%` }}
+                      style={{
+                        width: `${branchesProgressPct}%`,
+                        transition: "width var(--motion-slow) var(--ease-emphasis)",
+                      }}
                     />
                   </div>
                 </div>
               )}
               {budgetCost != null && (
-                <div className="mb-2 px-3 py-1.5 ui-meta-text bg-surface-2 border border-hairline rounded-md space-y-1">
+                <div className="mb-2 rounded-md border border-hairline bg-surface-2 px-3 py-1.5 ui-meta-text space-y-1 ui-elevation-inset">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Cost limit</span>
                     <span>{formatCost(accumulatedCost)} / {formatCost(budgetCost)}</span>
@@ -441,22 +450,27 @@ export function OutputPanel({
                       }}
                     />
                   </div>
-                  {budgetWarning && (
-                    <div
-                      role={budgetProgressRatio >= 1 ? "alert" : "status"}
-                      aria-live="polite"
-                      className={cn(
-                        "pt-0.5",
-                        budgetProgressRatio >= 1
-                          ? "text-status-danger"
-                          : budgetProgressRatio >= 0.9
+                  <div
+                    data-open={budgetWarning ? "true" : "false"}
+                    className="ui-collapsible"
+                  >
+                    <div className="ui-collapsible-inner">
+                      <div
+                        role={budgetProgressRatio >= 1 ? "alert" : "status"}
+                        aria-live="polite"
+                        className={cn(
+                          "pt-0.5",
+                          budgetProgressRatio >= 1
                             ? "text-status-danger"
-                            : "text-status-warning",
-                      )}
-                    >
-                      {budgetWarning}
+                            : budgetProgressRatio >= 0.9
+                              ? "text-status-danger"
+                              : "text-status-warning",
+                        )}
+                      >
+                        {budgetWarning || ""}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
               <NodesTab
@@ -472,43 +486,53 @@ export function OutputPanel({
                 }}
               />
 
-              {runStatus === "done" && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="ui-alert-success text-status-success mt-2 flex flex-wrap items-center justify-between gap-2"
-                >
-                  <span>Workflow completed successfully.</span>
-                  {hasResult && (
-                    <button
-                      type="button"
-                      className="rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 ui-meta-label text-status-success hover:bg-status-success/15"
-                      onClick={() => setActiveTab("result")}
-                    >
-                      View result
-                    </button>
-                  )}
+              <div
+                data-open={runStatus === "done" ? "true" : "false"}
+                className="ui-collapsible"
+              >
+                <div className="ui-collapsible-inner">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="ui-alert-success mt-2 flex flex-wrap items-center justify-between gap-2 text-status-success"
+                  >
+                    <span>Workflow completed successfully.</span>
+                    {hasResult && (
+                      <button
+                        type="button"
+                        className="ui-pressable rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 ui-meta-label text-status-success hover:bg-status-success/15"
+                        onClick={() => setActiveTab("result")}
+                      >
+                        View result
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
-              {runStatus === "error" && (
-                <div
-                  role="alert"
-                  className="ui-alert-danger text-status-danger mt-2 space-y-1"
-                >
-                  <div className="font-medium text-status-danger">Workflow failed</div>
-                  {Object.entries(nodeStates)
-                    .filter(([, s]) => s.status === "failed" && s.error)
-                    .map(([id, s]) => {
-                      const node = allDisplayNodes.find((n) => n.id === id)
-                      return (
-                        <div key={id} className="text-status-danger/80">
-                          <span className="font-medium">{node?.label || id}:</span>{" "}
-                          {s.error}
-                        </div>
-                      )
-                    })}
+              </div>
+              <div
+                data-open={runStatus === "error" ? "true" : "false"}
+                className="ui-collapsible"
+              >
+                <div className="ui-collapsible-inner">
+                  <div
+                    role="alert"
+                    className="ui-alert-danger mt-2 space-y-1 text-status-danger"
+                  >
+                    <div className="font-medium text-status-danger">Workflow failed</div>
+                    {Object.entries(nodeStates)
+                      .filter(([, s]) => s.status === "failed" && s.error)
+                      .map(([id, s]) => {
+                        const node = allDisplayNodes.find((n) => n.id === id)
+                        return (
+                          <div key={id} className="text-status-danger/80">
+                            <span className="font-medium">{node?.label || id}:</span>{" "}
+                            {s.error}
+                          </div>
+                        )
+                      })}
+                  </div>
                 </div>
-              )}
+              </div>
             </>
           )}
         </TabsContent>
@@ -536,15 +560,20 @@ export function OutputPanel({
                 })
               }}
             >
-              {resultReadyPulse && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="ui-alert-success text-status-success"
-                >
-                  Result is ready.
+              <div
+                data-open={resultReadyPulse ? "true" : "false"}
+                className="ui-collapsible"
+              >
+                <div className="ui-collapsible-inner">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="ui-alert-success text-status-success"
+                  >
+                    Result is ready.
+                  </div>
                 </div>
-              )}
+              </div>
               {resultNodeOptions.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="ui-meta-label text-foreground-subtle">Step</span>
@@ -576,7 +605,7 @@ export function OutputPanel({
                 {reportPath && (
                   <button
                     type="button"
-                    className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-label rounded-lg hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                    className="ui-pressable ui-surface-lift surface-soft flex items-center gap-2 rounded-lg px-3 py-1 ui-meta-label ui-elevation-base hover:bg-surface-3 ui-transition-colors ui-motion-fast"
                     onClick={() => void handleOpenReport(reportPath)}
                   >
                     <FileText size={12} />
@@ -586,7 +615,7 @@ export function OutputPanel({
                 )}
                 <button
                   type="button"
-                  className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-label rounded-lg hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                  className="ui-pressable ui-surface-lift surface-soft flex items-center gap-2 rounded-lg px-3 py-1 ui-meta-label ui-elevation-base hover:bg-surface-3 ui-transition-colors ui-motion-fast"
                   onClick={() => void handleCopyResult()}
                   disabled={!canCopyResult}
                 >
@@ -595,7 +624,7 @@ export function OutputPanel({
                 </button>
                 <button
                   type="button"
-                  className="surface-soft flex items-center gap-2 px-3 py-1 ui-meta-label rounded-lg hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                  className="ui-pressable ui-surface-lift surface-soft flex items-center gap-2 rounded-lg px-3 py-1 ui-meta-label ui-elevation-base hover:bg-surface-3 ui-transition-colors ui-motion-fast"
                   onClick={() => void handleExportResult()}
                   disabled={!canCopyResult}
                 >
@@ -603,7 +632,7 @@ export function OutputPanel({
                   Export
                 </button>
               </div>
-              <div className="rounded-lg surface-soft p-3">
+              <div className="rounded-lg surface-soft p-3 ui-elevation-base">
                 {isDisplayedResultEmpty ? (
                   <div className="ui-meta-text text-muted-foreground">
                     {selectedResultNode

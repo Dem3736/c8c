@@ -705,23 +705,24 @@ export function ProjectSidebar({
                             </div>
                           </div>
 
-                          {runMetrics.showProgressTrack && (
-                            <div className="pointer-events-none absolute inset-x-1 bottom-1">
+                          <div
+                            data-visible={runMetrics.showProgressTrack ? "true" : "false"}
+                            className="ui-inline-presence pointer-events-none absolute inset-x-1 bottom-1"
+                          >
+                            <div
+                              className="sidebar-progress-track"
+                              role="progressbar"
+                              aria-valuenow={runMetrics.progress}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-label={`${workflow.name} execution progress`}
+                            >
                               <div
-                                className="sidebar-progress-track"
-                                role="progressbar"
-                                aria-valuenow={runMetrics.progress}
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                                aria-label={`${workflow.name} execution progress`}
-                              >
-                                <div
-                                  className={cn("sidebar-progress-bar", runMetrics.barClass)}
-                                  style={{ width: `${runMetrics.progress}%` }}
-                                />
-                              </div>
+                                className={cn("sidebar-progress-bar", runMetrics.barClass)}
+                                style={{ width: `${runMetrics.showProgressTrack ? runMetrics.progress : 0}%` }}
+                              />
                             </div>
-                          )}
+                          </div>
                         </div>
                       )
                     })}
@@ -737,7 +738,7 @@ export function ProjectSidebar({
                             [projectPath]: !isWorkflowListExpanded,
                           }))
                         }}
-                        className="ml-1 inline-flex h-6 items-center rounded-md px-1.5 text-sidebar-meta text-muted-foreground hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
+                        className="ui-pressable ml-1 inline-flex h-6 items-center rounded-md px-1.5 text-sidebar-meta text-muted-foreground hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
                       >
                         {isWorkflowListExpanded ? "Show less" : "Show more"}
                       </button>

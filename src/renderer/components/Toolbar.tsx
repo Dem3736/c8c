@@ -376,7 +376,7 @@ export function Toolbar({
 
   return (
     <>
-      <div className="flex items-center gap-2 ui-content-gutter py-2 border-b border-hairline no-drag bg-gradient-to-b from-surface-1/90 to-surface-1/90 backdrop-blur-md overflow-x-auto">
+      <div className="flex items-center gap-2 ui-content-gutter py-2 border-b border-hairline no-drag bg-gradient-to-b from-surface-1/96 to-surface-1/84 shadow-[0_1px_0_hsl(var(--hairline)/0.7),0_2px_6px_hsl(var(--foreground)/0.04)] backdrop-blur-md overflow-x-auto">
         <div role="group" aria-label="Primary workflow actions" className={controlGroupClass}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -533,15 +533,14 @@ export function Toolbar({
           <TooltipContent>Toggle Agent panel ({chatShortcutLabel})</TooltipContent>
         </Tooltip>
 
-        {saveFlash && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="ui-meta-text text-status-success"
-          >
-            {saveFlash === "saved" ? "Saved" : "Imported"}
-          </div>
-        )}
+        <div
+          role="status"
+          aria-live="polite"
+          data-visible={saveFlash ? "true" : "false"}
+          className="ui-inline-presence ui-meta-text min-w-[4.25rem] text-status-success"
+        >
+          {saveFlash === "saved" ? "Saved" : saveFlash === "imported" ? "Imported" : ""}
+        </div>
 
         <div className="flex-1" />
 
@@ -549,7 +548,7 @@ export function Toolbar({
           role="group"
           aria-label="Run controls"
           className={cn(
-            "flex items-center gap-1 rounded-lg p-1",
+            "flex items-center gap-1 rounded-lg p-1 ui-transition-surface ui-motion-fast",
             isRunning
               ? isPaused
                 ? "surface-warning-soft shadow-inset-highlight-subtle"
@@ -692,18 +691,26 @@ export function Toolbar({
           )}
         </div>
       </div>
-      {!isRunning && runDisabledReason && (
-        <div className="px-3 py-1 ui-meta-text text-muted-foreground border-b border-hairline bg-surface-1/70">
-          {runDisabledReason}
-          {hasBlockingErrors && (
-            <ul className="mt-1 list-disc list-inside">
-              {workflowValidation.filter((e) => e.severity === "error").map((e) => (
-                <li key={`${e.nodeId}-${e.field}`}>{e.message}</li>
-              ))}
-            </ul>
-          )}
+      <div
+        data-open={!isRunning && Boolean(runDisabledReason) ? "true" : "false"}
+        className={cn(
+          "ui-collapsible",
+          !isRunning && runDisabledReason && "border-b border-hairline",
+        )}
+      >
+        <div className="ui-collapsible-inner">
+          <div className="px-3 py-1 ui-meta-text text-muted-foreground bg-surface-1/70">
+            {runDisabledReason || ""}
+            {hasBlockingErrors && (
+              <ul className="mt-1 list-disc list-inside">
+                {workflowValidation.filter((e) => e.severity === "error").map((e) => (
+                  <li key={`${e.nodeId}-${e.field}`}>{e.message}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
-      )}
+      </div>
       <span className="sr-only">
         Keyboard shortcuts: {primaryShortcutLabel} Z to undo, {redoShortcutLabel} to redo, {primaryShortcutLabel} S to save, {runShortcutLabel} to run or stop, {chatShortcutLabel} to toggle Agent panel, {settingsShortcutLabel} to open settings, question mark to open shortcuts help.
       </span>

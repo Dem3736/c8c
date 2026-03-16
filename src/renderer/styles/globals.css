@@ -993,6 +993,66 @@
   box-shadow: var(--elevation-overlay);
 }
 
+.ui-surface-lift {
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.ui-surface-lift:hover {
+  border-color: hsl(var(--hairline) / 0.78);
+  box-shadow: var(--elevation-overlay);
+  transform: translateY(-1px);
+}
+
+.ui-collapsible {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-4px);
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-slow) var(--ease-emphasis),
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard),
+    visibility 0s linear var(--motion-slow);
+}
+
+.ui-collapsible[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.ui-collapsible-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ui-inline-presence {
+  opacity: 0;
+  translate: 0 4px;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    translate var(--motion-fast) var(--ease-emphasis),
+    visibility 0s linear var(--motion-fast);
+}
+
+.ui-inline-presence[data-visible="true"] {
+  opacity: 1;
+  translate: 0 0;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
 .ui-reveal-trailing,
 .ui-reveal-trailing-soft {
   transition:
@@ -1032,6 +1092,15 @@
   box-shadow:
     0 0 0 1px hsl(var(--hairline) / 0.26),
     0 6px 14px hsl(var(--foreground) / 0.08);
+  animation: edge-label-enter var(--motion-base) var(--ease-emphasis);
+}
+
+.workflow-edge-path {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    stroke-width var(--motion-fast) var(--ease-standard),
+    stroke var(--motion-fast) var(--ease-standard),
+    filter var(--motion-fast) var(--ease-standard);
 }
 
 .node-status-running {
@@ -1201,7 +1270,18 @@
 
 @keyframes workflow-edge-flow {
   to {
-    stroke-dashoffset: -28;
+    stroke-dashoffset: -30;
+  }
+}
+
+@keyframes edge-label-enter {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
   }
 }
 

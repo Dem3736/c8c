@@ -458,10 +458,10 @@ export function MultiRunDashboard() {
                         type="button"
                         onClick={() => setSelectedEntryKey(entry.workflowKey)}
                         className={cn(
-                          "w-full rounded-lg border p-3 text-left ui-transition-colors ui-motion-fast",
+                          "ui-pressable ui-surface-lift w-full rounded-lg border p-3 text-left ui-transition-colors ui-motion-fast",
                           selectedEntry?.workflowKey === entry.workflowKey
-                            ? "border-primary/40 bg-primary/8 shadow-[inset_0_1px_0_hsl(var(--primary)/0.08)]"
-                            : "border-hairline bg-surface-1/80 hover:bg-surface-2/70",
+                            ? "border-primary/40 bg-primary/8 shadow-[inset_0_1px_0_hsl(var(--primary)/0.08),0_10px_22px_hsl(var(--foreground)/0.08)]"
+                            : "border-hairline bg-surface-1/80 ui-elevation-base hover:bg-surface-2/70",
                         )}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -479,7 +479,7 @@ export function MultiRunDashboard() {
                           </Badge>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
-                          <span>
+                          <span className="tabular-nums">
                             Step {Math.min(entry.progress.completedSteps, entry.progress.totalSteps)}/{entry.progress.totalSteps || 0}
                           </span>
                           {entry.activeNodeLabel && (
@@ -498,7 +498,7 @@ export function MultiRunDashboard() {
 
             <div className="min-h-0">
               {selectedEntry ? (
-                <div className="flex h-full flex-col">
+                <div key={selectedEntry.workflowKey} className="flex h-full flex-col ui-fade-slide-in">
                   <div className="border-b border-hairline px-5 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -523,24 +523,24 @@ export function MultiRunDashboard() {
                           Open
                         </Button>
                         {selectedEntry.runStatus === "paused" ? (
-                          <Button variant="outline" size="sm" onClick={() => void resumeExecution(selectedEntry)}>
+                          <Button variant="outline" size="sm" className="ui-fade-slide-in-trailing" onClick={() => void resumeExecution(selectedEntry)}>
                             <Play size={14} />
                             Resume
                           </Button>
                         ) : isRunInFlight(selectedEntry.runStatus) && selectedEntry.runStatus !== "cancelling" ? (
-                          <Button variant="outline" size="sm" onClick={() => void pauseExecution(selectedEntry)} disabled={!selectedEntry.runId || selectedEntry.runStatus === "starting"}>
+                          <Button variant="outline" size="sm" className="ui-fade-slide-in-trailing" onClick={() => void pauseExecution(selectedEntry)} disabled={!selectedEntry.runId || selectedEntry.runStatus === "starting"}>
                             <Pause size={14} />
                             Pause
                           </Button>
                         ) : null}
                         {isRunInFlight(selectedEntry.runStatus) && (
-                          <Button variant="destructive" size="sm" onClick={() => void cancelExecution(selectedEntry)} disabled={!selectedEntry.runId || selectedEntry.runStatus === "cancelling"}>
+                          <Button variant="destructive" size="sm" className="ui-fade-slide-in-trailing" onClick={() => void cancelExecution(selectedEntry)} disabled={!selectedEntry.runId || selectedEntry.runStatus === "cancelling"}>
                             <Square size={14} />
                             Stop
                           </Button>
                         )}
                         {!isRunInFlight(selectedEntry.runStatus) && (
-                          <Button variant="ghost" size="sm" onClick={() => clearEntry(selectedEntry)}>
+                          <Button variant="ghost" size="sm" className="ui-fade-slide-in-trailing" onClick={() => clearEntry(selectedEntry)}>
                             <TimerReset size={14} />
                             Clear
                           </Button>
@@ -551,7 +551,7 @@ export function MultiRunDashboard() {
 
                   <div className="ui-scroll-region flex-1 overflow-y-auto px-5 py-4 space-y-4">
                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3">
+                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
                         <p className="ui-meta-text text-muted-foreground">Status</p>
                         <div className="mt-2 flex items-center gap-2 text-body-sm font-medium text-foreground">
                           {outcomeIcon(selectedEntry)}
@@ -561,37 +561,50 @@ export function MultiRunDashboard() {
                           Updated {formatDateTime(selectedEntry.lastUpdatedAt)}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3">
+                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
                         <p className="ui-meta-text text-muted-foreground">Progress</p>
-                        <p className="mt-2 text-body-sm font-medium text-foreground">
+                        <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
                           Step {Math.min(selectedEntry.progress.completedSteps, selectedEntry.progress.totalSteps)}/{selectedEntry.progress.totalSteps || 0}
                         </p>
+                        {selectedEntry.progress.totalSteps > 0 && (
+                          <div className="sidebar-progress-track mt-2">
+                            <div
+                              className="sidebar-progress-bar"
+                              style={{
+                                width: `${Math.min(100, (selectedEntry.progress.completedSteps / selectedEntry.progress.totalSteps) * 100)}%`,
+                                background: selectedEntry.progress.failedSteps > 0
+                                  ? "hsl(var(--status-danger))"
+                                  : "hsl(var(--primary) / 0.72)",
+                              }}
+                            />
+                          </div>
+                        )}
                         <p className="mt-2 ui-meta-text text-muted-foreground">
                           {selectedEntry.progress.runningSteps} running, {selectedEntry.progress.failedSteps} failed, {selectedEntry.progress.waitingApprovalSteps} waiting approval
                         </p>
                       </div>
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3">
+                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
                         <p className="ui-meta-text text-muted-foreground">Runtime</p>
-                        <p className="mt-2 text-body-sm font-medium text-foreground">
+                        <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
                           {formatDurationMs(selectedEntryDuration)}
                         </p>
                         <p className="mt-2 ui-meta-text text-muted-foreground">
                           Started {formatDateTime(selectedEntry.runStartedAt)}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3">
+                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
                         <p className="ui-meta-text text-muted-foreground">Usage</p>
-                        <p className="mt-2 text-body-sm font-medium text-foreground">
+                        <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
                           {selectedEntryCost.totalCost > 0 ? `$${selectedEntryCost.totalCost.toFixed(2)}` : "No cost yet"}
                         </p>
-                        <p className="mt-2 ui-meta-text text-muted-foreground">
+                        <p className="mt-2 ui-meta-text text-muted-foreground tabular-nums">
                           {selectedEntryCost.totalTokens > 0 ? `${formatTokenCount(selectedEntryCost.totalTokens)} tokens` : "No tokens yet"}
                         </p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr,0.8fr]">
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-4">
+                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-4 ui-elevation-base">
                         <div className="flex items-center gap-2">
                           <WorkflowIcon size={15} className="text-muted-foreground" />
                           <h4 className="text-body-sm font-medium text-foreground">Execution details</h4>
@@ -607,7 +620,17 @@ export function MultiRunDashboard() {
                           </div>
                           <div className="flex items-start justify-between gap-3">
                             <dt className="text-muted-foreground">Active node</dt>
-                            <dd className="max-w-[60%] text-right text-foreground">{selectedEntry.activeNodeLabel || "None"}</dd>
+                            <dd className="max-w-[60%] text-right text-foreground">
+                              <span className="inline-flex max-w-full items-center justify-end gap-1.5">
+                                {isRunInFlight(selectedEntry.runStatus) && selectedEntry.activeNodeLabel && (
+                                  <span className="ui-status-beacon" aria-hidden="true">
+                                    <span className="ui-status-beacon-ring bg-status-info/50" />
+                                    <span className="ui-status-beacon-core bg-status-info" />
+                                  </span>
+                                )}
+                                <span className="truncate">{selectedEntry.activeNodeLabel || "None"}</span>
+                              </span>
+                            </dd>
                           </div>
                           <div className="flex items-start justify-between gap-3">
                             <dt className="text-muted-foreground">Approvals</dt>
@@ -619,34 +642,44 @@ export function MultiRunDashboard() {
                           </div>
                         </dl>
 
-                        {selectedEntry.approvalMessages.length > 0 && (
-                          <div className="mt-4 rounded-md surface-warning-soft p-3">
-                            <p className="text-body-sm font-medium text-status-warning">Pending approvals</p>
-                            <div className="mt-2 space-y-1.5">
-                              {selectedEntry.approvalMessages.map((message, index) => (
-                                <p key={`${message}-${index}`} className="ui-meta-text text-status-warning/90">
-                                  {message}
-                                </p>
-                              ))}
+                        <div
+                          data-open={selectedEntry.approvalMessages.length > 0 ? "true" : "false"}
+                          className="ui-collapsible"
+                        >
+                          <div className="ui-collapsible-inner">
+                            <div className="mt-4 rounded-md surface-warning-soft p-3">
+                              <p className="text-body-sm font-medium text-status-warning">Pending approvals</p>
+                              <div className="mt-2 space-y-1.5">
+                                {selectedEntry.approvalMessages.map((message, index) => (
+                                  <p key={`${message}-${index}`} className="ui-meta-text text-status-warning/90">
+                                    {message}
+                                  </p>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        )}
+                        </div>
 
-                        {selectedEntry.lastError && (
-                          <div className="mt-4 rounded-md surface-danger-soft p-3">
-                            <div className="flex items-center gap-2 text-status-danger">
-                              <AlertTriangle size={14} />
-                              <p className="text-body-sm font-medium">Last error</p>
+                        <div
+                          data-open={selectedEntry.lastError ? "true" : "false"}
+                          className="ui-collapsible"
+                        >
+                          <div className="ui-collapsible-inner">
+                            <div className="mt-4 rounded-md surface-danger-soft p-3">
+                              <div className="flex items-center gap-2 text-status-danger">
+                                <AlertTriangle size={14} />
+                                <p className="text-body-sm font-medium">Last error</p>
+                              </div>
+                              <p className="mt-2 text-body-sm text-status-danger/90 whitespace-pre-wrap break-words">
+                                {selectedEntry.lastError || ""}
+                              </p>
                             </div>
-                            <p className="mt-2 text-body-sm text-status-danger/90 whitespace-pre-wrap break-words">
-                              {selectedEntry.lastError}
-                            </p>
                           </div>
-                        )}
+                        </div>
                       </div>
 
                       <div className="space-y-4">
-                        <div className="rounded-lg border border-hairline bg-surface-1/70 p-4">
+                        <div className="rounded-lg border border-hairline bg-surface-1/70 p-4 ui-elevation-base">
                           <h4 className="text-body-sm font-medium text-foreground">Artifacts</h4>
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
@@ -670,7 +703,7 @@ export function MultiRunDashboard() {
                           </div>
                         </div>
 
-                        <div className="rounded-lg border border-hairline bg-surface-1/70 p-4">
+                        <div className="rounded-lg border border-hairline bg-surface-1/70 p-4 ui-elevation-base">
                           <h4 className="text-body-sm font-medium text-foreground">Result preview</h4>
                           {selectedEntry.finalContent.trim() ? (
                             <pre className="mt-3 max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-hairline bg-surface-2/70 p-3 text-body-sm text-foreground">

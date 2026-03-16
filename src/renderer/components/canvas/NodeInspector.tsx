@@ -88,19 +88,20 @@ export function NodeInspector() {
 
   return (
     <aside
-      className="surface-panel border-l border-hairline w-[320px] shrink-0 flex flex-col overflow-hidden"
+      key={node.id}
+      className="surface-panel ui-fade-slide-in-trailing border-l border-hairline w-[320px] shrink-0 flex flex-col overflow-hidden"
       aria-label="Node inspector"
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-hairline bg-surface-1">
-        <div className="h-6 w-6 shrink-0 rounded-md border border-hairline bg-surface-2/80 flex items-center justify-center">
+        <div key={node.type} className="ui-fade-slide-in h-6 w-6 shrink-0 rounded-md border border-hairline bg-surface-2/80 flex items-center justify-center">
           <Icon size={14} className="text-muted-foreground" />
         </div>
-        <span className="flex-1 min-w-0 truncate text-body-sm font-medium">{typeLabel}</span>
+        <span key={node.type} className="ui-fade-slide-in flex-1 min-w-0 truncate text-body-sm font-medium">{typeLabel}</span>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          className="ui-pressable h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-surface-3"
           aria-label="Close inspector"
           onClick={close}
         >
@@ -194,7 +195,7 @@ function InputFields({
 
   return (
     <>
-      <div className="rounded-md border border-hairline bg-surface-1/80 px-2 py-2 space-y-2">
+      <div className="surface-inset-card px-2 py-2 space-y-2">
         <p className="ui-meta-label text-muted-foreground">Workflow execution</p>
         <div className="space-y-1">
           <Label htmlFor={`insp-workflow-provider-${nodeId}`} className="ui-meta-text text-muted-foreground">
@@ -248,7 +249,7 @@ function InputFields({
         </Select>
       </div>
 
-      <div className="flex items-center justify-between rounded-md border border-hairline bg-surface-1/80 px-2 py-2">
+      <div className="surface-inset-card flex items-center justify-between px-2 py-2">
         <Label htmlFor={`insp-input-required-${nodeId}`} className="ui-meta-text text-muted-foreground">
           Input required
         </Label>
@@ -432,7 +433,7 @@ function SkillFields({
         </Select>
       </div>
 
-      <div className="rounded-md border border-hairline bg-surface-1/80 px-2 py-2 space-y-2">
+      <div className="surface-inset-card px-2 py-2 space-y-2">
         <p className="ui-meta-label text-muted-foreground">Tool Access</p>
         <McpToolPicker
           nodeId={`${nodeId}-insp-allowed`}
@@ -680,7 +681,7 @@ function ApprovalFields({
         />
       </div>
 
-      <div className="space-y-2 rounded-md border border-hairline bg-surface-1/80 px-2 py-2">
+      <div className="surface-inset-card space-y-2 px-2 py-2">
         <div className="flex items-center justify-between">
           <Label htmlFor={`insp-approval-show-content-${nodeId}`} className="ui-meta-text text-muted-foreground">
             Show content for review

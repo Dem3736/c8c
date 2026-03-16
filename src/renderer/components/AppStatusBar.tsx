@@ -233,7 +233,7 @@ export function AppStatusBar() {
                 )}
               >
                 {(runStatus === "running" || runStatus === "starting" || runStatus === "cancelling") && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
-                <span className="font-medium">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
+                <span className="font-medium tabular-nums">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
                 <span className="text-current/80">{runPhaseLabel}</span>
                 {elapsed && <span className="ui-meta-text text-current/60 tabular-nums">{elapsed}</span>}
               </span>

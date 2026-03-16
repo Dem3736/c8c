@@ -192,6 +192,15 @@ export function NodeCard({
   const inlineInputPlaceholder =
     inputConfig?.placeholder
     || "Enter your input text, paste a URL, or describe what to process..."
+  const hasExpandedPanel = Boolean(
+    (isInput && inputConfig)
+    || (isOutput && outputConfig)
+    || (isSkill && skillConfig)
+    || (isEvaluator && evalConfig)
+    || (isSplitter && splitterConfig)
+    || (isMerger && mergerConfig)
+    || (isApproval && approvalConfig),
+  )
 
   useEffect(() => {
     setInputTouched(false)
@@ -542,38 +551,50 @@ export function NodeCard({
       )}
 
       {/* Validation errors */}
-      {nodeValidationErrors.length > 0 && (
-        <div className="px-3 pb-2 pt-1 border-t border-status-danger/20 bg-status-danger/10 space-y-1">
-          {nodeValidationErrors.map((err) => (
-            <p key={`${err.field}-${err.severity}`} className="ui-meta-text text-status-danger">
-              {err.message}
-            </p>
-          ))}
+      <div
+        data-open={nodeValidationErrors.length > 0 ? "true" : "false"}
+        className="ui-collapsible"
+      >
+        <div className="ui-collapsible-inner">
+          <div className="px-3 pb-2 pt-1 border-t border-status-danger/20 bg-status-danger/10 space-y-1">
+            {nodeValidationErrors.map((err) => (
+              <p key={`${err.field}-${err.severity}`} className="ui-meta-text text-status-danger">
+                {err.message}
+              </p>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Expanded node-type editors */}
-      {isInput && expanded && inputConfig && (
-        <InputNodeEditor nodeId={node.id} config={inputConfig} onConfigChange={onConfigChange} />
-      )}
-      {isOutput && expanded && outputConfig && (
-        <OutputNodeEditor nodeId={node.id} config={outputConfig} onConfigChange={onConfigChange} />
-      )}
-      {isSkill && expanded && skillConfig && (
-        <SkillNodeEditor nodeId={node.id} config={skillConfig} onConfigChange={onConfigChange} />
-      )}
-      {isEvaluator && expanded && evalConfig && (
-        <EvaluatorNodeEditor nodeId={node.id} config={evalConfig} onConfigChange={onConfigChange} />
-      )}
-      {isSplitter && expanded && splitterConfig && (
-        <SplitterNodeEditor nodeId={node.id} config={splitterConfig} onConfigChange={onConfigChange} />
-      )}
-      {isMerger && expanded && mergerConfig && (
-        <MergerNodeEditor nodeId={node.id} config={mergerConfig} onConfigChange={onConfigChange} />
-      )}
-      {isApproval && expanded && approvalConfig && (
-        <ApprovalNodeEditor nodeId={node.id} config={approvalConfig} onConfigChange={onConfigChange} />
-      )}
+      <div
+        data-open={expanded && hasExpandedPanel ? "true" : "false"}
+        className="ui-collapsible"
+      >
+        <div className="ui-collapsible-inner">
+          {isInput && inputConfig && (
+            <InputNodeEditor nodeId={node.id} config={inputConfig} onConfigChange={onConfigChange} />
+          )}
+          {isOutput && outputConfig && (
+            <OutputNodeEditor nodeId={node.id} config={outputConfig} onConfigChange={onConfigChange} />
+          )}
+          {isSkill && skillConfig && (
+            <SkillNodeEditor nodeId={node.id} config={skillConfig} onConfigChange={onConfigChange} />
+          )}
+          {isEvaluator && evalConfig && (
+            <EvaluatorNodeEditor nodeId={node.id} config={evalConfig} onConfigChange={onConfigChange} />
+          )}
+          {isSplitter && splitterConfig && (
+            <SplitterNodeEditor nodeId={node.id} config={splitterConfig} onConfigChange={onConfigChange} />
+          )}
+          {isMerger && mergerConfig && (
+            <MergerNodeEditor nodeId={node.id} config={mergerConfig} onConfigChange={onConfigChange} />
+          )}
+          {isApproval && approvalConfig && (
+            <ApprovalNodeEditor nodeId={node.id} config={approvalConfig} onConfigChange={onConfigChange} />
+          )}
+        </div>
+      </div>
     </div>
   )
 }

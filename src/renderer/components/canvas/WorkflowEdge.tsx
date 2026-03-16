@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn"
 
 const EDGE_STYLES: Record<string, { stroke: string; strokeWidth: string; strokeDasharray?: string }> = {
   default: { stroke: "hsl(var(--hairline))", strokeWidth: "var(--edge-stroke-width-default)" },
-  pass: { stroke: "hsl(var(--status-success))", strokeWidth: "var(--edge-stroke-width-active)" },
+  pass: { stroke: "hsl(var(--status-success))", strokeWidth: "var(--edge-stroke-width-active)", strokeDasharray: "10 5" },
   fail: { stroke: "hsl(var(--status-danger))", strokeWidth: "var(--edge-stroke-width-active)", strokeDasharray: "6 4" },
 }
 
@@ -58,6 +58,7 @@ function WorkflowEdgeComponent({
         path={edgePath}
         markerEnd={markerEnd}
         className={cn(
+          "workflow-edge-path",
           edgeType === "fail" && isActive && "workflow-edge-fail",
           edgeType === "pass" && isActive && "workflow-edge-flow",
         )}
@@ -68,6 +69,7 @@ function WorkflowEdgeComponent({
           opacity: selected ? 1 : "var(--edge-opacity-idle)",
           strokeLinecap: "round",
           strokeLinejoin: "round",
+          filter: selected || isActive ? `drop-shadow(0 0 3px ${style.stroke})` : undefined,
         }}
       />
       {showLabel && (

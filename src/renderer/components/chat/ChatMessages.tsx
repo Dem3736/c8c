@@ -123,16 +123,19 @@ export function ChatMessages({ messages, status }: ChatMessagesProps) {
         )
       })}
     </div>
-    {showScrollIndicator && (
+    <div
+      data-visible={showScrollIndicator ? "true" : "false"}
+      className="ui-inline-presence absolute bottom-3 left-1/2 z-10 -translate-x-1/2"
+    >
       <button
         type="button"
         onClick={scrollToBottom}
-        className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 surface-elevated inline-flex items-center gap-1.5 rounded-full px-3 py-1 ui-meta-text text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+        className="ui-pressable ui-surface-lift surface-elevated inline-flex items-center gap-1.5 rounded-full px-3 py-1 ui-meta-text text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
       >
         <ArrowDown size={11} />
         New messages
       </button>
-    )}
+    </div>
     </div>
   )
 }
