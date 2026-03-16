@@ -262,6 +262,7 @@ export function NotificationsPage() {
   const unreadCount = notifications.filter((notification) => !notification.read).length
   const openHumanTaskCount = humanTasks.length
   const selectedTaskStageMeta = selectedTask ? taskStageMetaByKey[taskStageKey(selectedTask) || ""] || null : null
+  const selectedTaskPrimaryField = primaryTaskFieldLabel(selectedTask)
 
   const handleOpenWorkflow = async () => {
     if (!selectedTask?.workflowPath) return
@@ -379,12 +380,12 @@ export function NotificationsPage() {
     <PageShell>
       <PageHeader
         title="Inbox"
-        subtitle="Open human tasks live here alongside durable workflow, batch, agent, and system events."
+        subtitle="Review open workflow tasks and keep up with important workflow, batch, agent, and system events."
         actions={(
           <>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => { void refreshHumanTasks() }}
             >
@@ -393,7 +394,7 @@ export function NotificationsPage() {
             </Button>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => setShowUnreadOnly((value) => !value)}
             >
@@ -402,7 +403,7 @@ export function NotificationsPage() {
             </Button>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => markAllRead()}
               disabled={unreadCount === 0}
@@ -412,7 +413,7 @@ export function NotificationsPage() {
             </Button>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => clearAll()}
               disabled={notifications.length === 0}
@@ -424,22 +425,25 @@ export function NotificationsPage() {
         )}
       />
 
-      <section className="space-y-3">
+      <section className="rounded-xl surface-panel p-5 space-y-4">
         <SectionHeading
           title="Needs your input"
           meta={(
-            <span className="ui-meta-text text-muted-foreground">
+            <span className="rounded-md border border-hairline bg-surface-2/70 px-2 py-0.5 ui-meta-text text-muted-foreground">
               {humanTasksLoading ? "Loading..." : `${openHumanTaskCount} open`}
             </span>
           )}
         />
+        <p className="text-body-sm text-muted-foreground">
+          Open review gates and structured input requests appear here while a flow is waiting on you.
+        </p>
 
         {humanTasksError ? (
-          <article className="rounded-lg surface-panel px-4 py-3 text-body-sm text-status-danger">
+          <article className="rounded-lg surface-danger-soft px-4 py-3 text-body-sm text-status-danger">
             {humanTasksError}
           </article>
         ) : openHumanTaskCount === 0 && !humanTasksLoading ? (
-          <article className="rounded-lg surface-panel px-5 py-10 text-center">
+          <article className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-5 py-10 text-center">
             <div className="mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-lg border border-hairline bg-surface-2/80">
               <Inbox size={20} className="text-muted-foreground" />
             </div>
@@ -450,44 +454,49 @@ export function NotificationsPage() {
           </article>
         ) : (
           <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="space-y-3">
+            <div className="overflow-hidden rounded-lg border border-hairline bg-surface-2/40">
               {humanTasks.map((task) => {
                 const stageMeta = taskStageMetaByKey[taskStageKey(task) || ""] || null
                 return (
-                <button
-                  key={`${task.workspace}:${task.taskId}`}
-                  type="button"
-                  onClick={() => setSelectedTaskId(taskSelectionKey(task))}
-                  className={cn(
-                    "w-full rounded-lg surface-panel px-4 py-3 text-left transition-colors",
-                    selectedTaskId === taskSelectionKey(task) && "ring-1 ring-primary/20",
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <h2 className="min-w-0 flex-1 truncate text-body-md font-semibold text-foreground">{task.title}</h2>
-                    <Badge variant="outline">{taskKindLabel(task)}</Badge>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
-                    <span>{task.workflowName}</span>
-                    {stageMeta && <span>{stageMeta.title}</span>}
-                    {!stageMeta && task.kind === "approval" && <span>Review gate</span>}
-                  </div>
-                  {stageMeta && (
-                    <p className="mt-1 ui-meta-text text-muted-foreground">{stageMeta.group}</p>
-                  )}
-                  {taskCardPreview(task) && (
-                    <p className="mt-2 line-clamp-2 text-body-sm text-muted-foreground">{taskCardPreview(task)}</p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="ui-meta-text text-muted-foreground">{formatRelativeTime(task.createdAt)}</span>
-                    <span className="ui-meta-text text-muted-foreground">Open</span>
-                  </div>
-                </button>
+                  <button
+                    key={`${task.workspace}:${task.taskId}`}
+                    type="button"
+                    onClick={() => setSelectedTaskId(taskSelectionKey(task))}
+                    className={cn(
+                      "ui-interactive-card-subtle w-full border-b border-hairline px-4 py-3 text-left last:border-b-0",
+                      selectedTaskId === taskSelectionKey(task)
+                        ? "bg-surface-1 ring-1 ring-primary/15"
+                        : "bg-transparent hover:bg-surface-1/70",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="min-w-0 flex-1 truncate text-body-md font-semibold text-foreground">{task.title}</h2>
+                          <Badge variant={task.kind === "approval" ? "warning" : "info"} size="pill">
+                            {taskKindLabel(task)}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
+                          <span>{task.workflowName}</span>
+                          {stageMeta && <span>· {stageMeta.title}</span>}
+                          {!stageMeta && task.kind === "approval" && <span>· Review gate</span>}
+                        </div>
+                        {stageMeta && (
+                          <p className="mt-1 ui-meta-text text-muted-foreground">{stageMeta.group}</p>
+                        )}
+                        {taskCardPreview(task) && (
+                          <p className="mt-2 line-clamp-2 text-body-sm text-muted-foreground">{taskCardPreview(task)}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 ui-meta-text text-muted-foreground">{formatRelativeTime(task.createdAt)}</span>
+                    </div>
+                  </button>
                 )
               })}
             </div>
 
-            <article className="rounded-lg surface-panel px-5 py-4">
+            <article className="rounded-lg border border-hairline bg-surface-2/35 px-5 py-4">
               {taskLoading ? (
                 <div className="flex min-h-[260px] items-center justify-center text-muted-foreground">
                   <Loader2 size={18} className="mr-2 animate-spin" />
@@ -503,15 +512,17 @@ export function NotificationsPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-title-sm font-semibold text-foreground">{selectedTask.title}</h2>
-                        <Badge variant="outline">{taskKindLabel(selectedTask)}</Badge>
+                        <Badge variant={selectedTask.kind === "approval" ? "warning" : "info"} size="pill">
+                          {taskKindLabel(selectedTask)}
+                        </Badge>
                         {selectedTaskStageMeta && (
-                          <Badge variant="outline" className="text-muted-foreground">
+                          <Badge variant="outline" size="pill" className="text-muted-foreground">
                             {selectedTaskStageMeta.title}
                           </Badge>
                         )}
-                        {primaryTaskFieldLabel(selectedTask) && (
-                          <Badge variant="outline" className="text-muted-foreground">
-                            {primaryTaskFieldLabel(selectedTask)}
+                        {selectedTaskPrimaryField && (
+                          <Badge variant="outline" size="pill" className="text-muted-foreground">
+                            {selectedTaskPrimaryField}
                           </Badge>
                         )}
                       </div>
@@ -519,13 +530,15 @@ export function NotificationsPage() {
                         Workflow: {selectedTask.workflowName}
                         {selectedTaskStageMeta ? ` · ${selectedTaskStageMeta.group}` : ""}
                       </p>
-                      <p className="mt-2 text-body-sm text-muted-foreground">{taskActionCopy(selectedTask)}</p>
+                      <div className="mt-3 rounded-lg surface-info-soft px-3 py-2">
+                        <p className="text-body-sm text-foreground">{taskActionCopy(selectedTask)}</p>
+                        <p className="mt-1 ui-meta-text text-muted-foreground">
+                          If the run is live it will continue immediately. If it was reopened from history, you can resume it after submitting here.
+                        </p>
+                      </div>
                       {selectedTask.instructions && compactTaskText(selectedTask.instructions, 999) !== compactTaskText(selectedTask.summary, 999) && (
                         <p className="mt-2 text-body-sm text-muted-foreground whitespace-pre-wrap">{selectedTask.instructions}</p>
                       )}
-                      <p className="mt-2 ui-meta-text text-muted-foreground">
-                        If the run is live it will continue immediately. If it was reopened from history, you can resume it after submitting here.
-                      </p>
                     </div>
                     {selectedTask.workflowPath && (
                       <Button type="button" variant="outline" size="sm" onClick={() => { void handleOpenWorkflow() }}>
@@ -536,18 +549,18 @@ export function NotificationsPage() {
                   </div>
 
                   {selectedTask.summary && (
-                    <div className="rounded-lg border border-hairline bg-surface-2/80 px-3 py-2 text-body-sm text-muted-foreground whitespace-pre-wrap">
+                    <div className="rounded-lg border border-hairline bg-surface-1/80 px-3 py-2 text-body-sm text-muted-foreground whitespace-pre-wrap">
                       {selectedTask.summary}
                     </div>
                   )}
 
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {selectedTask.request.fields.map((field) => {
                       const value = normalizeHumanFieldValue(field, taskAnswers[field.id])
 
                       if (field.type === "boolean") {
                         return (
-                          <div key={field.id} className="flex items-start justify-between gap-4 rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
+                          <div key={field.id} className="flex items-start justify-between gap-4 rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
                             <div className="min-w-0">
                               <p className="text-body-sm font-medium text-foreground">{field.label}</p>
                               {field.description && (
@@ -585,7 +598,7 @@ export function NotificationsPage() {
                         return (
                           <div key={field.id} className="space-y-2">
                             <label className="ui-meta-text text-muted-foreground">{field.label}</label>
-                            <div className="space-y-2 rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
+                            <div className="space-y-2 rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
                               {(field.options || []).map((option) => {
                                 const checked = selectedValues.includes(option.value)
                                 return (
@@ -639,13 +652,14 @@ export function NotificationsPage() {
                     })}
                   </div>
 
-                  <div className="flex flex-wrap gap-2 pt-2">
+                  <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
                     <Button
                       type="button"
                       onClick={() => { void handleSubmitHumanTask() }}
                       disabled={taskSubmitting}
+                      isLoading={taskSubmitting}
                     >
-                      {taskSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                      {!taskSubmitting && <Check size={14} />}
                       {selectedTask.kind === "approval"
                         ? (selectedTask.allowEdit ? "Approve" : "Approve")
                         : "Submit response"}
@@ -663,7 +677,7 @@ export function NotificationsPage() {
                     )}
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => { void handleRejectHumanTask() }}
                       disabled={taskSubmitting}
                     >
@@ -677,11 +691,11 @@ export function NotificationsPage() {
         )}
       </section>
 
-      <section className="space-y-3">
+      <section className="rounded-xl surface-panel p-5 space-y-4">
         <SectionHeading
           title="Recent events"
           meta={(
-            <span className="ui-meta-text text-muted-foreground">
+            <span className="rounded-md border border-hairline bg-surface-2/70 px-2 py-0.5 ui-meta-text text-muted-foreground">
               {notifications.length} total · {unreadCount} unread
             </span>
           )}
@@ -706,7 +720,7 @@ export function NotificationsPage() {
         </div>
 
         {visibleNotifications.length === 0 ? (
-          <article className="rounded-lg surface-panel px-5 py-10 text-center">
+          <article className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-5 py-10 text-center">
             <div className="mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-lg border border-hairline bg-surface-2/80">
               <Inbox size={20} className="text-muted-foreground" />
             </div>
@@ -716,7 +730,7 @@ export function NotificationsPage() {
             </p>
           </article>
         ) : (
-          <div className="space-y-3">
+          <div className="overflow-hidden rounded-lg border border-hairline bg-surface-2/35">
             {visibleNotifications.map((notification) => {
               const levelMeta = LEVEL_META[notification.level]
               const LevelIcon = levelMeta.icon
@@ -725,8 +739,8 @@ export function NotificationsPage() {
                 <article
                   key={notification.id}
                   className={cn(
-                    "rounded-lg surface-panel px-4 py-3",
-                    !notification.read && "ring-1 ring-primary/15",
+                    "border-b border-hairline px-4 py-3 last:border-b-0",
+                    !notification.read ? "bg-surface-1" : "bg-transparent",
                   )}
                 >
                   <div className="flex items-start gap-3">
@@ -741,7 +755,7 @@ export function NotificationsPage() {
                           {SOURCE_LABELS[notification.source]}
                         </Badge>
                         {!notification.read && (
-                          <Badge variant="secondary">Unread</Badge>
+                          <Badge variant="secondary" size="pill">Unread</Badge>
                         )}
                         <span className="ui-meta-text text-muted-foreground">
                           {formatRelativeTime(notification.createdAt)}
