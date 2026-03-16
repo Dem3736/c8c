@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import type { ActiveWorkflowRun, RunResult, Workflow } from "@shared/types"
 import { createWorkflowExecutionController } from "./controller"
+import type { WorkflowExecutionState } from "@/lib/workflow-execution"
 
 function createWorkflow(): Workflow {
   return {
@@ -44,6 +45,7 @@ function createRunResult(): RunResult {
 }
 
 function createHarness() {
+  let executionStates: Record<string, WorkflowExecutionState> = {}
   let approvalRequests: Array<{
     runId: string
     nodeId: string
@@ -54,7 +56,12 @@ function createHarness() {
   let pastRuns: RunResult[] = []
 
   const deps = {
-    commitExecutionState: vi.fn(),
+    commitExecutionState: vi.fn((workflowKey: string, nextState: WorkflowExecutionState) => {
+      executionStates = {
+        ...executionStates,
+        [workflowKey]: nextState,
+      }
+    }),
     updateApprovalRequests: vi.fn((update) => {
       approvalRequests = typeof update === "function" ? update(approvalRequests) : update
     }),
@@ -67,13 +74,25 @@ function createHarness() {
   }
 
   const controller = createWorkflowExecutionController(deps)
-  controller.sync({ workflowExecutionStates: {}, selectedProject: "/tmp/project" })
+  controller.sync({ workflowExecutionStates: executionStates, selectedProject: "/tmp/project" })
 
   return {
     controller,
     deps,
     getApprovalRequests: () => approvalRequests,
     getPastRuns: () => pastRuns,
+    getExecutionStates: () => executionStates,
+    moveExecutionState: (fromKey: string, toKey: string) => {
+      const source = executionStates[fromKey]
+      expect(source).toBeDefined()
+      const nextStates = {
+        ...executionStates,
+        [toKey]: source,
+      }
+      delete nextStates[fromKey]
+      executionStates = nextStates
+      controller.sync({ workflowExecutionStates: executionStates, selectedProject: "/tmp/project" })
+    },
   }
 }
 
@@ -162,5 +181,39 @@ describe("WorkflowExecutionController", () => {
     expect(state.workspace).toBe("/tmp/workspace")
     expect(state.activeNodeId).toBe("output")
     expect(state.nodeStates.output.status).toBe("running")
+  })
+
+  it("reconciles active run events after the workflow key changes", () => {
+    const { controller, deps, getExecutionStates, moveExecutionState } = createHarness()
+    const originalKey = controller.beginExecution(createWorkflow(), "/tmp/original.chain", "/tmp/project")
+    controller.finishStartWithRunId("run-1", originalKey)
+
+    const renamedKey = "/tmp/renamed.chain"
+    moveExecutionState(originalKey, renamedKey)
+
+    controller.processWorkflowEvent({
+      type: "node-start",
+      runId: "run-1",
+      nodeId: "output",
+    })
+    controller.processWorkflowEvent({
+      type: "node-done",
+      runId: "run-1",
+      nodeId: "output",
+      output: { type: "text", content: "Final answer" },
+    })
+
+    expect(controller.getExecutionState(renamedKey).runStatus).toBe("running")
+    expect(controller.getExecutionState(renamedKey).activeNodeId).toBe("output")
+    expect(controller.getExecutionState(renamedKey).nodeStates.output.status).toBe("completed")
+    expect(controller.getExecutionState(renamedKey).finalContent).toBe("Final answer")
+    expect(getExecutionStates()[originalKey]).toBeUndefined()
+    expect(deps.commitExecutionState).toHaveBeenLastCalledWith(
+      renamedKey,
+      expect.objectContaining({
+        activeNodeId: "output",
+        finalContent: "Final answer",
+      }),
+    )
   })
 })

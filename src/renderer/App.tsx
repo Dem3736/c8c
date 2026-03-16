@@ -1,8 +1,9 @@
-import { memo, useEffect, useState } from "react"
+import { memo, useCallback, useEffect, useRef, useState, type Ref } from "react"
 import { Provider as JotaiProvider } from "jotai"
 import { useAtom, useAtomValue } from "jotai"
+import { PanelLeft, PanelLeftOpen } from "lucide-react"
 import { Toaster } from "sonner"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ProjectSidebar } from "@/components/ProjectSidebar"
 import { WorkflowPanel } from "@/components/WorkflowPanel"
 import { SkillsPage } from "@/components/SkillsPage"
@@ -33,6 +34,8 @@ import {
   providerSettingsAtom,
   providerAvailabilityAtom,
   providerAuthStatusAtom,
+  projectSidebarOpenAtom,
+  projectSidebarWidthAtom,
 } from "@/lib/store"
 import {
   Dialog,
@@ -53,10 +56,68 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/cn"
 import { toast } from "sonner"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { STAGE_META } from "@/lib/template-stages"
+
+function SidebarVisibilityToggle({
+  desktopRuntime,
+  sidebarOpen,
+  sidebarWidth,
+  onToggle,
+  buttonRef,
+}: {
+  desktopRuntime: {
+    platform: string
+    titlebarHeight: number
+    primaryModifierLabel: string
+  }
+  sidebarOpen: boolean
+  sidebarWidth: number
+  onToggle: () => void
+  buttonRef?: Ref<HTMLButtonElement>
+}) {
+  const inTitlebar = desktopRuntime.titlebarHeight > 0
+  if (!inTitlebar && sidebarOpen) return null
+
+  const Icon = sidebarOpen ? PanelLeft : PanelLeftOpen
+  const label = sidebarOpen ? "Hide sidebar" : "Show sidebar"
+  const shortcutLabel = `${desktopRuntime.primaryModifierLabel}B`
+  const positionStyle = inTitlebar
+    ? desktopRuntime.platform === "macos"
+      ? {
+        top: 12,
+        left: sidebarOpen
+          ? Math.max(12, Math.round(sidebarWidth - 28))
+          : 96,
+      }
+      : { top: Math.max(6, Math.round((desktopRuntime.titlebarHeight - 20) / 2)), left: 12 }
+    : { top: 12, left: 12 }
+
+  return (
+    <div className={cn("fixed z-[60]")} style={positionStyle}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            ref={buttonRef}
+            className="pointer-events-auto no-drag h-5 w-5 rounded-sm border-transparent bg-transparent p-0 text-muted-foreground hover:border-transparent hover:bg-transparent hover:text-foreground active:bg-transparent"
+            onClick={onToggle}
+            aria-label={`${label} (${shortcutLabel})`}
+            aria-pressed={sidebarOpen}
+          >
+            <Icon size={17} strokeWidth={1.8} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label} ({shortcutLabel})</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
@@ -89,8 +150,24 @@ const AppShell = memo(function AppShell() {
   const [, setProviderSettings] = useAtom(providerSettingsAtom)
   const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
   const [, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
+  const [sidebarOpen, setSidebarOpen] = useAtom(projectSidebarOpenAtom)
+  const [sidebarWidth] = useAtom(projectSidebarWidthAtom)
   const [deepLinkTargetProject, setDeepLinkTargetProject] = useState<string | null>(selectedProject)
+  const sidebarShellRef = useRef<HTMLDivElement | null>(null)
+  const sidebarToggleRef = useRef<HTMLButtonElement | null>(null)
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
+
+  const toggleSidebar = useCallback((nextOpen = !sidebarOpen) => {
+    if (!nextOpen) {
+      const activeElement = document.activeElement as HTMLElement | null
+      if (activeElement && sidebarShellRef.current?.contains(activeElement)) {
+        window.requestAnimationFrame(() => {
+          sidebarToggleRef.current?.focus()
+        })
+      }
+    }
+    setSidebarOpen(nextOpen)
+  }, [setSidebarOpen, sidebarOpen])
 
   // Redirect to onboarding on first launch
   useEffect(() => {
@@ -120,7 +197,7 @@ const AppShell = memo(function AppShell() {
           : "linux"
       setDesktopRuntime({
         platform: fallbackPlatform,
-        titlebarHeight: fallbackPlatform === "macos" ? 32 : 0,
+        titlebarHeight: fallbackPlatform === "macos" ? 24 : 0,
         primaryModifierKey: fallbackPlatform === "macos" ? "meta" : "ctrl",
         primaryModifierLabel: fallbackPlatform === "macos" ? "⌘" : "Ctrl",
         isFullscreen: false,
@@ -147,6 +224,14 @@ const AppShell = memo(function AppShell() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey) return
+      const target = event.target as HTMLElement | null
+      const tagName = target?.tagName
+      const isEditable = Boolean(
+        target?.isContentEditable
+        || tagName === "INPUT"
+        || tagName === "TEXTAREA"
+        || target?.closest("[contenteditable=true]"),
+      )
       const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
         ? event.metaKey
         : event.ctrlKey
@@ -165,6 +250,13 @@ const AppShell = memo(function AppShell() {
           setMainView("thread")
         }
         setChatPanelOpen((open) => !open)
+        return
+      }
+
+      if (key === "b" && !event.shiftKey) {
+        if (isEditable) return
+        event.preventDefault()
+        toggleSidebar()
       }
     }
 
@@ -172,7 +264,7 @@ const AppShell = memo(function AppShell() {
     return () => {
       window.removeEventListener("keydown", handler)
     }
-  }, [desktopRuntime.primaryModifierKey, mainView, setChatPanelOpen, setMainView])
+  }, [desktopRuntime.primaryModifierKey, mainView, setChatPanelOpen, setMainView, toggleSidebar])
 
   useEffect(() => {
     window.api.getClaudeCodeSubscriptionStatus().then(setCliStatus).catch(() => {})
@@ -269,10 +361,34 @@ const AppShell = memo(function AppShell() {
           style={{ height: "var(--titlebar-height,0px)" }}
         />
       )}
+      <SidebarVisibilityToggle
+        desktopRuntime={desktopRuntime}
+        sidebarOpen={sidebarOpen}
+        sidebarWidth={sidebarWidth}
+        onToggle={() => toggleSidebar()}
+        buttonRef={sidebarToggleRef}
+      />
 
       {/* Left sidebar — projects */}
       <SectionErrorBoundary sectionName="project sidebar">
-        <ProjectSidebar />
+        <div
+          ref={sidebarShellRef}
+          aria-hidden={!sidebarOpen}
+          className={cn(
+            "relative h-full shrink-0 min-h-0 overflow-hidden border-r ui-motion-standard transition-[width,opacity,border-color]",
+            sidebarOpen
+              ? "opacity-100 border-border"
+              : "opacity-0 border-transparent",
+          )}
+          style={{ width: sidebarOpen ? sidebarWidth : 0 }}
+          inert={!sidebarOpen}
+        >
+          <ProjectSidebar
+            collapsed={!sidebarOpen}
+            onToggleVisibility={() => toggleSidebar(false)}
+            showVisibilityToggle={desktopRuntime.titlebarHeight === 0}
+          />
+        </div>
       </SectionErrorBoundary>
 
       <div id="main-content" className="min-w-0 min-h-0 flex-1 flex flex-col">

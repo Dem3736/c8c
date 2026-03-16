@@ -3,6 +3,7 @@ import {
   modelLooksCompatible,
   resolveWorkflowProvider,
 } from "@shared/provider-metadata"
+import { validateWorkflowNodeConfigs } from "@shared/workflow-config-validation"
 
 export interface ValidationError {
   nodeId: string
@@ -12,45 +13,13 @@ export interface ValidationError {
 }
 
 export function validateWorkflow(workflow: Workflow, defaultProvider: ProviderId = "claude"): ValidationError[] {
-  const errors: ValidationError[] = []
+  const errors: ValidationError[] = validateWorkflowNodeConfigs(workflow).map((issue) => ({
+    nodeId: issue.nodeId,
+    field: issue.field,
+    message: issue.message,
+    severity: issue.severity,
+  }))
   const workflowProvider = resolveWorkflowProvider(workflow, defaultProvider)
-
-  for (const node of workflow.nodes) {
-    if (node.type === "skill") {
-      const hasSkillRef = !!node.config.skillRef?.trim()
-      const hasPrompt = !!node.config.prompt?.trim()
-      if (!hasSkillRef && !hasPrompt) {
-        errors.push({
-          nodeId: node.id,
-          field: "prompt",
-          message: "Add a prompt or select a skill reference.",
-          severity: "error",
-        })
-      }
-    }
-
-    if (node.type === "evaluator") {
-      if (!node.config.criteria?.trim()) {
-        errors.push({
-          nodeId: node.id,
-          field: "criteria",
-          message: "Evaluation criteria is required.",
-          severity: "error",
-        })
-      }
-    }
-
-    if (node.type === "splitter") {
-      if (!node.config.strategy?.trim()) {
-        errors.push({
-          nodeId: node.id,
-          field: "strategy",
-          message: "Splitter strategy is required.",
-          severity: "error",
-        })
-      }
-    }
-  }
 
   if (workflow.defaults?.model?.trim() && !modelLooksCompatible(workflowProvider, workflow.defaults.model)) {
     errors.push({

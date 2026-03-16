@@ -6,9 +6,11 @@ import {
   skillsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
+  workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   workflowsAtom,
 } from "@/lib/store"
+import { runStatusAtom } from "@/features/execution"
 import {
   Dialog,
   CanvasDialogBody,
@@ -21,13 +23,15 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, Sparkles } from "lucide-react"
 import { useWorkflowGeneration } from "@/hooks/useWorkflowGeneration"
+import { buildGeneratedWorkflowEntryState } from "@/lib/workflow-entry"
+import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
 
 const STEP_LABELS: Record<string, string> = {
-  starting: "Starting Claude...",
-  thinking: "Thinking...",
-  writing: "Writing workflow...",
-  parsing: "Parsing result...",
-  done: "Done!",
+  starting: "Getting the draft ready...",
+  thinking: "Understanding the job...",
+  writing: "Shaping the flow...",
+  parsing: "Opening a runnable draft...",
+  done: "Ready to review.",
 }
 
 export function GenerateWorkflow() {
@@ -36,8 +40,10 @@ export function GenerateWorkflow() {
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
+  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const [skills, setSkills] = useAtom(skillsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [runStatus] = useAtom(runStatusAtom)
   const [target, setTarget] = useState<"replace" | "new">("new")
   const {
     description,
@@ -58,19 +64,29 @@ export function GenerateWorkflow() {
     setSkills,
     selectedProject,
     onOpenChange: setOpen,
+    onRestorePrevious: () => setWorkflowEntryState(null),
+    onGenerated: ({ workflow: nextWorkflow, workflowPath, request }) => {
+      setWorkflowEntryState(buildGeneratedWorkflowEntryState({
+        workflow: nextWorkflow,
+        workflowPath,
+        request,
+        source: "generated",
+      }))
+    },
   })
 
   useEffect(() => {
     if (!open) return
     setTarget(selectedProject ? "new" : "replace")
   }, [open, selectedProject])
+  const replaceCurrentBlockedReason = getReplaceCurrentWorkflowBlockedReason(runStatus)
 
   const progressLabel = progress
     ? STEP_LABELS[progress.step] || `${progress.step}...`
     : null
   const generateButtonLabel = useMemo(() => {
-    if (generating) return "Generating..."
-    return target === "new" ? "Generate New Workflow" : "Replace Current Workflow"
+    if (generating) return "Preparing flow..."
+    return target === "new" ? "Prepare flow" : "Replace with this flow"
   }, [generating, target])
 
   return (
@@ -82,47 +98,51 @@ export function GenerateWorkflow() {
         <CanvasDialogHeader className="surface-depth-header">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles size={18} />
-            Generate Workflow
+            Create with Agent
           </DialogTitle>
         </CanvasDialogHeader>
 
         <CanvasDialogBody className="space-y-3 pt-4 bg-surface-1/30">
           <p className="text-body-md text-muted-foreground">
-            Describe what you want your workflow to do. AI will create the nodes, edges, and configuration.
+            Describe the job, the input you will give it, and the result you want back. The agent will prepare a runnable flow you can run or refine.
           </p>
 
-          <div className="space-y-2">
-            <p className="ui-meta-text text-muted-foreground">Generate as</p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={target === "new" ? "default" : "outline"}
-                onClick={() => setTarget("new")}
-                disabled={generating || !selectedProject}
-              >
-                Create new workflow
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={target === "replace" ? "default" : "outline"}
-                onClick={() => setTarget("replace")}
-                disabled={generating}
-              >
-                Replace current
-              </Button>
+          <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-3">
+            <p className="ui-meta-label text-muted-foreground">Where it will go</p>
+            <p className="mt-1 text-body-sm text-foreground">
+              {target === "new"
+                ? selectedProject
+                  ? "Create a new workflow file in the selected project."
+                  : "Select a project to create a new workflow file."
+                : "Replace the current workflow draft and keep editing from the same file path until you save."}
+            </p>
+            {target === "replace" && replaceCurrentBlockedReason && (
+              <p className="mt-2 text-body-sm text-status-warning">{replaceCurrentBlockedReason}</p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
+              {target === "new" && selectedWorkflowPath ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setTarget("replace")}
+                  disabled={generating}
+                >
+                  Replace current instead
+                </Button>
+              ) : null}
+              {target === "replace" && selectedProject ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setTarget("new")}
+                  disabled={generating}
+                >
+                  Save as a new workflow instead
+                </Button>
+              ) : null}
             </div>
-            {!selectedProject && (
-              <p className="ui-meta-text text-muted-foreground">
-                Select a project to create a new workflow file.
-              </p>
-            )}
-            {target === "replace" && (
-              <p className="ui-meta-text text-muted-foreground">
-                Replacing the current workflow keeps the file path unchanged until you save.
-              </p>
-            )}
           </div>
 
           <Textarea
@@ -133,7 +153,7 @@ export function GenerateWorkflow() {
             onChange={(e) => setDescription(e.target.value)}
             rows={5}
             className="resize-y"
-            placeholder="e.g. Take my landing page URL, analyze each section with JTBD framework, rewrite weak sections, score overall quality, iterate until score > 8"
+            placeholder="e.g. Review this repo for UX friction, audit the main flows, group issues by severity, and give me a prioritized action plan"
             disabled={generating}
           />
 
@@ -141,11 +161,6 @@ export function GenerateWorkflow() {
             <div role="status" aria-live="polite" className="flex items-center gap-2 ui-meta-text text-muted-foreground">
               <Loader2 size={12} className="animate-spin" />
               <span>{progressLabel}</span>
-              {progress.count > 0 && (
-                <span className="ml-auto tabular-nums text-muted-foreground">
-                  {progress.count} events
-                </span>
-              )}
             </div>
           )}
 
@@ -157,8 +172,8 @@ export function GenerateWorkflow() {
 
           <div className="ui-meta-text text-muted-foreground pb-1">
             {skills.length > 0
-              ? `${skills.length} skills available from your project, plugins, and legacy libraries`
-              : "No skills discovered yet — generic skill names will be used"}
+              ? `${skills.length} project and plugin skills are available if the flow needs them.`
+              : "No project skills discovered yet. The agent will still prepare a runnable draft."}
           </div>
         </CanvasDialogBody>
 
@@ -172,8 +187,11 @@ export function GenerateWorkflow() {
           </Button>
           <Button
             variant="default"
-            onClick={() => void generate(target)}
-            disabled={!description.trim() || generating || (target === "new" && !selectedProject)}
+            onClick={() => {
+              if (target === "replace" && replaceCurrentBlockedReason) return
+              void generate(target)
+            }}
+            disabled={!description.trim() || generating || (target === "new" && !selectedProject) || (target === "replace" && Boolean(replaceCurrentBlockedReason))}
           >
             {generating ? (
               <>

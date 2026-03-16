@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/cn"
 import { FileText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
@@ -97,9 +98,18 @@ export interface HistoryTabProps {
   runStatus: string
   onOpenReport: (path: string) => Promise<void> | void
   onContinueRun?: (run: RunResult) => Promise<void> | void
+  selectedRunId?: string | null
+  onSelectRun?: (run: RunResult) => void
 }
 
-export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }: HistoryTabProps) {
+export function HistoryTab({
+  pastRuns,
+  runStatus,
+  onOpenReport,
+  onContinueRun,
+  selectedRunId,
+  onSelectRun,
+}: HistoryTabProps) {
   const [selectedHistoryRunId, setSelectedHistoryRunId] = useState<string | null>(null)
   const [selectedRunDetails, setSelectedRunDetails] = useState<(RunResult & { reportContent: string }) | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -134,6 +144,10 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
 
   // Keep selection in sync with available runs
   useEffect(() => {
+    if (selectedRunId && pastRuns.some((run) => run.runId === selectedRunId)) {
+      setSelectedHistoryRunId(selectedRunId)
+      return
+    }
     if (pastRuns.length === 0) {
       setSelectedHistoryRunId(null)
       return
@@ -142,7 +156,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
     if (!exists) {
       setSelectedHistoryRunId(pastRuns[0].runId)
     }
-  }, [pastRuns, selectedHistoryRunId])
+  }, [pastRuns, selectedHistoryRunId, selectedRunId])
 
   // Keep compare run IDs in sync
   useEffect(() => {
@@ -269,7 +283,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
             return (
               <div
                 key={run.runId}
-                className="flex items-center gap-2 border-b border-hairline px-2 py-1.5 last:border-b-0"
+                className="flex items-center gap-2 border-b border-hairline px-2 py-2 last:border-b-0"
                 onContextMenu={(event) => {
                   event.preventDefault()
                   setSelectedHistoryRunId(run.runId)
@@ -282,7 +296,10 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
                     "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left ui-transition-colors ui-motion-fast hover:bg-surface-3/80",
                     isSelected && "bg-surface-3/80",
                   )}
-                  onClick={() => setSelectedHistoryRunId(run.runId)}
+                  onClick={() => {
+                    setSelectedHistoryRunId(run.runId)
+                    onSelectRun?.(run)
+                  }}
                 >
                   <FileText size={14} className="text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -308,14 +325,11 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
                     {run.status}
                   </Badge>
                 </button>
-                <button
+                <Button
                   type="button"
-                  className={cn(
-                    "h-control-sm rounded-md px-2 ui-meta-text ui-transition-colors ui-motion-fast",
-                    canOpenReport
-                      ? "border border-hairline bg-surface-1/80 text-foreground hover:bg-surface-3"
-                      : "border border-hairline bg-surface-2/70 text-muted-foreground/80 cursor-not-allowed",
-                  )}
+                  variant="outline"
+                  size="sm"
+                  className="h-control-sm"
                   disabled={!canOpenReport}
                   title={canOpenReport ? "Open the saved report file" : "This run does not have a saved report file."}
                   onClick={() => {
@@ -324,15 +338,12 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
                   }}
                 >
                   Open file
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className={cn(
-                    "h-control-sm rounded-md px-2 ui-meta-text ui-transition-colors ui-motion-fast",
-                    canContinue
-                      ? "border border-hairline bg-surface-1/80 text-foreground hover:bg-surface-3"
-                      : "border border-hairline bg-surface-2/70 text-muted-foreground/80 cursor-not-allowed",
-                  )}
+                  variant="outline"
+                  size="sm"
+                  className="h-control-sm"
                   disabled={!canContinue}
                   title={canContinue ? "Continue this run from its saved workspace" : "Continue is only available for paused or interrupted runs."}
                   onClick={() => {
@@ -341,7 +352,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
                   }}
                 >
                   Continue
-                </button>
+                </Button>
               </div>
             )
           })}
@@ -415,6 +426,7 @@ export function HistoryTab({ pastRuns, runStatus, onOpenReport, onContinueRun }:
             <DropdownMenuItem
               onSelect={() => {
                 setSelectedHistoryRunId(contextHistoryRun.runId)
+                onSelectRun?.(contextHistoryRun)
                 setContextMenu(null)
               }}
             >

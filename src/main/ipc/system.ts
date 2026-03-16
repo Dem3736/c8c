@@ -55,7 +55,7 @@ function desktopRuntimeInfo(window: BrowserWindow | null = resolveRuntimeWindow(
   const isMaximized = Boolean(window?.isMaximized())
   return {
     platform,
-    titlebarHeight: isMac && !isFullscreen ? 32 : 0,
+    titlebarHeight: isMac && !isFullscreen ? 24 : 0,
     primaryModifierKey: isMac ? "meta" : "ctrl",
     primaryModifierLabel: isMac ? "⌘" : "Ctrl",
     isFullscreen,

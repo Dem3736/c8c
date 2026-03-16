@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
 import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
@@ -8,7 +8,7 @@ import {
   type WorkflowNode,
   type DiscoveredSkill,
 } from "@/lib/store"
-import { activeNodeIdAtom, nodeStatesAtom } from "@/features/execution"
+import { activeNodeIdAtom, nodeStatesAtom, runtimeMetaAtom } from "@/features/execution"
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
@@ -17,11 +17,14 @@ import type {
   MergerNodeConfig,
   OutputNodeConfig,
   SkillNodeConfig,
+  NodeState,
+  WorkflowRuntimeMeta,
 } from "@shared/types"
-import { NodeCard } from "./NodeCard"
+import { NodeCard, type RuntimeBranchSummary } from "./NodeCard"
 import { SkillPicker } from "./SkillPicker"
-import { Plus, BarChart3, GitFork, ArrowDown as ArrowDownIcon, Hand } from "lucide-react"
+import { Plus, BarChart3, GitFork, ArrowDown as ArrowDownIcon, ArrowRight as ArrowRightIcon, Hand } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { getRuntimeBranchDetail, getRuntimeBranchLabel } from "@/lib/runtime-flow-labels"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DropdownMenu,
@@ -57,24 +60,156 @@ import {
 
 interface ChainBuilderProps {
   compact?: boolean
+  mode?: "edit" | "outline" | "monitor"
+  onStageSelect?: (payload: { nodeId: string; preferredTab: "nodes" | "log" | "result" }) => void
 }
 
-export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
+const STATUS_PRIORITY: Record<string, number> = {
+  waiting_approval: 0,
+  failed: 1,
+  running: 2,
+  queued: 3,
+  pending: 4,
+  completed: 5,
+  skipped: 6,
+}
+
+function buildRuntimeBranchSummary(
+  branchIds: string[],
+  nodeStates: Record<string, NodeState>,
+  runtimeMeta: WorkflowRuntimeMeta,
+): RuntimeBranchSummary | null {
+  if (branchIds.length === 0) return null
+
+  let running = 0
+  let completed = 0
+  let failed = 0
+  let waitingApproval = 0
+  let pending = 0
+
+  for (const branchId of branchIds) {
+    const status = nodeStates[branchId]?.status || "pending"
+    if (status === "running") running += 1
+    else if (status === "waiting_approval") waitingApproval += 1
+    else if (status === "failed") failed += 1
+    else if (status === "completed" || status === "skipped") completed += 1
+    else pending += 1
+  }
+
+  const previews = branchIds
+    .map((branchId) => ({
+      id: branchId,
+      label: runtimeMeta[branchId]?.subtaskKey
+        ? getRuntimeBranchLabel(runtimeMeta[branchId].subtaskKey)
+        : branchId.split("::").pop() || branchId,
+      detail: getRuntimeBranchDetail(runtimeMeta[branchId]),
+      status: nodeStates[branchId]?.status || "pending",
+    }))
+    .sort((left, right) => {
+      const priorityDelta = (STATUS_PRIORITY[left.status] ?? 99) - (STATUS_PRIORITY[right.status] ?? 99)
+      if (priorityDelta !== 0) return priorityDelta
+      return left.label.localeCompare(right.label)
+    })
+    .slice(0, 4)
+
+  return {
+    total: branchIds.length,
+    running,
+    completed,
+    failed,
+    waitingApproval,
+    pending,
+    previews,
+  }
+}
+
+function buildAggregateBranchState(
+  branchIds: string[],
+  summary: RuntimeBranchSummary,
+  nodeStates: Record<string, NodeState>,
+): NodeState {
+  const status = summary.waitingApproval > 0
+    ? "waiting_approval"
+    : summary.failed > 0
+      ? "failed"
+      : summary.running > 0
+        ? "running"
+        : summary.completed === summary.total && summary.total > 0
+          ? "completed"
+          : summary.completed > 0
+            ? "running"
+            : summary.pending > 0
+              ? "pending"
+              : "pending"
+
+  let totalTokensIn = 0
+  let totalTokensOut = 0
+  let totalCostUsd = 0
+  let totalLatencyMs = 0
+  let sawMetrics = false
+  let startedAt: number | undefined
+  let completedAt: number | undefined
+  let error: string | undefined
+
+  for (const branchId of branchIds) {
+    const state = nodeStates[branchId]
+    if (!state) continue
+    if (!error && state.error) {
+      error = state.error
+    }
+    if (typeof state.startedAt === "number") {
+      startedAt = typeof startedAt === "number" ? Math.min(startedAt, state.startedAt) : state.startedAt
+    }
+    if (typeof state.completedAt === "number") {
+      completedAt = typeof completedAt === "number" ? Math.max(completedAt, state.completedAt) : state.completedAt
+    }
+    if (state.metrics) {
+      sawMetrics = true
+      totalTokensIn += state.metrics.tokens_in || 0
+      totalTokensOut += state.metrics.tokens_out || 0
+      totalCostUsd += state.metrics.cost_usd || 0
+      totalLatencyMs += state.metrics.latency_ms || 0
+    }
+  }
+
+  return {
+    status,
+    attempts: 0,
+    error,
+    log: [],
+    startedAt,
+    completedAt,
+    metrics: sawMetrics
+      ? {
+        tokens_in: totalTokensIn,
+        tokens_out: totalTokensOut,
+        cost_usd: totalCostUsd,
+        latency_ms: totalLatencyMs,
+      }
+      : undefined,
+  }
+}
+
+export function ChainBuilder({ compact = false, mode = "edit", onStageSelect }: ChainBuilderProps = {}) {
   const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
-  const [, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
+  const [runtimeMeta] = useAtom(runtimeMetaAtom)
+  const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
   const isReorderSafe = isLinearChainReorderSafe(workflow)
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const undoToastIdRef = useRef<string | number | null>(null)
+  const stepRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [chainContextMenu, setChainContextMenu] = useState<{
     x: number
     y: number
     nodeId: string
   } | null>(null)
+  const flowCardMode = mode === "outline" || mode === "monitor"
+  const runtimeMode = mode === "monitor"
 
   useEffect(() => {
     return () => {
@@ -94,9 +229,84 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
     return [...inputNodes, ...middleNodes, ...outputNodes]
   }, [workflow.nodes])
   const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
+  const runtimeBranchIds = useMemo(() => Object.keys(runtimeMeta), [runtimeMeta])
+  const runtimeBranchSummariesByTemplate = useMemo(() => {
+    const branchIdsByTemplate = new Map<string, string[]>()
+    for (const [branchId, meta] of Object.entries(runtimeMeta)) {
+      if (!meta?.templateId) continue
+      const existing = branchIdsByTemplate.get(meta.templateId)
+      if (existing) {
+        existing.push(branchId)
+      } else {
+        branchIdsByTemplate.set(meta.templateId, [branchId])
+      }
+    }
+
+    const summaries = new Map<string, RuntimeBranchSummary>()
+    for (const [templateId, branchIds] of branchIdsByTemplate.entries()) {
+      const summary = buildRuntimeBranchSummary(branchIds, nodeStates, runtimeMeta)
+      if (summary) summaries.set(templateId, summary)
+    }
+    return summaries
+  }, [nodeStates, runtimeMeta])
+  const aggregateBranchStatesByTemplate = useMemo(() => {
+    const aggregateStates = new Map<string, NodeState>()
+    for (const [templateId, summary] of runtimeBranchSummariesByTemplate.entries()) {
+      const branchIds = Object.entries(runtimeMeta)
+        .filter(([, meta]) => meta.templateId === templateId)
+        .map(([branchId]) => branchId)
+      if (branchIds.length === 0) continue
+      aggregateStates.set(templateId, buildAggregateBranchState(branchIds, summary, nodeStates))
+    }
+    return aggregateStates
+  }, [nodeStates, runtimeBranchSummariesByTemplate, runtimeMeta])
+  const singleSplitterBranchSummary = useMemo(() => {
+    const splitterCount = workflow.nodes.filter((node) => node.type === "splitter").length
+    if (splitterCount !== 1) return null
+    return buildRuntimeBranchSummary(runtimeBranchIds, nodeStates, runtimeMeta)
+  }, [nodeStates, runtimeBranchIds, runtimeMeta, workflow.nodes])
+  const resolvedActiveNodeId = activeNodeId && runtimeMeta[activeNodeId]?.templateId
+    ? runtimeMeta[activeNodeId].templateId
+    : activeNodeId
+  const resolvedSelectedNodeId = selectedNodeId && runtimeMeta[selectedNodeId]?.templateId
+    ? runtimeMeta[selectedNodeId].templateId
+    : selectedNodeId
   const contextNode = chainContextMenu
     ? workflow.nodes.find((node) => node.id === chainContextMenu.nodeId) || null
     : null
+
+  const getNodePresentation = (node: WorkflowNode) => {
+    const directState = nodeStates[node.id]
+    const aggregateState = aggregateBranchStatesByTemplate.get(node.id)
+    const effectiveState = flowCardMode
+      ? aggregateState && (!directState || directState.status === "pending" || directState.status === "queued")
+        ? aggregateState
+        : directState
+      : directState
+    const runtimeBranchSummary = flowCardMode
+      ? node.type === "splitter"
+        ? singleSplitterBranchSummary
+        : runtimeBranchSummariesByTemplate.get(node.id) ?? null
+      : null
+
+    return { effectiveState, runtimeBranchSummary }
+  }
+
+  const monitorFocusNodeId = useMemo(() => {
+    if (!runtimeMode) return null
+    if (resolvedActiveNodeId) return resolvedActiveNodeId
+    return orderedNodes.find((node) => {
+      const presentation = getNodePresentation(node)
+      const status = presentation.effectiveState?.status
+      return status === "waiting_approval" || status === "failed" || status === "running"
+    })?.id ?? null
+  }, [orderedNodes, resolvedActiveNodeId, runtimeMode])
+
+  useEffect(() => {
+    if (!runtimeMode || !monitorFocusNodeId) return
+    const step = stepRefs.current[monitorFocusNodeId]
+    step?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
+  }, [monitorFocusNodeId, runtimeMode])
 
   const getNodeDisplayLabel = (nodeId: string) => {
     const node = workflow.nodes.find((n) => n.id === nodeId)
@@ -229,6 +439,7 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
   }
 
   const handleDragStart = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
+    if (flowCardMode) return
     if (node.type === "input" || node.type === "output") return
     if (!isReorderSafe) {
       event.preventDefault()
@@ -263,6 +474,7 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
   }
 
   const handleDrop = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
+    if (flowCardMode) return
     if (!draggedNodeId) return
     if (node.type === "input" || node.type === "output") return
     if (!isReorderSafe) {
@@ -284,20 +496,117 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
     setDragOverNodeId(null)
   }
 
+  const renderNodeStep = (node: WorkflowNode, i: number) => {
+    const { effectiveState, runtimeBranchSummary } = getNodePresentation(node)
+    const preferredTab: "nodes" | "log" | "result" = typeof effectiveState?.output?.content === "string" && effectiveState.output.content.trim().length > 0
+      ? "result"
+      : effectiveState?.status === "running" || effectiveState?.status === "waiting_approval" || effectiveState?.status === "failed"
+        ? "log"
+        : "nodes"
+
+    return (
+      <div
+        key={node.id}
+        ref={(element) => {
+          stepRefs.current[node.id] = element
+        }}
+        draggable={!flowCardMode && node.type !== "input" && node.type !== "output" && isReorderSafe}
+        onDragStart={(event) => handleDragStart(node, event)}
+        onDragEnd={clearDragState}
+        onDragOver={(event) => handleDragOver(node, event)}
+        onDragLeave={(event) => handleDragLeave(node.id, event)}
+        onDrop={(event) => handleDrop(node, event)}
+        onContextMenu={(event) => {
+          if (flowCardMode) return
+          event.preventDefault()
+          event.stopPropagation()
+          setSelectedNodeId(node.id)
+          setChainContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            nodeId: node.id,
+          })
+        }}
+        className={cn(
+          "rounded-lg ui-transition-colors ui-motion-fast",
+          flowCardMode
+            ? "w-[13.75rem] shrink-0 snap-start md:w-[14.5rem] xl:w-[15rem]"
+            : "w-full",
+          dragOverNodeId === node.id && "ring-2 ring-primary/50 ring-offset-2 ring-offset-surface-1",
+        )}
+      >
+        {!flowCardMode && i > 0 && (
+          <div className={cn("flex flex-col items-center", compact ? "py-0.5" : "py-1")}>
+            <div className="flex flex-col items-center">
+              <div className={cn("w-px bg-border", compact ? "h-1.5" : "h-3")} />
+              <ArrowDownIcon size={compact ? 8 : 10} className="text-muted-foreground/50 -mt-0.5" />
+            </div>
+            {!compact && node.type === "evaluator" && (
+              <span className="ui-meta-text text-status-warning font-mono">
+                retry loop
+              </span>
+            )}
+          </div>
+        )}
+        {!flowCardMode && !compact && node.type !== "input" && node.type !== "output" && isReorderSafe && (
+          <div className="px-1 pb-1 ui-meta-text text-muted-foreground/70">
+            Drag to reorder
+          </div>
+        )}
+        <NodeCard
+          node={node}
+          index={i}
+          total={orderedNodes.length}
+          state={effectiveState}
+          isActive={resolvedActiveNodeId === node.id}
+          isSelected={resolvedSelectedNodeId === node.id}
+          onRemove={() => confirmRemove(node.id)}
+          onMoveUp={isReorderSafe ? () => moveNode(node.id, "up") : undefined}
+          onMoveDown={isReorderSafe ? () => moveNode(node.id, "down") : undefined}
+          onConfigChange={(config) => updateNodeConfig(node.id, config)}
+          onSelect={() => {
+            setSelectedNodeId(node.id)
+            onStageSelect?.({ nodeId: node.id, preferredTab })
+          }}
+          resolveNodeLabel={getNodeDisplayLabel}
+          compact={compact}
+          runtimeMode={flowCardMode}
+          runtimeBranchSummary={runtimeBranchSummary}
+        />
+      </div>
+    )
+  }
+
   return (
     <section
-      aria-label="Pipeline builder"
+      aria-label={flowCardMode ? "Flow map" : "Pipeline builder"}
       className={cn(
-        "rounded-lg surface-panel ui-fade-slide-in",
-        compact ? "p-2.5 space-y-2" : "p-4 space-y-3",
+        "ui-fade-slide-in surface-panel",
+        flowCardMode
+          ? "rounded-xl p-3.5 space-y-3 md:p-4"
+          : compact
+            ? "rounded-lg p-2.5 space-y-2"
+            : "rounded-lg p-4 space-y-3",
       )}
     >
-      <h2 className="section-kicker">
-        Pipeline Builder
-      </h2>
+      {flowCardMode ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h2 className="section-kicker">{runtimeMode ? "Flow" : "Flow map"}</h2>
+            <p className="ui-meta-text text-muted-foreground">
+              {runtimeMode
+                ? "Select a stage to inspect below."
+                : "Review the stages from left to right before you run or refine the flow."}
+            </p>
+          </div>
+          <span className="ui-meta-text tabular-nums text-muted-foreground">{orderedNodes.length} stages</span>
+        </div>
+      ) : (
+        <h2 className="section-kicker">Pipeline Builder</h2>
+      )}
 
       <div className="space-y-0">
-        {!workflow.nodes.some((n) => n.type !== "input" && n.type !== "output") && (
+        {!flowCardMode && !workflow.nodes.some((n) => n.type !== "input" && n.type !== "output") && (
           <div
             className={cn(
               "rounded-lg border border-hairline bg-surface-2/90 px-3 ui-meta-text",
@@ -307,122 +616,85 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
             Build your chain by adding a Skill first. Evaluator scores output quality, Fan-out creates parallel branches.
           </div>
         )}
-        {orderedNodes.map((node, i) => (
-          <div
-            key={node.id}
-            draggable={node.type !== "input" && node.type !== "output" && isReorderSafe}
-            onDragStart={(event) => handleDragStart(node, event)}
-            onDragEnd={clearDragState}
-            onDragOver={(event) => handleDragOver(node, event)}
-            onDragLeave={(event) => handleDragLeave(node.id, event)}
-            onDrop={(event) => handleDrop(node, event)}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              setSelectedNodeId(node.id)
-              setChainContextMenu({
-                x: event.clientX,
-                y: event.clientY,
-                nodeId: node.id,
-              })
-            }}
-            className={cn(
-              "rounded-lg ui-transition-colors ui-motion-fast",
-              dragOverNodeId === node.id && "ring-2 ring-primary/50 ring-offset-2 ring-offset-surface-1",
-            )}
-          >
-            {/* Connector arrow between nodes */}
-            {i > 0 && (
-              <div className={cn("flex flex-col items-center", compact ? "py-0.5" : "py-1")}>
-                <div className="flex flex-col items-center">
-                  <div className={cn("w-px bg-border", compact ? "h-1.5" : "h-3")} />
-                  <ArrowDownIcon size={compact ? 8 : 10} className="text-muted-foreground/50 -mt-0.5" />
-                </div>
-                {!compact && node.type === "evaluator" && (
-                  <span className="ui-meta-text text-status-warning font-mono">
-                    retry loop
-                  </span>
-                )}
-              </div>
-            )}
-            {!compact && node.type !== "input" && node.type !== "output" && isReorderSafe && (
-              <div className="px-1 pb-1 ui-meta-text text-muted-foreground/70">
-                Drag to reorder
-              </div>
-            )}
-            <NodeCard
-              node={node}
-              index={i}
-              total={orderedNodes.length}
-              state={nodeStates[node.id]}
-              isActive={activeNodeId === node.id}
-              onRemove={() => confirmRemove(node.id)}
-              onMoveUp={isReorderSafe ? () => moveNode(node.id, "up") : undefined}
-              onMoveDown={isReorderSafe ? () => moveNode(node.id, "down") : undefined}
-              onConfigChange={(config) => updateNodeConfig(node.id, config)}
-              onSelect={() => setSelectedNodeId(node.id)}
-              resolveNodeLabel={getNodeDisplayLabel}
-              compact={compact}
-            />
+        {flowCardMode ? (
+          <div className="overflow-x-auto pb-2 ui-scrollbar-hidden">
+            <div className="flex min-w-max snap-x snap-mandatory items-stretch gap-2 pr-4">
+              {orderedNodes.map((node, i) => (
+                <Fragment key={node.id}>
+                  {renderNodeStep(node, i)}
+                  {i < orderedNodes.length - 1 && (
+                    <div className="flex shrink-0 items-center justify-center gap-1 px-0.5">
+                      <div className="h-px w-3 bg-border/70" />
+                      <ArrowRightIcon size={12} className="text-muted-foreground/45" />
+                      <div className="h-px w-3 bg-border/70" />
+                    </div>
+                  )}
+                </Fragment>
+              ))}
+            </div>
           </div>
-        ))}
+        ) : (
+          orderedNodes.map((node, i) => renderNodeStep(node, i))
+        )}
 
-        <div className={cn("flex items-center gap-2 rounded-lg control-cluster p-1", compact ? "pt-1" : "pt-2")}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                className="flex-1 border-dashed bg-surface-1/80"
-                onClick={() => setPickerOpen(true)}
-              >
-                <Plus size={16} />
-                Add Skill
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Add a processing step between Input and Output</TooltipContent>
-          </Tooltip>
+        {!flowCardMode && (
+          <div className={cn("flex items-center gap-2 rounded-lg control-cluster p-1", compact ? "pt-1" : "pt-2")}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="flex-1 border-dashed bg-surface-1/80"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <Plus size={16} />
+                  Add Skill
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Add a processing step between Input and Output</TooltipContent>
+            </Tooltip>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn("justify-start bg-surface-1/80", compact ? "w-[170px]" : "w-[196px]")}
-              >
-                <GitFork size={14} />
-                Add node...
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                disabled={!hasSkillNodes}
-                onSelect={() => handleInsertBlock("evaluator")}
-                title="Scores the previous output 1-10. Retries if below threshold."
-              >
-                <BarChart3 size={13} className="mr-2" />
-                Add Evaluator
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => handleInsertBlock("fanout")}
-                title="Splits work into parallel branches, then merges results."
-              >
-                <GitFork size={13} className="mr-2" />
-                Add Fan-out (3 nodes)
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => handleInsertBlock("approval")}
-                title="Pauses workflow for your review before continuing."
-              >
-                <Hand size={13} className="mr-2" />
-                Add Approval Gate
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn("justify-start bg-surface-1/80", compact ? "w-[170px]" : "w-[196px]")}
+                >
+                  <GitFork size={14} />
+                  Add node...
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={!hasSkillNodes}
+                  onSelect={() => handleInsertBlock("evaluator")}
+                  title="Scores the previous output 1-10. Retries if below threshold."
+                >
+                  <BarChart3 size={13} className="mr-2" />
+                  Add Evaluator
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleInsertBlock("fanout")}
+                  title="Splits work into parallel branches, then merges results."
+                >
+                  <GitFork size={13} className="mr-2" />
+                  Add Fan-out (3 nodes)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleInsertBlock("approval")}
+                  title="Pauses workflow for your review before continuing."
+                >
+                  <Hand size={13} className="mr-2" />
+                  Add Approval Gate
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
 
       <CursorMenu
-        open={chainContextMenu !== null}
+        open={!runtimeMode && chainContextMenu !== null}
         x={chainContextMenu?.x || 0}
         y={chainContextMenu?.y || 0}
         onOpenChange={(open) => {
@@ -477,7 +749,7 @@ export function ChainBuilder({ compact = false }: ChainBuilderProps = {}) {
 
       <SkillPicker onAddSkill={addNode} />
 
-      <Dialog open={pendingRemoveId !== null} onOpenChange={(open) => !open && setPendingRemoveId(null)}>
+      <Dialog open={!runtimeMode && pendingRemoveId !== null} onOpenChange={(open) => !open && setPendingRemoveId(null)}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
             <DialogTitle>Remove node?</DialogTitle>

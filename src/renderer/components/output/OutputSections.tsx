@@ -348,12 +348,38 @@ export function NodesTab({
           durationMs = state.completedAt - state.startedAt
         }
 
+        const metaBits: string[] = []
+        if (state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0)) {
+          metaBits.push(`${formatTokens(state.metrics.tokens_in + state.metrics.tokens_out)}t`)
+        }
+        if (state?.metrics && state.metrics.cost_usd > 0) {
+          metaBits.push(formatCost(state.metrics.cost_usd))
+        }
+        if (durationMs != null) {
+          metaBits.push(`${(durationMs / 1000).toFixed(1)}s`)
+        }
+        if (splitterTruncated) {
+          metaBits.push(`truncated ${splitterUsedSubtasks || "?"}/${splitterTotalSubtasks || "?"}`)
+        }
+        if ((state?.retriesUsed || 0) > 0) {
+          metaBits.push(`retry x${state?.retriesUsed}`)
+        }
+        if (state?.policyApplied) {
+          metaBits.push(state.policyApplied)
+        }
+        if (evalResults[node.id]?.length > 0) {
+          const latestEval = evalResults[node.id][evalResults[node.id].length - 1]
+          metaBits.push(`eval ${latestEval.score}/10`)
+        }
+
+        const metaSummary = metaBits.join(" · ")
+
         return (
           <div key={node.id} className="border-b border-hairline last:border-b-0">
             <button
               type="button"
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-3/80 ui-pressable focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                "flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-3/80 ui-pressable focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                 isActive && "bg-surface-3/80",
                 node.indent && "pl-7",
               )}
@@ -371,7 +397,19 @@ export function NodesTab({
                 )}
               />
               <span className="sr-only">Status: {statusLabel}</span>
-              <span className="text-body-md font-medium flex-1">{node.label}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-body-md font-medium">{node.label}</div>
+                {state?.error ? (
+                  <div className={cn("ui-meta-text text-status-danger truncate", PREVIEW_MAX_W)} title={state.error}>
+                    {state?.errorKind ? `[${ERROR_KIND_LABELS[state.errorKind] || state.errorKind}] ` : ""}
+                    {state.error.slice(0, 80)}{state.error.length > 80 ? "..." : ""}
+                  </div>
+                ) : metaSummary ? (
+                  <div className="ui-meta-text truncate text-muted-foreground" title={metaSummary}>
+                    {metaSummary}
+                  </div>
+                ) : null}
+              </div>
               <Badge
                 variant={
                   status === "completed"
@@ -387,59 +425,6 @@ export function NodesTab({
               >
                 {statusLabel}
               </Badge>
-              {state?.error && (
-                <span className={cn("ui-meta-text text-status-danger truncate", PREVIEW_MAX_W)} title={state.error}>
-                  {state?.errorKind ? `[${ERROR_KIND_LABELS[state.errorKind] || state.errorKind}] ` : ""}
-                  {state.error.slice(0, 60)}{state.error.length > 60 ? "..." : ""}
-                </span>
-              )}
-              {state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0) && (
-                <span className="ui-meta-text text-muted-foreground font-mono" title={`In: ${state.metrics.tokens_in} / Out: ${state.metrics.tokens_out}`}>
-                  {formatTokens(state.metrics.tokens_in + state.metrics.tokens_out)}t
-                </span>
-              )}
-              {state?.metrics && state.metrics.cost_usd > 0 && (
-                <span className="ui-meta-text text-muted-foreground font-mono">
-                  {formatCost(state.metrics.cost_usd)}
-                </span>
-              )}
-              {durationMs != null && (
-                <span className="ui-meta-text text-muted-foreground">
-                  {(durationMs / 1000).toFixed(1)}s
-                </span>
-              )}
-              {splitterTruncated && (
-                <span className="ui-meta-text text-status-warning bg-status-warning/20 border border-status-warning/30 rounded px-1 py-0">
-                  truncated {splitterUsedSubtasks || "?"}/{splitterTotalSubtasks || "?"}
-                </span>
-              )}
-              {(state?.retriesUsed || 0) > 0 && (
-                <span className="ui-meta-text text-status-warning font-mono">
-                  retry x{state?.retriesUsed}
-                </span>
-              )}
-              {state?.policyApplied && (
-                <span className="ui-meta-text text-muted-foreground font-mono">
-                  {state.policyApplied}
-                </span>
-              )}
-              {evalResults[node.id]?.length > 0 && (
-                <div className="flex items-center gap-2 ml-1">
-                  {evalResults[node.id].map((er) => (
-                    <span
-                      key={er.attempt}
-                      className={cn(
-                        "ui-meta-text font-mono px-1 py-0 rounded",
-                        er.passed
-                          ? "bg-status-success/20 text-status-success"
-                          : "bg-status-warning/20 text-status-warning",
-                      )}
-                    >
-                      {er.score}/10
-                    </span>
-                  ))}
-                </div>
-              )}
               {canRerun && (status === "completed" || status === "failed") && onRerunFrom && (
                 <button
                   type="button"

@@ -3,9 +3,12 @@ import { useAtom } from "jotai"
 import {
   templateBrowserOpenAtom,
   currentWorkflowAtom,
+  selectedWorkflowPathAtom,
+  workflowEntryStateAtom,
   webSearchBackendAtom,
   type WorkflowTemplate,
 } from "@/lib/store"
+import { runStatusAtom } from "@/features/execution"
 import {
   CanvasDialogBody,
   CanvasDialogContent,
@@ -24,6 +27,12 @@ import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
 import { STAGE_META } from "@/lib/template-stages"
+import {
+  buildTemplateWorkflowEntryState,
+  deriveTemplateCardCopy,
+  deriveTemplateUseWhen,
+} from "@/lib/workflow-entry"
+import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
 
 interface TemplateBrowserProps {
   onApply?: (template: WorkflowTemplate, previousWorkflow: unknown) => void
@@ -33,7 +42,10 @@ interface TemplateBrowserProps {
 export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserProps = {}) {
   const [open, setOpen] = useAtom(templateBrowserOpenAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
+  const [runStatus] = useAtom(runStatusAtom)
   const [templates, setTemplates] = useState<WorkflowTemplate[]>(initialTemplates ?? [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -74,8 +86,16 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     setConfirmPending(null)
     setSelectedId(null)
   }, [setOpen])
+  const replaceCurrentBlockedReason = getReplaceCurrentWorkflowBlockedReason(runStatus)
 
   const doApply = (previousWorkflow: unknown, templateToApply: WorkflowTemplate) => {
+    if (replaceCurrentBlockedReason) {
+      toast.error("Cannot replace the current workflow while a run is active", {
+        description: replaceCurrentBlockedReason,
+      })
+      return
+    }
+
     const nextWorkflow = resolveTemplateWorkflow(templateToApply, webSearchBackend)
     const resolvedTemplate: WorkflowTemplate = {
       ...templateToApply,
@@ -86,13 +106,20 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     } else {
       setWorkflow(nextWorkflow)
     }
+    setWorkflowEntryState(buildTemplateWorkflowEntryState({
+      template: resolvedTemplate,
+      workflowPath: selectedWorkflowPath,
+    }))
     setOpen(false)
     setSelectedId(null)
     setConfirmPending(null)
-    toast.success(`Template "${templateToApply.name}" applied`, {
+    toast.success(`"${templateToApply.name}" is ready to run`, {
       action: {
         label: "Undo",
-        onClick: () => { setWorkflow(previousWorkflow as typeof workflow) },
+        onClick: () => {
+          setWorkflow(previousWorkflow as typeof workflow)
+          setWorkflowEntryState(null)
+        },
       },
     })
   }
@@ -140,9 +167,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     >
       <CanvasDialogContent size="xl" className="max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
         <CanvasDialogHeader className="surface-depth-header">
-          <DialogTitle>Workflow Templates</DialogTitle>
+          <DialogTitle>Choose a starting point</DialogTitle>
           <DialogDescription className="sr-only">
-            Browse templates, preview their structure, and apply one to the current workflow.
+            Browse ready-to-run flows, preview their fit, and apply one to the current workflow.
           </DialogDescription>
         </CanvasDialogHeader>
 
@@ -213,12 +240,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                         <Badge size="compact" variant="outline">
                           {STAGE_META[template.stage].label}
                         </Badge>
-                        <Badge size="compact" variant="secondary">
-                          {getTemplateSourceLabel(template)}
-                        </Badge>
                       </div>
                       <p className="ui-meta-text mt-1">
-                        {template.how}
+                        {deriveTemplateCardCopy(template)}
                       </p>
                     </div>
                   </div>
@@ -250,6 +274,10 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
                 <div className="space-y-2">
                   <div>
+                    <span className="ui-meta-label text-muted-foreground">Use this when</span>
+                    <p className="text-body-sm">{deriveTemplateUseWhen(selected)}</p>
+                  </div>
+                  <div>
                     <span className="ui-meta-label text-muted-foreground">You provide</span>
                     <p className="text-body-sm">{selected.input}</p>
                   </div>
@@ -259,14 +287,16 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </div>
                 </div>
 
-                <div>
-                  <span className="ui-meta-label text-muted-foreground">How it works</span>
-                  <ol className="list-decimal list-inside space-y-1 mt-1">
+                <details className="rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
+                  <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">
+                    See the flow structure
+                  </summary>
+                  <ol className="list-decimal list-inside space-y-1 mt-3 text-muted-foreground">
                     {selected.steps.map((step, i) => (
                       <li key={i} className="text-body-sm">{step}</li>
                     ))}
                   </ol>
-                </div>
+                </details>
                 {getTemplateSourceKind(selected) === "plugin" && (
                   <div>
                     <span className="ui-meta-label text-muted-foreground">Marketplace</span>

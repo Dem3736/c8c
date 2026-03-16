@@ -25,6 +25,7 @@ import type {
 } from "@shared/types"
 import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
 import type { WebSearchBackend } from "./web-search-backend"
+import type { WorkflowEntryState } from "./workflow-entry"
 
 // Re-export shared types for convenience
 export type {
@@ -86,7 +87,7 @@ function defaultDesktopRuntime(): DesktopRuntimeInfo {
   const isMac = platform === "macos"
   return {
     platform,
-    titlebarHeight: isMac ? 32 : 0,
+    titlebarHeight: isMac ? 24 : 0,
     primaryModifierKey: isMac ? "meta" : "ctrl",
     primaryModifierLabel: isMac ? "⌘" : "Ctrl",
     isFullscreen: false,
@@ -109,6 +110,7 @@ export const projectSidebarWidthAtom = atomWithStorage<number>(
   "c8c:sidebar-width",
   SIDEBAR_DEFAULT_WIDTH,
 )
+export const projectSidebarOpenAtom = atomWithStorage<boolean>("c8c:sidebar-open", true)
 
 // Graph-aware workflow
 export const currentWorkflowAtom = atom<Workflow>({
@@ -210,6 +212,7 @@ export const cliStatusBannerDismissedAtom = atom(false)
 // View mode
 export type ViewMode = "list" | "canvas" | "settings"
 export const viewModeAtom = atom<ViewMode>("list")
+export const workflowReviewModeAtom = atom(false)
 
 // First launch / onboarding
 export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
@@ -316,10 +319,9 @@ export const workflowCreateContextAtom = atom<{
   locked: false,
 })
 export const workflowCreateDraftPromptAtom = atom("")
-export const workflowCreatePendingMessageAtom = atom<{
-  workflowPath: string
-  message: string
-} | null>(null)
+export const workflowCreatePendingMessageAtom = atom<Record<string, string>>({})
+export const workflowCreatePendingEntryAtom = atom<Record<string, string>>({})
+export const workflowEntryStateAtom = atom<WorkflowEntryState | null>(null)
 
 // ── Chat Panel ──────────────────────────────────────────
 

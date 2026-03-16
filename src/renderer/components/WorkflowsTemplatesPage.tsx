@@ -26,11 +26,13 @@ import {
   projectsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
+  workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
   workflowsAtom,
   type WorkflowTemplate,
 } from "@/lib/store"
+import { runStatusAtom } from "@/features/execution"
 import { toast } from "sonner"
 import {
   Sparkles,
@@ -45,6 +47,12 @@ import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { STAGE_ORDER, STAGE_META } from "@/lib/template-stages"
 import type { WorkflowTemplateStage } from "@shared/types"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
+import {
+  buildTemplateWorkflowEntryState,
+  deriveTemplateCardCopy,
+  deriveTemplateUseWhen,
+} from "@/lib/workflow-entry"
+import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
 
 function TemplateCard({
   template,
@@ -69,12 +77,12 @@ function TemplateCard({
       <div className="min-w-0 flex-1">
         <h3 className="text-body-md font-semibold">{template.headline}</h3>
         <div className="mt-1 flex flex-wrap gap-1">
-          <Badge variant="secondary" size="compact">
-            {getTemplateSourceLabel(template)}
+          <Badge variant="outline" size="compact">
+            {STAGE_META[template.stage].label}
           </Badge>
         </div>
         <p className="text-body-sm text-muted-foreground mt-0.5 line-clamp-2">
-          {template.how}
+          {deriveTemplateCardCopy(template)}
         </p>
       </div>
     </Button>
@@ -110,9 +118,6 @@ function TemplateDetailPanel({
               <Badge variant="outline" size="compact">
                 {stageMeta.label}
               </Badge>
-              <Badge variant="secondary" size="compact">
-                {sourceLabel}
-              </Badge>
             </div>
             <p className="ui-meta-text mt-1 text-muted-foreground">{template.headline}</p>
             {template.description && (
@@ -136,6 +141,10 @@ function TemplateDetailPanel({
 
       <div className="border-b border-border px-4 py-3 space-y-3">
         <div>
+          <span className="ui-meta-label text-muted-foreground">Use this when</span>
+          <p className="mt-1 text-body-sm">{deriveTemplateUseWhen(template)}</p>
+        </div>
+        <div>
           <span className="ui-meta-label text-muted-foreground">You provide</span>
           <p className="mt-1 text-body-sm">{template.input}</p>
         </div>
@@ -143,38 +152,41 @@ function TemplateDetailPanel({
           <span className="ui-meta-label text-muted-foreground">You get</span>
           <p className="mt-1 text-body-sm">{template.output}</p>
         </div>
-        {(sourceKind === "plugin" || sourceKind === "user") && (
-          <div>
-            <span className="ui-meta-label text-muted-foreground">Source</span>
-            <p className="mt-1 text-body-sm">
-              {sourceLabel}
-              {template.marketplaceName ? ` via ${template.marketplaceName}` : ""}
-            </p>
-          </div>
-        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto ui-scroll-region px-4 py-4">
         <div className="space-y-4">
           <div>
-            <span className="ui-meta-label text-muted-foreground">How it works</span>
+            <span className="ui-meta-label text-muted-foreground">Why this flow fits</span>
             <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
           </div>
 
-          <div>
-            <span className="ui-meta-label text-muted-foreground">Steps</span>
-            <ol className="mt-2 list-decimal space-y-2 pl-5 text-body-sm">
+          <details className="rounded-lg border border-hairline bg-surface-2/50 px-3 py-3">
+            <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">
+              See the flow structure
+            </summary>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
               {template.steps.map((step, i) => (
                 <li key={i}>{step}</li>
               ))}
             </ol>
-          </div>
+          </details>
+
+          {(sourceKind === "plugin" || sourceKind === "user") && (
+            <div>
+              <span className="ui-meta-label text-muted-foreground">Source</span>
+              <p className="mt-1 text-body-sm">
+                {sourceLabel}
+                {template.marketplaceName ? ` via ${template.marketplaceName}` : ""}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="border-t border-border px-4 py-3">
         <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
-          Use template
+          Open starting point
         </Button>
       </div>
     </aside>
@@ -192,13 +204,16 @@ export function WorkflowsTemplatesPage() {
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
+  const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
-  const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
+  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const [, setMainView] = useAtom(mainViewAtom)
+  const [runStatus] = useAtom(runStatusAtom)
   const [targetProjectPath, setTargetProjectPath] = useState<string | null>(selectedProject)
   const { unsavedChangesDialog } = useUnsavedChangesDialog()
   const { openWorkflowCreate } = useWorkflowCreateNavigation()
+  const replaceCurrentBlockedReason = getReplaceCurrentWorkflowBlockedReason(runStatus)
 
   useEffect(() => {
     if (!pendingTemplate) return
@@ -276,15 +291,32 @@ export function WorkflowsTemplatesPage() {
   }
 
   const doApplyTemplate = (template: WorkflowTemplate) => {
+    if (replaceCurrentBlockedReason) {
+      toast.error("Cannot replace the current workflow while a run is active", {
+        description: replaceCurrentBlockedReason,
+      })
+      return
+    }
+
     const previousWorkflow = structuredClone(workflow)
     const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     setWorkflow(nextWorkflow)
+    setWorkflowEntryState(buildTemplateWorkflowEntryState({
+      template: {
+        ...template,
+        workflow: nextWorkflow,
+      },
+      workflowPath: selectedWorkflowPath,
+    }))
     setMainView("thread")
     setPendingTemplate(null)
-    toast.success(`Template "${template.name}" applied`, {
+    toast.success(`"${template.name}" is ready to run`, {
       action: {
         label: "Undo",
-        onClick: () => setWorkflow(previousWorkflow),
+        onClick: () => {
+          setWorkflow(previousWorkflow)
+          setWorkflowEntryState(null)
+        },
       },
     })
   }
@@ -301,9 +333,16 @@ export function WorkflowsTemplatesPage() {
       setSelectedWorkflowPath(filePath)
       setWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      setWorkflowEntryState(buildTemplateWorkflowEntryState({
+        template: {
+          ...template,
+          workflow: loadedWorkflow,
+        },
+        workflowPath: filePath,
+      }))
       setMainView("thread")
       setPendingTemplate(null)
-      toast.success(`Created "${loadedWorkflow.name || template.name}" from template`)
+      toast.success(`"${loadedWorkflow.name || template.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
     }
@@ -325,8 +364,8 @@ export function WorkflowsTemplatesPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Templates"
-        subtitle="Start from a template, then tailor the workflow to your project."
+        title="Choose a starting point"
+        subtitle="Pick a ready-to-run flow based on the job you need done, then refine it only if you want to."
       />
 
       <CollectionToolbar
@@ -335,7 +374,7 @@ export function WorkflowsTemplatesPage() {
         onQueryChange={setQuery}
         searchPlaceholder="Search templates"
         searchAriaLabel="Search templates"
-        summary={`${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`}
+        summary={`${filteredTemplates.length} starting point${filteredTemplates.length === 1 ? "" : "s"}`}
         action={(
           <Button
             size="sm"
@@ -430,9 +469,9 @@ export function WorkflowsTemplatesPage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Apply template</DialogTitle>
+            <DialogTitle>Open this starting point</DialogTitle>
             <DialogDescription>
-              How would you like to use &ldquo;{pendingTemplate?.name}&rdquo;?
+              Create a new workflow file, or replace the current draft with &ldquo;{pendingTemplate?.name}&rdquo;.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody className="space-y-2">
@@ -475,7 +514,13 @@ export function WorkflowsTemplatesPage() {
             >
               Create in project
             </Button>
-            <Button variant="outline" size="sm" onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={Boolean(replaceCurrentBlockedReason)}
+              title={replaceCurrentBlockedReason || undefined}
+              onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}
+            >
               Replace current
             </Button>
           </CanvasDialogFooter>

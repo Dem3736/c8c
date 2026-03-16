@@ -17,9 +17,9 @@ import {
 } from "@/lib/store"
 import {
   clearWorkflowExecutionStateAtom,
-  createEmptyWorkflowExecutionState,
   moveWorkflowExecutionStateAtom,
   pastRunsAtom,
+  toWorkflowExecutionKey,
   workflowExecutionStatesAtom,
 } from "@/features/execution"
 import { cn } from "@/lib/cn"
@@ -38,6 +38,7 @@ import {
   Loader2,
   MoreHorizontal,
   ChevronRight,
+  PanelLeftClose,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
@@ -58,7 +59,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useExecutionReset } from "@/hooks/useExecutionReset"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { SidebarNavItem } from "@/components/sidebar/SidebarNavItem"
 import { SidebarConfirmDialog } from "@/components/sidebar/SidebarConfirmDialog"
@@ -76,15 +76,21 @@ import { useWorkflowCrud } from "@/components/sidebar/useWorkflowCrud"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 
 interface ProjectSidebarProps {
+  collapsed?: boolean
   onProjectAdd?: (projectPath: string) => void
   onWorkflowCreate?: (workflowPath: string) => void
+  onToggleVisibility?: () => void
+  showVisibilityToggle?: boolean
 }
 
 const PROJECT_WORKFLOW_PREVIEW_LIMIT = 10
 
 export function ProjectSidebar({
+  collapsed = false,
   onProjectAdd,
   onWorkflowCreate,
+  onToggleVisibility,
+  showVisibilityToggle = false,
 }: ProjectSidebarProps = {}) {
   const sidebarRef = useRef<HTMLElement | null>(null)
   const scrollHideTimerRef = useRef<number | null>(null)
@@ -115,18 +121,12 @@ export function ProjectSidebar({
     projectPath?: string
   } | null>(null)
 
-  const resetExecutionState = useExecutionReset({ clearReportPath: true, clearSelectedPastRun: true })
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
-  const selectedExecutionState = selectedWorkflowPath
-    ? (workflowExecutionStates[selectedWorkflowPath] ?? createEmptyWorkflowExecutionState())
-    : createEmptyWorkflowExecutionState()
-  const selectedRunStatus = selectedExecutionState.runStatus
   const workflowHasActiveRun = (workflowPath: string) => {
     return workflowHasActiveRunStatus(workflowExecutionStates[workflowPath]?.runStatus ?? "idle")
   }
-  const resetExecutionIfSafe = () => {
-    if (workflowHasActiveRunStatus(selectedRunStatus)) return
-    resetExecutionState()
+  const clearDraftExecutionState = () => {
+    clearWorkflowExecutionState(toWorkflowExecutionKey(null))
   }
   const {
     projectWorkflowsCache,
@@ -182,7 +182,7 @@ export function ProjectSidebar({
     setMainView,
     workflowDirty,
     confirmDiscard,
-    resetExecutionIfSafe,
+    clearDraftExecutionState,
     workflowHasActiveRun,
     moveWorkflowExecutionState,
     clearWorkflowExecutionState,
@@ -339,7 +339,8 @@ export function ProjectSidebar({
       style={{ width: sidebarWidth }}
       onKeyDown={handleSidebarKeyDown}
       className={cn(
-        "relative shrink-0 min-h-0 border-r border-border bg-sidebar flex flex-col pt-[var(--titlebar-height)]",
+        "relative h-full shrink-0 min-h-0 border-r border-border bg-sidebar flex flex-col pt-[var(--titlebar-height)] ui-motion-standard transition-[opacity,transform] will-change-transform",
+        collapsed && "-translate-x-2 opacity-0 pointer-events-none",
         resizing && "select-none",
       )}
     >
@@ -392,6 +393,22 @@ export function ProjectSidebar({
             )}
           </span>
           <div className="flex items-center gap-1">
+            {showVisibilityToggle && onToggleVisibility && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    data-sidebar-item="true"
+                    className="ui-icon-button hover:bg-sidebar-hover hover:text-foreground ui-transition-colors ui-motion-fast"
+                    onClick={onToggleVisibility}
+                    aria-label="Hide sidebar"
+                  >
+                    <PanelLeftClose size={12} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Hide sidebar</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -628,11 +645,12 @@ export function ProjectSidebar({
                               )}
                             >
                               {showSpinningIndicator ? (
-                                <Loader2
-                                  size={12}
-                                  className={cn("animate-spin flex-shrink-0", runMetrics.textClass)}
-                                  title={indicatorTitle}
-                                />
+                                <span title={indicatorTitle} className="inline-flex flex-shrink-0">
+                                  <Loader2
+                                    size={12}
+                                    className={cn("animate-spin flex-shrink-0", runMetrics.textClass)}
+                                  />
+                                </span>
                               ) : (
                                 <span
                                   className={cn(

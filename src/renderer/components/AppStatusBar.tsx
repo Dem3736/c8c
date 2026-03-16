@@ -92,6 +92,7 @@ export function AppStatusBar() {
   const primaryShortcutLabel = desktopRuntime.primaryModifierLabel
   const runShortcutLabel = `${primaryShortcutLabel}↵`
   const chatShortcutLabel = `${primaryShortcutLabel}⇧K`
+  const sidebarShortcutLabel = `${primaryShortcutLabel}B`
   const settingsShortcutLabel = `${primaryShortcutLabel},`
   const redoShortcutLabel = `${primaryShortcutLabel}⇧Z`
   const selectedWorkflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
@@ -293,6 +294,7 @@ export function AppStatusBar() {
                 { keys: `${primaryShortcutLabel}S`, label: "Save current workflow" },
                 { keys: runShortcutLabel, label: isRunInFlight(runStatus) ? "Stop current run" : "Run current workflow" },
                 { keys: chatShortcutLabel, label: "Toggle Agent panel" },
+                { keys: sidebarShortcutLabel, label: "Show or hide the sidebar" },
                 { keys: settingsShortcutLabel, label: "Open global settings" },
                 { keys: "?", label: "Open this shortcuts guide" },
               ].map((shortcut) => (

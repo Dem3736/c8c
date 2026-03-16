@@ -21,8 +21,8 @@ import type {
   SplitterNodeConfig,
   MergerNodeConfig,
   ApprovalNodeConfig,
+  NodeStatus,
 } from "@shared/types"
-import type { ErrorKind, NodeOnErrorPolicy, NodeRetryBackoff, NodeRuntimeConfig } from "@shared/types"
 import { getDefaultModelForProvider, modelLooksCompatible } from "@shared/provider-metadata"
 import {
   ChevronDown,
@@ -38,19 +38,9 @@ import {
   Type,
 } from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,8 +48,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { NODE_ICONS, NODE_LABELS, NODE_ICON_TONES } from "@/lib/node-ui-config"
-import { SkillRefInput } from "@/components/ui/skill-ref-input"
-import { McpToolPicker } from "@/components/ui/mcp-tool-picker"
+import {
+  getRuntimeBranchDetail,
+  getRuntimeBranchLabel,
+  getRuntimeRoleMonogram,
+  getRuntimeStagePresentation,
+} from "@/lib/runtime-flow-labels"
 import { FilePicker } from "@/components/input/FilePicker"
 import { RunPicker } from "@/components/input/RunPicker"
 import { TextAttachmentEditor } from "@/components/input/TextAttachmentEditor"
@@ -74,12 +68,361 @@ import {
   ApprovalNodeEditor,
 } from "@/components/NodeCardEditors"
 
+export interface RuntimeBranchSummaryPreview {
+  id: string
+  label: string
+  detail?: string | null
+  status: NodeStatus
+}
+
+export interface RuntimeBranchSummary {
+  total: number
+  running: number
+  completed: number
+  failed: number
+  waitingApproval: number
+  pending: number
+  previews: RuntimeBranchSummaryPreview[]
+}
+
+function compactRuntimeText(value: string | undefined | null, maxLength = 140) {
+  if (!value) return null
+  const normalized = value.replace(/\s+/g, " ").trim()
+  if (!normalized) return null
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength).trimEnd()}...`
+}
+
+function formatRuntimeMetrics(state?: NodeState) {
+  if (!state?.metrics) return null
+  const parts: string[] = []
+  const totalTokens = (state.metrics.tokens_in || 0) + (state.metrics.tokens_out || 0)
+  if (totalTokens > 0) {
+    parts.push(totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}k tok` : `${totalTokens} tok`)
+  }
+  if (state.metrics.cost_usd > 0) {
+    parts.push(state.metrics.cost_usd < 0.01 ? "<$0.01" : `$${state.metrics.cost_usd.toFixed(2)}`)
+  }
+  if (parts.length < 2 && state.metrics.latency_ms > 0) {
+    const latencySeconds = Math.round(state.metrics.latency_ms / 1000)
+    if (latencySeconds >= 3600) {
+      parts.push(`${(latencySeconds / 3600).toFixed(1)}h`)
+    } else if (latencySeconds >= 60) {
+      parts.push(`${Math.round(latencySeconds / 60)}m`)
+    } else {
+      parts.push(`${latencySeconds}s`)
+    }
+  }
+  return parts.length > 0 ? parts.slice(0, 2).join(" · ") : null
+}
+
+function getLatestLogSnippet(state?: NodeState) {
+  if (!state?.log?.length) return null
+  for (let index = state.log.length - 1; index >= 0; index -= 1) {
+    const entry = state.log[index]
+    if (entry.type === "thinking" || entry.type === "text" || entry.type === "error") {
+      const snippet = compactRuntimeText(entry.content, 150)
+      if (snippet) return snippet
+    }
+    if (entry.type === "tool_use") {
+      return `Using ${entry.tool}`
+    }
+    if (entry.type === "tool_result") {
+      return entry.status === "success"
+        ? `${entry.tool} returned data`
+        : `${entry.tool} returned an error`
+    }
+  }
+  return null
+}
+
+function formatBranchSummary(summary: RuntimeBranchSummary) {
+  const parts: string[] = []
+  if (summary.running > 0) {
+    parts.push(`${summary.running}/${summary.total} active`)
+  } else if (summary.completed > 0) {
+    parts.push(`${summary.completed}/${summary.total} done`)
+  } else {
+    parts.push(`${summary.total} branches`)
+  }
+  if (summary.waitingApproval > 0) {
+    parts.push(`${summary.waitingApproval} need review`)
+  }
+  if (summary.failed > 0) {
+    parts.push(`${summary.failed} issue${summary.failed === 1 ? "" : "s"}`)
+  }
+  return parts.join(" · ")
+}
+
+function buildRuntimeCardCopy({
+  node,
+  state,
+  retryLabel,
+  runtimeBranchSummary,
+}: {
+  node: WorkflowNode
+  state?: NodeState
+  retryLabel: string | null
+  runtimeBranchSummary: RuntimeBranchSummary | null
+}) {
+  const status = state?.status ?? "pending"
+  const outputSnippet = compactRuntimeText(state?.output?.content, 160)
+  const latestLogSnippet = getLatestLogSnippet(state)
+  const metricsLabel = formatRuntimeMetrics(state)
+  const branchLabel = runtimeBranchSummary ? formatBranchSummary(runtimeBranchSummary) : null
+
+  if (node.type === "input") {
+    if (status === "completed") {
+      return {
+        summary: "Input ready",
+        detail: outputSnippet || latestLogSnippet || "The run has the input it needs.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "running") {
+      return {
+        summary: "Preparing input",
+        detail: latestLogSnippet || "Resolving the input for the rest of the flow.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: "Input needs attention",
+        detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "The run could not prepare the input.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: "Waiting for input",
+      detail: "This flow will start once the required input is ready.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
+  if (node.type === "skill") {
+    const config = node.config as SkillNodeConfig
+    if (status === "running") {
+      return {
+        summary: runtimeBranchSummary ? "Working across branches" : "Working on this stage",
+        detail: latestLogSnippet || outputSnippet || compactRuntimeText(config.prompt, 160) || "The agent is producing output for this step.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "completed") {
+      return {
+        summary: runtimeBranchSummary ? "Branches finished this stage" : "Stage complete",
+        detail: outputSnippet || latestLogSnippet || "Output from this stage is ready.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: runtimeBranchSummary ? "Some branches need attention" : "Stage needs attention",
+        detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "This stage stopped with an error.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: runtimeBranchSummary ? "Ready to fan out through this stage" : "Ready when the flow reaches this stage",
+      detail: compactRuntimeText(config.prompt, 160) || "This stage will run when upstream work finishes.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
+  if (node.type === "evaluator") {
+    const config = node.config as EvaluatorNodeConfig
+    const score = typeof state?.output?.metadata?.score === "number" ? state.output.metadata.score : null
+    if (status === "running") {
+      return {
+        summary: `Checking quality against ${config.threshold}/10`,
+        detail: latestLogSnippet || `Will retry up to ${config.maxRetries} time${config.maxRetries === 1 ? "" : "s"}${retryLabel ? ` from ${retryLabel}` : ""}.`,
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "completed") {
+      return {
+        summary: score != null ? `Quality check finished at ${score}/10` : "Quality check complete",
+        detail: compactRuntimeText(state?.output?.metadata?.reason, 160) || outputSnippet || latestLogSnippet || "The flow can continue past this quality gate.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: "Quality gate needs attention",
+        detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "The flow could not finish this quality check.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: "Will check quality before moving on",
+      detail: `Threshold ${config.threshold}/10${retryLabel ? ` · Retry from ${retryLabel}` : ""}`,
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
+  if (node.type === "splitter") {
+    const config = node.config as SplitterNodeConfig
+    if (status === "running") {
+      return {
+        summary: "Creating parallel work",
+        detail: latestLogSnippet || branchLabel || `This stage can open up to ${config.maxBranches || 8} branches.`,
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "completed") {
+      return {
+        summary: "Parallel work is ready",
+        detail: branchLabel || latestLogSnippet || "Branch work has been created for downstream stages.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: "Could not create branch work",
+        detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "This stage could not prepare parallel work.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: "Will split work into parallel stages",
+      detail: branchLabel || `Up to ${config.maxBranches || 8} branches can run from here.`,
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
+  if (node.type === "merger") {
+    const config = node.config as MergerNodeConfig
+    if (status === "running") {
+      return {
+        summary: "Combining branch outputs",
+        detail: latestLogSnippet || `Using the ${config.strategy} merge strategy.`,
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "completed") {
+      return {
+        summary: "Branch results combined",
+        detail: outputSnippet || latestLogSnippet || "This stage produced a merged result.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: "Merge needs attention",
+        detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "This stage could not combine the branch outputs.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: "Will combine branch outputs",
+      detail: `Using the ${config.strategy} merge strategy.`,
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
+  if (node.type === "approval") {
+    const config = node.config as ApprovalNodeConfig
+    if (status === "waiting_approval" || status === "running") {
+      return {
+        summary: "Waiting for your approval",
+        detail: compactRuntimeText(config.message, 160) || "This flow is paused until you review and continue.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "completed") {
+      return {
+        summary: "Approval completed",
+        detail: compactRuntimeText(config.message, 160) || "The flow continued past this review gate.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: "Approval gate needs attention",
+        detail: compactRuntimeText(state?.error, 160) || compactRuntimeText(config.message, 160) || "This review gate could not continue.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: "May pause here for review",
+      detail: compactRuntimeText(config.message, 160) || "This gate can stop the flow for a human decision.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
+  const config = node.config as OutputNodeConfig
+  if (status === "running") {
+    return {
+      summary: "Preparing the result",
+      detail: latestLogSnippet || "The flow is assembling the final output.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+  if (status === "completed") {
+    return {
+      summary: "Result ready",
+      detail: outputSnippet || latestLogSnippet || "The final output is ready to review.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+  if (status === "failed") {
+    return {
+      summary: "Could not prepare the result",
+      detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "The flow could not finish the final output.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+  return {
+    summary: "Will assemble the final result",
+    detail: `Output format: ${config.format || "markdown"}`,
+    metricsLabel,
+    branchLabel,
+  }
+}
+
+function getPreviewStatusLabel(status: NodeStatus) {
+  if (status === "running") return "Active"
+  if (status === "waiting_approval") return "Review"
+  if (status === "failed") return "Issue"
+  if (status === "completed") return "Done"
+  return "Queued"
+}
+
 interface NodeCardProps {
   node: WorkflowNode
   index: number
   total: number
   state?: NodeState
   isActive: boolean
+  isSelected?: boolean
   compact?: boolean
   onRemove: () => void
   onMoveUp?: () => void
@@ -87,6 +430,8 @@ interface NodeCardProps {
   onConfigChange: (config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig) => void
   onSelect: () => void
   resolveNodeLabel?: (nodeId: string) => string
+  runtimeMode?: boolean
+  runtimeBranchSummary?: RuntimeBranchSummary | null
 }
 
 export function NodeCard({
@@ -95,6 +440,7 @@ export function NodeCard({
   total,
   state,
   isActive,
+  isSelected = false,
   compact = false,
   onRemove,
   onMoveUp,
@@ -102,6 +448,8 @@ export function NodeCard({
   onConfigChange,
   onSelect,
   resolveNodeLabel,
+  runtimeMode = false,
+  runtimeBranchSummary = null,
 }: NodeCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
@@ -167,10 +515,7 @@ export function NodeCard({
   }
   const statusLabel = state?.status ? STATUS_LABELS[state.status] || state.status : null
   const statusClass = state?.status ? (STATUS_CLASSES[state.status] ?? "") : ""
-  const previewTextClass = cn(
-    "text-muted-foreground truncate",
-    "ui-meta-text",
-  )
+  const previewTextClass = "text-muted-foreground truncate ui-meta-text"
   const showStatusBadge = statusLabel
     && statusLabel !== "pending"
     && (!compact || state?.status === "running" || state?.status === "failed" || state?.status === "waiting_approval")
@@ -187,7 +532,7 @@ export function NodeCard({
         : resolvedInput.type === "directory"
           ? "Directory"
           : "Text"
-  const showInlineInput = compact && isInput && Boolean(inputConfig)
+  const showInlineInput = !runtimeMode && compact && isInput && Boolean(inputConfig)
   const showInlineInputError = showInlineInput && inputTouched && !resolvedInput.valid
   const inlineInputPlaceholder =
     inputConfig?.placeholder
@@ -201,10 +546,33 @@ export function NodeCard({
     || (isMerger && mergerConfig)
     || (isApproval && approvalConfig),
   )
+  const runtimeCardCopy = runtimeMode
+    ? buildRuntimeCardCopy({
+      node,
+      state,
+      retryLabel,
+      runtimeBranchSummary,
+    })
+    : null
+  const runtimePresentation = getRuntimeStagePresentation(node, {
+    fallbackId: node.id,
+    output: state?.output,
+  })
+  const runtimeDetailText = compactRuntimeText(runtimeCardCopy?.detail, 160)
+  const runtimeHeading = {
+    stepLabel: `Step ${index + 1}`,
+    displayTitle: runtimePresentation.title,
+  }
 
   useEffect(() => {
     setInputTouched(false)
   }, [selectedWorkflowPath, node.id])
+
+  useEffect(() => {
+    if (runtimeMode) {
+      setExpanded(false)
+    }
+  }, [runtimeMode])
 
   const updateWorkflowDefaults = (patch: Record<string, unknown>) => {
     setWorkflow((prev) => ({
@@ -214,6 +582,149 @@ export function NodeCard({
         ...patch,
       },
     }))
+  }
+
+  if (runtimeMode) {
+    const runtimeSurfaceClass = state?.status === "running"
+      ? "border-status-info/35 bg-status-info/5"
+      : state?.status === "waiting_approval"
+        ? "border-status-warning/35 bg-status-warning/8"
+        : state?.status === "failed"
+          ? "border-status-danger/35 bg-status-danger/6"
+      : state?.status === "completed"
+            ? "border-status-success/30 bg-surface-1"
+            : "border-border bg-surface-1"
+
+    return (
+      <div
+        className={cn(
+          "h-[224px] overflow-hidden rounded-xl border ui-elevation-base transition-[border-color,box-shadow,background-color] ui-motion-fast",
+          runtimeSurfaceClass,
+          isSelected && "ring-2 ring-primary/20 shadow-[0_10px_30px_rgba(15,23,42,0.06)]",
+          isActive && "border-primary/35 shadow-[0_14px_36px_rgba(15,23,42,0.08)]",
+        )}
+      >
+        <button
+          type="button"
+          onClick={onSelect}
+          className="group grid h-full w-full grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-2.5 px-3.5 py-3.5 text-left"
+          aria-label={`Focus stage ${title}`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <div className="truncate ui-meta-label text-muted-foreground">
+                {runtimeHeading.stepLabel}
+              </div>
+              <div className="ui-meta-text text-muted-foreground">
+                {runtimePresentation.kind}
+              </div>
+            </div>
+            {showStatusBadge && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "shrink-0 px-1.5 py-0 ui-meta-text",
+                  state?.status === "running" && "border-status-info/30 text-status-info",
+                  state?.status === "waiting_approval" && "border-status-warning/30 text-status-warning",
+                  state?.status === "failed" && "border-status-danger/30 text-status-danger",
+                  state?.status === "completed" && "border-status-success/30 text-status-success",
+                  (!state?.status || state.status === "queued") && "text-muted-foreground",
+                )}
+              >
+                {statusLabel}
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex min-h-[3.25rem] items-start gap-3">
+            <div
+              className={cn(
+                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ui-elevation-inset",
+                NODE_ICON_TONES[node.type] || "border-hairline bg-surface-1 text-muted-foreground",
+              )}
+            >
+              {isSkill ? (
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">
+                  {getRuntimeRoleMonogram(runtimeHeading.displayTitle)}
+                </span>
+              ) : (
+                <Icon size={17} className="flex-shrink-0" />
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="line-clamp-2 text-title-sm font-medium leading-6 text-foreground">
+                {runtimeHeading.displayTitle}
+              </div>
+              <div className="line-clamp-1 ui-meta-text text-muted-foreground">
+                {runtimePresentation.artifactLabel}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-h-0 overflow-hidden space-y-2">
+            {runtimeCardCopy?.summary && (
+              <p className="line-clamp-2 text-body-sm font-medium leading-5 text-foreground">
+                {runtimeCardCopy.summary}
+              </p>
+            )}
+            {!runtimeBranchSummary?.previews?.length && runtimeDetailText && (
+              <p className="line-clamp-2 text-body-sm leading-5 text-muted-foreground">
+                {runtimeDetailText}
+              </p>
+            )}
+            {runtimeBranchSummary?.previews && runtimeBranchSummary.previews.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="ui-meta-label text-muted-foreground">
+                  {isSplitter ? "Branches" : "Branch focus"}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {runtimeBranchSummary.previews.slice(0, 2).map((preview) => (
+                    <Badge
+                      key={preview.id}
+                      variant="outline"
+                      className={cn(
+                        "max-w-full px-1.5 py-0 ui-meta-text",
+                        preview.status === "running" && "border-status-info/30 text-status-info",
+                        preview.status === "waiting_approval" && "border-status-warning/30 text-status-warning",
+                        preview.status === "failed" && "border-status-danger/30 text-status-danger",
+                        preview.status === "completed" && "border-status-success/30 text-status-success",
+                        (preview.status === "pending" || preview.status === "queued") && "text-muted-foreground",
+                      )}
+                    >
+                      <span className="truncate">{preview.label}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-hairline/80 pt-2.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {runtimeCardCopy?.metricsLabel && (
+              <Badge variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
+                {runtimeCardCopy.metricsLabel}
+              </Badge>
+            )}
+            {runtimeCardCopy?.branchLabel && (
+              <Badge variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
+                {runtimeCardCopy.branchLabel}
+              </Badge>
+            )}
+            {!runtimeCardCopy?.metricsLabel && !runtimeCardCopy?.branchLabel && (
+              <span className="ui-meta-text text-muted-foreground">
+                {state?.status === "pending" ? "Waiting for upstream work" : "No run metrics yet"}
+              </span>
+            )}
+            </div>
+            <span className="shrink-0 ui-meta-text text-muted-foreground transition-colors group-hover:text-foreground">
+              Inspect
+            </span>
+          </div>
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -260,73 +771,75 @@ export function NodeCard({
             />
           </div>
 
-          <div className={cn("flex-1 min-w-0", compact ? "space-y-0.5 pt-0" : "space-y-1 pt-0.5")}>
-            <span className={cn("block font-medium truncate", compact ? "text-body-sm leading-5" : "text-body-md")}>{title}</span>
-            {isSkill && !expanded && skillConfig?.prompt && (
-              <p className={previewTextClass}>
-                {skillConfig.prompt.slice(0, 80)}
-                {skillConfig.prompt.length > 80 ? "..." : ""}
-              </p>
-            )}
-            {isEvaluator && !expanded && evalConfig && (
-              <p className={previewTextClass}>
-                Threshold: {evalConfig.threshold}/10 · Max {evalConfig.maxRetries} retries
-                {retryLabel ? ` · Retry: ${retryLabel}` : ""}
-              </p>
-            )}
-            {isSplitter && !expanded && splitterConfig && (
-              <p className={previewTextClass}>
-                Max {splitterConfig.maxBranches || 8} branches
-              </p>
-            )}
-            {isMerger && !expanded && mergerConfig && (
-              <p className={previewTextClass}>
-                Strategy: {mergerConfig.strategy}
-              </p>
-            )}
-            {isInput && !expanded && inputConfig && !compact && (
-              <p className={previewTextClass}>
-                {inputConfig.required === false ? "Optional" : "Required"} · {inputConfig.inputType || "auto"} input
-              </p>
-            )}
-            {isOutput && !expanded && outputConfig && (
-              <p className={previewTextClass}>
-                Format: {outputConfig.format || "markdown"}
-              </p>
-            )}
-            {isApproval && !expanded && approvalConfig && (
-              <p className={previewTextClass}>
-                {approvalConfig.message || "Manual approval gate"}
-              </p>
-            )}
-            {isSkill && skillConfig?.permissionMode && (
-              <div className={cn("ui-badge-row", compact ? "pt-0" : "pt-0.5")}>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "px-1.5 py-0 ui-meta-text gap-1",
-                    skillConfig.permissionMode === "plan"
-                      ? "text-muted-foreground"
-                      : "text-status-warning border-status-warning/30",
-                  )}
-                >
-                  {skillConfig.permissionMode === "plan" ? <Eye size={10} /> : <Pencil size={10} />}
-                  {skillConfig.permissionMode === "plan" ? "Plan" : "Edit"}
-                </Badge>
-              </div>
-            )}
-            {showStatusBadge && (
-              <div className={cn("ui-badge-row", compact ? "pt-0" : "pt-0.5")}>
-                <Badge variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
-                  {statusLabel}
-                </Badge>
-              </div>
-            )}
+          <div className="flex-1 min-w-0">
+            <div className={cn("min-w-0", compact ? "space-y-0.5 pt-0" : "space-y-1 pt-0.5")}>
+              <span className={cn("block font-medium truncate", compact ? "text-body-sm leading-5" : "text-body-md")}>{title}</span>
+              {isSkill && !expanded && skillConfig?.prompt && (
+                <p className={previewTextClass}>
+                  {skillConfig.prompt.slice(0, 80)}
+                  {skillConfig.prompt.length > 80 ? "..." : ""}
+                </p>
+              )}
+              {isEvaluator && !expanded && evalConfig && (
+                <p className={previewTextClass}>
+                  Threshold: {evalConfig.threshold}/10 · Max {evalConfig.maxRetries} retries
+                  {retryLabel ? ` · Retry: ${retryLabel}` : ""}
+                </p>
+              )}
+              {isSplitter && !expanded && splitterConfig && (
+                <p className={previewTextClass}>
+                  Max {splitterConfig.maxBranches || 8} branches
+                </p>
+              )}
+              {isMerger && !expanded && mergerConfig && (
+                <p className={previewTextClass}>
+                  Strategy: {mergerConfig.strategy}
+                </p>
+              )}
+              {isInput && !expanded && inputConfig && !compact && (
+                <p className={previewTextClass}>
+                  {inputConfig.required === false ? "Optional" : "Required"} · {inputConfig.inputType || "auto"} input
+                </p>
+              )}
+              {isOutput && !expanded && outputConfig && (
+                <p className={previewTextClass}>
+                  Format: {outputConfig.format || "markdown"}
+                </p>
+              )}
+              {isApproval && !expanded && approvalConfig && (
+                <p className={previewTextClass}>
+                  {approvalConfig.message || "Manual approval gate"}
+                </p>
+              )}
+              {isSkill && skillConfig?.permissionMode && (
+                <div className={cn("ui-badge-row", compact ? "pt-0" : "pt-0.5")}>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "px-1.5 py-0 ui-meta-text gap-1",
+                      skillConfig.permissionMode === "plan"
+                        ? "text-muted-foreground"
+                        : "text-status-warning border-status-warning/30",
+                    )}
+                  >
+                    {skillConfig.permissionMode === "plan" ? <Eye size={10} /> : <Pencil size={10} />}
+                    {skillConfig.permissionMode === "plan" ? "Plan" : "Edit"}
+                  </Badge>
+                </div>
+              )}
+              {showStatusBadge && (
+                <div className={cn("ui-badge-row", compact ? "pt-0" : "pt-0.5")}>
+                  <Badge variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
+                    {statusLabel}
+                  </Badge>
+                </div>
+              )}
+            </div>
           </div>
         </Button>
 
         {/* Move/remove buttons — only for non-terminal nodes */}
-        {!isTerminal && (
+        {!runtimeMode && !isTerminal && (
           <div
             className={cn(
               "ui-reveal-trailing-soft flex items-center gap-1",
@@ -402,7 +915,7 @@ export function NodeCard({
         )}
 
         {/* Expand/collapse — for skill and evaluator nodes */}
-        {isExpandable && (
+        {!runtimeMode && isExpandable && (
           <Button
             type="button"
             onClick={(e) => {
@@ -552,7 +1065,7 @@ export function NodeCard({
 
       {/* Validation errors */}
       <div
-        data-open={nodeValidationErrors.length > 0 ? "true" : "false"}
+        data-open={!runtimeMode && nodeValidationErrors.length > 0 ? "true" : "false"}
         className="ui-collapsible"
       >
         <div className="ui-collapsible-inner">
@@ -568,7 +1081,7 @@ export function NodeCard({
 
       {/* Expanded node-type editors */}
       <div
-        data-open={expanded && hasExpandedPanel ? "true" : "false"}
+        data-open={!runtimeMode && expanded && hasExpandedPanel ? "true" : "false"}
         className="ui-collapsible"
       >
         <div className="ui-collapsible-inner">

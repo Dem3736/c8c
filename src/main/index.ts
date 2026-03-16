@@ -95,7 +95,7 @@ function createWindow() {
       show: false,
       autoHideMenuBar: !isMac,
       ...(isMac ? {
-        titleBarStyle: "hiddenInset",
+        titleBarStyle: "hidden",
         trafficLightPosition: { x: 12, y: 12 },
       } : {}),
       webPreferences: {

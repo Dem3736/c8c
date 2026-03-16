@@ -11,13 +11,18 @@ import {
   webSearchBackendAtom,
   workflowCreateContextAtom,
   workflowCreateDraftPromptAtom,
+  workflowCreatePendingEntryAtom,
   workflowCreatePendingMessageAtom,
+  workflowEntryStateAtom,
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   workflowsAtom,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { AutosizeTextarea } from "@/components/ui/autosize-textarea"
+import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +45,13 @@ import {
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
-import { getTemplateSourceLabel } from "@/lib/template-source"
+import {
+  EMPTY_WORKFLOW_CREATE_SCAFFOLD,
+  buildWorkflowCreatePrompt,
+  countWorkflowCreateScaffoldFields,
+  hasWorkflowCreatePromptContent,
+  type WorkflowCreatePromptScaffold,
+} from "@/lib/workflow-create-prompt"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { projectFolderName } from "@/components/sidebar/projectSidebarUtils"
 import { toast } from "sonner"
@@ -56,6 +67,11 @@ import {
 } from "lucide-react"
 import type { WorkflowTemplate } from "@shared/types"
 import { cn } from "@/lib/cn"
+import {
+  buildTemplateWorkflowEntryState,
+  deriveTemplateCardCopy,
+} from "@/lib/workflow-entry"
+import { STAGE_META } from "@/lib/template-stages"
 
 const POPULAR_TEMPLATE_LIMIT = 12
 const CREATE_SURFACE_MAX_WIDTH = "max-w-[1040px]"
@@ -69,7 +85,7 @@ function buildTemplateCustomizationPrompt(template: WorkflowTemplate): string {
 }
 
 function templateCardCopy(template: WorkflowTemplate): string {
-  return template.headline?.trim() || `Start from the ${template.name} workflow pattern.`
+  return deriveTemplateCardCopy(template)
 }
 
 function TemplateSuggestionCard({
@@ -85,7 +101,7 @@ function TemplateSuggestionCard({
       variant="ghost"
       size="bare"
       onClick={() => onSelect(template)}
-      className="ui-interactive-card-subtle h-[120px] w-[216px] shrink-0 snap-start !flex-col !items-start !justify-start rounded-lg surface-panel px-4 py-4 text-left !whitespace-normal md:w-[228px]"
+      className="ui-interactive-card-subtle min-h-[144px] w-[216px] shrink-0 snap-start !flex-col !items-start !justify-start overflow-hidden rounded-lg surface-panel px-4 py-4 text-left !whitespace-normal md:w-[228px]"
     >
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-hairline bg-surface-2/80 text-lg shadow-inset-highlight-subtle">
@@ -95,11 +111,41 @@ function TemplateSuggestionCard({
           <p className="line-clamp-3 text-body-md font-medium text-foreground">
             {templateCardCopy(template)}
           </p>
-          <p className="mt-1 ui-meta-text text-muted-foreground">{getTemplateSourceLabel(template)}</p>
+          <p className="mt-1 ui-meta-text text-muted-foreground">{STAGE_META[template.stage].label}</p>
         </div>
       </div>
-      <p className="mt-auto ui-meta-text truncate text-muted-foreground">{template.name}</p>
+      <p className="mt-auto w-full min-w-0 truncate ui-meta-text text-muted-foreground">{template.name}</p>
     </Button>
+  )
+}
+
+function ScaffoldField({
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  id: string
+  label: string
+  placeholder: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="ui-meta-text text-muted-foreground">
+        {label}
+      </Label>
+      <Textarea
+        id={id}
+        rows={3}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-h-[88px] resize-y bg-surface-1/90"
+      />
+    </div>
   )
 }
 
@@ -117,7 +163,13 @@ export function WorkflowCreatePage() {
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [createContext, setCreateContext] = useAtom(workflowCreateContextAtom)
   const [draftPrompt, setDraftPrompt] = useAtom(workflowCreateDraftPromptAtom)
+  const [, setPendingCreateEntry] = useAtom(workflowCreatePendingEntryAtom)
   const [, setPendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
+  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const [promptHelperOpen, setPromptHelperOpen] = useState(false)
+  const [promptScaffold, setPromptScaffold] = useState<WorkflowCreatePromptScaffold>(
+    EMPTY_WORKFLOW_CREATE_SCAFFOLD,
+  )
   const [popularTemplates, setPopularTemplates] = useState<WorkflowTemplate[]>([])
   const [popularTemplatesFromUsage, setPopularTemplatesFromUsage] = useState(false)
   const [loadingTemplates, setLoadingTemplates] = useState(false)
@@ -129,6 +181,9 @@ export function WorkflowCreatePage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const templateRailRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const promptHelperRef = useRef<HTMLDivElement | null>(null)
+  const promptHelperScrollRef = useRef<HTMLDivElement | null>(null)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
 
   const targetProjectPath = createContext.projectPath
@@ -208,15 +263,38 @@ export function WorkflowCreatePage() {
     textareaRef.current?.style.setProperty("height", "auto")
   }, [draftPrompt])
 
+  useEffect(() => {
+    if (!promptHelperOpen) return
+
+    const frame = window.requestAnimationFrame(() => {
+      promptHelperRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      })
+      promptHelperScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+      composerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [promptHelperOpen])
+
   const targetProjectName = useMemo(
     () => (targetProjectPath ? projectFolderName(targetProjectPath) : null),
     [targetProjectPath],
   )
+  const scaffoldFieldCount = useMemo(
+    () => countWorkflowCreateScaffoldFields(promptScaffold),
+    [promptScaffold],
+  )
+  const canSubmitPrompt = hasWorkflowCreatePromptContent(draftPrompt, promptScaffold)
   const popularTemplatesTitle = useMemo(() => {
     if (targetProjectName && popularTemplatesFromUsage) {
-      return `Popular in ${targetProjectName}`
+      return `Good starting points for ${targetProjectName}`
     }
-    return "Popular templates"
+    return "Ready-made starting points"
   }, [popularTemplatesFromUsage, targetProjectName])
 
   const openWorkflowFile = async (
@@ -224,6 +302,8 @@ export function WorkflowCreatePage() {
     projectPath: string,
     options?: {
       pendingMessage?: string
+      pendingEntryRequest?: string
+      entryState?: ReturnType<typeof buildTemplateWorkflowEntryState>
     },
   ) => {
     const loadedWorkflow = await window.api.loadWorkflow(filePath)
@@ -236,12 +316,20 @@ export function WorkflowCreatePage() {
     setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
     setViewMode("list")
     setChatPanelOpen(Boolean(options?.pendingMessage))
-    setPendingCreateMessage(
+    setPendingCreateMessage((prev) => (
       options?.pendingMessage
-        ? { workflowPath: filePath, message: options.pendingMessage }
-        : null,
-    )
+        ? { ...prev, [filePath]: options.pendingMessage }
+        : prev
+    ))
+    setPendingCreateEntry((prev) => (
+      options?.pendingEntryRequest
+        ? { ...prev, [filePath]: options.pendingEntryRequest }
+        : prev
+    ))
+    setWorkflowEntryState(options?.entryState ?? null)
     setDraftPrompt("")
+    setPromptScaffold(EMPTY_WORKFLOW_CREATE_SCAFFOLD)
+    setPromptHelperOpen(false)
     setMainView("thread")
     return loadedWorkflow
   }
@@ -278,9 +366,17 @@ export function WorkflowCreatePage() {
       const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
       const filePath = await window.api.createWorkflow(targetProjectPath, template.name, nextWorkflow)
       await window.api.recordProjectTemplateUsage(targetProjectPath, template.id).catch(() => undefined)
-      const loadedWorkflow = await openWorkflowFile(filePath, targetProjectPath)
+      const loadedWorkflow = await openWorkflowFile(filePath, targetProjectPath, {
+        entryState: buildTemplateWorkflowEntryState({
+          template: {
+            ...template,
+            workflow: nextWorkflow,
+          },
+          workflowPath: filePath,
+        }),
+      })
       setPendingTemplate(null)
-      toast.success(`Created "${loadedWorkflow.name || template.name}" from template`)
+      toast.success(`"${loadedWorkflow.name || template.name}" is ready in ${targetProjectName || "your project"}`)
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
     } finally {
@@ -301,9 +397,17 @@ export function WorkflowCreatePage() {
       await window.api.recordProjectTemplateUsage(targetProjectPath, template.id).catch(() => undefined)
       await openWorkflowFile(filePath, targetProjectPath, {
         pendingMessage: buildTemplateCustomizationPrompt(template),
+        entryState: buildTemplateWorkflowEntryState({
+          template: {
+            ...template,
+            workflow: nextWorkflow,
+          },
+          workflowPath: filePath,
+          source: "template_customize",
+        }),
       })
       setPendingTemplate(null)
-      toast.success(`Opened "${template.name}" with agent customization`)
+      toast.success(`"${template.name}" is open for agent refinement`)
     } catch (error) {
       toast.error(`Failed to customize workflow: ${String(error)}`)
     } finally {
@@ -312,7 +416,7 @@ export function WorkflowCreatePage() {
   }
 
   const handleSend = async () => {
-    const message = draftPrompt.trim()
+    const message = buildWorkflowCreatePrompt(draftPrompt, promptScaffold)
     if (!message || submitting) return
     if (!targetProjectPath) {
       setSubmitError("Open or select a project before starting a workflow.")
@@ -329,7 +433,10 @@ export function WorkflowCreatePage() {
     try {
       const draftWorkflow = createEmptyWorkflow()
       const filePath = await window.api.createWorkflow(targetProjectPath, "new-workflow", draftWorkflow)
-      await openWorkflowFile(filePath, targetProjectPath, { pendingMessage: message })
+      await openWorkflowFile(filePath, targetProjectPath, {
+        pendingMessage: message,
+        pendingEntryRequest: message,
+      })
     } catch (error) {
       setSubmitError(
         String(error).replace(
@@ -361,12 +468,12 @@ export function WorkflowCreatePage() {
 
   return (
     <PageShell className="flex min-h-full flex-col space-y-8">
-      <PageHeader title="New workflow" />
+      <PageHeader title="Create with Agent" subtitle="Describe the job you need done and the agent will prepare a runnable flow." />
 
       <div className={cn("mx-auto flex w-full flex-1 flex-col gap-8 pb-8", CREATE_SURFACE_MAX_WIDTH)}>
         <PageHero
           icon={<Sparkles size={36} />}
-          title="Let's build workflow for"
+          title="What should this flow do for you?"
           className="pt-2"
         >
           <DropdownMenu open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>
@@ -466,11 +573,11 @@ export function WorkflowCreatePage() {
             />
 
             {loadingTemplates ? (
-              <div className="mt-4 flex gap-3 overflow-hidden pb-1">
+              <div className="mt-4 flex gap-3 overflow-hidden pb-3 pt-1">
                 {Array.from({ length: 5 }).map((_, index) => (
                   <div
                     key={`template-skeleton-${index}`}
-                    className="h-[120px] w-[216px] shrink-0 animate-pulse rounded-lg surface-panel px-4 py-4 md:w-[228px]"
+                    className="h-[144px] w-[216px] shrink-0 animate-pulse rounded-lg surface-panel px-4 py-4 md:w-[228px]"
                   />
                 ))}
               </div>
@@ -478,7 +585,7 @@ export function WorkflowCreatePage() {
               <div
                 ref={templateRailRef}
                 aria-label={popularTemplatesTitle}
-                className="ui-scroll-region ui-scrollbar-hidden mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1"
+                className="ui-scroll-region ui-scrollbar-hidden mt-4 flex items-stretch snap-x snap-mandatory gap-3 overflow-x-auto pb-3 pt-1"
               >
                 {popularTemplates.map((template) => (
                   <TemplateSuggestionCard
@@ -492,7 +599,7 @@ export function WorkflowCreatePage() {
           </section>
         )}
 
-        <div className="mx-auto mt-auto w-full">
+        <div ref={composerRef} className="mx-auto w-full">
           <div className="rounded-lg surface-elevated transition-[border-color,box-shadow] ui-motion-fast focus-within:border-ring/60 focus-within:ring-[3px] focus-within:ring-ring/20">
             <div className="relative">
               <AutosizeTextarea
@@ -501,7 +608,7 @@ export function WorkflowCreatePage() {
                 value={draftPrompt}
                 onChange={(event) => setDraftPrompt(event.target.value)}
                 onKeyDown={handleTextareaKeyDown}
-                placeholder="Describe what to build..."
+                placeholder="Describe the job, the input you will give it, and the result you want back..."
                 rows={1}
                 maxHeight={240}
                 className={cn(
@@ -513,12 +620,12 @@ export function WorkflowCreatePage() {
                 <Button
                   type="button"
                   onClick={() => void handleSend()}
-                  disabled={!draftPrompt.trim() || submitting}
+                  disabled={!canSubmitPrompt || submitting}
                   variant="ghost"
                   size="icon"
                   className={cn(
                     "h-control-lg w-control-lg rounded-full ui-transition-colors ui-motion-fast",
-                    draftPrompt.trim() && !submitting
+                    canSubmitPrompt && !submitting
                       ? "bg-foreground text-background hover:bg-foreground/90"
                       : "bg-surface-3 text-muted-foreground/70",
                   )}
@@ -531,10 +638,96 @@ export function WorkflowCreatePage() {
                 </Button>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 border-t border-hairline/70 px-4 py-3">
-              <p className="ui-meta-text text-muted-foreground">
-                Enter send · Shift+Enter newline
-              </p>
+            <div
+              data-open={promptHelperOpen ? "true" : "false"}
+              className="ui-collapsible"
+            >
+              <div className="ui-collapsible-inner">
+                <div className="px-4 pt-3">
+                  <div ref={promptHelperRef} className="surface-inset-card overflow-hidden">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1 px-3 pb-0 pt-3">
+                        <p className="section-kicker">Prompt helper</p>
+                        <p className="ui-meta-text text-muted-foreground">
+                          Optional details that sharpen the request before the agent builds the flow.
+                        </p>
+                      </div>
+                      {scaffoldFieldCount > 0 ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="mr-3 mt-3 shrink-0 text-muted-foreground"
+                          onClick={() => setPromptScaffold(EMPTY_WORKFLOW_CREATE_SCAFFOLD)}
+                        >
+                          Clear fields
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div
+                      ref={promptHelperScrollRef}
+                      className="ui-scroll-region max-h-[min(56vh,36rem)] overflow-y-auto border-t border-hairline/70 px-3 py-3"
+                    >
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <ScaffoldField
+                          id="workflow-helper-goal"
+                          label="Goal"
+                          placeholder="What should this workflow accomplish?"
+                          value={promptScaffold.goal}
+                          onChange={(value) => setPromptScaffold((prev) => ({ ...prev, goal: value }))}
+                        />
+                        <ScaffoldField
+                          id="workflow-helper-input"
+                          label="Input"
+                          placeholder="What input, URL, file, or context will it receive?"
+                          value={promptScaffold.input}
+                          onChange={(value) => setPromptScaffold((prev) => ({ ...prev, input: value }))}
+                        />
+                        <ScaffoldField
+                          id="workflow-helper-constraints"
+                          label="Constraints"
+                          placeholder="Limits, formatting rules, providers, budgets, or safety constraints"
+                          value={promptScaffold.constraints}
+                          onChange={(value) => setPromptScaffold((prev) => ({ ...prev, constraints: value }))}
+                        />
+                        <ScaffoldField
+                          id="workflow-helper-success"
+                          label="Success criteria"
+                          placeholder="How should the workflow evaluate that it did the job well?"
+                          value={promptScaffold.successCriteria}
+                          onChange={(value) => setPromptScaffold((prev) => ({ ...prev, successCriteria: value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-hairline/70 px-4 py-3">
+              <div className="control-cluster control-cluster-compact flex flex-wrap items-center justify-between gap-2 rounded-lg">
+                <Button
+                  type="button"
+                  variant={promptHelperOpen ? "secondary" : "ghost"}
+                  size="sm"
+                  aria-pressed={promptHelperOpen}
+                  className="text-muted-foreground"
+                  onClick={() => setPromptHelperOpen((prev) => !prev)}
+                >
+                  <Sparkles size={14} />
+                  {promptHelperOpen ? "Hide prompt helper" : "Add prompt helper"}
+                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {scaffoldFieldCount > 0 ? (
+                    <Badge variant="secondary" size="pill">
+                      {scaffoldFieldCount} field{scaffoldFieldCount === 1 ? "" : "s"}
+                    </Badge>
+                  ) : null}
+                  <p className="ui-meta-text text-muted-foreground">
+                    Enter to start · Shift+Enter for a new line
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -550,7 +743,7 @@ export function WorkflowCreatePage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Use template</DialogTitle>
+            <DialogTitle>Open this starting point</DialogTitle>
             <DialogDescription>
               &ldquo;{pendingTemplate?.name}&rdquo; is ready to use. Create it directly, or open it with the agent and customize it for this project.
             </DialogDescription>

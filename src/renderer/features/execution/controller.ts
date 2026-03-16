@@ -150,7 +150,7 @@ export class WorkflowExecutionController {
   }
 
   processWorkflowEvent(event: WorkflowEvent) {
-    const workflowKey = this.runWorkflowKeys.get(event.runId)
+    const workflowKey = this.resolveWorkflowKeyForRun(event.runId)
     if (!workflowKey) {
       const buffered = this.bufferedEvents.get(event.runId) ?? []
       buffered.push(event)
@@ -198,6 +198,42 @@ export class WorkflowExecutionController {
     this.runWorkflowKeys.delete(runIdToClear)
     this.bufferedEvents.delete(runIdToClear)
     this.removeApprovalRequestsForRun(runIdToClear)
+  }
+
+  private resolveWorkflowKeyForRun(runId: string): string | null {
+    const mappedWorkflowKey = this.runWorkflowKeys.get(runId)
+    if (mappedWorkflowKey && this.workflowExecutionStates[mappedWorkflowKey]?.runId === runId) {
+      return mappedWorkflowKey
+    }
+
+    const matchingWorkflowEntry = Object.entries(this.workflowExecutionStates)
+      .find(([, state]) => state.runId === runId)
+    if (!matchingWorkflowEntry) {
+      return mappedWorkflowKey ?? null
+    }
+
+    const [resolvedWorkflowKey] = matchingWorkflowEntry
+    if (mappedWorkflowKey && mappedWorkflowKey !== resolvedWorkflowKey) {
+      this.moveTrackedWorkflowKey(mappedWorkflowKey, resolvedWorkflowKey)
+    }
+    this.runWorkflowKeys.set(runId, resolvedWorkflowKey)
+    return resolvedWorkflowKey
+  }
+
+  private moveTrackedWorkflowKey(fromKey: string, toKey: string) {
+    if (fromKey === toKey) return
+
+    const workflowSnapshot = this.workflowSnapshots.get(fromKey)
+    if (workflowSnapshot) {
+      this.workflowSnapshots.set(toKey, workflowSnapshot)
+      this.workflowSnapshots.delete(fromKey)
+    }
+
+    const previousSnapshot = this.previousExecutionSnapshots.get(fromKey)
+    if (previousSnapshot) {
+      this.previousExecutionSnapshots.set(toKey, previousSnapshot)
+      this.previousExecutionSnapshots.delete(fromKey)
+    }
   }
 
   private removeApprovalRequestsForRun(runIdToClear: string | null | undefined) {

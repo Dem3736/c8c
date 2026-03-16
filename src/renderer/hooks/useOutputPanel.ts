@@ -11,6 +11,7 @@ import {
   reportPathAtom,
   runStatusAtom,
   runtimeMetaAtom,
+  selectedPastRunAtom,
   workflowHistoryRunsAtom,
   workspaceAtom,
 } from "@/features/execution"
@@ -26,6 +27,7 @@ export function useOutputPanel() {
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
   const [reportPath] = useAtom(reportPathAtom)
   const [pastRuns] = useAtom(workflowHistoryRunsAtom)
+  const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [workspace] = useAtom(workspaceAtom)
 
   return {
@@ -40,6 +42,8 @@ export function useOutputPanel() {
     runtimeMeta,
     reportPath,
     pastRuns,
+    selectedPastRun,
+    setSelectedPastRun,
     workspace,
   }
 }

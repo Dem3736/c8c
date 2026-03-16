@@ -1,7 +1,5 @@
 import { cn } from "@/lib/cn"
 import {
-  Check,
-  Loader2,
   FileText,
   History,
   Copy,
@@ -20,10 +18,15 @@ import {
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { CursorMenu } from "@/components/ui/cursor-menu"
-import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
+import { Button } from "@/components/ui/button"
+import {
+  getRuntimeBranchDetail,
+  getRuntimeBranchLabel,
+  getRuntimeNodeLabel,
+  getRuntimeStagePresentation,
+} from "@/lib/runtime-flow-labels"
 import { useOutputPanel } from "@/hooks/useOutputPanel"
 import { HistoryTab } from "@/components/output/HistoryTab"
 import { LogTab, NodesTab, formatCost } from "@/components/output/OutputSections"
@@ -62,16 +65,71 @@ function formatTokenCount(tokens: number): string {
   return String(tokens)
 }
 
+function formatRunDuration(run: RunResult): string {
+  if (typeof run.durationMs === "number" && run.durationMs >= 0) {
+    if (run.durationMs < 1_000) return `${run.durationMs}ms`
+    const seconds = run.durationMs / 1_000
+    if (seconds < 60) return `${seconds.toFixed(1)}s`
+    const minutes = Math.floor(seconds / 60)
+    const remainSeconds = Math.round(seconds % 60)
+    return `${minutes}m ${remainSeconds}s`
+  }
+  if (run.completedAt > 0 && run.startedAt > 0) {
+    const delta = run.completedAt - run.startedAt
+    if (delta > 0) {
+      if (delta < 1_000) return `${delta}ms`
+      const seconds = delta / 1_000
+      if (seconds < 60) return `${seconds.toFixed(1)}s`
+      const minutes = Math.floor(seconds / 60)
+      const remainSeconds = Math.round(seconds % 60)
+      return `${minutes}m ${remainSeconds}s`
+    }
+  }
+  return "n/a"
+}
+
+function formatRunCompletedAt(run: RunResult): string {
+  if (!Number.isFinite(run.completedAt) || run.completedAt <= 0) {
+    return "n/a"
+  }
+  const completedDate = new Date(run.completedAt)
+  if (Number.isNaN(completedDate.getTime())) {
+    return "n/a"
+  }
+  return completedDate.toLocaleString()
+}
+
+const OUTPUT_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  queued: "Queued",
+  running: "Running",
+  completed: "Completed",
+  failed: "Needs attention",
+  skipped: "Skipped",
+  waiting_approval: "Waiting for approval",
+}
+
+function formatOutputStatusLabel(status: string | null) {
+  if (!status) return "Pending"
+  return OUTPUT_STATUS_LABELS[status] || status.replace(/_/g, " ")
+}
+
 // ── Main OutputPanel ─────────────────────────────────────
 
 export function OutputPanel({
   onOpenReport = (path: string) => { void window.api.openReport(path) },
   onRerunFrom,
   onContinueRun,
+  requestedTab,
+  reviewingPastRun = false,
+  onStartNewRun,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
   onRerunFrom?: (nodeId: string) => Promise<void> | void
   onContinueRun?: (run: RunResult) => Promise<void> | void
+  requestedTab?: { tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null
+  reviewingPastRun?: boolean
+  onStartNewRun?: () => void
 }) {
   const {
     runStatus,
@@ -85,11 +143,16 @@ export function OutputPanel({
     runtimeMeta,
     reportPath,
     pastRuns,
+    selectedPastRun,
+    setSelectedPastRun,
     workspace,
   } = useOutputPanel()
   const [activeTab, setActiveTab] = useState("nodes")
   const [copiedResult, setCopiedResult] = useState(false)
   const [resultReadyPulse, setResultReadyPulse] = useState(false)
+  const [selectedPastRunDetails, setSelectedPastRunDetails] = useState<(RunResult & { reportContent: string }) | null>(null)
+  const [selectedPastRunLoading, setSelectedPastRunLoading] = useState(false)
+  const [selectedPastRunError, setSelectedPastRunError] = useState<string | null>(null)
   const [outputContextMenu, setOutputContextMenu] = useState<
     | { x: number, y: number, scope: "result" }
     | null
@@ -98,6 +161,8 @@ export function OutputPanel({
   const resultPulseTimerRef = useRef<number | null>(null)
   const resultSignalShownRef = useRef(false)
   const previousRunStatusRef = useRef(runStatus)
+  const latestPastRun = pastRuns[0] || null
+  const reviewedRun = selectedPastRun || latestPastRun
 
   const handleRerunFrom = useCallback((nodeId: string) => {
     if (!onRerunFrom || !workspace) return
@@ -114,7 +179,7 @@ export function OutputPanel({
     .filter((n) => !replacedTemplateIds.has(n.id))
     .map((n) => ({
       id: n.id,
-      label: getWorkflowNodeLabel(n),
+      label: getRuntimeNodeLabel(n, { fallbackId: n.id }),
       type: n.type,
     }))
 
@@ -131,7 +196,9 @@ export function OutputPanel({
     const meta = runtimeMeta[branchId]
     if (!meta) continue
     const templateNode = templateById.get(meta.templateId)
-    const templateLabel = templateNode ? getWorkflowNodeLabel(templateNode) : meta.templateId
+    const templateLabel = templateNode
+      ? getRuntimeNodeLabel(templateNode, { fallbackId: templateNode.id })
+      : meta.templateId
     templateLabelByBranchId.set(branchId, templateLabel)
     templateLabelCounts.set(templateLabel, (templateLabelCounts.get(templateLabel) || 0) + 1)
   }
@@ -152,7 +219,7 @@ export function OutputPanel({
 
     return {
       id,
-      label: `branch: ${meta.subtaskKey} (${meta.branchIndex + 1}/${meta.totalBranches}) · ${templateSuffix}`,
+      label: `branch: ${getRuntimeBranchLabel(meta.subtaskKey)} (${meta.branchIndex + 1}/${meta.totalBranches}) · ${templateSuffix}`,
       type: "skill" as const,
       indent: true,
     }
@@ -162,7 +229,7 @@ export function OutputPanel({
   const displayLabelByNodeId = new Map(allDisplayNodes.map((node) => [node.id, node.label]))
   for (const node of workflow.nodes) {
     if (!displayLabelByNodeId.has(node.id)) {
-      displayLabelByNodeId.set(node.id, getWorkflowNodeLabel(node))
+      displayLabelByNodeId.set(node.id, getRuntimeNodeLabel(node, { fallbackId: node.id }))
     }
   }
   const workflowOrderIndex = new Map(workflow.nodes.map((node, index) => [node.id, index]))
@@ -190,13 +257,11 @@ export function OutputPanel({
   const resultNodeOptionIds = new Set(resultNodeOptions.map((option) => option.id))
 
   // Parallel execution indicator
-  const runningBranches = runtimeBranchNodes.filter((n) => nodeStates[n.id]?.status === "running").length
   const totalBranches = runtimeBranchNodes.length
   const completedBranches = runtimeBranchNodes.filter((n) => {
     const status = nodeStates[n.id]?.status
     return status === "completed" || status === "failed" || status === "skipped"
   }).length
-  const remainingBranches = Math.max(0, totalBranches - completedBranches)
   const branchesProgressPct = totalBranches > 0
     ? Math.round((completedBranches / totalBranches) * 100)
     : 0
@@ -230,10 +295,14 @@ export function OutputPanel({
           ? "Budget notice: over 70% of cost limit is used."
           : null
 
+  const reviewingRunHistory = reviewingPastRun && runStatus === "idle" && !!reviewedRun
+  const historicalResultContent = selectedPastRunDetails?.reportContent || ""
   const hasNodeStates = Object.keys(nodeStates).length > 0
   const hasFinalResult = finalContent.trim().length > 0
   const hasStageResult = resultNodeOptions.length > 0
-  const hasResult = hasFinalResult || hasStageResult
+  const hasLiveResult = hasFinalResult || hasStageResult
+  const hasHistoricalResult = reviewingRunHistory && !!reviewedRun
+  const hasResult = hasLiveResult || hasHistoricalResult
   const outputResultNode = resultNodeOptions.find((option) => templateById.get(option.id)?.type === "output") || null
   const selectedResultNodeId = selectedNodeId && resultNodeOptionIds.has(selectedNodeId)
     ? selectedNodeId
@@ -241,13 +310,70 @@ export function OutputPanel({
   const selectedResultNode = selectedResultNodeId
     ? resultNodeOptions.find((option) => option.id === selectedResultNodeId) || null
     : null
+  const selectedResultOutput = selectedResultNodeId ? nodeStates[selectedResultNodeId]?.output : undefined
+  const selectedResultMeta = selectedResultNodeId ? runtimeMeta[selectedResultNodeId] : undefined
+  const selectedResultWorkflowNode = selectedResultNodeId
+    ? templateById.get(selectedResultMeta?.templateId || selectedResultNodeId) || null
+    : null
+  const selectedResultPresentation = selectedResultWorkflowNode
+    ? getRuntimeStagePresentation(selectedResultWorkflowNode, {
+      fallbackId: selectedResultNodeId || undefined,
+      output: selectedResultOutput,
+    })
+    : null
+  const selectedResultBranchLabel = selectedResultMeta
+    ? getRuntimeBranchLabel(selectedResultMeta.subtaskKey)
+    : null
+  const selectedResultBranchDetail = selectedResultMeta
+    ? getRuntimeBranchDetail(selectedResultMeta)
+    : null
   const selectedResultContent = selectedResultNodeId
     ? (nodeStates[selectedResultNodeId]?.output?.content || "")
     : null
-  const displayedResultContent = selectedResultContent ?? finalContent
+  const displayedResultContent = reviewingRunHistory
+    ? historicalResultContent
+    : (selectedResultContent ?? finalContent)
   const isDisplayedResultEmpty = displayedResultContent.trim().length === 0
   const canCopyResult = displayedResultContent.length > 0
-  const showIdleState = runStatus === "idle" && !hasNodeStates && !hasResult
+  const showIdleState = runStatus === "idle" && !hasNodeStates && !hasLiveResult && !reviewingRunHistory
+  const selectedStageId = selectedNodeId || activeNodeId
+  const selectedStageMeta = selectedStageId ? runtimeMeta[selectedStageId] : undefined
+  const selectedStageWorkflowNode = selectedStageId
+    ? templateById.get(selectedStageMeta?.templateId || selectedStageId) || null
+    : null
+  const selectedStageOutput = selectedStageId ? nodeStates[selectedStageId]?.output : undefined
+  const selectedStagePresentation = selectedStageWorkflowNode
+    ? getRuntimeStagePresentation(selectedStageWorkflowNode, {
+      fallbackId: selectedStageId || undefined,
+      output: selectedStageOutput,
+    })
+    : null
+  const selectedStageBranchLabel = selectedStageMeta
+    ? getRuntimeBranchLabel(selectedStageMeta.subtaskKey)
+    : null
+  const selectedStageBranchDetail = selectedStageMeta
+    ? getRuntimeBranchDetail(selectedStageMeta)
+    : null
+  const selectedStageStatus = selectedStageId ? (nodeStates[selectedStageId]?.status || "pending") : null
+  const selectedStageHasOutput = selectedStageId
+    ? typeof nodeStates[selectedStageId]?.output?.content === "string" && nodeStates[selectedStageId]!.output!.content.trim().length > 0
+    : false
+  const selectedStageStatusLabel = formatOutputStatusLabel(selectedStageStatus)
+  const activitySummaryItems = [
+    `${formatCost(accumulatedCost)}${budgetCost != null ? ` / ${formatCost(budgetCost)}` : ""} cost`,
+    `${formatTokenCount(totalTokens)} tokens${budgetTokens != null ? ` / ${formatTokenCount(budgetTokens)}` : ""}`,
+    totalBranches > 0 ? `${branchesProgressPct}% branches ready` : null,
+  ].filter(Boolean) as string[]
+  const selectedRunLabel = reviewedRun
+    ? `${reviewedRun.workflowName || workflow.name || "Workflow"} · ${formatRunCompletedAt(reviewedRun)}`
+    : null
+
+  const openNodeDetails = useCallback((nodeId: string) => {
+    setSelectedNodeId(nodeId)
+    const hasNodeOutput = typeof nodeStates[nodeId]?.output?.content === "string"
+      && nodeStates[nodeId]!.output!.content.trim().length > 0
+    setActiveTab(hasNodeOutput ? "result" : "log")
+  }, [nodeStates, setSelectedNodeId])
 
   const handleCopyResult = useCallback(async () => {
     if (!canCopyResult) return
@@ -300,10 +426,54 @@ export function OutputPanel({
   }, [activeTab, hasResult])
 
   useEffect(() => {
+    if (!reviewingRunHistory || !reviewedRun?.workspace) {
+      setSelectedPastRunDetails(null)
+      setSelectedPastRunError(null)
+      setSelectedPastRunLoading(false)
+      return
+    }
+    let cancelled = false
+    setSelectedPastRunLoading(true)
+    setSelectedPastRunError(null)
+    window.api.loadRunResult(reviewedRun.workspace)
+      .then((result) => {
+        if (cancelled) return
+        if (!result) {
+          setSelectedPastRunDetails(null)
+          setSelectedPastRunError("Saved run details are unavailable for this workflow.")
+          return
+        }
+        setSelectedPastRunDetails(result)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setSelectedPastRunDetails(null)
+        setSelectedPastRunError("Could not load the selected run result.")
+        console.error("[OutputPanel] load past run failed:", error)
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedPastRunLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [reviewedRun?.runId, reviewedRun?.workspace, reviewingRunHistory])
+
+  useEffect(() => {
     if (activeTab === "history" && pastRuns.length === 0) {
       setActiveTab("nodes")
     }
   }, [activeTab, pastRuns.length])
+
+  useEffect(() => {
+    if (!requestedTab) return
+    if (requestedTab.tab === "result" && !hasResult) return
+    if (requestedTab.tab === "history" && pastRuns.length === 0) return
+    if (requestedTab.nodeId) {
+      setSelectedNodeId(requestedTab.nodeId)
+    }
+    setActiveTab(requestedTab.tab)
+  }, [hasResult, pastRuns.length, requestedTab, setSelectedNodeId])
 
   useEffect(() => {
     if (runStatus !== "done" || !hasResult) {
@@ -344,132 +514,177 @@ export function OutputPanel({
   }, [])
 
   return (
-    <div className="space-y-3 ui-fade-slide-in">
-      <label className="section-kicker">
-        Output
-      </label>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="h-control-md">
-          <TabsTrigger value="nodes" className="px-3 py-1 text-body-sm">
-            Steps
-          </TabsTrigger>
-          <TabsTrigger value="log" className="px-3 py-1 text-body-sm">
-            Log
-          </TabsTrigger>
-          <TabsTrigger
-            value="result"
-            className={cn(
-              "px-3 py-1 text-body-sm",
-              resultReadyPulse && activeTab !== "result" && "border-status-success/40 text-status-success",
+    <>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2.5 ui-fade-slide-in">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <label className="section-kicker">
+              Inspect
+            </label>
+            {reviewingRunHistory && reviewedRun && (
+              <p className="mt-1 ui-meta-text text-muted-foreground">
+                Reviewing the latest saved run instead of opening an empty draft.
+              </p>
             )}
-            disabled={!hasResult}
-          >
-            {resultReadyPulse && activeTab !== "result" && (
-              <span className="ui-status-beacon mr-1.5" aria-hidden="true">
-                <span className="ui-status-beacon-ring bg-status-success/35" />
-                <span className="ui-status-beacon-core bg-status-success" />
-              </span>
-            )}
-            Result
-          </TabsTrigger>
-          <TabsTrigger value="history" className="px-3 py-1 text-body-sm" disabled={pastRuns.length === 0}>
-            <History size={12} className="mr-1" />
-            History{pastRuns.length > 0 && ` (${pastRuns.length})`}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="nodes" className="mt-2">
-          {showIdleState ? (
-            <NodesTab
-              nodes={allDisplayNodes}
-              nodeStates={nodeStates}
-              activeNodeId={activeNodeId}
-              evalResults={evalResults}
-              canRerun={false}
-              onRerunFrom={handleRerunFrom}
-              onSelectNode={(nodeId) => {
-                setSelectedNodeId(nodeId)
-                setActiveTab("log")
-              }}
-            />
-          ) : (
-            <>
-              <div className="surface-soft mb-2 rounded-lg px-3 py-2">
-                <div className="flex flex-wrap items-center gap-3 ui-meta-text text-foreground-subtle">
-                  <span className="font-medium">Run totals</span>
-                  <span className="font-mono">
-                    {formatCost(accumulatedCost)}
-                    {budgetCost != null ? ` / ${formatCost(budgetCost)}` : ""}
-                  </span>
-                  <span className="font-mono">
-                    {formatTokenCount(totalTokens)} tokens
-                    {budgetTokens != null ? ` / ${formatTokenCount(budgetTokens)}` : ""}
-                  </span>
-                </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {pastRuns.length > 0 && runStatus === "idle" && (
+              <div className="flex items-center gap-2 rounded-lg border border-hairline bg-surface-1/80 px-2 py-1 ui-elevation-inset">
+                <span className="ui-meta-label text-muted-foreground">Runs</span>
+                <Select
+                  value={reviewedRun?.runId || undefined}
+                  onValueChange={(nextRunId) => {
+                    const nextRun = pastRuns.find((run) => run.runId === nextRunId) || null
+                    setSelectedPastRun(nextRun)
+                    if (nextRun) setActiveTab("result")
+                  }}
+                >
+                  <SelectTrigger className="h-control-sm min-w-[240px] border-none bg-transparent px-2 text-body-sm shadow-none">
+                    <SelectValue placeholder="Select a run" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pastRuns.map((run, index) => (
+                      <SelectItem key={`review-run-${run.runId}`} value={run.runId}>
+                        {index === 0 ? "Latest run" : `Run ${index + 1}`} · {formatRunCompletedAt(run)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              {totalBranches > 0 && (
-                <div className="surface-soft mb-2 rounded-lg px-3 py-2 space-y-1.5">
-                  <div className="flex items-center gap-2 ui-meta-text text-foreground-subtle">
-                    {runningBranches > 0 ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <Check size={12} />
-                    )}
-                    <span>
-                      {runningBranches}/{totalBranches} running · {completedBranches} completed · {remainingBranches} remaining · {branchesProgressPct}%
-                    </span>
+            )}
+            {onStartNewRun && runStatus === "idle" && pastRuns.length > 0 && (
+              <Button variant="outline" size="sm" className="h-control-sm" onClick={onStartNewRun}>
+                New run
+              </Button>
+            )}
+            <TabsList className="h-control-md">
+              <TabsTrigger value="nodes" className="px-3 py-1 text-body-sm">
+                Activity
+              </TabsTrigger>
+              <TabsTrigger value="log" className="px-3 py-1 text-body-sm">
+                Log
+              </TabsTrigger>
+              <TabsTrigger
+                value="result"
+                className={cn(
+                  "px-3 py-1 text-body-sm",
+                  resultReadyPulse && activeTab !== "result" && "border-status-success/40 text-status-success",
+                )}
+                disabled={!hasResult}
+              >
+                {resultReadyPulse && activeTab !== "result" && (
+                  <span className="ui-status-beacon mr-1.5" aria-hidden="true">
+                    <span className="ui-status-beacon-ring bg-status-success/35" />
+                    <span className="ui-status-beacon-core bg-status-success" />
+                  </span>
+                )}
+                Result
+              </TabsTrigger>
+              <TabsTrigger value="history" className="px-3 py-1 text-body-sm" disabled={pastRuns.length === 0}>
+                <History size={12} className="mr-1" />
+                Runs{pastRuns.length > 0 && ` (${pastRuns.length})`}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+        </div>
+
+        <TabsContent value="nodes" className="mt-0">
+          {showIdleState ? (
+            <div className="rounded-lg surface-soft p-4">
+              <div className="space-y-2">
+                {selectedStagePresentation && (
+                  <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="ui-meta-label text-muted-foreground">Selected stage</div>
+                        <div className="text-body-sm font-medium text-foreground">
+                          {selectedStagePresentation.title}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                        {selectedStagePresentation.artifactLabel}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 ui-meta-text text-muted-foreground">
+                      {selectedStagePresentation.outcomeText}
+                    </p>
                   </div>
-                  <div className="ui-progress-track">
-                    <div
-                      className="ui-progress-bar"
-                      style={{
-                        width: `${branchesProgressPct}%`,
-                        transition: "width var(--motion-slow) var(--ease-emphasis)",
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-              {budgetCost != null && (
-                <div className="mb-2 rounded-md border border-hairline bg-surface-2 px-3 py-1.5 ui-meta-text space-y-1 ui-elevation-inset">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Cost limit</span>
-                    <span>{formatCost(accumulatedCost)} / {formatCost(budgetCost)}</span>
-                  </div>
-                  <div className="ui-progress-track">
-                    <div
-                      className="ui-progress-bar"
-                      style={{
-                        width: `${Math.min(100, budgetProgressRatio * 100)}%`,
-                        background: budgetProgressRatio > 0.9
-                          ? "hsl(var(--status-danger))"
-                          : budgetProgressRatio > 0.7
-                            ? "hsl(var(--status-warning))"
-                            : undefined,
-                      }}
-                    />
-                  </div>
-                  <div
-                    data-open={budgetWarning ? "true" : "false"}
-                    className="ui-collapsible"
-                  >
-                    <div className="ui-collapsible-inner">
-                      <div
-                        role={budgetProgressRatio >= 1 ? "alert" : "status"}
-                        aria-live="polite"
-                        className={cn(
-                          "pt-0.5",
-                          budgetProgressRatio >= 1
-                            ? "text-status-danger"
-                            : budgetProgressRatio >= 0.9
-                              ? "text-status-danger"
-                              : "text-status-warning",
-                        )}
-                      >
-                        {budgetWarning || ""}
+                )}
+                <p className="text-body-sm text-muted-foreground">
+                  Start the flow to see live activity, logs, and results here.
+                </p>
+              </div>
+            </div>
+          ) : reviewingRunHistory ? (
+            <div className="rounded-xl surface-soft p-4">
+              <div className="space-y-3">
+                <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="ui-meta-label text-muted-foreground">Viewing saved run</div>
+                      <div className="mt-1 text-body-sm font-medium text-foreground">
+                        {selectedRunLabel || "Last run"}
                       </div>
                     </div>
+                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                      {reviewedRun?.status || "completed"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 ui-meta-text text-muted-foreground">
+                    Review the saved result below, switch runs from the selector, or start a new run when you are ready.
+                  </p>
+                </div>
+                {onStartNewRun && (
+                  <Button variant="outline" size="sm" className="h-control-sm self-start" onClick={onStartNewRun}>
+                    Start a new run
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {selectedStagePresentation && (
+                <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="ui-meta-label text-muted-foreground">Selected stage</div>
+                      <div className="mt-1 text-body-sm font-medium text-foreground">
+                        {selectedStagePresentation.title}
+                      </div>
+                      <div className="mt-1 ui-meta-text text-muted-foreground">
+                        {selectedStagePresentation.artifactLabel} · {selectedStagePresentation.outcomeLabel}
+                        {selectedStageBranchLabel ? ` · ${selectedStageBranchLabel}` : ""}
+                      </div>
+                    </div>
+                    <div className="ui-badge-row">
+                      <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                        {selectedStageStatusLabel}
+                      </Badge>
+                      {selectedStageHasOutput && (
+                        <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
+                          Output ready
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-2 ui-meta-text text-muted-foreground">
+                    {selectedStageBranchDetail || selectedStagePresentation.outcomeText}
+                  </p>
+                </div>
+              )}
+              {activitySummaryItems.length > 0 && (
+                <div className="rounded-lg border border-hairline bg-surface-2/50 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ui-meta-text text-foreground-subtle">
+                    {activitySummaryItems.map((item) => (
+                      <span key={item}>{item}</span>
+                    ))}
+                    {budgetWarning && (
+                      <span className={cn(
+                        budgetProgressRatio >= 0.9 ? "text-status-danger" : "text-status-warning",
+                      )}>
+                        {budgetWarning}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -480,10 +695,7 @@ export function OutputPanel({
                 evalResults={evalResults}
                 canRerun={runStatus !== "running" && !!workspace && !!onRerunFrom}
                 onRerunFrom={handleRerunFrom}
-                onSelectNode={(nodeId) => {
-                  setSelectedNodeId(nodeId)
-                  setActiveTab("log")
-                }}
+                onSelectNode={openNodeDetails}
               />
 
               <div
@@ -494,17 +706,19 @@ export function OutputPanel({
                   <div
                     role="status"
                     aria-live="polite"
-                    className="ui-alert-success mt-2 flex flex-wrap items-center justify-between gap-2 text-status-success"
+                    className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-status-success/20 bg-status-success/8 px-3 py-2 ui-meta-text text-status-success"
                   >
-                    <span>Workflow completed successfully.</span>
+                    <span>Run complete. You can inspect the result now.</span>
                     {hasResult && (
-                      <button
+                      <Button
                         type="button"
-                        className="ui-pressable rounded-md border border-status-success/30 bg-status-success/10 px-2 py-1 ui-meta-label text-status-success hover:bg-status-success/15"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-status-success hover:bg-status-success/10 hover:text-status-success"
                         onClick={() => setActiveTab("result")}
                       >
                         View result
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -516,9 +730,9 @@ export function OutputPanel({
                 <div className="ui-collapsible-inner">
                   <div
                     role="alert"
-                    className="ui-alert-danger mt-2 space-y-1 text-status-danger"
+                    className="mt-2 space-y-1 rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger"
                   >
-                    <div className="font-medium text-status-danger">Workflow failed</div>
+                    <div className="font-medium text-status-danger">Run needs attention</div>
                     {Object.entries(nodeStates)
                       .filter(([, s]) => s.status === "failed" && s.error)
                       .map(([id, s]) => {
@@ -540,10 +754,41 @@ export function OutputPanel({
         <TabsContent value="log" className="mt-2">
           {showIdleState ? (
             <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
-              Logs will appear here after you start a run.
+              Activity details will appear here after you start a run.
+            </div>
+          ) : reviewingRunHistory ? (
+            <div className="rounded-lg surface-soft p-4 text-body-sm text-muted-foreground">
+              Saved runs keep the final result and report file. Start a new run to inspect live activity and logs again.
             </div>
           ) : (
-            <LogTab selectedNodeId={selectedNodeId} nodeStates={nodeStates} evalResults={evalResults} />
+            <div className="space-y-2">
+              {selectedStagePresentation && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="ui-meta-label text-muted-foreground">Inspecting log</div>
+                    <div className="text-body-sm font-medium text-foreground">
+                      {selectedStagePresentation.title}
+                    </div>
+                    <div className="ui-meta-text text-muted-foreground">
+                      Artifact: {selectedStagePresentation.artifactLabel}
+                    </div>
+                  </div>
+                  <div className="ui-badge-row">
+                    {selectedStageBranchLabel && (
+                      <Badge variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
+                        {selectedStageBranchLabel}
+                      </Badge>
+                    )}
+                    {selectedStageHasOutput && (
+                      <Badge variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
+                        Output ready
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+              <LogTab selectedNodeId={selectedStageId} nodeStates={nodeStates} evalResults={evalResults} />
+            </div>
           )}
         </TabsContent>
 
@@ -560,82 +805,127 @@ export function OutputPanel({
                 })
               }}
             >
-              <div
-                data-open={resultReadyPulse ? "true" : "false"}
-                className="ui-collapsible"
-              >
-                <div className="ui-collapsible-inner">
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className="ui-alert-success text-status-success"
-                  >
-                    Result is ready.
+              <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="ui-meta-label text-foreground-subtle">
+                      {reviewingRunHistory ? "Viewing run" : "Result from"}
+                    </span>
+                    {!reviewingRunHistory && resultNodeOptions.length > 0 ? (
+                      <Select
+                        value={selectedResultNodeId || undefined}
+                        onValueChange={(nextNodeId) => {
+                          setSelectedNodeId(nextNodeId)
+                        }}
+                      >
+                        <SelectTrigger className="h-control-sm w-[320px] text-body-sm">
+                          <SelectValue placeholder="Select step result" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {resultNodeOptions.map((option) => (
+                            <SelectItem key={`result-node-${option.id}`} value={option.id}>
+                              {option.label}{option.hasContent ? "" : " · empty output"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-body-sm text-foreground">
+                        Final result
+                      </span>
+                    )}
+                  </div>
+                  <div className="ui-badge-row">
+                    {reviewingRunHistory ? (
+                      <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                        {reviewedRun?.status || "completed"}
+                      </Badge>
+                    ) : selectedResultPresentation && (
+                      <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                        {selectedResultPresentation.artifactLabel}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
+                      {reviewingRunHistory
+                        ? (reviewedRun ? formatRunDuration(reviewedRun) : "Saved run")
+                        : (selectedResultBranchLabel || (isDisplayedResultEmpty ? "No content" : "Ready to review"))}
+                    </Badge>
                   </div>
                 </div>
+                {reviewingRunHistory ? (
+                  <p className="mt-1 ui-meta-text text-muted-foreground">
+                    {selectedRunLabel || "Reviewing the saved output from the selected run."}
+                  </p>
+                ) : selectedResultPresentation && (
+                  <p className="mt-1 ui-meta-text text-muted-foreground">
+                    {selectedResultBranchDetail || selectedResultPresentation.outcomeText}
+                  </p>
+                )}
               </div>
-              {resultNodeOptions.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="ui-meta-label text-foreground-subtle">Step</span>
-                  <Select
-                    value={selectedResultNodeId || undefined}
-                    onValueChange={(nextNodeId) => {
-                      setSelectedNodeId(nextNodeId)
-                    }}
-                  >
-                    <SelectTrigger className="h-control-sm w-[320px] text-body-sm">
-                      <SelectValue placeholder="Select step result" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resultNodeOptions.map((option) => (
-                        <SelectItem key={`result-node-${option.id}`} value={option.id}>
-                          {option.label}{option.hasContent ? "" : " · empty output"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedResultNode && (
-                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                      {selectedResultNode.id}
-                    </Badge>
-                  )}
+              {reviewingRunHistory && selectedPastRunLoading && (
+                <div className="rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
+                  Loading saved run output...
+                </div>
+              )}
+              {reviewingRunHistory && !selectedPastRunLoading && selectedPastRunError && (
+                <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
+                  {selectedPastRunError}
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                {reportPath && (
-                  <button
+                {(reviewingRunHistory ? reviewedRun?.reportPath : reportPath) && (
+                  <Button
                     type="button"
-                    className="ui-pressable ui-surface-lift surface-soft flex items-center gap-2 rounded-lg px-3 py-1 ui-meta-label ui-elevation-base hover:bg-surface-3 ui-transition-colors ui-motion-fast"
-                    onClick={() => void handleOpenReport(reportPath)}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const nextReportPath = reviewingRunHistory ? reviewedRun?.reportPath : reportPath
+                      if (!nextReportPath) return
+                      void handleOpenReport(nextReportPath)
+                    }}
                   >
                     <FileText size={12} />
                     Open Report
-                    <span className={cn("text-muted-foreground truncate", PREVIEW_MAX_W)} title={reportPath}>{reportPath.split("/").pop()}</span>
-                  </button>
+                    <span
+                      className={cn("text-muted-foreground truncate", PREVIEW_MAX_W)}
+                      title={reviewingRunHistory ? reviewedRun?.reportPath : reportPath}
+                    >
+                      {(reviewingRunHistory ? reviewedRun?.reportPath : reportPath)?.split("/").pop()}
+                    </span>
+                  </Button>
                 )}
-                <button
+                <Button
                   type="button"
-                  className="ui-pressable ui-surface-lift surface-soft flex items-center gap-2 rounded-lg px-3 py-1 ui-meta-label ui-elevation-base hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                  variant="outline"
+                  size="sm"
                   onClick={() => void handleCopyResult()}
                   disabled={!canCopyResult}
                 >
                   <Copy size={12} />
                   {copiedResult ? "Copied" : "Copy Result"}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="ui-pressable ui-surface-lift surface-soft flex items-center gap-2 rounded-lg px-3 py-1 ui-meta-label ui-elevation-base hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                  variant="outline"
+                  size="sm"
                   onClick={() => void handleExportResult()}
                   disabled={!canCopyResult}
                 >
                   <Download size={12} />
                   Export
-                </button>
+                </Button>
+                {reviewingRunHistory && onStartNewRun && (
+                  <Button type="button" variant="outline" size="sm" onClick={onStartNewRun}>
+                    New run
+                  </Button>
+                )}
               </div>
-              <div className="rounded-lg surface-soft p-3 ui-elevation-base">
+              <div className="rounded-lg surface-soft p-3">
                 {isDisplayedResultEmpty ? (
                   <div className="ui-meta-text text-muted-foreground">
-                    {selectedResultNode
+                    {reviewingRunHistory
+                      ? "No saved result content is available for this run."
+                      : selectedResultNode
                       ? "This step completed with an empty output."
                       : "Final result is empty."}
                   </div>
@@ -661,6 +951,10 @@ export function OutputPanel({
             runStatus={runStatus}
             onOpenReport={handleOpenReport}
             onContinueRun={onContinueRun}
+            selectedRunId={reviewedRun?.runId || null}
+            onSelectRun={(run) => {
+              setSelectedPastRun(run)
+            }}
           />
         </TabsContent>
       </Tabs>
@@ -698,6 +992,6 @@ export function OutputPanel({
           </>
         )}
       </CursorMenu>
-    </div>
+    </>
   )
 }

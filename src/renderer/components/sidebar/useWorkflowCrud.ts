@@ -25,7 +25,7 @@ interface UseWorkflowCrudParams {
   setMainView: Dispatch<SetStateAction<MainView>>
   workflowDirty: boolean
   confirmDiscard: (action: string, workflowDirty: boolean) => Promise<boolean>
-  resetExecutionIfSafe: () => void
+  clearDraftExecutionState: () => void
   workflowHasActiveRun: (workflowPath: string) => boolean
   moveWorkflowExecutionState: (params: { fromKey: string; toKey: string }) => void
   clearWorkflowExecutionState: (workflowKey: string) => void
@@ -33,31 +33,30 @@ interface UseWorkflowCrudParams {
   onWorkflowCreate?: (workflowPath: string) => void
 }
 
-function createEmptySelectionState(
+export function createEmptySelectionState(
   setSelectedWorkflowPath: Dispatch<SetStateAction<string | null>>,
   setCurrentWorkflow: Dispatch<SetStateAction<Workflow>>,
   setWorkflowSavedSnapshot: Dispatch<SetStateAction<string>>,
-  resetExecutionIfSafe: () => void,
+  clearDraftExecutionState: () => void,
 ): void {
   setSelectedWorkflowPath(null)
   const emptyWorkflow = createEmptyWorkflow()
   setCurrentWorkflow(emptyWorkflow)
   setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-  resetExecutionIfSafe()
+  clearDraftExecutionState()
 }
 
-function applyLoadedWorkflow(
+export function applyLoadedWorkflow(
   workflowPath: string,
   workflow: Workflow,
   setSelectedWorkflowPath: Dispatch<SetStateAction<string | null>>,
   setCurrentWorkflow: Dispatch<SetStateAction<Workflow>>,
   setWorkflowSavedSnapshot: Dispatch<SetStateAction<string>>,
-  resetExecutionIfSafe: () => void,
 ): void {
+  // Execution state is keyed by workflow path and must survive workflow switches.
   setSelectedWorkflowPath(workflowPath)
   setCurrentWorkflow(workflow)
   setWorkflowSavedSnapshot(workflowSnapshot(workflow))
-  resetExecutionIfSafe()
 }
 
 export function useWorkflowCrud({
@@ -75,7 +74,7 @@ export function useWorkflowCrud({
   setMainView,
   workflowDirty,
   confirmDiscard,
-  resetExecutionIfSafe,
+  clearDraftExecutionState,
   workflowHasActiveRun,
   moveWorkflowExecutionState,
   clearWorkflowExecutionState,
@@ -103,7 +102,7 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
-        resetExecutionIfSafe,
+        clearDraftExecutionState,
       )
       onProjectAdd?.(projectPath)
     } catch (error) {
@@ -142,7 +141,7 @@ export function useWorkflowCrud({
       setSelectedWorkflowPath,
       setCurrentWorkflow,
       setWorkflowSavedSnapshot,
-      resetExecutionIfSafe,
+      clearDraftExecutionState,
     )
   }
 
@@ -168,7 +167,6 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
-        resetExecutionIfSafe,
       )
     } catch (error) {
       toast.error(`Failed to open workflow: ${String(error)}`)
@@ -203,7 +201,6 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
-        resetExecutionIfSafe,
       )
       onWorkflowCreate?.(filePath)
       setPendingRenameWorkflow({
@@ -254,7 +251,6 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
-        resetExecutionIfSafe,
       )
     } catch (error) {
       toast.error(`Failed to open workflow: ${String(error)}`)
@@ -341,7 +337,7 @@ export function useWorkflowCrud({
           setSelectedWorkflowPath,
           setCurrentWorkflow,
           setWorkflowSavedSnapshot,
-          resetExecutionIfSafe,
+          clearDraftExecutionState,
         )
       }
 
