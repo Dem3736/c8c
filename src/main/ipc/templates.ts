@@ -178,7 +178,7 @@ export function registerTemplateHandlers() {
               workdir: safeWorkdir,
               prompt,
               model,
-              maxTurns: 30,
+              maxTurns: 120,
               systemPrompts: [
                 "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
               ],

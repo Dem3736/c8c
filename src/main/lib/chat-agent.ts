@@ -453,7 +453,7 @@ export async function handleChatMessage(
     if (shouldExecuteToolCallsDirectly(message, directToolCalls)) {
       console.log("[chat-agent] executing direct user-provided tool calls:", directToolCalls.length)
       const outputs = directToolCalls.map((call) =>
-        executeParsedToolCall(call, toolCtx, conversation, window, sessionId, workflowPath),
+        executeParsedToolCall(call, toolCtx, conversation!, window, sessionId, workflowPath),
       )
       const resolvedOutputs = await Promise.all(outputs)
       const directResponse = resolvedOutputs.length === 1

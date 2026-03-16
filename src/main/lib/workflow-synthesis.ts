@@ -66,7 +66,7 @@ async function runWorkflowSynthesis(
         workdir: options.projectPath,
         prompt,
         model,
-        maxTurns: 30,
+        maxTurns: 120,
         systemPrompts: [SYNTHESIS_SYSTEM_PROMPT],
         mcpConfigPath: runtimeMcpConfig.path,
         disableBuiltInTools: providerId === "claude",

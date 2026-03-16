@@ -319,6 +319,8 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
 const RETRYABLE_ERROR_KINDS: ErrorKind[] = ["tool", "model", "timeout", "unknown"]
 const RESUMABLE_NODE_STATUSES = new Set(["pending", "queued", "running", "waiting_approval", "waiting_human"])
 const CLAUDE_LIMIT_RE = /\b(rate limit(?:ed)?|usage limit|quota(?: exceeded)?|too many requests|http\s*429|status\s*429|credit balance|billing|exceeded (?:your )?(?:usage|rate|monthly|spend|token) limit|limit reached)\b/i
+const MAX_TURNS_RE = /\b(?:error_max_turns|max turns?|turn limit)\b/i
+const PARTIAL_PROGRESS_TOOLS = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"])
 
 function createDefaultLogger(): WorkflowLogger {
   return {
@@ -461,6 +463,43 @@ function detectClaudeLimitEvidence(logParser: LogParser, stderrText: string): st
   return undefined
 }
 
+function detectMaxTurnsEvidence(logParser: LogParser, stderrText: string): string | undefined {
+  const evidence = [
+    stderrText,
+    ...collectClaudeFailureEvidence(logParser, ""),
+    logParser.rawOutput,
+  ]
+
+  for (const chunk of evidence) {
+    if (!chunk?.trim()) continue
+
+    for (const rawLine of chunk.split(/\r?\n/)) {
+      const line = normalizeLimitLine(rawLine)
+      if (!line) continue
+      if (MAX_TURNS_RE.test(line)) return line.slice(0, 240)
+    }
+
+    const collapsed = normalizeLimitLine(chunk)
+    if (collapsed && MAX_TURNS_RE.test(collapsed)) {
+      return collapsed.slice(0, 240)
+    }
+  }
+
+  return undefined
+}
+
+function hasPartialSkillProgress(log: LogEntry[], partialOutput: NodeInput | undefined): boolean {
+  if (partialOutput?.metadata?.output_source && partialOutput.metadata.output_source !== "input_fallback") {
+    return true
+  }
+
+  return log.some((entry) =>
+    entry.type === "tool_result"
+    && entry.status === "success"
+    && PARTIAL_PROGRESS_TOOLS.has(entry.tool),
+  )
+}
+
 function buildAgentFailureDetail(
   providerId: ProviderId,
   result: AgentExecutionSummary,
@@ -479,6 +518,11 @@ function buildAgentFailureDetail(
     : undefined
   if (limitEvidence && providerId === "claude") {
     return `Claude usage limit reached: ${limitEvidence}. Wait for the limit window to reset or use an account/key with available quota, then rerun.`
+  }
+
+  const maxTurnsEvidence = detectMaxTurnsEvidence(logParser, stderrText)
+  if (maxTurnsEvidence) {
+    return `max turns reached before finishing: ${maxTurnsEvidence}`
   }
 
   return `exit code ${result.exitCode}`
@@ -542,6 +586,10 @@ function humanizeIdentifier(value: string): string {
     .join(" ")
 }
 
+function normalizedSkillRef(value: string | undefined): string {
+  return typeof value === "string" ? value.trim() : ""
+}
+
 function buildArtifactMetadata(
   node: WorkflowNode,
 ): Pick<NodeInput["metadata"], "artifact_type" | "artifact_label" | "artifact_role"> {
@@ -554,7 +602,7 @@ function buildArtifactMetadata(
       }
     case "skill": {
       const config = node.config as SkillNodeConfig
-      const skillRef = config.skillRef.trim()
+      const skillRef = normalizedSkillRef(config.skillRef)
       const skillName = skillRef
         ? humanizeIdentifier(skillRef.split("/").filter(Boolean).pop() || skillRef)
         : humanizeIdentifier(node.id)
@@ -1592,6 +1640,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
 
             case "skill": {
               const config = node.config as SkillNodeConfig
+              const skillRef = normalizedSkillRef(config.skillRef)
               const nodeProviderId = await resolveNodeProviderId(node, workflow)
               const meta = runtimeWorkflow.runtimeMeta?.[node.id]
               const effectiveInputRaw = meta
@@ -1634,7 +1683,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               }
 
               const codexSkillContext = nodeProviderId === "codex"
-                ? await resolveEvaluatorSkillContext([config.skillRef])
+                ? await resolveEvaluatorSkillContext(skillRef ? [skillRef] : undefined)
                 : ""
 
               const prompt = sanitizeInvalidUnicode([
@@ -1653,7 +1702,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 const metrics = collectMetrics(logParser, state.startedAt!)
                 metrics.cost_usd = estimateCost(skillModel, metrics.tokens_in, metrics.tokens_out)
                 state.metrics = metrics
-                state.meta = buildNodeMeta(prompt, skillModel, config.skillRef, skillBackend)
+                state.meta = buildNodeMeta(prompt, skillModel, skillRef || undefined, skillBackend)
               }
 
               recoverOutputOnError = async () => {
@@ -1716,7 +1765,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                   workdir,
                   prompt,
                   model: skillModel,
-                  maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 60,
+                  maxTurns: config.maxTurns || workflow.defaults?.maxTurns || 120,
                   permissionMode: "acceptEdits",
                   executionMode: effectivePermissionMode,
                   mcpConfigPath,
@@ -2510,6 +2559,33 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
           state.completedAt = Date.now()
           state.error = errorText
           state.errorKind = classifyError(error, timedOut)
+
+          if (
+            node.type === "skill"
+            && MAX_TURNS_RE.test(errorText)
+            && hasPartialSkillProgress(state.log, partialOutput)
+          ) {
+            const output = buildContinueOutput(node, incomingContent, partialOutput)
+            const recoveryLog = {
+              type: "text" as const,
+              content: "[runtime-recovery] max turns reached after partial progress; continuing with recovered output\n",
+              timestamp: Date.now(),
+            }
+            state.log.push(recoveryLog)
+            await runtime.emitEvent({ type: "node-log", runId, nodeId: node.id, entry: recoveryLog })
+
+            state.status = "completed"
+            state.error = undefined
+            state.errorKind = undefined
+            state.policyApplied = "continue"
+            state.output = output
+            await writeNodeOutputFile(workspace, node.id, output.content)
+            for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+              activatedEdges.add(edge.id)
+            }
+            await runtime.emitEvent({ type: "node-done", runId, nodeId: node.id, output })
+            return
+          }
 
           const canRetry = runtimePolicy.retry.enabled
             && state.retriesUsed! < runtimePolicy.retry.maxTries - 1

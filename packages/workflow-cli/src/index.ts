@@ -456,6 +456,8 @@ function renderEventHuman(event: WorkflowEvent): string {
       return `approval ${event.nodeId}`
     case "run-done":
       return `run ${event.status}`
+    default:
+      return `event ${(event as { type: string }).type}`
   }
 }
 
@@ -873,7 +875,7 @@ export function buildOpenClawHumanInputRequest(
     prompt: task.state.instructions || task.state.title,
     task: task.task,
     taskId: task.taskId,
-    request: task.request as Record<string, unknown>,
+    request: task.request as unknown as Record<string, unknown>,
   }
 }
 

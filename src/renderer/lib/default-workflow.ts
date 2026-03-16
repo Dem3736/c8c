@@ -4,7 +4,7 @@ export const EMPTY_WORKFLOW: Workflow = {
   version: 1,
   name: "",
   description: "",
-  defaults: { model: "sonnet", maxTurns: 60, timeout_minutes: 30, maxParallel: 8 },
+  defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
   nodes: [
     {
       id: "input-1",

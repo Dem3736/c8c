@@ -210,6 +210,26 @@ const SIMPLE_SKILL_WORKFLOW: Workflow = {
   ],
 }
 
+const PROMPT_ONLY_SKILL_WORKFLOW: Workflow = {
+  version: 1,
+  name: "Prompt Only Skill",
+  defaults: { model: "sonnet", maxTurns: 10 },
+  nodes: [
+    { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+    {
+      id: "skill-1",
+      type: "skill",
+      position: { x: 300, y: 0 },
+      config: { prompt: "Audit and improve the provided copy." },
+    },
+    { id: "output-1", type: "output", position: { x: 600, y: 0 }, config: {} },
+  ],
+  edges: [
+    { id: "e1", source: "input-1", target: "skill-1", type: "default" },
+    { id: "e2", source: "skill-1", target: "output-1", type: "default" },
+  ],
+}
+
 const RERUN_EVAL_ONLY_WORKFLOW: Workflow = {
   version: 1,
   name: "Rerun Eval Only",
@@ -331,6 +351,31 @@ describe("workflow-runner evaluator loop", () => {
     expect(skillDone.output.metadata.output_source).toBe("content_file")
   })
 
+  it("completes prompt-only skill nodes without requiring skillRef", async () => {
+    mockedSpawn.mockImplementation(async (opts: any) => {
+      opts.onStdout?.(
+        Buffer.from(
+          '{"type":"assistant","subtype":"text","content":"Great content"}\n',
+        ),
+      )
+      return { success: true, exitCode: 0, signal: null, killed: false, aborted: false, durationMs: 100 }
+    })
+
+    const { runWorkflow } = await import("./workflow-runner")
+    await runWorkflow("run-prompt-only-skill", PROMPT_ONLY_SKILL_WORKFLOW, { type: "text", value: "input" }, mockWindow)
+
+    const skillDone = events.find(
+      (e) => e.type === "node-done" && (e as any).nodeId === "skill-1",
+    ) as any
+    const runDone = events.find((e) => e.type === "run-done") as any
+
+    expect(skillDone).toBeDefined()
+    expect(skillDone.output.content).toBe("Great content")
+    expect(skillDone.output.metadata.artifact_label).toBe("Skill 1 output")
+    expect(runDone).toBeDefined()
+    expect(runDone.status).toBe("completed")
+  })
+
   it("keeps best-effort skill output when skill process fails", async () => {
     mockedSpawn.mockImplementation(async (opts: any) => {
       opts.onStdout?.(
@@ -364,6 +409,52 @@ describe("workflow-runner evaluator loop", () => {
     expect(outputDone.output.content).toBe("")
     expect(runDone).toBeDefined()
     expect(runDone.status).toBe("failed")
+  })
+
+  it("continues after max turns when the skill already applied edits", async () => {
+    mockedReadFile.mockImplementation(async (path: any) => {
+      const target = String(path)
+      if (target.includes("content-skill-1.md")) return "input"
+      return "improved content"
+    })
+
+    mockedSpawn.mockImplementation(async (opts: any) => {
+      opts.onStdout?.(
+        Buffer.from(
+          '{"type":"tool_use","name":"Edit","input":{"file_path":"src/app.tsx"}}\n'
+          + '{"type":"tool_result","name":"Edit","content":"Applied edit","is_error":false}\n'
+          + '{"type":"error","error":"error_max_turns: maximum number of turns reached"}\n',
+        ),
+      )
+      return { success: false, exitCode: 1, signal: null, killed: false, aborted: false, durationMs: 100 }
+    })
+
+    const { runWorkflow } = await import("./workflow-runner")
+    await runWorkflow("run-skill-max-turns-partial", SIMPLE_SKILL_WORKFLOW, { type: "text", value: "input" }, mockWindow)
+
+    const skillDone = events.find(
+      (e) => e.type === "node-done" && (e as any).nodeId === "skill-1",
+    ) as any
+    const skillError = events.find(
+      (e) => e.type === "node-error" && (e as any).nodeId === "skill-1",
+    ) as any
+    const recoveryLog = events.find(
+      (e) =>
+        e.type === "node-log"
+        && (e as any).nodeId === "skill-1"
+        && String((e as any).entry?.content || "").includes("[runtime-recovery]"),
+    ) as any
+    const runDone = events.find((e) => e.type === "run-done") as any
+
+    expect(skillDone).toBeDefined()
+    expect(skillDone.output.content).toBe("input")
+    expect(skillDone.output.metadata.output_source).toBe("input_fallback")
+    expect(skillDone.output.metadata.partial_on_error).toBe(true)
+    expect(skillDone.output.metadata.error_policy_applied).toBe("continue")
+    expect(skillError).toBeUndefined()
+    expect(recoveryLog).toBeDefined()
+    expect(runDone).toBeDefined()
+    expect(runDone.status).toBe("completed")
   })
 
   it("reports descriptive error when CLI spawn fails (exitCode null)", async () => {

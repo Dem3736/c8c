@@ -19,7 +19,7 @@ A workflow is a directed graph with nodes and edges:
   "description": "What this workflow does",
   "defaults": {
     "model": "sonnet",
-    "maxTurns": 60,
+    "maxTurns": 120,
     "timeout_minutes": 30,
     "maxParallel": 8,
     "permissionMode": "edit"

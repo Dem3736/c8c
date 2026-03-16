@@ -218,7 +218,7 @@ export async function runChain(
         workdir,
         prompt: fullPrompt,
         model: chain.defaults?.model || getDefaultModelForProvider(providerId),
-        maxTurns: step.maxTurns || chain.defaults?.maxTurns || 60,
+        maxTurns: step.maxTurns || chain.defaults?.maxTurns || 120,
         permissionMode: "acceptEdits",
         executionMode: mode === "analyze" ? "plan" : "edit",
         addDirs: step.skillPaths?.map((p) => (p.endsWith(".md") ? dirname(p) : p)),

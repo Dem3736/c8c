@@ -184,7 +184,7 @@ export function parseGeneratedWorkflow(output: string): Workflow {
     description: w.description,
     defaults: w.defaults || {
       model: "sonnet",
-      maxTurns: 60,
+      maxTurns: 120,
       timeout_minutes: 30,
       maxParallel: 8,
     },
