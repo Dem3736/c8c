@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="public/thumb.png" alt="c8c — skill operations for Claude Code" width="480" />
+  <img src="public/logo.png" alt="c8c" width="120" />
 </p>
+
+<h3 align="center">c8c — skill operations for Claude Code</h3>
 
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
@@ -10,6 +12,8 @@
 <p align="center">
   <a href="https://github.com/bluzir/c8c/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
   <a href="https://github.com/bluzir/c8c/stargazers"><img src="https://img.shields.io/github/stars/bluzir/c8c?style=flat" alt="Stars" /></a>
+  <img src="https://img.shields.io/badge/version-v0.4.1-blue" alt="v0.4.1" />
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
 </p>
 
 <br/>
@@ -18,7 +22,7 @@
 
 # Open-source skill operations for Claude Code and OpenAI Codex
 
-**If Claude Code is a _worker_, c8c is a _factory_.**
+> One agent is a worker. c8c is a factory.
 
 c8c is a desktop app that lets you build visual pipelines from Claude Code and OpenAI Codex skills. Chain, branch, evaluate, and retry — turn single prompts into production operations.
 
@@ -70,8 +74,8 @@ Split work into parallel paths. Merge results with configurable strategies — c
 Watch data flow through every node in real time. Tokens, cost, duration — visible at every step.
 </td>
 <td align="center">
-<h3>Approval Gates</h3>
-Insert human checkpoints. Review and edit intermediate output before the pipeline continues.
+<h3>Human-in-the-Loop</h3>
+Durable approval gates with resumable tasks. Review and edit intermediate output before the pipeline continues.
 </td>
 <td align="center">
 <h3>Batch Processing</h3>
@@ -80,16 +84,16 @@ Run the same pipeline over a list of inputs. Process 100 items with one click.
 </tr>
 <tr>
 <td align="center">
-<h3>Model Selection</h3>
-Pick the right model per node — Opus for complex reasoning, Haiku for fast classification, Sonnet for the middle ground.
+<h3>CLI Runner</h3>
+Run workflows outside Electron with <code>c8c-workflow run pipeline.yaml</code>. Same engine, no GUI required.
 </td>
 <td align="center">
-<h3>Skill Library</h3>
-Browse and import Claude Code skills. Markdown-based, version-controlled, shareable.
+<h3>24 Templates</h3>
+Ready-to-use pipeline templates for common operations. Import, customize, and run — no setup from scratch.
 </td>
 <td align="center">
-<h3>Project Scoping</h3>
-Workflows live with your project. Different repos, different pipelines, same app.
+<h3>Multi-Provider</h3>
+Claude Code, OpenAI Codex, and Claude SDK. Pick the right provider and model per node.
 </td>
 </tr>
 </table>
@@ -100,12 +104,12 @@ Workflows live with your project. Different repos, different pipelines, same app
 
 | Without c8c | With c8c |
 | --- | --- |
-| ❌ One Claude agent doing everything — loses context on complex tasks | ✅ Each skill node does one thing well. The pipeline does everything. |
-| ❌ Copy-pasting outputs between conversations manually | ✅ Outputs flow automatically from node to node |
-| ❌ No idea if the output is good until you read the whole thing | ✅ Evaluator nodes score output and retry if it fails |
-| ❌ Running the same multi-step process by hand, every time | ✅ Build once, rerun on any input. Same pipeline, same quality. |
-| ❌ No visibility into token usage or cost across steps | ✅ Tokens, cost, and duration tracked per node and per run |
-| ❌ Can't parallelize — one prompt at a time | ✅ Splitter nodes fan out into parallel branches |
+| ✗ One Claude agent doing everything — loses context on complex tasks | ✓ Each skill node does one thing well. The pipeline does everything. |
+| ✗ Copy-pasting outputs between conversations manually | ✓ Outputs flow automatically from node to node |
+| ✗ No idea if the output is good until you read the whole thing | ✓ Evaluator nodes score output and retry if it fails |
+| ✗ Running the same multi-step process by hand, every time | ✓ Build once, rerun on any input. Same pipeline, same quality. |
+| ✗ No visibility into token usage or cost across steps | ✓ Tokens, cost, and duration tracked per node and per run |
+| ✗ Can't parallelize — one prompt at a time | ✓ Splitter nodes fan out into parallel branches |
 
 <br/>
 
@@ -196,7 +200,7 @@ Workflows are directed acyclic graphs defined in YAML. The runtime expands the g
 ## Roadmap
 
 - ⚪ Template marketplace — share and discover pipelines
-- ⚪ CLI runner — `c8c-workflow run pipeline.yaml` without the desktop app
+- ◉ CLI runner — `c8c-workflow run pipeline.yaml` without the desktop app
 - ⚪ Scheduled runs — cron-based pipeline execution
 - ⚪ Webhooks — trigger pipelines from external events
 - ⚪ Plugin system — custom node types
@@ -238,5 +242,5 @@ MIT &copy; 2026 c8c
 ---
 
 <p align="center">
-  <sub>Open source under MIT. Built for people who run operations, not prompts.</sub>
+  <sub>Run it, don't prompt it.</sub>
 </p>
