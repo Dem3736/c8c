@@ -1,9 +1,10 @@
-import { execFile as execFileCb } from "node:child_process"
+import { execFile as execFileCb, spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import { promisify } from "node:util"
 import { withExecutionSlot } from "../lib/execution-pool"
+import type { AgentRunResult } from "../schema.js"
 
 const execFile = promisify(execFileCb)
 
@@ -27,7 +28,7 @@ export function buildExtendedPath(existingPath: string | undefined): string {
   return [...new Set(merged.filter(Boolean))].join(delimiter)
 }
 
-export function buildClaudeEnv(): NodeJS.ProcessEnv {
+export function buildClaudeEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   const passthroughKeys = [
     "HOME",
@@ -55,6 +56,9 @@ export function buildClaudeEnv(): NodeJS.ProcessEnv {
   }
 
   env.PATH = buildExtendedPath(process.env.PATH)
+  if (extraEnv) {
+    Object.assign(env, extraEnv)
+  }
   return env
 }
 
@@ -90,6 +94,169 @@ export interface ExecClaudeResult {
   stdout: string
   stderr: string
   queueWaitMs?: number
+}
+
+export interface SpawnClaudeOptions {
+  workdir: string
+  prompt: string
+  model?: string
+  maxTurns?: number
+  permissionMode?: string
+  systemPrompts?: string[]
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  settingSources?: string[]
+  addDirs?: string[]
+  extraArgs?: string[]
+  extraEnv?: Record<string, string>
+  timeout?: number
+  abortSignal?: AbortSignal
+  onSpawn?: (pid: number) => void
+  onStdout?: (data: Buffer) => void
+  onStderr?: (data: Buffer) => void
+}
+
+function buildClaudeArgs(options: SpawnClaudeOptions): string[] {
+  const args = ["--print"]
+
+  if (options.model) {
+    args.push("--model", options.model)
+  }
+
+  if (options.maxTurns) {
+    args.push("--max-turns", String(options.maxTurns))
+  }
+
+  if (options.permissionMode) {
+    args.push("--permission-mode", options.permissionMode)
+  }
+
+  if (options.systemPrompts?.length) {
+    args.push("--append-system-prompt", options.systemPrompts.join("\n\n"))
+  }
+
+  if (options.settingSources?.length) {
+    args.push("--setting-sources", options.settingSources.join(","))
+  }
+
+  if (options.extraArgs?.length) {
+    args.push(...options.extraArgs)
+  }
+
+  if (options.prompt.length <= 4096) {
+    args.push(options.prompt)
+  }
+
+  if (options.addDirs?.length) {
+    args.push("--add-dir", ...options.addDirs)
+  }
+
+  if (options.allowedTools?.length) {
+    args.push("--allowedTools", options.allowedTools.join(","))
+  }
+
+  if (options.disallowedTools?.length) {
+    args.push("--disallowedTools", options.disallowedTools.join(","))
+  }
+
+  return args
+}
+
+export function spawnClaude(options: SpawnClaudeOptions): Promise<AgentRunResult> {
+  const executable = findClaudeExecutable() || "claude"
+  const timeout = options.timeout ?? 600_000
+
+  if (!existsSync(options.workdir)) {
+    options.onStderr?.(Buffer.from(`Working directory does not exist: ${options.workdir}\n`))
+    return Promise.resolve({
+      success: false,
+      exitCode: null,
+      signal: null,
+      killed: false,
+      aborted: false,
+      durationMs: 0,
+    })
+  }
+
+  const args = buildClaudeArgs(options)
+  const env = buildClaudeEnv(options.extraEnv)
+  const useStdin = options.prompt.length > 4096
+  const startedAt = Date.now()
+
+  return new Promise((resolve) => {
+    const child = spawn(executable, args, {
+      cwd: options.workdir,
+      env,
+      stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
+    })
+
+    if (typeof child.pid === "number") {
+      options.onSpawn?.(child.pid)
+    }
+
+    if (useStdin && child.stdin) {
+      child.stdin.write(options.prompt)
+      child.stdin.end()
+    }
+
+    let killed = false
+    let aborted = false
+
+    const timer = setTimeout(() => {
+      killed = true
+      child.kill("SIGKILL")
+    }, timeout)
+
+    const onAbort = () => {
+      aborted = true
+      child.kill("SIGTERM")
+      setTimeout(() => {
+        child.kill("SIGKILL")
+      }, 5_000).unref()
+    }
+
+    if (options.abortSignal) {
+      if (options.abortSignal.aborted) {
+        onAbort()
+      } else {
+        options.abortSignal.addEventListener("abort", onAbort, { once: true })
+      }
+    }
+
+    if (options.onStdout && child.stdout) {
+      child.stdout.on("data", options.onStdout)
+    }
+
+    if (options.onStderr && child.stderr) {
+      child.stderr.on("data", options.onStderr)
+    }
+
+    child.on("close", (exitCode, signal) => {
+      clearTimeout(timer)
+      resolve({
+        success: !killed && !aborted && exitCode === 0,
+        exitCode,
+        signal,
+        killed,
+        aborted,
+        durationMs: Date.now() - startedAt,
+        pid: child.pid,
+      })
+    })
+
+    child.on("error", () => {
+      clearTimeout(timer)
+      resolve({
+        success: false,
+        exitCode: null,
+        signal: null,
+        killed: false,
+        aborted: false,
+        durationMs: Date.now() - startedAt,
+        pid: child.pid,
+      })
+    })
+  })
 }
 
 export async function execClaude(

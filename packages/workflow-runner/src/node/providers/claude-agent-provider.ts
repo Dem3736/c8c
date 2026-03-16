@@ -7,13 +7,13 @@ import type {
   ProviderHealth,
 } from "../../schema.js"
 import { createLegacyExecutionHandle } from "../../lib/agent-execution.js"
-import { execClaude, findClaudeExecutable } from "../claude-cli.js"
+import { createClaudeSdkExecutionHandle } from "../claude-sdk-runtime.js"
+import { execClaude, findClaudeExecutable, spawnClaude, type SpawnClaudeOptions } from "../claude-cli.js"
 import { getClaudeCodeSubscriptionStatus } from "../claude-subscription.js"
 import { buildProviderExtraArgs } from "../mcp-config.js"
 import { errorMessage } from "./provider-utils.js"
-import { spawnClaude, type ClaudeSpawnOptions } from "@claude-tools/runner"
 
-function toClaudeSpawnOptions(options: AgentRunOptions): ClaudeSpawnOptions {
+function toClaudeSpawnOptions(options: AgentRunOptions): SpawnClaudeOptions {
   const extraArgs = [
     ...buildProviderExtraArgs("claude", options.mcpConfigPath),
     ...(options.disableSlashCommands ? ["--disable-slash-commands"] : []),
@@ -82,16 +82,20 @@ export class ClaudeAgentProvider implements AgentProvider {
     return spawnClaude(toClaudeSpawnOptions(options))
   }
 
-  executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
-    return Promise.resolve(
-      createLegacyExecutionHandle(this.id, "claude_cli", options, this.runLegacyClaude.bind(this)),
-    )
+  async executeInteractive(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    try {
+      return await createClaudeSdkExecutionHandle(options)
+    } catch {
+      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runLegacyClaude.bind(this))
+    }
   }
 
-  executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle> {
-    return Promise.resolve(
-      createLegacyExecutionHandle(this.id, "claude_cli", options, this.runLegacyClaude.bind(this)),
-    )
+  async executeTask(options: AgentRunOptions): Promise<AgentExecutionHandle> {
+    try {
+      return await createClaudeSdkExecutionHandle(options)
+    } catch {
+      return createLegacyExecutionHandle(this.id, "claude_cli", options, this.runLegacyClaude.bind(this))
+    }
   }
 
   cancel(_sessionId: string): boolean {

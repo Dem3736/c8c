@@ -41,7 +41,6 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
     "@anthropic-ai/claude-agent-sdk": "^0.2.45",
-    "@claude-tools/runner": "workspace:*",
     "@mcpc-tech/acp-ai-provider": "^0.2.8",
     "@zed-industries/codex-acp": "^0.10.0",
     "ai": "^6.0.14",

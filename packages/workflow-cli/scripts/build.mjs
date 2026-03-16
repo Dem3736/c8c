@@ -41,7 +41,6 @@ await build({
     "electron",
     "@agentclientprotocol/sdk",
     "@anthropic-ai/claude-agent-sdk",
-    "@claude-tools/runner",
     "@mcpc-tech/acp-ai-provider",
     "@zed-industries/codex-acp",
     "ai",
