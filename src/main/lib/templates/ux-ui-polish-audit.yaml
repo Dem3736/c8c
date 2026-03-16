@@ -1,0 +1,154 @@
+id: ux-ui-polish-audit
+stage: code
+emoji: "\U0001F3A8"
+headline: Audit UX/UI polish across the whole project
+how: Maps the product surface, fans out repo-wide UX/UI audit lenses, and merges findings into one actionable polish report
+input: A project directory
+output: Repo-wide UX/UI polish report with prioritized fixes and file-level evidence
+steps:
+  - Map the full user-facing surface of the project
+  - Fan out repo-wide UX/UI audit tracks by lens
+  - Merge findings into one prioritized polish report
+  - Run a report quality gate before output
+version: 1
+name: UX/UI Polish Audit
+description: Map the full product surface, audit the entire project in parallel through UX/UI lenses, and produce
+  one prioritized polish report
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 45
+  maxParallel: 5
+  permissionMode: plan
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: directory
+      required: true
+      placeholder: /path/to/project
+  - id: mapper-1
+    type: skill
+    position:
+      x: 280
+      y: 200
+    config:
+      skillRef: impeccable/surface-mapper
+      prompt: >-
+        Inspect the entire project in the current working directory and map the user-facing surface area. Identify
+        primary routes/screens, key user journeys, shared layout/components, stateful flows, feedback states
+        (loading/empty/error/success), styling or theming layers, and responsive breakpoints. Output a concise but
+        comprehensive markdown project map with sections: Surface Overview, Core Flows, Shared UI Building Blocks,
+        State and Feedback Surfaces, Styling/Theming Notes, and Representative File Paths. Do not audit or propose
+        fixes yet.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 560
+      y: 200
+    config:
+      strategy: |-
+        From the project map, create exactly 5 parallel repo-wide audit tasks. Each task must inspect the ENTIRE
+        project from one UX/UI lens:
+        1) information architecture and primary user flows
+        2) visual hierarchy, layout, spacing, and consistency
+        3) interaction states, forms, and system feedback
+        4) accessibility, responsiveness, and input ergonomics
+        5) perceived performance, motion, and final polish details
+
+        Each task must be fully self-contained and include:
+        - lens name
+        - what to inspect across the whole codebase
+        - representative routes/components/files from the project map
+        - what good looks like for that lens
+        Avoid overlap where possible, but keep every task grounded in the full project.
+      maxBranches: 5
+  - id: auditor-1
+    type: skill
+    position:
+      x: 860
+      y: 200
+    config:
+      skillRef: impeccable/repo-polish-auditor
+      prompt: >-
+        Using the assigned audit task and the current working directory, audit the ENTIRE project from this UX/UI
+        lens. Inspect actual code, routes, components, styles, states, and responsive behavior. Do not edit files.
+        Output a structured markdown report with sections: Lens Summary, Strengths, Findings, and Recommended
+        Fixes. Every finding must include severity (critical/high/medium/low), user impact, evidence with file paths
+        and line numbers when possible, and a concrete recommendation. Separate quick wins from broader redesign or
+        refactor work.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1160
+      y: 200
+    config:
+      strategy: summarize
+      prompt: |-
+        Merge the branch outputs into one UX/UI polish report for the whole project.
+
+        Structure the report as:
+        - Executive summary
+        - Overall polish scorecard by lens
+        - Top strengths worth preserving
+        - Critical issues first, then high/medium/low findings
+        - Cross-cutting themes seen in multiple branches
+        - Prioritized roadmap: now / next / later
+        - File and component hotspots
+
+        Deduplicate overlaps, keep file references when available, and make the final report directly actionable for a
+        product/design/engineering team.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1460
+      y: 200
+    config:
+      criteria: >-
+        Score 1-10 on: (1) project-wide coverage across real UX/UI surfaces, (2) specificity of evidence with file or
+        component references, (3) quality of prioritization and severity calibration, (4) actionability of proposed
+        fixes, and (5) usefulness of the final report for a polish sprint. Fail if the report reads generic, misses
+        major UX layers, or lacks concrete evidence.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
+  - id: output-1
+    type: output
+    position:
+      x: 1760
+      y: 200
+    config:
+      title: UX/UI Polish Report
+      format: markdown
+edges:
+  - id: e-input-mapper
+    source: input-1
+    target: mapper-1
+    type: default
+  - id: e-mapper-splitter
+    source: mapper-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-auditor
+    source: splitter-1
+    target: auditor-1
+    type: default
+  - id: e-auditor-merger
+    source: auditor-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-splitter
+    source: evaluator-1
+    target: splitter-1
+    type: fail

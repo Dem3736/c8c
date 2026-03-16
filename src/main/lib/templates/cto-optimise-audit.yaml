@@ -1,0 +1,154 @@
+id: cto-optimise-audit
+stage: code
+emoji: "\U0001F6E0"
+headline: Audit and optimize a project through a CTO lens
+how: Maps the system, fans out repo-wide CTO audit lenses, and merges findings into one prioritized optimization report
+input: A project directory
+output: CTO optimization report with system risks, opportunities, and roadmap
+steps:
+  - Map the system across code, runtime, and delivery surfaces
+  - Fan out repo-wide CTO audit tracks by optimization lens
+  - Merge findings into one prioritized optimization report
+  - Run a report quality gate before output
+version: 1
+name: CTO Optimise Audit
+description: Map the system, audit the entire project in parallel through CTO optimization lenses, and produce one
+  actionable report
+defaults:
+  model: sonnet
+  maxTurns: 60
+  timeout_minutes: 45
+  maxParallel: 6
+  permissionMode: plan
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: directory
+      required: true
+      placeholder: /path/to/project
+  - id: mapper-1
+    type: skill
+    position:
+      x: 280
+      y: 200
+    config:
+      skillRef: cto/system-mapper
+      prompt: >-
+        Inspect the entire project in the current working directory and create a CTO-level system map. Identify the
+        main product/runtime surfaces, architectural modules, data boundaries, integration points, build and release
+        paths, test surfaces, operational touchpoints, and representative files. Output a concise markdown map with
+        sections: System Overview, Major Modules, Runtime/Data Boundaries, Delivery Tooling, Observability/Operations,
+        and Representative File Paths. Do not audit or optimize yet.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 560
+      y: 200
+    config:
+      strategy: |-
+        From the system map, create exactly 6 parallel repo-wide CTO audit tasks. Each task must inspect the ENTIRE
+        project from one optimization lens:
+        1) architecture, modularity, and boundaries
+        2) performance and scalability
+        3) reliability, resilience, and observability
+        4) security, privacy, and operational risk
+        5) developer experience, testing, and delivery velocity
+        6) infrastructure, dependency, and cost efficiency
+
+        Each task must be fully self-contained and include:
+        - lens name
+        - what to inspect across the whole codebase and toolchain
+        - representative modules/files from the system map
+        - what good looks like for that lens
+        Avoid overlap where possible, but keep every task grounded in the full project.
+      maxBranches: 6
+  - id: auditor-1
+    type: skill
+    position:
+      x: 860
+      y: 200
+    config:
+      skillRef: cto/repo-optimise-auditor
+      prompt: >-
+        Act as a pragmatic CTO. Using the assigned audit task and the current working directory, audit the ENTIRE
+        project from this optimization lens. Inspect actual code, module boundaries, dependencies, scripts, configs,
+        tests, and operational surfaces. Do not edit files. Output a structured markdown report with sections: Lens
+        Summary, Findings, Opportunities, and Recommendations. Every finding must include severity or risk level,
+        engineering/business impact, evidence with file paths and line numbers when possible, effort level
+        (small/medium/large), and a concrete next action.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1160
+      y: 200
+    config:
+      strategy: summarize
+      prompt: |-
+        Merge the branch outputs into one CTO optimization report for the whole project.
+
+        Structure the report as:
+        - Executive summary
+        - System health scorecard by lens
+        - Most important risks and constraints
+        - Highest-leverage optimization opportunities
+        - Recommended roadmap: 30 / 60 / 90 days
+        - Effort vs impact matrix
+        - File, module, and workflow hotspots
+
+        Deduplicate overlaps, preserve concrete evidence, call out dependencies between recommendations, and keep the
+        result useful for technical leadership planning.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1460
+      y: 200
+    config:
+      criteria: >-
+        Score 1-10 on: (1) full-project coverage across CTO concerns, (2) technical depth and evidence quality, (3)
+        prioritization by impact and effort, (4) realism of the roadmap and recommendations, and (5) usefulness for
+        technical leadership decision-making. Fail if the report is generic, thin on concrete evidence, or weak on
+        prioritization.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
+  - id: output-1
+    type: output
+    position:
+      x: 1760
+      y: 200
+    config:
+      title: CTO Optimisation Report
+      format: markdown
+edges:
+  - id: e-input-mapper
+    source: input-1
+    target: mapper-1
+    type: default
+  - id: e-mapper-splitter
+    source: mapper-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-auditor
+    source: splitter-1
+    target: auditor-1
+    type: default
+  - id: e-auditor-merger
+    source: auditor-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-splitter
+    source: evaluator-1
+    target: splitter-1
+    type: fail

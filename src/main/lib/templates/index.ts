@@ -20,6 +20,8 @@ import fullStackCodeAuditRaw from "./full-stack-code-audit.yaml?raw"
 import landingPageGeneratorRaw from "./landing-page-generator.yaml?raw"
 import ctoProductSpecRaw from "./cto-product-spec.yaml?raw"
 import impeccableUIPipelineRaw from "./impeccable-ui-pipeline.yaml?raw"
+import uxUiPolishAuditRaw from "./ux-ui-polish-audit.yaml?raw"
+import ctoOptimiseAuditRaw from "./cto-optimise-audit.yaml?raw"
 import indispensableJtbdPipelineRaw from "./indispensable-jtbd-pipeline.yaml?raw"
 import irresistibleResonancePipelineRaw from "./irresistible-resonance-pipeline.yaml?raw"
 
@@ -42,6 +44,8 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(landingPageGeneratorRaw, { source: "builtin" }),
   parseTemplate(ctoProductSpecRaw, { source: "builtin" }),
   parseTemplate(impeccableUIPipelineRaw, { source: "builtin" }),
+  parseTemplate(uxUiPolishAuditRaw, { source: "builtin" }),
+  parseTemplate(ctoOptimiseAuditRaw, { source: "builtin" }),
   parseTemplate(indispensableJtbdPipelineRaw, { source: "builtin" }),
   parseTemplate(irresistibleResonancePipelineRaw, { source: "builtin" }),
 ]
