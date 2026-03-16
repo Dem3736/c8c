@@ -38,6 +38,11 @@ import {
 } from "../../../src/main/lib/run-pid-manifest.js"
 import { writeFileAtomic } from "../../../src/main/lib/atomic-write.js"
 import {
+  approvalTaskId,
+  upsertApprovalHilTask,
+  writeWorkflowHilTaskResponse,
+} from "./hil-store.js"
+import {
   getDefaultModelForProvider,
   resolveNodeProvider,
   resolveWorkflowProvider,
@@ -1139,6 +1144,20 @@ export async function writeWorkflowApprovalDecision(
   decision: { approved: boolean; editedContent?: string },
 ): Promise<void> {
   await persistApprovalDecision(workspace, nodeId, decision)
+  const taskId = approvalTaskId(nodeId)
+  try {
+    await writeWorkflowHilTaskResponse({
+      workspace,
+      taskId,
+      data: {
+        approved: decision.approved,
+        editedContent: decision.editedContent,
+      },
+      source: "openclaw",
+    })
+  } catch {
+    // Approval-only runs created before the HIL task store existed may not have task artifacts.
+  }
 }
 
 export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
@@ -2095,6 +2114,18 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               let decision = await readApprovalDecision(workspace, node.id)
 
               if (!decision) {
+                await upsertApprovalHilTask({
+                  workspace,
+                  runId,
+                  workflowName: workflow.name,
+                  workflowPath,
+                  projectPath,
+                  nodeId: node.id,
+                  title: approvalConfig.message || `Approval required for ${node.id}`,
+                  message: approvalConfig.message,
+                  content: approvalContent,
+                  allowEdit: approvalConfig.allow_edit,
+                })
                 await runtime.emitEvent({
                   type: "approval-requested",
                   runId,
@@ -2628,10 +2659,21 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       const workspace = runWorkspaces.get(decision.runId)
       if (workspace) {
         try {
-          await persistApprovalDecision(workspace, decision.nodeId, {
+          const persistedDecision = {
             approved: decision.approved,
             editedContent: decision.editedContent,
-          })
+          }
+          await persistApprovalDecision(workspace, decision.nodeId, persistedDecision)
+          try {
+            await writeWorkflowHilTaskResponse({
+              workspace,
+              taskId: approvalTaskId(decision.nodeId),
+              data: persistedDecision,
+              source: "runtime",
+            })
+          } catch {
+            // Ignore missing task artifacts for older runs.
+          }
         } catch (error) {
           logger.warn("workflow-runner", "persist_approval_decision_failed", {
             runId: decision.runId,
