@@ -12,11 +12,14 @@ import {
   searchSkills as searchSkillsFn,
   browseCategory as browseCategoryFn,
 } from "./skill-category"
+import { synthesizeWorkflowFromRequest } from "./workflow-synthesis"
 
 export interface ToolContext {
   workflow: Workflow
   skills: DiscoveredSkill[]
   categoryTree: SkillCategoryNode
+  projectPath: string
+  surfacedSkillRefs: Set<string>
 }
 
 export interface ToolResult {
@@ -24,7 +27,7 @@ export interface ToolResult {
   workflowMutated: boolean
 }
 
-type ToolHandler = (ctx: ToolContext, input: Record<string, unknown>) => ToolResult
+type ToolHandler = (ctx: ToolContext, input: Record<string, unknown>) => ToolResult | Promise<ToolResult>
 
 function nextNodeId(workflow: Workflow, prefix = "node"): string {
   const existing = new Set(workflow.nodes.map((n) => n.id))
@@ -52,6 +55,31 @@ function nextEdgeId(
 }
 
 const toolHandlers: Record<string, ToolHandler> = {
+  async synthesize_workflow(ctx, input) {
+    const request = typeof input.request === "string" ? input.request.trim() : ""
+    const mode = input.mode === "edit" ? "edit" : "create"
+
+    if (!request) {
+      return { output: "Error: request is required", workflowMutated: false }
+    }
+
+    const nextWorkflow = await synthesizeWorkflowFromRequest(mode, request, {
+      projectPath: ctx.projectPath,
+      availableSkills: ctx.skills,
+      seedWorkflow: ctx.workflow,
+    })
+
+    ctx.workflow = nextWorkflow
+    for (const skill of ctx.skills) {
+      ctx.surfacedSkillRefs.add(`${skill.category}/${skill.name}`)
+    }
+
+    return {
+      output: `${mode === "edit" ? "Updated" : "Created"} workflow "${nextWorkflow.name}" with ${nextWorkflow.nodes.length} nodes and ${nextWorkflow.edges.length} edges`,
+      workflowMutated: true,
+    }
+  },
+
   get_workflow(ctx) {
     return {
       output: JSON.stringify(ctx.workflow, null, 2),
@@ -315,6 +343,10 @@ const toolHandlers: Record<string, ToolHandler> = {
       .map((r) => `- ${r.skillRef}: ${r.description} (score: ${r.score})`)
       .join("\n")
 
+    for (const result of results) {
+      ctx.surfacedSkillRefs.add(result.skillRef)
+    }
+
     return {
       output: `Found ${results.length} skills matching "${query}":\n${formatted}`,
       workflowMutated: false,
@@ -342,6 +374,7 @@ const toolHandlers: Record<string, ToolHandler> = {
       parts.push("\nSkills:")
       for (const skill of node.skills) {
         parts.push(`  - ${skill.skillRef}: ${skill.description}`)
+        ctx.surfacedSkillRefs.add(skill.skillRef)
       }
     }
 
@@ -349,7 +382,9 @@ const toolHandlers: Record<string, ToolHandler> = {
   },
 
   validate_workflow(ctx) {
-    const result = validateWorkflowExtended(ctx.workflow, ctx.skills)
+    const result = validateWorkflowExtended(ctx.workflow, ctx.skills, {
+      surfacedSkillRefs: ctx.surfacedSkillRefs,
+    })
 
     const parts: string[] = []
     if (result.valid) {
@@ -377,19 +412,20 @@ const toolHandlers: Record<string, ToolHandler> = {
 /**
  * Execute a tool by name with given input.
  */
-export function executeTool(
+export async function executeTool(
   toolName: string,
   ctx: ToolContext,
   input: Record<string, unknown>,
-): ToolResult {
+): Promise<ToolResult> {
   const handler = toolHandlers[toolName]
   if (!handler) {
+    const available = Object.keys(toolHandlers).sort().join(", ")
     return {
-      output: `Unknown tool: "${toolName}"`,
+      output: `Unknown tool: "${toolName}". Available workflow tools: ${available}`,
       workflowMutated: false,
     }
   }
-  return handler(ctx, input)
+  return await handler(ctx, input)
 }
 
 /**
@@ -397,6 +433,13 @@ export function executeTool(
  */
 export function getToolDefinitions(): string {
   return `## Available Tools
+
+### synthesize_workflow
+Create or semantically rewrite the workflow from a human-language request.
+Use this when the user is describing what the workflow should do, not asking for a tiny node-level patch.
+Parameters:
+- request (required): Natural-language description of the desired workflow behavior
+- mode (optional): "create" or "edit" (default: "create")
 
 ### get_workflow
 Read the current workflow state.
@@ -411,8 +454,8 @@ Parameters:
 Insert a new node into the workflow with optional auto-wiring.
 Parameters:
 - node (required): Node object with at minimum { type, config }
-  - For skill nodes: config needs { skillRef, prompt } and may include { allowedTools[], disallowedTools[], permissionMode? }; permissionMode overrides workflow default for this node ("plan" or "edit"). For external web tasks include allowedTools with at least ["WebFetch", "WebSearch"] unless blocked
-  - For evaluator nodes: config needs { criteria, threshold, maxRetries } and can optionally include { retryFrom, skillRefs[] }
+  - For skill nodes: config needs { prompt } and may include { skillRef, allowedTools[], disallowedTools[], permissionMode? }; leave skillRef empty when no available skill is a close semantic match. permissionMode overrides workflow default for this node ("plan" or "edit"). For external web tasks include allowedTools with at least ["WebFetch", "WebSearch"] unless blocked
+  - For evaluator nodes: config needs { criteria, threshold, maxRetries } and can optionally include { retryFrom, skillRefs[] }. Do not use skillRef on evaluator nodes.
   - For splitter nodes: config needs { strategy } — strategy is a natural-language hint describing HOW to decompose the input (e.g. "Each item is an independent task. Create one subtask per item preserving all details."). It is NOT a keyword — write a clear sentence explaining the decomposition logic for this specific use case.
   - For merger nodes: config needs { strategy }
 - after_node_id (optional): Insert after this node and auto-wire edges
@@ -451,6 +494,7 @@ Fuzzy search available skills by query.
 Parameters:
 - query (required): Search query string
 - limit (optional): Max results (default: 20)
+Use this before assigning a non-empty skillRef through low-level editing tools.
 
 ### browse_category
 Browse the skill category tree.
@@ -458,7 +502,7 @@ Parameters:
 - path (optional): Category path like "marketing/seo". Omit for root.
 
 ### validate_workflow
-Run structural validation on the current workflow.
+Run structural and semantic validation on the current workflow.
 Parameters: none
 
 ## Tool Call Format

@@ -7,6 +7,7 @@ import type {
   TelemetryUiEvent,
   ChatConversation,
   ChatEvent,
+  ChatSessionSnapshot,
   DesktopRuntimeInfo,
   DiscoveredSkill,
   GenerationProgress,
@@ -233,6 +234,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("chat:send-message", workflowPath, message, projectPath, currentWorkflow),
   chatLoadHistory: (workflowPath: string) =>
     ipcRenderer.invoke("chat:load-history", workflowPath),
+  chatGetActiveSession: (workflowPath: string) =>
+    ipcRenderer.invoke("chat:get-active-session", workflowPath) as Promise<ChatSessionSnapshot | null>,
   chatCancel: (sessionId: string) =>
     ipcRenderer.invoke("chat:cancel", sessionId),
   chatClearHistory: (workflowPath: string) =>

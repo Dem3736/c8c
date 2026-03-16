@@ -107,7 +107,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="Describe what to build..."
+            placeholder="Ask the agent to refine the flow, adjust the result, or change how it works..."
             rows={1}
             spellCheck
             autoCorrect="on"

@@ -79,6 +79,16 @@ describe("shouldRetrySplitter", () => {
     expect(shouldRetrySplitter(subtasks, '[{"key":"subtask-0","content":""}]', input, 5)).toBe(true)
   })
 
+  it("retries when normalized subtask keys collide", () => {
+    const input = "1. Pre-run validation\n2. Pre run validation"
+    const subtasks = [
+      { key: "Pre-run", content: "Review validation banner" },
+      { key: "pre run", content: "Review run button gating" },
+    ]
+
+    expect(shouldRetrySplitter(subtasks, JSON.stringify(subtasks), input, 5)).toBe(true)
+  })
+
   it("detects instruction-echo output as invalid split", () => {
     const input = "Research RAG best practices and split into independent aspects."
     const subtasks = [

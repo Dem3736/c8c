@@ -50,6 +50,22 @@ function sanitizeSubtaskKey(key: string, index: number): string {
   return normalized || `branch-${index + 1}`
 }
 
+function makeUniqueSubtaskKey(baseKey: string, usedKeys: Set<string>): string {
+  if (!usedKeys.has(baseKey)) {
+    usedKeys.add(baseKey)
+    return baseKey
+  }
+
+  let suffix = 2
+  let candidate = `${baseKey}-${suffix}`
+  while (usedKeys.has(candidate)) {
+    suffix++
+    candidate = `${baseKey}-${suffix}`
+  }
+  usedKeys.add(candidate)
+  return candidate
+}
+
 function currentRuntimeMeta(workflow: Workflow): Record<string, RuntimeNodeMeta> {
   const maybeRuntime = workflow as Partial<RuntimeWorkflow>
   return maybeRuntime.runtimeMeta ? { ...maybeRuntime.runtimeMeta } : {}
@@ -175,20 +191,14 @@ export function expandSplitter(
     throw new RuntimeGraphError("EMPTY_SUBTASKS", `Splitter "${splitterId}" produced no subtasks`)
   }
 
-  const limitedSubtasks = subtasks.slice(0, maxBranches).map((subtask, index) => ({
-    ...subtask,
-    key: sanitizeSubtaskKey(subtask.key, index),
-  }))
-  const subtaskKeys = new Set<string>()
-  for (const subtask of limitedSubtasks) {
-    if (subtaskKeys.has(subtask.key)) {
-      throw new RuntimeGraphError(
-        "DUPLICATE_SUBTASK_KEY",
-        `Splitter "${splitterId}" produced duplicate subtask key "${subtask.key}"`,
-      )
+  const usedSubtaskKeys = new Set<string>()
+  const limitedSubtasks = subtasks.slice(0, maxBranches).map((subtask, index) => {
+    const normalizedKey = sanitizeSubtaskKey(subtask.key, index)
+    return {
+      ...subtask,
+      key: makeUniqueSubtaskKey(normalizedKey, usedSubtaskKeys),
     }
-    subtaskKeys.add(subtask.key)
-  }
+  })
 
   // Find all outgoing default edges from splitter
   const splitterOutEdges = workflow.edges.filter(

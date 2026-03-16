@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest"
-import { buildGeneratorPrompt, parseGeneratedWorkflow, normalizeEdges, normalizeNodes } from "./workflow-generator"
+import {
+  buildGeneratorPrompt,
+  buildWorkflowEditPrompt,
+  parseGeneratedWorkflow,
+  normalizeEdges,
+  normalizeNodes,
+} from "./workflow-generator"
 import type { Workflow } from "@shared/types"
 
 const MOCK_SKILLS = [
@@ -29,6 +35,33 @@ describe("buildGeneratorPrompt", () => {
     expect(prompt).toContain("splitter")
     expect(prompt).toContain("merger")
     expect(prompt).toContain("output")
+  })
+})
+
+describe("buildWorkflowEditPrompt", () => {
+  it("includes the current workflow and edit request", () => {
+    const currentWorkflow: Workflow = {
+      version: 1,
+      name: "Existing Workflow",
+      nodes: [
+        { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+        { id: "output-1", type: "output", position: { x: 300, y: 0 }, config: {} },
+      ],
+      edges: [
+        { id: "e1", source: "input-1", target: "output-1", type: "default" },
+      ],
+    }
+
+    const prompt = buildWorkflowEditPrompt(
+      "Add a JTBD audit step before the final output",
+      currentWorkflow,
+      MOCK_SKILLS,
+    )
+
+    expect(prompt).toContain("Existing Workflow")
+    expect(prompt).toContain("\"name\": \"Existing Workflow\"")
+    expect(prompt).toContain("Add a JTBD audit step before the final output")
+    expect(prompt).toContain("Return ONLY the full updated JSON workflow object.")
   })
 })
 
@@ -75,6 +108,29 @@ describe("parseGeneratedWorkflow", () => {
 
   it("throws on missing nodes/edges", () => {
     expect(() => parseGeneratedWorkflow(JSON.stringify({ foo: "bar" }))).toThrow()
+  })
+
+  it("throws on unsupported evaluator config fields", () => {
+    const workflow = {
+      version: 1,
+      name: "Bad evaluator",
+      nodes: [
+        { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+        {
+          id: "eval-1",
+          type: "evaluator",
+          position: { x: 300, y: 0 },
+          config: { criteria: "Score", threshold: 8, maxRetries: 1, skillRef: "quality/code-review" },
+        },
+        { id: "output-1", type: "output", position: { x: 600, y: 0 }, config: {} },
+      ],
+      edges: [
+        { id: "e1", source: "input-1", target: "eval-1", type: "default" },
+        { id: "e2", source: "eval-1", target: "output-1", type: "pass" },
+      ],
+    }
+
+    expect(() => parseGeneratedWorkflow(JSON.stringify(workflow))).toThrow(/Unsupported config field "skillRef" for evaluator nodes/)
   })
 
   it("adds defaults if missing", () => {
@@ -150,6 +206,13 @@ describe("normalizeNodes", () => {
       { id: "s1", type: "skill", agent: "marketing/writer" },
     ])
     expect(nodes[0].config).toHaveProperty("skillRef", "marketing/writer")
+  })
+
+  it("does not infer skillRef from node name", () => {
+    const nodes = normalizeNodes([
+      { id: "s1", type: "skill", name: "not-a-skill", description: "Do the work" },
+    ])
+    expect(nodes[0].config).toHaveProperty("skillRef", "")
   })
 
   it("falls back to node.description for skill config.prompt", () => {

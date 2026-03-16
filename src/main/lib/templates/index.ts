@@ -14,6 +14,7 @@ import competitorAdIntelligenceRaw from "./competitor-ad-intelligence.yaml?raw"
 import meetingActionsPlanRaw from "./meeting-actions-plan.yaml?raw"
 import invoiceChaosFixerRaw from "./invoice-chaos-fixer.yaml?raw"
 import designCodeTestRaw from "./design-code-test.yaml?raw"
+import playwrightVisualAuditRaw from "./playwright-visual-audit.yaml?raw"
 import twitterGrowthMachineRaw from "./twitter-growth-machine.yaml?raw"
 import resumeTailoringPipelineRaw from "./resume-tailoring-pipeline.yaml?raw"
 import fullStackCodeAuditRaw from "./full-stack-code-audit.yaml?raw"
@@ -38,6 +39,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(meetingActionsPlanRaw, { source: "builtin" }),
   parseTemplate(invoiceChaosFixerRaw, { source: "builtin" }),
   parseTemplate(designCodeTestRaw, { source: "builtin" }),
+  parseTemplate(playwrightVisualAuditRaw, { source: "builtin" }),
   parseTemplate(twitterGrowthMachineRaw, { source: "builtin" }),
   parseTemplate(resumeTailoringPipelineRaw, { source: "builtin" }),
   parseTemplate(fullStackCodeAuditRaw, { source: "builtin" }),

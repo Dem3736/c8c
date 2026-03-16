@@ -376,6 +376,9 @@ export interface NodeInput {
   content: string
   metadata: {
     source: string
+    artifact_type?: string
+    artifact_label?: string
+    artifact_role?: "input" | "intermediate" | "decision" | "final"
     score?: number
     reason?: string
     iteration?: number
@@ -432,9 +435,11 @@ export interface WorkflowRun {
 }
 
 export interface RuntimeMetaEntry {
+  subtaskContent?: string
   subtaskKey: string
   branchIndex: number
   totalBranches: number
+  splitterId?: string
   templateId: string
 }
 
@@ -672,12 +677,37 @@ export interface ChatConversation {
   updatedAt: number
 }
 
+export type ChatSessionStatus = "idle" | "thinking" | "streaming" | "error"
+
+export interface ChatSessionMessage {
+  id: string
+  role: "user" | "assistant" | "tool_call" | "tool_result"
+  content: string
+  timestamp: number
+  toolName?: string
+  toolInput?: Record<string, unknown>
+  toolCallId?: string
+  toolOutput?: string
+  toolError?: string
+  streaming?: boolean
+}
+
+export interface ChatSessionSnapshot {
+  workflowPath: string
+  sessionId: string
+  status: ChatSessionStatus
+  activeToolName: string | null
+  messages: ChatSessionMessage[]
+  updatedAt: number
+}
+
 export type ChatEvent =
-  | { type: "text-delta"; sessionId: string; content: string }
-  | { type: "thinking"; sessionId: string; content?: string }
+  | { type: "text-delta"; sessionId: string; workflowPath: string; content: string }
+  | { type: "thinking"; sessionId: string; workflowPath: string; content?: string }
   | {
       type: "tool-call"
       sessionId: string
+      workflowPath: string
       toolName: string
       toolInput: Record<string, unknown>
       toolCallId: string
@@ -685,15 +715,16 @@ export type ChatEvent =
   | {
       type: "tool-result"
       sessionId: string
+      workflowPath: string
       toolName: string
       toolCallId: string
       toolOutput?: string
       toolError?: string
     }
-  | { type: "workflow-mutated"; sessionId: string; workflow: Workflow }
-  | { type: "message-complete"; sessionId: string; message: ChatMessage }
-  | { type: "turn-complete"; sessionId: string; workflow: Workflow }
-  | { type: "error"; sessionId: string; content: string }
+  | { type: "workflow-mutated"; sessionId: string; workflowPath: string; workflow: Workflow }
+  | { type: "message-complete"; sessionId: string; workflowPath: string; message: ChatMessage }
+  | { type: "turn-complete"; sessionId: string; workflowPath: string; workflow: Workflow }
+  | { type: "error"; sessionId: string; workflowPath: string; content: string }
 
 export type ChatEventType = ChatEvent["type"]
 

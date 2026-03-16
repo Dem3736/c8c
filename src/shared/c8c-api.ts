@@ -3,6 +3,7 @@ import type {
   BatchEvent,
   ChatConversation,
   ChatEvent,
+  ChatSessionSnapshot,
   ClaudeCodeSubscriptionStatus,
   DesktopRuntimeInfo,
   DiscoveredSkill,
@@ -128,6 +129,7 @@ export interface C8cApi {
     currentWorkflow: Workflow,
   ) => Promise<string>
   chatLoadHistory: (workflowPath: string) => Promise<ChatConversation | null>
+  chatGetActiveSession: (workflowPath: string) => Promise<ChatSessionSnapshot | null>
   chatCancel: (sessionId: string) => Promise<boolean>
   chatClearHistory: (workflowPath: string) => Promise<void>
   approveNode: (runId: string, nodeId: string, editedContent?: string) => Promise<boolean>

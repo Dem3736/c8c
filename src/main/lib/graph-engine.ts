@@ -1,4 +1,5 @@
-import type { Workflow, WorkflowNode, WorkflowEdge, NodeState, SkillNodeConfig } from "@shared/types"
+import type { Workflow, WorkflowNode, WorkflowEdge, NodeState } from "@shared/types"
+import { validateWorkflowNodeConfigs } from "@shared/workflow-config-validation"
 
 export function findNodeById(workflow: Workflow, nodeId: string): WorkflowNode | undefined {
   return workflow.nodes.find((n) => n.id === nodeId)
@@ -94,6 +95,13 @@ export function getDownstreamNodeIds(
 
 export function validateWorkflow(workflow: Workflow): string[] {
   const errors: string[] = []
+  const configIssues = validateWorkflowNodeConfigs(workflow)
+
+  for (const issue of configIssues) {
+    if (issue.severity === "error") {
+      errors.push(`Node "${issue.nodeId}" ${issue.field}: ${issue.message}`)
+    }
+  }
 
   if (!workflow.nodes.some((n) => n.type === "input")) {
     errors.push("Workflow must have at least one input node")
@@ -119,18 +127,6 @@ export function validateWorkflow(workflow: Workflow): string[] {
       errors.push(`Duplicate node ID "${node.id}"`)
     }
     seen.add(node.id)
-  }
-
-  // Skill nodes need an executable instruction: skillRef, prompt, or both.
-  for (const node of workflow.nodes) {
-    if (node.type === "skill") {
-      const config = node.config as SkillNodeConfig
-      const hasSkillRef = !!config.skillRef?.trim()
-      const hasPrompt = !!config.prompt?.trim()
-      if (!hasSkillRef && !hasPrompt) {
-        errors.push(`Skill node "${node.id}" has neither skillRef nor prompt`)
-      }
-    }
   }
 
   // Cycle detection via topological sort (ignoring evaluator fail edges)

@@ -21,7 +21,6 @@ import {
   heuristicSplitInput,
   parseSplitterOutput,
   shouldRetrySplitter,
-  tryStructuredSplit,
 } from "../../../src/main/lib/node-executors/splitter.js"
 import { buildNodeMeta, classifyError, collectMetrics, estimateCost } from "../../../src/main/lib/observability.js"
 import {
@@ -58,6 +57,7 @@ import type {
   NodeRetryBackoff,
   NodeState,
   NodeRuntimeConfig,
+  OutputNodeConfig,
   PermissionMode,
   ProviderId,
   RunStatus,
@@ -497,8 +497,122 @@ function selectIncomingContent(
   return candidates[0].content
 }
 
+function compactArtifactLabel(value: string | undefined | null, maxLength = 48): string | null {
+  if (!value) return null
+  const normalized = value.replace(/\s+/g, " ").trim()
+  if (!normalized) return null
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength).trimEnd()}...`
+}
+
+function humanizeIdentifier(value: string): string {
+  const parts = value
+    .split(/[-_/]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length === 0) return value
+  return parts
+    .map((part) => {
+      if (part.length <= 3) return part.toUpperCase()
+      return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
+    })
+    .join(" ")
+}
+
+function buildArtifactMetadata(
+  node: WorkflowNode,
+): Pick<NodeInput["metadata"], "artifact_type" | "artifact_label" | "artifact_role"> {
+  switch (node.type) {
+    case "input":
+      return {
+        artifact_type: "source_input",
+        artifact_label: "Source input",
+        artifact_role: "input",
+      }
+    case "skill": {
+      const config = node.config as SkillNodeConfig
+      const skillRef = config.skillRef.trim()
+      const skillName = skillRef
+        ? humanizeIdentifier(skillRef.split("/").filter(Boolean).pop() || skillRef)
+        : humanizeIdentifier(node.id)
+      return {
+        artifact_type: "stage_output",
+        artifact_label: `${skillName} output`,
+        artifact_role: "intermediate",
+      }
+    }
+    case "evaluator":
+      return {
+        artifact_type: "quality_decision",
+        artifact_label: "Quality decision",
+        artifact_role: "decision",
+      }
+    case "splitter":
+      return {
+        artifact_type: "branch_assignments",
+        artifact_label: "Branch assignments",
+        artifact_role: "intermediate",
+      }
+    case "merger": {
+      const config = node.config as MergerNodeConfig
+      const artifactLabel = config.strategy === "summarize"
+        ? "Merged summary"
+        : config.strategy === "select_best"
+          ? "Best branch result"
+          : "Merged result"
+      return {
+        artifact_type: "merged_result",
+        artifact_label: artifactLabel,
+        artifact_role: "intermediate",
+      }
+    }
+    case "approval":
+      return {
+        artifact_type: "approved_content",
+        artifact_label: "Approved content",
+        artifact_role: "decision",
+      }
+    case "output": {
+      const config = node.config as OutputNodeConfig
+      return {
+        artifact_type: "final_result",
+        artifact_label: compactArtifactLabel(config.title, 52) || "Final result",
+        artifact_role: "final",
+      }
+    }
+  }
+
+  return {
+    artifact_type: "stage_output",
+    artifact_label: "Stage output",
+    artifact_role: "intermediate",
+  }
+}
+
+function buildNodeOutputMetadata(
+  node: WorkflowNode,
+  metadata: Omit<Partial<NodeInput["metadata"]>, "source"> = {},
+): NodeInput["metadata"] {
+  return {
+    source: node.id,
+    ...buildArtifactMetadata(node),
+    ...metadata,
+  }
+}
+
+function createNodeOutput(
+  node: WorkflowNode,
+  content: string,
+  metadata: Omit<Partial<NodeInput["metadata"]>, "source"> = {},
+): NodeInput {
+  return {
+    content,
+    metadata: buildNodeOutputMetadata(node, metadata),
+  }
+}
+
 function buildContinueOutput(
-  nodeId: string,
+  node: WorkflowNode,
   incomingContent: string,
   partialOutput: NodeInput | undefined,
 ): NodeInput {
@@ -512,19 +626,15 @@ function buildContinueOutput(
       },
     }
   }
-  return {
-    content: incomingContent,
-    metadata: {
-      source: nodeId,
-      output_source: "input_fallback",
-      partial_on_error: true,
-      error_policy_applied: "continue",
-    },
-  }
+  return createNodeOutput(node, incomingContent, {
+    output_source: "input_fallback",
+    partial_on_error: true,
+    error_policy_applied: "continue",
+  })
 }
 
 function buildErrorEnvelopeOutput(
-  nodeId: string,
+  node: WorkflowNode,
   incomingContent: string,
   partialOutput: NodeInput | undefined,
   errorKind: ErrorKind,
@@ -538,19 +648,18 @@ function buildErrorEnvelopeOutput(
       error: {
         kind: errorKind,
         message,
-        nodeId,
+        nodeId: node.id,
         attempt,
       },
       fallback: {
         content: fallback,
       },
     }, null, 2),
-    metadata: {
-      source: nodeId,
+    metadata: buildNodeOutputMetadata(node, {
       partial_on_error: true,
       error_policy_applied: "continue_error_output",
       error_envelope: true,
-    },
+    }),
   }
 }
 
@@ -712,11 +821,11 @@ function sanitizeInvalidUnicode(value: string): string {
 
 async function buildSkillNodeOutput(
   logger: WorkflowLogger,
+  node: WorkflowNode,
   config: SkillNodeConfig,
   stdoutText: string,
   contentFile: string,
   effectiveInput: string,
-  nodeId: string,
   partialOnError = false,
 ): Promise<NodeInput> {
   let primaryFileContent: string | null = null
@@ -748,14 +857,10 @@ async function buildSkillNodeOutput(
 
   const fileContent = pickPreferredContentFile(primaryFileContent, mirroredFileContent, effectiveInput)
   const selectedOutput = pickSkillOutput(config.outputMode, stdoutText, fileContent, effectiveInput)
-  return {
-    content: selectedOutput.content || effectiveInput,
-    metadata: {
-      source: nodeId,
-      output_source: selectedOutput.source,
-      ...(partialOnError ? { partial_on_error: true } : {}),
-    },
-  }
+  return createNodeOutput(node, selectedOutput.content || effectiveInput, {
+    output_source: selectedOutput.source,
+    ...(partialOnError ? { partial_on_error: true } : {}),
+  })
 }
 
 async function writeNodeOutputFile(workspace: string, nodeId: string, content: string): Promise<void> {
@@ -1305,7 +1410,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
 
           switch (node.type) {
             case "input":
-              output = { content: inputContent, metadata: { source: node.id } }
+              output = createNodeOutput(node, inputContent)
               break
 
             case "skill": {
@@ -1383,11 +1488,11 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 updateSkillMetricsAndMeta()
                 return buildSkillNodeOutput(
                   logger,
+                  node,
                   config,
                   logParser.textContent,
                   contentFile,
                   effectiveInput,
-                  node.id,
                   true,
                 )
               }
@@ -1507,11 +1612,11 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
 
               output = await buildSkillNodeOutput(
                 logger,
+                node,
                 config,
                 logParser.textContent,
                 contentFile,
                 effectiveInput,
-                node.id,
               )
               recoverOutputOnError = undefined
               break
@@ -1608,7 +1713,6 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               })
 
               const evalMetadata = {
-                source: node.id,
                 score,
                 reason,
                 iteration: state.attempts,
@@ -1617,7 +1721,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               }
 
               if (passed) {
-                output = { content: incomingContent, metadata: evalMetadata }
+                output = createNodeOutput(node, incomingContent, evalMetadata)
                 for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
                   if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
                 }
@@ -1626,14 +1730,14 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 const retryTargetState = nodeStates[retryTargetId]
 
                 if (!retryTargetState || retryTargetState.status === "running") {
-                  output = { content: incomingContent, metadata: evalMetadata }
+                  output = createNodeOutput(node, incomingContent, evalMetadata)
                   for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
                     if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
                   }
                   break
                 }
 
-                state.output = { content: incomingContent, metadata: evalMetadata }
+                state.output = createNodeOutput(node, incomingContent, evalMetadata)
 
                 const toReset = new Set<string>()
                 const resetQueue = [retryTargetId]
@@ -1671,7 +1775,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 state.log = []
                 return
               } else {
-                output = { content: incomingContent, metadata: evalMetadata }
+                output = createNodeOutput(node, incomingContent, evalMetadata)
                 for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
                   if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
                 }
@@ -1761,45 +1865,40 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 return logParser.textContent
               }
 
-              const structuredSubtasks = tryStructuredSplit(incomingContent, maxBranches)
               let subtasks: Subtask[]
-              if (structuredSubtasks) {
+              const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
+              let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
+              subtasks = parseSplitterOutput(splitterRawOutput)
+
+              if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
+                const recoveryPrompt = buildSplitterRecoveryPrompt(splitterConfig.strategy, incomingContent, maxBranches)
+                splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
+                subtasks = parseSplitterOutput(splitterRawOutput)
+              }
+
+              const beforeFilterCount = subtasks.length
+              subtasks = subtasks.filter((subtask) => subtask.content.trim().length > 0)
+              if (beforeFilterCount !== subtasks.length) {
                 const entry = {
                   type: "text" as const,
-                  content: `[splitter] using structured input directly (${structuredSubtasks.length} subtasks)\n`,
+                  content: `[splitter] dropped ${beforeFilterCount - subtasks.length} empty subtasks\n`,
                   timestamp: Date.now(),
                 }
                 state.log.push(entry)
                 await runtime.emitEvent({ type: "node-log", runId, nodeId: node.id, entry })
-                subtasks = structuredSubtasks
-              } else {
-                const splitterPrompt = buildSplitterPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-                let splitterRawOutput = await runSplitterAttempt(splitterPrompt)
-                subtasks = parseSplitterOutput(splitterRawOutput)
+              }
 
-                if (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches)) {
-                  const recoveryPrompt = buildSplitterRecoveryPrompt(splitterConfig.strategy, incomingContent, maxBranches)
-                  splitterRawOutput = await runSplitterAttempt(recoveryPrompt)
-                  subtasks = parseSplitterOutput(splitterRawOutput)
+              const shouldFallbackToHeuristic = subtasks.length === 0
+                || (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches))
+              if (shouldFallbackToHeuristic) {
+                subtasks = heuristicSplitInput(incomingContent, maxBranches)
+                const entry = {
+                  type: "text" as const,
+                  content: `[splitter] ai split was invalid, falling back to heuristic split (${subtasks.length} subtasks)\n`,
+                  timestamp: Date.now(),
                 }
-
-                const beforeFilterCount = subtasks.length
-                subtasks = subtasks.filter((subtask) => subtask.content.trim().length > 0)
-                if (beforeFilterCount !== subtasks.length) {
-                  const entry = {
-                    type: "text" as const,
-                    content: `[splitter] dropped ${beforeFilterCount - subtasks.length} empty subtasks\n`,
-                    timestamp: Date.now(),
-                  }
-                  state.log.push(entry)
-                  await runtime.emitEvent({ type: "node-log", runId, nodeId: node.id, entry })
-                }
-
-                const shouldFallbackToHeuristic = subtasks.length === 0
-                  || (maxBranches > 1 && shouldRetrySplitter(subtasks, splitterRawOutput, incomingContent, maxBranches))
-                if (shouldFallbackToHeuristic) {
-                  subtasks = heuristicSplitInput(incomingContent, maxBranches)
-                }
+                state.log.push(entry)
+                await runtime.emitEvent({ type: "node-log", runId, nodeId: node.id, entry })
               }
 
               const totalSubtasks = subtasks.length
@@ -1873,15 +1972,11 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 })),
               })
 
-              output = {
-                content: JSON.stringify(usedSubtasks),
-                metadata: {
-                  source: node.id,
-                  splitter_total_subtasks: totalSubtasks,
-                  splitter_used_subtasks: usedSubtasks.length,
-                  splitter_truncated: totalSubtasks > usedSubtasks.length,
-                },
-              }
+              output = createNodeOutput(node, JSON.stringify(usedSubtasks), {
+                splitter_total_subtasks: totalSubtasks,
+                splitter_used_subtasks: usedSubtasks.length,
+                splitter_truncated: totalSubtasks > usedSubtasks.length,
+              })
               break
             }
 
@@ -1917,7 +2012,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                   latency_ms: Date.now() - state.startedAt!,
                 }
                 state.meta = buildNodeMeta("[merger concatenate]", mergerModel)
-                output = { content: mergeResults(branchOutputs, "concatenate"), metadata: { source: node.id } }
+                output = createNodeOutput(node, mergeResults(branchOutputs, "concatenate"))
               } else {
                 const mergePrompt = sanitizeInvalidUnicode(
                   buildMergerPrompt(branchOutputs, mergerConfig.strategy, mergerConfig.prompt),
@@ -1981,7 +2076,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 mergerMetrics.cost_usd = estimateCost(mergerModel, mergerMetrics.tokens_in, mergerMetrics.tokens_out)
                 state.metrics = mergerMetrics
                 state.meta = buildNodeMeta(mergePrompt, mergerModel, undefined, result.backend)
-                output = { content: logParser.textContent, metadata: { source: node.id } }
+                output = createNodeOutput(node, logParser.textContent)
               }
               break
             }
@@ -2022,7 +2117,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               }
 
               if (decision.approved) {
-                output = { content: decision.editedContent ?? incomingContent, metadata: { source: node.id } }
+                output = createNodeOutput(node, decision.editedContent ?? incomingContent)
               } else {
                 state.status = "failed"
                 state.completedAt = Date.now()
@@ -2036,7 +2131,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
             }
 
             case "output":
-              output = { content: incomingContent, metadata: { source: node.id } }
+              output = createNodeOutput(node, incomingContent)
               break
           }
 
@@ -2123,8 +2218,8 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
           }
 
           const output = onError === "continue_error_output"
-            ? buildErrorEnvelopeOutput(node.id, incomingContent, partialOutput, state.errorKind, errorText, state.attempts)
-            : buildContinueOutput(node.id, incomingContent, partialOutput)
+            ? buildErrorEnvelopeOutput(node, incomingContent, partialOutput, state.errorKind, errorText, state.attempts)
+            : buildContinueOutput(node, incomingContent, partialOutput)
 
           state.status = "completed"
           state.output = output
@@ -2220,11 +2315,14 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       for (const [nodeId, state] of Object.entries(nodeStates)) {
         if (state.status === "pending" || state.status === "queued" || state.status === "running" || state.status === "waiting_approval") {
           state.status = "skipped"
+          const runtimeNode = runtimeWorkflow.nodes.find((candidate) => candidate.id === nodeId)
           await runtime.emitEvent({
             type: "node-done",
             runId,
             nodeId,
-            output: { content: "", metadata: { source: nodeId, skipped: true } },
+            output: runtimeNode
+              ? createNodeOutput(runtimeNode, "", { skipped: true })
+              : { content: "", metadata: { source: nodeId, skipped: true } },
           })
         }
       }

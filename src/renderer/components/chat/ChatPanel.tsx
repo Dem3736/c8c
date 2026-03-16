@@ -11,12 +11,14 @@ const MIN_PANEL_WIDTH = 280
 const MAX_PANEL_WIDTH = 600
 
 interface ChatPanelProps {
+  collapsed?: boolean
   onClose: () => void
   minWidth?: number
   maxWidth?: number
 }
 
 export function ChatPanel({
+  collapsed = false,
   onClose,
   minWidth = MIN_PANEL_WIDTH,
   maxWidth = MAX_PANEL_WIDTH,
@@ -78,7 +80,10 @@ export function ChatPanel({
 
   return (
     <div
-      className="relative flex flex-col border-l border-hairline bg-surface-1 shrink-0"
+      className={cn(
+        "relative flex h-full flex-col border-l border-hairline bg-surface-1 shrink-0 ui-motion-standard transition-[opacity,transform] will-change-transform",
+        collapsed && "translate-x-2 opacity-0 pointer-events-none",
+      )}
       style={{ width: panelWidth }}
     >
       {/* Left resize handle */}
@@ -94,6 +99,7 @@ export function ChatPanel({
         onKeyDown={handleResizeKeyDown}
         className={cn(
           "absolute left-0 top-0 h-full z-10 ui-resize-handle",
+          collapsed && "pointer-events-none",
           resizing && "bg-primary/30",
         )}
         data-resizing={resizing}
@@ -115,7 +121,7 @@ export function ChatPanel({
         onSend={sendMessage}
         onCancel={cancel}
         isStreaming={isStreaming}
-        autoFocus
+        autoFocus={!collapsed}
       />
     </div>
   )

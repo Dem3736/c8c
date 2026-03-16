@@ -1,5 +1,43 @@
 import type { DiscoveredSkill, SkillCategoryNode } from "@shared/types"
 
+function normalizeTerms(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter(Boolean)
+}
+
+export function toSkillRef(skill: Pick<DiscoveredSkill, "category" | "name">): string {
+  return `${skill.category}/${skill.name}`
+}
+
+export function scoreSkillMatch(
+  skill: Pick<DiscoveredSkill, "name" | "category" | "description">,
+  query: string,
+): number {
+  const terms = normalizeTerms(query)
+  if (terms.length === 0) return 0
+
+  const searchable = `${skill.name} ${skill.category} ${skill.description}`.toLowerCase()
+  let score = 0
+
+  for (const term of terms) {
+    if (skill.name.toLowerCase() === term) {
+      score += 10
+    } else if (skill.name.toLowerCase().includes(term)) {
+      score += 5
+    }
+    if (skill.category.toLowerCase().includes(term)) {
+      score += 3
+    }
+    if (skill.description.toLowerCase().includes(term)) {
+      score += 2
+    }
+    if (searchable.includes(term)) {
+      score += 1
+    }
+  }
+
+  return score
+}
+
 /**
  * Build a category tree from flat skill list.
  * Skills have category like "marketing/seo" or "code/analysis".
@@ -31,7 +69,7 @@ export function buildCategoryTree(skills: DiscoveredSkill[]): SkillCategoryNode 
     current.skills.push({
       name: skill.name,
       description: skill.description,
-      skillRef: `${skill.category}/${skill.name}`,
+      skillRef: toSkillRef(skill),
     })
   }
 
@@ -101,37 +139,16 @@ export function searchSkills(
   query: string,
   limit = 20,
 ): Array<{ name: string; category: string; description: string; skillRef: string; score: number }> {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const terms = normalizeTerms(query)
   if (terms.length === 0) return []
 
   const scored = skills.map((skill) => {
-    const searchable = `${skill.name} ${skill.category} ${skill.description}`.toLowerCase()
-    let score = 0
-
-    for (const term of terms) {
-      if (skill.name.toLowerCase() === term) {
-        score += 10
-      } else if (skill.name.toLowerCase().includes(term)) {
-        score += 5
-      }
-      if (skill.category.toLowerCase().includes(term)) {
-        score += 3
-      }
-      if (skill.description.toLowerCase().includes(term)) {
-        score += 2
-      }
-      // Partial match anywhere
-      if (searchable.includes(term)) {
-        score += 1
-      }
-    }
-
     return {
       name: skill.name,
       category: skill.category,
       description: skill.description,
-      skillRef: `${skill.category}/${skill.name}`,
-      score,
+      skillRef: toSkillRef(skill),
+      score: scoreSkillMatch(skill, query),
     }
   })
 

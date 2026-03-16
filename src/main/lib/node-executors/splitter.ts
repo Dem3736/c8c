@@ -97,6 +97,25 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim()
 }
 
+function normalizeSubtaskKeyForRuntime(key: string, index: number): string {
+  const normalized = key
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return normalized || `branch-${index + 1}`
+}
+
+function hasDuplicateSubtaskKeys(subtasks: Subtask[]): boolean {
+  const seen = new Set<string>()
+  for (let i = 0; i < subtasks.length; i++) {
+    const normalizedKey = normalizeSubtaskKeyForRuntime(subtasks[i]?.key || "", i)
+    if (seen.has(normalizedKey)) return true
+    seen.add(normalizedKey)
+  }
+  return false
+}
+
 function makeKebabKey(value: string, fallback: string): string {
   const key = value
     .toLowerCase()
@@ -174,6 +193,9 @@ export function shouldRetrySplitter(
 ): boolean {
   if (subtasks.length === 0) return true
 
+  if (hasDuplicateSubtaskKeys(subtasks)) {
+    return true
+  }
   if (subtasks.some((s) => normalizeWhitespace(s.content).length === 0)) {
     return true
   }

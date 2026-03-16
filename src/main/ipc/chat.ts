@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from "electron"
-import { handleChatMessage, cancelChatSession } from "../lib/chat-agent"
+import { handleChatMessage, cancelChatSession, getActiveChatSession } from "../lib/chat-agent"
 import { loadChatHistory, clearChatHistory } from "../lib/chat-storage"
-import type { ChatConversation, Workflow } from "@shared/types"
+import type { ChatConversation, ChatSessionSnapshot, Workflow } from "@shared/types"
 import { resolve, extname } from "node:path"
 import { allowedProjectRoots, allowedWorkflowRoots, assertWithinRoots } from "../lib/security-paths"
 
@@ -69,6 +69,15 @@ export function registerChatHandlers() {
       const safeWorkflowPath = await assertWorkflowPath(workflowPath)
       console.log("[chat] chat:load-history called", { workflowPath: safeWorkflowPath })
       return loadChatHistory(safeWorkflowPath)
+    },
+  )
+
+  ipcMain.handle(
+    "chat:get-active-session",
+    async (_event, workflowPath: string): Promise<ChatSessionSnapshot | null> => {
+      const safeWorkflowPath = await assertWorkflowPath(workflowPath)
+      console.log("[chat] chat:get-active-session called", { workflowPath: safeWorkflowPath })
+      return getActiveChatSession(safeWorkflowPath)
     },
   )
 

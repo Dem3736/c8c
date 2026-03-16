@@ -290,13 +290,16 @@ describe("expandSplitter", () => {
     expect(result.runtimeMeta["skill-tpl::hero-section"]?.subtaskKey).toBe("hero-section")
   })
 
-  it("fails on duplicate normalized subtask keys", () => {
-    expect(() =>
-      expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", [
-        { key: "Hero", content: "A" },
-        { key: "hero!", content: "B" },
-      ]),
-    ).toThrow(RuntimeGraphError)
+  it("deduplicates normalized subtask keys", () => {
+    const result = expandSplitter(FAN_OUT_WORKFLOW, "splitter-1", [
+      { key: "Hero", content: "A" },
+      { key: "hero!", content: "B" },
+    ])
+
+    expect(result.nodes.find((node) => node.id === "skill-tpl::hero")).toBeDefined()
+    expect(result.nodes.find((node) => node.id === "skill-tpl::hero-2")).toBeDefined()
+    expect(result.runtimeMeta["skill-tpl::hero"]?.subtaskKey).toBe("hero")
+    expect(result.runtimeMeta["skill-tpl::hero-2"]?.subtaskKey).toBe("hero-2")
   })
 
   it("collapses runtime expansion without mutating the original runtime workflow object", () => {

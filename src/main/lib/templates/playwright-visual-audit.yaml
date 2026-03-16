@@ -1,0 +1,204 @@
+id: playwright-visual-audit
+stage: code
+emoji: "\U0001F3AD"
+headline: Split app flows into scenarios, run them in a browser, and audit visual regressions
+how: Maps the product surface, turns it into Playwright-ready scenarios, runs each flow end-to-end, and merges findings into one evidence-backed audit
+input: A testing brief with base URL or startup hints, auth/setup notes, must-cover journeys, and exclusions
+output: Scenario-by-scenario visual QA report with screenshots, blockers, and prioritized fixes
+steps:
+  - Map the product surface and propose executable visual test scenarios
+  - Split the plan into self-contained browser scenarios
+  - Run each scenario end-to-end and capture visual QA evidence
+  - Merge findings into one prioritized audit and quality-gate it
+version: 1
+name: Playwright Visual Testing Audit
+description: Map UI scenarios, click through them with browser automation, and merge the findings into a prioritized visual QA report
+defaults:
+  model: sonnet
+  maxTurns: 80
+  timeout_minutes: 60
+  maxParallel: 3
+  permissionMode: plan
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Base URL or local startup command, auth/setup notes, must-cover flows, and anything to exclude
+  - id: mapper-1
+    type: skill
+    position:
+      x: 300
+      y: 220
+    config:
+      skillRef: qa/app-surface-mapper
+      prompt: |-
+        Using the current working directory plus the user's testing brief, map the product surface before any browser
+        execution.
+
+        Inspect the repo for:
+        - package scripts, README/setup docs, and any existing E2E or Playwright helpers
+        - routes/screens/components that define the user-facing surface
+        - auth or seeded-data requirements
+        - likely local start commands, preview commands, or deployed URLs mentioned in the brief
+
+        Produce a markdown surface map with these sections:
+        - Test Target Summary
+        - Startup/Access Strategy
+        - Key Screens and User Journeys
+        - Known Risks and Likely Failure Points
+        - Scenario Candidates
+
+        In Scenario Candidates, propose 4-6 high-value visual-testing scenarios. Each candidate must include:
+        - scenario id
+        - title
+        - business purpose
+        - start URL/route
+        - preconditions
+        - viewport coverage
+        - step-by-step interactions
+        - expected end state
+        - what visual/UX regressions to audit
+
+        Keep the scenarios executable, specific, and non-overlapping. Do not run the browser yet.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 620
+      y: 220
+    config:
+      strategy: |-
+        From the surface map, create up to 6 self-contained scenario execution tasks.
+
+        Each task must:
+        - represent one scenario only
+        - include the scenario id and title
+        - restate the startup/access strategy
+        - include all preconditions and credentials/setup assumptions from the brief
+        - list exact interaction steps in order
+        - state the target viewport(s)
+        - define what must be captured as evidence
+        - define what visual, UX, responsiveness, and console/runtime issues to look for
+
+        Prefer the highest-risk and highest-value paths first. Avoid duplicating coverage between tasks.
+      maxBranches: 6
+  - id: runner-1
+    type: skill
+    position:
+      x: 940
+      y: 220
+    config:
+      skillRef: qa/playwright-visual-auditor
+      permissionMode: edit
+      maxTurns: 100
+      prompt: |-
+        Execute the assigned scenario as a browser-based visual audit.
+
+        Execution rules:
+        - Prefer an already-running environment or an explicit deployed URL from the brief.
+        - If a local app must be started, inspect the repo docs/scripts first and reuse an already-running server if one
+          is available instead of starting a second copy.
+        - If a Codex Playwright wrapper is available at $CODEX_HOME/skills/playwright/scripts/playwright_cli.sh or
+          ~/.codex/skills/playwright/scripts/playwright_cli.sh and npx is available, prefer that workflow.
+        - Otherwise use project-native Playwright tooling or the best browser automation available in the environment.
+        - Click through the full scenario, not just the landing screen.
+        - Re-snapshot or refresh context after major UI changes so selectors and references stay current.
+        - Capture artifacts in output/playwright/<scenario-id>/ when possible: screenshots, notes, console errors, and
+          any relevant traces.
+        - Do not modify product source code. Only create audit artifacts or minimal temporary execution files if needed.
+        - If auth, data setup, or environment readiness blocks progress, stop cleanly and document the blocker precisely.
+
+        Audit for:
+        - broken layouts, overflow, clipping, spacing inconsistencies, and visual hierarchy issues
+        - missing loading/empty/error/success states
+        - interaction bugs, disabled or misleading CTAs, and obvious UX dead ends
+        - mobile/desktop responsiveness issues for the specified viewports
+        - console errors, failed requests, and runtime warnings visible during the scenario
+
+        Output markdown with these sections:
+        - Scenario
+        - Execution Summary
+        - Screens Traversed
+        - Findings
+        - Console/Runtime Issues
+        - Responsiveness Notes
+        - Artifacts
+        - Blockers
+
+        Every finding must include severity (blocker/high/medium/low), concrete evidence, and a recommended fix.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1260
+      y: 220
+    config:
+      strategy: summarize
+      prompt: |-
+        Merge the scenario reports into one Playwright visual testing audit.
+
+        Structure the final report as:
+        - Executive Summary
+        - Coverage Matrix by Scenario
+        - Blockers and High-Severity Issues First
+        - Recurring Visual/UX Patterns
+        - Scenario-by-Scenario Findings
+        - Recommended Fix Order
+        - Artifact Index
+
+        Deduplicate overlaps, preserve evidence and scenario ids, and clearly separate environment blockers from actual
+        product defects.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1580
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) scenario coverage across the most important user flows, (2) quality of execution evidence
+        such as screenshots, routes, or concrete UI states, (3) severity calibration and prioritization, (4) clarity
+        of recommended fixes, and (5) distinction between environment/setup blockers and real product issues. Fail if
+        the report is generic, under-evidenced, or clearly misses major flows from the scenario plan.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
+  - id: output-1
+    type: output
+    position:
+      x: 1900
+      y: 220
+    config:
+      title: Playwright Visual Audit Report
+      format: markdown
+edges:
+  - id: e-input-mapper
+    source: input-1
+    target: mapper-1
+    type: default
+  - id: e-mapper-splitter
+    source: mapper-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-runner
+    source: splitter-1
+    target: runner-1
+    type: default
+  - id: e-runner-merger
+    source: runner-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-splitter
+    source: evaluator-1
+    target: splitter-1
+    type: fail

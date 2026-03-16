@@ -52,6 +52,7 @@ Runs a Claude agent/skill. The main work block.
   }
 }
 ```
+`skillRef` may be an empty string when no listed reusable skill is a close semantic match for the job. In that case, rely on a strong prompt instead of forcing an unrelated skill.
 
 ### evaluator
 AI quality gate. Scores content by rubric, routes pass/fail.
@@ -69,6 +70,7 @@ AI quality gate. Scores content by rubric, routes pass/fail.
   }
 }
 ```
+Evaluator config never uses `skillRef`. The only skill-related evaluator field is `skillRefs`.
 Evaluator edges: "pass" goes forward, "fail" goes back to retryFrom node.
 
 ### splitter
@@ -167,6 +169,7 @@ input -> splitter -> skill -> merger -> evaluator -> output
 13. For text generation and landing copy workflows, use an evaluator rewrite loop ("check if slop or not -> rewrite") with retryFrom pointing to the writer node and evaluator config skillRefs set to ["infostyle", "slop-check"]
 14. If a skill needs external websites/URLs/domains, set that skill node's `config.allowedTools` to include at least `["WebFetch", "WebSearch"]` unless explicitly disallowed
 15. Set defaults.permissionMode based on workflow purpose: "plan" for analysis/review/audit workflows, "edit" for generation/rewrite/refactoring workflows. Individual skill nodes can override with config.permissionMode.
+16. Only use a non-empty `skillRef` when the available skill is a close match for the step's job. If the match is weak, leave `skillRef` empty and specify the behavior in `prompt`.
 
 ## Output
 

@@ -331,7 +331,26 @@ describe("validateWorkflow", () => {
       ],
     }
     const errors = validateWorkflow(broken)
-    expect(errors.some((e) => e.includes("neither skillRef nor prompt"))).toBe(true)
+    expect(errors.some((e) => e.includes("Add a prompt or select a skill reference."))).toBe(true)
+  })
+
+  it("detects unsupported evaluator config fields", () => {
+    const broken: Workflow = {
+      ...LOOP,
+      nodes: LOOP.nodes.map((node) =>
+        node.id === "eval-1"
+          ? {
+              ...node,
+              config: {
+                ...node.config,
+                skillRef: "quality/code-review",
+              } as any,
+            }
+          : node,
+      ),
+    }
+    const errors = validateWorkflow(broken)
+    expect(errors.some((e) => e.includes("Unsupported config field") && e.includes("skillRef"))).toBe(true)
   })
 })
 

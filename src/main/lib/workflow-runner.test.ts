@@ -105,12 +105,14 @@ vi.mock("node:fs/promises", () => ({
   rename: vi.fn(() => Promise.resolve()),
   unlink: vi.fn(() => Promise.resolve()),
   mkdir: vi.fn(() => Promise.resolve()),
+  readdir: vi.fn(() => Promise.resolve([])),
   readFile: vi.fn(() => Promise.resolve("improved content")),
 }))
 
 // Mock os
 vi.mock("node:os", () => ({
   tmpdir: vi.fn(() => "/tmp"),
+  homedir: vi.fn(() => "/tmp"),
 }))
 
 // Mock telemetry service
@@ -663,6 +665,51 @@ describe("workflow-runner splitter recovery", () => {
     const runDone = events.find((e) => e.type === "run-done")
     expect(runDone).toBeDefined()
     expect((runDone as any).status).toBe("completed")
+  })
+
+  it("still calls AI splitter for list-like structured input", async () => {
+    mockedSpawn.mockImplementation(async (opts: any) => {
+      const prompt = String(opts.prompt || "")
+      if (prompt.includes("You are an intelligent task decomposer")) {
+        opts.onStdout?.(
+          Buffer.from(
+            '{"type":"assistant","subtype":"text","content":"[{\\"key\\":\\"generation-flow\\",\\"content\\":\\"Analyze generation flow expectations\\"},{\\"key\\":\\"template-flow\\",\\"content\\":\\"Analyze template flow expectations\\"}]"}\n',
+          ),
+        )
+      } else {
+        opts.onStdout?.(
+          Buffer.from(
+            '{"type":"assistant","subtype":"text","content":"branch complete"}\n',
+          ),
+        )
+      }
+      return { success: true, exitCode: 0, signal: null, killed: false, aborted: false, durationMs: 100 }
+    })
+
+    const { runWorkflow } = await import("./workflow-runner")
+    await runWorkflow(
+      "run-splitter-structured-ai",
+      SPLITTER_RECOVERY_WORKFLOW,
+      {
+        type: "text",
+        value: "1. Entry Point\n2. Step-by-Step Sequence\n3. Expectation Arc Summary",
+      },
+      mockWindow,
+    )
+
+    const spawnedPrompts = mockedSpawn.mock.calls.map((call) => String((call[0] as any)?.prompt || ""))
+    const splitterInitialCalls = spawnedPrompts.filter((p) =>
+      p.includes("You are an intelligent task decomposer"),
+    )
+    const structuredBypassLog = events.find(
+      (e) => e.type === "node-log"
+        && (e as any).nodeId === "splitter-1"
+        && String((e as any).entry?.content || "").includes("using structured input directly"),
+    )
+
+    expect(splitterInitialCalls).toHaveLength(1)
+    expect(structuredBypassLog).toBeUndefined()
+    expect(events.find((e) => e.type === "run-done")).toBeDefined()
   })
 
   it("falls back to heuristic split when splitter Claude call fails", async () => {

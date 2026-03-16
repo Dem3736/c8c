@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { SkillCategoryNode, Workflow } from "@shared/types"
-import { executeTool, type ToolContext } from "./chat-tools"
+import { executeTool, getToolDefinitions, type ToolContext } from "./chat-tools"
 
 function createBaseWorkflow(): Workflow {
   return {
@@ -39,17 +39,27 @@ function createContext(): ToolContext {
 
   return {
     workflow: createBaseWorkflow(),
-    skills: [],
+    skills: [
+      {
+        type: "skill",
+        name: "playwright-visual-auditor",
+        category: "qa",
+        description: "Run browser-based visual audits and capture UI regressions.",
+        path: "/tmp/qa/playwright-visual-auditor.md",
+      },
+    ],
     categoryTree,
+    projectPath: "/tmp/project",
+    surfacedSkillRefs: new Set(),
   }
 }
 
 describe("chat-tools add_node", () => {
-  it("fails fast when after_node_id does not exist", () => {
+  it("fails fast when after_node_id does not exist", async () => {
     const ctx = createContext()
     const snapshot = structuredClone(ctx.workflow)
 
-    const result = executeTool("add_node", ctx, {
+    const result = await executeTool("add_node", ctx, {
       node: {
         type: "skill",
         config: { skillRef: "qa/reviewer", prompt: "review" },
@@ -62,10 +72,10 @@ describe("chat-tools add_node", () => {
     expect(ctx.workflow).toEqual(snapshot)
   })
 
-  it("rewires outgoing edges when inserting after an existing node", () => {
+  it("rewires outgoing edges when inserting after an existing node", async () => {
     const ctx = createContext()
 
-    const result = executeTool("add_node", ctx, {
+    const result = await executeTool("add_node", ctx, {
       node: {
         type: "skill",
         config: { skillRef: "qa/reviewer", prompt: "review" },
@@ -88,11 +98,11 @@ describe("chat-tools add_node", () => {
     expect(hasDanglingEdge).toBe(false)
   })
 
-  it("rejects duplicate explicit node id", () => {
+  it("rejects duplicate explicit node id", async () => {
     const ctx = createContext()
     const snapshot = structuredClone(ctx.workflow)
 
-    const result = executeTool("add_node", ctx, {
+    const result = await executeTool("add_node", ctx, {
       node: {
         id: "output-1",
         type: "skill",
@@ -105,16 +115,33 @@ describe("chat-tools add_node", () => {
     expect(ctx.workflow).toEqual(snapshot)
   })
 
-  it("reports no-op for update_node without config payload", () => {
+  it("reports no-op for update_node without config payload", async () => {
     const ctx = createContext()
     const snapshot = structuredClone(ctx.workflow)
 
-    const result = executeTool("update_node", ctx, {
+    const result = await executeTool("update_node", ctx, {
       node_id: "input-1",
     })
 
     expect(result.workflowMutated).toBe(false)
     expect(result.output).toContain("No updates applied")
     expect(ctx.workflow).toEqual(snapshot)
+  })
+})
+
+describe("chat-tools definitions", () => {
+  it("documents the high-level synthesis tool", () => {
+    expect(getToolDefinitions()).toContain("synthesize_workflow")
+    expect(getToolDefinitions()).toContain("Create or semantically rewrite the workflow")
+  })
+})
+
+describe("chat-tools skill provenance", () => {
+  it("marks searched skills as surfaced for later validation", async () => {
+    const ctx = createContext()
+
+    const searchResult = await executeTool("search_skills", ctx, { query: "browser visual audit" })
+    expect(searchResult.output).toContain("qa/playwright-visual-auditor")
+    expect(ctx.surfacedSkillRefs.has("qa/playwright-visual-auditor")).toBe(true)
   })
 })

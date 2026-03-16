@@ -25,41 +25,69 @@ export function buildGeneratorPrompt(
   userDescription: string,
   availableSkills: SkillInfo[],
 ): string {
+  return [
+    buildPromptPrelude(),
+    buildAvailableSkillsSection(availableSkills),
+    "## User Request",
+    "",
+    userDescription,
+  ].join("\n")
+}
+
+export function buildWorkflowEditPrompt(
+  userRequest: string,
+  currentWorkflow: Workflow,
+  availableSkills: SkillInfo[],
+): string {
+  return [
+    buildPromptPrelude(),
+    "## Existing Workflow",
+    "",
+    JSON.stringify(currentWorkflow, null, 2),
+    "",
+    buildAvailableSkillsSection(availableSkills),
+    "## Edit Request",
+    "",
+    userRequest,
+    "",
+    "Update the existing workflow to satisfy the edit request.",
+    "Treat the request as the desired behavior of the workflow, not as work to execute yourself right now.",
+    "Preserve unchanged behavior where possible, but replace the structure when the requested behavior changes substantially.",
+    "Return ONLY the full updated JSON workflow object.",
+  ].join("\n")
+}
+
+function buildPromptPrelude(): string {
+  if (skillContent) {
+    // Use the skill file as the system context.
+    return skillContent
+  }
+
+  return [
+    "You are a workflow generator for c8c.",
+    "Generate a valid JSON workflow with nodes (input, skill, evaluator, splitter, merger, output) and edges (default, pass, fail).",
+    "Always start with input, end with output. Use evaluator for quality loops, splitter+merger for parallel processing.",
+    "If a workflow uses splitter, add a pre-split analysis skill before splitter to produce a structured split-ready list/document; splitter only decomposes that prepared artifact.",
+    "Only set skillRef when an available skill is a close semantic match for the job. Otherwise leave skillRef empty and rely on prompt.",
+    "Evaluator nodes support skillRefs only. Never put skillRef inside an evaluator config.",
+    "If a skill needs external websites/URLs/domains, include config.allowedTools with at least ['WebFetch','WebSearch'] unless explicitly blocked.",
+    "For text/landing generation workflows, prefer evaluator rewrite loops ('check slop or not -> rewrite') and set evaluator skillRefs to ['infostyle','slop-check'].",
+  ].join("\n")
+}
+
+function buildAvailableSkillsSection(availableSkills: SkillInfo[]): string {
   const skillList = availableSkills
     .map((s) => `  - ${s.category}/${s.name}: ${s.description}`)
     .join("\n")
 
-  const parts: string[] = []
-
-  if (skillContent) {
-    // Use the skill file as the system context
-    parts.push(skillContent)
-  } else {
-    // Fallback minimal prompt
-    parts.push(
-      "You are a workflow generator for c8c.",
-      "Generate a valid JSON workflow with nodes (input, skill, evaluator, splitter, merger, output) and edges (default, pass, fail).",
-      "Always start with input, end with output. Use evaluator for quality loops, splitter+merger for parallel processing.",
-      "If a workflow uses splitter, add a pre-split analysis skill before splitter to produce a structured split-ready list/document; splitter only decomposes that prepared artifact.",
-      "If a skill needs external websites/URLs/domains, include config.allowedTools with at least ['WebFetch','WebSearch'] unless explicitly blocked.",
-      "For text/landing generation workflows, prefer evaluator rewrite loops ('check slop or not -> rewrite') and set evaluator skillRefs to ['infostyle','slop-check'].",
-    )
-  }
-
-  parts.push(
-    "",
+  return [
     "## Available Skills",
     "",
     availableSkills.length > 0
       ? skillList
       : "  (No skills discovered — use descriptive skillRef names)",
     "",
-    "## User Request",
-    "",
-    userDescription,
-  )
-
-  return parts.join("\n")
+  ].join("\n")
 }
 
 const VALID_EDGE_TYPES = new Set<string>(["default", "pass", "fail"])
@@ -73,7 +101,7 @@ function normalizeConfig(n: any): any {
     case "skill":
       return {
         ...existing,
-        skillRef: existing.skillRef || n.agent || n.skill || n.name || "",
+        skillRef: existing.skillRef || n.agent || n.skill || "",
         prompt: existing.prompt || n.description || n.instruction || "",
       }
     case "evaluator":

@@ -286,6 +286,9 @@ export interface NodeInput {
   content: string
   metadata: {
     source: string
+    artifact_type?: string
+    artifact_label?: string
+    artifact_role?: "input" | "intermediate" | "decision" | "final"
     score?: number
     reason?: string
     iteration?: number

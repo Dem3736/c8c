@@ -17,6 +17,13 @@ interface UseWorkflowGenerationArgs {
   setSkills: (next: DiscoveredSkill[]) => void
   selectedProject: string | null
   onOpenChange: (open: boolean) => void
+  onRestorePrevious?: () => void
+  onGenerated?: (payload: {
+    workflow: Workflow
+    workflowPath: string | null
+    request: string
+    target: GenerationTarget
+  }) => void
 }
 
 export function useWorkflowGeneration({
@@ -30,6 +37,8 @@ export function useWorkflowGeneration({
   setSkills,
   selectedProject,
   onOpenChange,
+  onRestorePrevious,
+  onGenerated,
 }: UseWorkflowGenerationArgs) {
   const [description, setDescription] = useState("")
   const [generating, setGenerating] = useState(false)
@@ -116,17 +125,33 @@ export function useWorkflowGeneration({
         setSelectedWorkflowPath(createdPath)
         setWorkflow(savedWorkflow)
         setWorkflowSavedSnapshot(workflowSnapshot(savedWorkflow))
-        toast.success("Generated and saved as new workflow")
+        onGenerated?.({
+          workflow: savedWorkflow,
+          workflowPath: createdPath,
+          request: description,
+          target,
+        })
+        toast.success("Ready to run", {
+          description: "The agent prepared a new workflow in your project.",
+        })
       } else {
         setWorkflow(generatedWorkflow)
+        onGenerated?.({
+          workflow: generatedWorkflow,
+          workflowPath: previousWorkflowPath,
+          request: description,
+          target,
+        })
         // Replacing current workflow intentionally marks editor dirty.
-        toast.success("Workflow generated", {
+        toast.success("Ready to review", {
+          description: "The agent replaced the current draft with a runnable flow.",
           action: hasWorkflowContent(previousWorkflow)
             ? {
               label: "Undo",
               onClick: () => {
                 setWorkflow(previousWorkflow)
                 setSelectedWorkflowPath(previousWorkflowPath)
+                onRestorePrevious?.()
               },
             }
             : undefined,
