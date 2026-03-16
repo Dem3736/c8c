@@ -16,6 +16,23 @@ async function writeDeclarationWrapper() {
   await writeFile(wrapperPath, "export {}\n")
 }
 
+async function writeOpenClawExecutableWrappers() {
+  const lobsterPath = resolve(distDir, "lobster")
+  const lobsterCmdPath = resolve(distDir, "lobster.cmd")
+
+  await mkdir(distDir, { recursive: true })
+  await writeFile(
+    lobsterPath,
+    "#!/usr/bin/env node\nimport { main } from \"./index.js\"\nvoid main()\n",
+  )
+  await chmod(lobsterPath, 0o755)
+
+  await writeFile(
+    lobsterCmdPath,
+    "@echo off\r\nnode \"%~dp0index.js\" %*\r\n",
+  )
+}
+
 await execFile(npmCommand, ["run", "build", "-w", "@c8c/workflow-runner"], {
   cwd: repoRoot,
 })
@@ -47,3 +64,4 @@ await build({
 
 await writeDeclarationWrapper()
 await chmod(resolve(distDir, "index.js"), 0o755)
+await writeOpenClawExecutableWrappers()
