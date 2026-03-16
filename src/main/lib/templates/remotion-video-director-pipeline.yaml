@@ -13,9 +13,16 @@ steps:
 version: 1
 name: Remotion Video Director Pipeline
 description: Turn Remotion Video Director into a production pipeline with parallel scene builds, assembly, audio integration, and explicit review gates
+credits:
+  - label: Remotion Video Director
+    href: https://github.com/BayramAnnakov/remotion-video-director
+    note: Original skill and four-phase creative workflow this template wraps.
+  - label: remotion-dev/skills
+    href: https://github.com/remotion-dev/skills
+    note: Official Remotion skill pack used here for API-level build guidance.
 defaults:
   model: sonnet
-  maxTurns: 90
+  maxTurns: 120
   timeout_minutes: 75
   maxParallel: 4
   permissionMode: edit
@@ -151,7 +158,7 @@ nodes:
       x: 1680
       y: 220
     config:
-      strategy: assemble
+      strategy: concatenate
       prompt: |-
         Assemble the branch outputs into one renderable Remotion app.
 

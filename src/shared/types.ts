@@ -146,7 +146,7 @@ export interface AgentProvider {
 }
 
 export interface SkillNodeConfig {
-  skillRef: string
+  skillRef?: string
   prompt: string
   outputMode?: "auto" | "stdout" | "content_file"
   maxTurns?: number
@@ -405,6 +405,18 @@ export type KnownArtifactKind =
   | "phase_plan"
   | "validation_contract"
   | "verification_report"
+  | "angle_map"
+  | "content_brief"
+  | "outline"
+  | "draft"
+  | "qa_report"
+  | "distribution_bundle"
+  | "design_brief"
+  | "experience_map"
+  | "direction_set"
+  | "review_notes"
+  | "component_spec"
+  | "handoff_pack"
   | "decision_record"
   | "missing_input_response"
   | "questionnaire_response"
@@ -417,6 +429,45 @@ export interface ArtifactContract {
   title?: string
   description?: string
   required?: boolean
+}
+
+export interface ArtifactRecord {
+  id: string
+  kind: ArtifactKind
+  title: string
+  description?: string
+  caseId?: string
+  caseLabel?: string
+  sourceArtifactIds?: string[]
+  projectPath: string
+  workspace: string
+  runId: string
+  templateId?: string
+  templateName?: string
+  workflowPath?: string
+  workflowName?: string
+  relativePath: string
+  contentPath: string
+  metadataPath: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface PersistArtifactsFromRunRequest {
+  projectPath: string
+  workspace: string
+  caseId?: string
+  caseLabel?: string
+  sourceArtifactIds?: string[]
+  templateId?: string
+  templateName?: string
+  workflowPath?: string | null
+  workflowName?: string
+  contracts: ArtifactContract[]
+}
+
+export interface PersistArtifactsFromRunResult {
+  artifacts: ArtifactRecord[]
 }
 
 export type WorkflowTemplateJourneyStage =
@@ -439,6 +490,7 @@ export interface WorkflowTemplatePackMetadata {
 }
 
 export type ExecutionPolicyTag =
+  | "evidence_first"
   | "spec_first"
   | "small_tasks"
   | "fresh_workers"
@@ -446,6 +498,12 @@ export type ExecutionPolicyTag =
   | "review_gates"
   | "isolated_workspace"
   | "human_gate_required"
+  | "voice_locked"
+  | "no_slop"
+  | "publish_gate"
+  | "critique_loops"
+  | "variant_exploration"
+  | "consistency_checks"
   | (string & {})
 
 export interface WorkflowExecutionPolicyProfile {
@@ -454,6 +512,12 @@ export interface WorkflowExecutionPolicyProfile {
   description?: string
   tags?: ExecutionPolicyTag[]
   notes?: string[]
+}
+
+export interface WorkflowTemplateCredit {
+  label: string
+  href: string
+  note?: string
 }
 
 export interface WorkflowTemplate {
@@ -472,6 +536,7 @@ export interface WorkflowTemplate {
   contractIn?: ArtifactContract[]
   contractOut?: ArtifactContract[]
   executionPolicy?: WorkflowExecutionPolicyProfile
+  credits?: WorkflowTemplateCredit[]
   workflow: Workflow
   source?: "builtin" | "plugin" | "user"
   pluginId?: string

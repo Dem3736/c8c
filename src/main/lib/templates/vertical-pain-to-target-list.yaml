@@ -1,0 +1,187 @@
+id: vertical-pain-to-target-list
+stage: research
+emoji: "\U0001F52D"
+headline: Turn a vague vertical hunch into a first qualified account list
+how: Uses external market research to validate pain, convert it into searchable hypotheses, build the first account universe, and tier who deserves attention
+input: A target vertical, subsegments, geography, what you sell, and any suspected pains or known competitors
+output: Sourcing research, a hypothesis set, an enriched account table, and a first prioritized hunt list
+steps:
+  - Research the market before guessing at the message or the list.
+  - Distill the pain into search angles that list-building can actually run.
+  - Build and enrich a first-pass account universe instead of prospecting blind.
+  - Tier the list and explain which accounts deserve outreach first and why now.
+version: 1
+name: Vertical Pain to Target List
+description: Enter a new market with an evidence-backed hypothesis set, a first hunt list, and clear reasons why the top accounts should be worked first
+credits:
+  - label: GTM Skills
+    href: https://github.com/extruct-ai/gtm-skills
+    note: Original Extruct GTM skill pack this workflow composes.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 60
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Vertical, subsegments, geographies, what you sell, and your current assumptions
+  - id: context-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      skillRef: gtm/context-building
+      prompt: |-
+        Build or refresh the minimal company context needed to reason about this new vertical.
+
+        Capture:
+        - what we sell in email-safe language
+        - who usually buys
+        - any relevant win cases or proof points
+        - any exclusions or DNC domains already known
+
+        Keep the context concise and decision-useful.
+  - id: research-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      skillRef: gtm/market-research
+      prompt: |-
+        Research this vertical as if we are entering it cold.
+
+        Requirements:
+        - run focused queries on workflow pain, tool gaps, and scaling failures
+        - prefer concrete numbers, examples, and operator language over generic summaries
+        - distill 4-7 pain hypotheses that downstream list-building can use
+        - call out which hypotheses appear urgent versus merely interesting
+        - keep the final output grounded enough that a seller could use it in a kickoff
+  - id: research-eval-1
+    type: evaluator
+    position:
+      x: 840
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) specificity of the workflow pains, (2) presence of real data points or evidence, (3)
+        distinctness of the resulting hypotheses, (4) usefulness of the hypotheses for company search, and (5)
+        whether the research teaches something non-obvious about the market. Fail if the output reads like a generic
+        industry overview.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: research-1
+      skillRefs:
+        - gtm/market-research
+  - id: list-building-1
+    type: skill
+    position:
+      x: 1120
+      y: 220
+    config:
+      skillRef: gtm/list-building
+      prompt: |-
+        Use the approved hypotheses to build a first-pass target account list for this vertical.
+
+        Rules:
+        - design multiple query angles, not one giant broad search
+        - target 100-300 accounts for the first pass unless the user asks otherwise
+        - preserve which hypothesis or query produced each account
+        - deduplicate and remove obvious bad fits early
+        - say where coverage is weak and which angle needs refinement
+  - id: enrichment-design-1
+    type: skill
+    position:
+      x: 1400
+      y: 220
+    config:
+      skillRef: gtm/enrichment-design
+      prompt: |-
+        Use segmentation mode.
+
+        Design 4-5 columns that answer:
+        1. Does this account really exhibit the researched pain?
+        2. Is there a why-now signal or timing hook?
+        3. Is there a usable personalization angle?
+        4. Is the account data rich enough to work now?
+
+        Keep the columns tight and clearly tied back to the research hypotheses.
+  - id: list-enrichment-1
+    type: skill
+    position:
+      x: 1680
+      y: 220
+    config:
+      skillRef: gtm/list-enrichment
+      prompt: |-
+        Add the approved columns, run only those columns, monitor progress, and show sample rows once enough data is
+        complete to judge quality.
+  - id: segmentation-1
+    type: skill
+    position:
+      x: 1960
+      y: 220
+    config:
+      skillRef: gtm/list-segmentation
+      prompt: |-
+        Tier the resulting accounts into Tier 1, Tier 2, and Tier 3.
+
+        For each promoted account include:
+        - primary hypothesis match
+        - strongest why-now signal
+        - best hook for future outreach
+        - short rationale in seller language
+
+        For weak-fit accounts, explain what is missing or why they should wait.
+  - id: output-1
+    type: output
+    position:
+      x: 2240
+      y: 220
+    config:
+      title: Vertical Hunt List
+      format: markdown
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-research
+    source: context-1
+    target: research-1
+    type: default
+  - id: e-research-eval
+    source: research-1
+    target: research-eval-1
+    type: default
+  - id: e-research-eval-list
+    source: research-eval-1
+    target: list-building-1
+    type: pass
+  - id: e-research-eval-retry
+    source: research-eval-1
+    target: research-1
+    type: fail
+  - id: e-list-design
+    source: list-building-1
+    target: enrichment-design-1
+    type: default
+  - id: e-design-enrich
+    source: enrichment-design-1
+    target: list-enrichment-1
+    type: default
+  - id: e-enrich-segmentation
+    source: list-enrichment-1
+    target: segmentation-1
+    type: default
+  - id: e-segmentation-output
+    source: segmentation-1
+    target: output-1
+    type: default

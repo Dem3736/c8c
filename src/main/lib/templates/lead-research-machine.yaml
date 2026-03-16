@@ -14,7 +14,7 @@ name: Lead Research Machine
 description: Research a market vertical, fan out into segments, find leads in parallel, compile a prioritized list
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 30
 nodes:
   - id: input-1

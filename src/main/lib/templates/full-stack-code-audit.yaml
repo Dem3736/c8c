@@ -15,7 +15,7 @@ description: Split codebase into audit areas, review security/quality/architectu
   findings, create audit report
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 30
 nodes:
   - id: input-1

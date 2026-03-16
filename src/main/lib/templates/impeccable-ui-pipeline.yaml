@@ -14,9 +14,13 @@ version: 1
 name: Impeccable UI Pipeline
 description: Audit a frontend feature, then systematically normalize, harden, clarify, optimize, and polish it with
   quality-gate evaluation loop
+credits:
+  - label: Impeccable
+    href: https://github.com/pbakaus/impeccable
+    note: Original skill pack this pipeline wraps.
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 45
 nodes:
   - id: input-1

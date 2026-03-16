@@ -15,7 +15,7 @@ name: Playwright Visual Testing Audit
 description: Map UI scenarios, click through them with browser automation, and merge the findings into a prioritized visual QA report
 defaults:
   model: sonnet
-  maxTurns: 80
+  maxTurns: 120
   timeout_minutes: 60
   maxParallel: 3
   permissionMode: plan
@@ -94,7 +94,7 @@ nodes:
     config:
       skillRef: qa/playwright-visual-auditor
       permissionMode: edit
-      maxTurns: 100
+      maxTurns: 120
       prompt: |-
         Execute the assigned scenario as a browser-based visual audit.
 

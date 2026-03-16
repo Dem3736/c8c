@@ -15,7 +15,7 @@ name: Invoice Chaos Fixer
 description: Organize invoices, extract data from PDFs, create expense spreadsheet, detect anomalies, evaluate completeness
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 30
 nodes:
   - id: input-1

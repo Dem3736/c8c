@@ -15,7 +15,7 @@ description: Split competitors, extract ad strategies in parallel, synthesize fi
   create presentation
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 30
 nodes:
   - id: input-1

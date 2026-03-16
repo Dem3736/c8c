@@ -16,7 +16,7 @@ description: Map the full product surface, audit the entire project in parallel 
   one prioritized polish report
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 45
   maxParallel: 5
   permissionMode: plan

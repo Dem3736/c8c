@@ -14,7 +14,7 @@ name: Meeting → Actions → Plan
 description: Analyze meeting transcript, extract action items, prioritize and plan each in parallel, compile into a project document
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 30
 nodes:
   - id: input-1

@@ -15,7 +15,7 @@ name: Segment Research with Quality Gate
 description: Analyzes input context, generates grounded segment hypotheses, researches each in parallel, scores and filters by quality gate
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 30
 nodes:
   - id: input-1
@@ -49,7 +49,6 @@ nodes:
         hypothesis generation should rely more on research.
 
         Output a structured context brief that will inform segment hypothesis generation.
-      model: sonnet
       maxTurns: 15
   - id: splitter-1
     type: splitter

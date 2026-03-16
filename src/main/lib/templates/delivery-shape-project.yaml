@@ -1,0 +1,90 @@
+id: delivery-shape-project
+stage: strategy
+emoji: "\U0001F9ED"
+headline: Turn a repo or idea into a build-ready project shape
+how: Turn the available context into a project brief, requirements, and roadmap before anyone starts execution.
+input: A project brief, feature request, or repo context
+output: Project brief, requirements, and roadmap ready for phase planning
+use_when: You need to turn a messy idea or repo context into a clear project shape before planning implementation.
+steps:
+  - Analyze project context, constraints, and goals
+  - Produce a project brief, requirements spec, and roadmap
+pack:
+  id: delivery-foundation
+  label: Delivery Factory
+  journey_stage: shape
+  entrypoint: true
+  recommended_next:
+    - delivery-research-phase
+    - delivery-plan-phase
+contract_in:
+  - kind: codebase_map
+    title: Existing Codebase Map
+    description: Helpful context when shaping work in an existing repository.
+    required: false
+contract_out:
+  - kind: project_brief
+    title: Project Brief
+    description: Problem, scope, goals, constraints, and assumptions.
+  - kind: requirements_spec
+    title: Requirements Spec
+    description: Functional and non-functional requirements for the work.
+  - kind: roadmap
+    title: Roadmap
+    description: Suggested phases, milestones, and sequencing.
+execution_policy:
+  profile_id: delivery_shape
+  summary: Spec-first shaping
+  description: Make the desired outcome and constraints explicit before phase planning starts.
+  tags:
+    - evidence_first
+    - spec_first
+  notes:
+    - Keep assumptions explicit.
+    - Separate requirements from implementation guesses.
+version: 1
+name: "Delivery Factory: Shape Project"
+description: Convert available context into a project brief, requirements, and roadmap that can drive downstream planning.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Describe the project, feature, or repo context you want shaped into a brief and roadmap.
+  - id: shaper-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Turn this input into three explicit artifacts in one structured response:
+        1) Project Brief,
+        2) Requirements Spec,
+        3) Roadmap.
+        Keep each section clearly labeled. Make assumptions visible, call out constraints, and separate facts from unknowns.
+  - id: output-1
+    type: output
+    position:
+      x: 640
+      y: 200
+    config:
+      title: Project Brief, Requirements, and Roadmap
+edges:
+  - id: e-input-shaper
+    source: input-1
+    target: shaper-1
+    type: default
+  - id: e-shaper-output
+    source: shaper-1
+    target: output-1
+    type: default

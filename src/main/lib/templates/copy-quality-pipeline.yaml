@@ -1,0 +1,129 @@
+id: copy-quality-pipeline
+stage: content
+emoji: "\U0001F9F9"
+headline: Clean up copy with infostyle + slop-check passes
+how: Audits text for AI slop and infostyle violations, then rewrites through slop-cleaner, infostyle-editor, and polish passes with evaluator retry loop
+input: Raw text or copy to clean up
+output: Clean, fact-dense copy free of AI slop and infostyle violations
+steps:
+  - Audit text for slop indicators, infostyle violations, padding, and buzzwords
+  - Rewrite to eliminate AI slop and generic phrasing
+  - Apply infostyle rules — remove buzzwords, enforce positive rules
+  - Polish for consistency, number deduplication, and flow
+  - Run quality-gate evaluation loop
+version: 1
+name: Copy Quality Pipeline
+description: Run existing text through infostyle + slop-check passes to produce clean, fact-based copy with evaluator retry
+  loop
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 45
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config: {}
+  - id: analyzer-1
+    type: skill
+    position:
+      x: 250
+      y: 200
+    config:
+      prompt: >-
+        Audit the provided text. Count and catalogue every instance of: AI slop indicators (generic phrasing, fake
+        confidence, weak causality, zero-position statements, low detail density), infostyle violations (Section A
+        buzzwords, Section B banned patterns, missing positive rules C1-C8), padding sentences that add no information,
+        and vague qualifiers. Produce a structured report with categories, counts, and line-level citations. DO NOT
+        rewrite anything — document issues only.
+  - id: slop-cleaner-1
+    type: skill
+    position:
+      x: 500
+      y: 200
+    config:
+      prompt: >-
+        Using the audit report from the previous step, rewrite the original text to eliminate all AI slop. Remove:
+        generic phrasing ("It's important to note", "In today's landscape"), fake confidence ("undoubtedly",
+        "certainly"), weak causality ("This is because", "This means that"), zero-position statements that commit to
+        nothing, and low detail density sentences. Replace every removed sentence with a concrete, specific claim or
+        delete it entirely if it adds nothing. Preserve the original structure and all factual content.
+  - id: infostyle-editor-1
+    type: skill
+    position:
+      x: 750
+      y: 200
+    config:
+      prompt: >-
+        Apply infostyle rules to the text. Section A: remove all buzzwords (innovative, cutting-edge, revolutionary,
+        leverage, synergy, empower, transform, seamless, robust, game-changing, next-generation, best-in-class,
+        holistic, paradigm, ecosystem, scalable, actionable, streamline, disruptive, world-class). Section B: remove
+        manipulation patterns (artificial urgency, false scarcity, emotional manipulation, unsubstantiated
+        superlatives). Enforce positive rules C1-C8: headlines state what happens (C1), every sentence informs or helps
+        decide (C2), numbers have units and sources (C3), default to 3rd person (C4), no padding sentences (C5), no
+        sentence repeats an earlier point (C6), attributions are specific (C7), comparisons name both sides (C8).
+  - id: polish-1
+    type: skill
+    position:
+      x: 1000
+      y: 200
+    config:
+      prompt: >-
+        Final consistency pass. Apply the number deduplication protocol: if the same number appears in more than one
+        section, keep it in the most relevant section and rephrase the others. Ensure terminology is consistent
+        throughout (same term for the same concept, no synonym drift). Check flow between sections — each section
+        should build on the previous without redundant setup. Remove any remaining padding, hedging, or filler that
+        survived earlier passes. Output the final clean text.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1250
+      y: 200
+    config:
+      criteria: >-
+        Evaluate the cleaned copy across 4 dimensions (score 1-10 each): 1) Slop risk — no generic AI phrasing, no
+        fake confidence, no weak causality, high detail density (slop-check verdict must be clean); 2) Infostyle
+        discipline — no buzzwords from Section A, no manipulation patterns from Section B, no padding sentences; 3)
+        Fact density — every sentence informs or helps decide, numbers have units and sources, attributions are
+        specific; 4) Consistency — no number repetition across sections, terminology consistent throughout, 3rd person
+        default maintained, comparisons name both sides. Provide specific fix instructions for any dimension below 7.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: slop-cleaner-1
+  - id: output-1
+    type: output
+    position:
+      x: 1500
+      y: 200
+    config: {}
+edges:
+  - id: e-input-analyzer
+    source: input-1
+    target: analyzer-1
+    type: default
+  - id: e-analyzer-slop-cleaner
+    source: analyzer-1
+    target: slop-cleaner-1
+    type: default
+  - id: e-slop-cleaner-infostyle
+    source: slop-cleaner-1
+    target: infostyle-editor-1
+    type: default
+  - id: e-infostyle-polish
+    source: infostyle-editor-1
+    target: polish-1
+    type: default
+  - id: e-polish-evaluator
+    source: polish-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-slop-cleaner
+    source: evaluator-1
+    target: slop-cleaner-1
+    type: fail

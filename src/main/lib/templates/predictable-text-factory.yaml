@@ -15,7 +15,7 @@ name: Predictable Text Factory
 description: Plan sections, process each section independently, run section-level and final quality gates, iterate until pass
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 45
   maxParallel: 6
 nodes:

@@ -1,0 +1,355 @@
+id: new-vertical-to-live-campaign
+stage: outreach
+emoji: "\U0001F680"
+headline: Go from a new market thesis to a live outbound campaign without stitching the workflow by hand
+how: Researches the market, builds and segments the account list, finds contacts, generates branch-specific emails, pressure-tests the copy, and prepares sequencer upload
+input: Target vertical, what you sell, geography, target roles, proof points, provider choices, and sending constraints
+output: A research-backed outbound pack with target accounts, verified contacts, branch-specific emails, a manual-review queue, and sequencer handoff
+steps:
+  - Validate the market pain before building the list or writing the copy.
+  - Build, enrich, and tier the account list so contact discovery is focused.
+  - Find the right people and verify emails before writing outreach.
+  - Generate, stress-test, and hand off sequencer-ready messaging without auto-sending.
+version: 1
+name: New Vertical to Live Campaign
+description: Enter a new market end to end, from external pain research through list building, contact discovery, branched copy generation, and sequencer handoff
+credits:
+  - label: GTM Skills
+    href: https://github.com/extruct-ai/gtm-skills
+    note: Original Extruct GTM skill pack this workflow composes.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 90
+  maxParallel: 6
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Vertical, offer, target roles, geos, proof points, provider choices, and sending constraints
+  - id: context-1
+    type: skill
+    position:
+      x: 240
+      y: 220
+    config:
+      skillRef: gtm/context-building
+      prompt: |-
+        Build the GTM context needed for a brand-new outbound motion.
+
+        Capture:
+        - what we sell in email-safe language
+        - ICP and target roles
+        - best proof points and win cases
+        - banned phrasing, risky claims, and DNC domains
+  - id: research-1
+    type: skill
+    position:
+      x: 480
+      y: 220
+    config:
+      skillRef: gtm/market-research
+      prompt: |-
+        Research this vertical as if we are preparing to launch the first campaign into it.
+
+        Output:
+        - a concrete sourcing research summary
+        - 4-7 numbered pain hypotheses
+        - what type of company each hypothesis fits best
+        - what signals would make outreach feel timely
+  - id: research-eval-1
+    type: evaluator
+    position:
+      x: 720
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on whether the research is specific, quantified, non-generic, and immediately useful for list
+        building and messaging. Fail if the hypotheses are too vague to search or too broad to write against.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: research-1
+      skillRefs:
+        - gtm/market-research
+  - id: list-building-1
+    type: skill
+    position:
+      x: 960
+      y: 220
+    config:
+      skillRef: gtm/list-building
+      prompt: |-
+        Use the approved hypotheses to build a first campaign account list.
+
+        Rules:
+        - combine query angles where needed, but keep source attribution by hypothesis
+        - target a practical first-campaign size
+        - deduplicate and remove DNC or obvious bad-fit accounts
+        - explain which angles generated the highest-quality accounts
+  - id: enrichment-design-1
+    type: skill
+    position:
+      x: 1200
+      y: 220
+    config:
+      skillRef: gtm/enrichment-design
+      prompt: |-
+        Use segmentation mode with a light personalization layer.
+
+        Design 4-6 columns that answer:
+        1. Which hypothesis fits this account?
+        2. Why now?
+        3. What hook should outreach use?
+        4. Is the account data strong enough to work?
+  - id: list-enrichment-1
+    type: skill
+    position:
+      x: 1440
+      y: 220
+    config:
+      skillRef: gtm/list-enrichment
+      prompt: |-
+        Add the approved columns, run them, monitor progress, and show enough sample rows to confirm the data is ready
+        for segmentation.
+  - id: segmentation-1
+    type: skill
+    position:
+      x: 1680
+      y: 220
+    config:
+      skillRef: gtm/list-segmentation
+      prompt: |-
+        Tier accounts for campaign readiness.
+
+        Rules:
+        - promote only accounts with believable fit and enough data
+        - keep the tiering rationale readable by a seller
+        - carry forward the best hook and primary hypothesis for each promoted account
+  - id: people-search-1
+    type: skill
+    position:
+      x: 1920
+      y: 220
+    config:
+      skillRef: gtm/people-search
+      prompt: |-
+        For Tier 1 and Tier 2 accounts, find the right people to contact.
+
+        Coverage should include:
+        - likely decision makers
+        - evaluators or operators
+        - internal champions when visible
+  - id: email-search-1
+    type: skill
+    position:
+      x: 2160
+      y: 220
+    config:
+      skillRef: gtm/email-search
+      prompt: |-
+        Enrich those contacts with verified emails and optional phones.
+
+        Report:
+        - provider choice
+        - expected and actual hit rate
+        - weak-coverage accounts that need manual handling
+  - id: prompt-builder-1
+    type: skill
+    position:
+      x: 2400
+      y: 220
+    config:
+      skillRef: gtm/email-prompt-building
+      prompt: |-
+        Build one self-contained first-email prompt for this market.
+
+        It must encode:
+        - voice rules
+        - proof selection logic
+        - banned phrasing
+        - hypothesis-specific P1 angles
+        - CTA calibration
+        - field usage for the actual contact data available
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 2640
+      y: 220
+    config:
+      strategy: |-
+        Create up to 6 copy branches from the promoted contacts.
+
+        Branch by meaningful combination of:
+        - tier
+        - primary hypothesis
+        - role family
+
+        Exclude contacts missing enough data for credible outreach.
+      maxBranches: 6
+  - id: email-generation-1
+    type: skill
+    position:
+      x: 2880
+      y: 220
+    config:
+      skillRef: gtm/email-generation
+      prompt: |-
+        Generate first-touch emails per branch using the approved prompt.
+
+        Rules:
+        - Tier 1 should feel individually written
+        - Tier 2 can be templated within the branch, but still row-specific
+        - preserve branch labels and row IDs
+        - flag under-personalized rows for manual review
+  - id: simulation-1
+    type: skill
+    position:
+      x: 3120
+      y: 220
+    config:
+      skillRef: gtm/email-response-simulation
+      prompt: |-
+        For each branch, review one representative high-priority prospect.
+
+        Extract:
+        - likely reply blockers
+        - strongest keep/change guidance for the branch
+        - one rewritten example email that demonstrates the fixes
+  - id: merger-1
+    type: merger
+    position:
+      x: 3360
+      y: 220
+    config:
+      strategy: assemble
+      prompt: |-
+        Compile the campaign pack.
+
+        Include:
+        - promoted accounts and contacts
+        - final branch-by-branch messaging guidance
+        - manual-review queue
+        - provider-ready field mapping expectations for upload
+  - id: final-eval-1
+    type: evaluator
+    position:
+      x: 3600
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) research-to-message coherence, (2) list and contact quality, (3) differentiation between
+        copy branches, (4) realism of the simulation feedback, (5) manual-review discipline, and (6) upload readiness.
+        Fail if the workflow still produces generic copy or shaky campaign inputs.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: prompt-builder-1
+      skillRefs:
+        - gtm/email-prompt-building
+        - gtm/email-generation
+        - gtm/email-response-simulation
+  - id: campaign-sending-1
+    type: skill
+    position:
+      x: 3840
+      y: 220
+    config:
+      skillRef: gtm/campaign-sending
+      prompt: |-
+        Prepare the campaign for the user's sequencer.
+
+        Requirements:
+        - map all required fields and custom variables
+        - ask before creating or reusing a campaign
+        - upload only after provider credentials and confirmation are present
+        - always present the pre-send checklist
+        - never activate the campaign automatically
+  - id: output-1
+    type: output
+    position:
+      x: 4080
+      y: 220
+    config:
+      title: New Vertical Outbound Campaign
+      format: markdown
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-research
+    source: context-1
+    target: research-1
+    type: default
+  - id: e-research-eval
+    source: research-1
+    target: research-eval-1
+    type: default
+  - id: e-research-eval-list
+    source: research-eval-1
+    target: list-building-1
+    type: pass
+  - id: e-research-eval-retry
+    source: research-eval-1
+    target: research-1
+    type: fail
+  - id: e-list-design
+    source: list-building-1
+    target: enrichment-design-1
+    type: default
+  - id: e-design-enrich
+    source: enrichment-design-1
+    target: list-enrichment-1
+    type: default
+  - id: e-enrich-segmentation
+    source: list-enrichment-1
+    target: segmentation-1
+    type: default
+  - id: e-segmentation-people
+    source: segmentation-1
+    target: people-search-1
+    type: default
+  - id: e-people-emailsearch
+    source: people-search-1
+    target: email-search-1
+    type: default
+  - id: e-emailsearch-prompt
+    source: email-search-1
+    target: prompt-builder-1
+    type: default
+  - id: e-prompt-splitter
+    source: prompt-builder-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-emailgen
+    source: splitter-1
+    target: email-generation-1
+    type: default
+  - id: e-emailgen-simulation
+    source: email-generation-1
+    target: simulation-1
+    type: default
+  - id: e-simulation-merger
+    source: simulation-1
+    target: merger-1
+    type: default
+  - id: e-merger-finaleval
+    source: merger-1
+    target: final-eval-1
+    type: default
+  - id: e-finaleval-campaign
+    source: final-eval-1
+    target: campaign-sending-1
+    type: pass
+  - id: e-finaleval-retry
+    source: final-eval-1
+    target: prompt-builder-1
+    type: fail
+  - id: e-campaign-output
+    source: campaign-sending-1
+    target: output-1
+    type: default

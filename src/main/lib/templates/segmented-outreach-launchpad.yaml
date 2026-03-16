@@ -1,0 +1,270 @@
+id: segmented-outreach-launchpad
+stage: outreach
+emoji: "\U0001F4E9"
+headline: Turn segmented contacts into send-ready outreach without sounding batch-blasted
+how: Refreshes the GTM context, writes a self-contained prompt, fans out message generation by segment, pressure-tests the copy, and prepares sequencer handoff without auto-sending
+input: A segmented contact CSV or Extruct table, company context or proof points, campaign goal, and the email sequencer you plan to use
+output: A branch-labeled email pack, simulation-backed copy fixes, manual-review queue for risky rows, and a sequencer handoff checklist
+steps:
+  - Reduce the campaign to the few messaging angles that really deserve their own copy branch.
+  - Build one self-contained outreach prompt with voice, proof, banned phrasing, and CTA rules baked in.
+  - Split by segment so Tier 1 and Tier 2 cohorts get sharper messages instead of one generic blast.
+  - Merge the best copy, gate quality, and prep provider upload without activating anything.
+version: 1
+name: Segmented Outreach Launchpad
+description: Start from a segmented contact list, branch message generation by who is being targeted and why they should care, then hand off a send-ready pack with realistic quality gates and provider prep
+credits:
+  - label: GTM Skills
+    href: https://github.com/extruct-ai/gtm-skills
+    note: Original Extruct GTM skill pack this workflow composes.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 60
+  maxParallel: 6
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Segmented contacts, campaign goal, provider, proof points, and any banned angles or exclusions
+  - id: context-1
+    type: skill
+    position:
+      x: 260
+      y: 220
+    config:
+      skillRef: gtm/context-building
+      prompt: |-
+        Refresh the GTM context for this send.
+
+        Focus on:
+        - current proof points we can safely use
+        - voice rules and banned phrasing
+        - DNC or risky account types
+        - any recent campaign learnings worth carrying forward
+
+        If a context file already exists, update only the stale or missing pieces.
+  - id: hypotheses-1
+    type: skill
+    position:
+      x: 520
+      y: 220
+    config:
+      skillRef: gtm/hypothesis-building
+      prompt: |-
+        Review the segmented list and collapse messaging into 3-5 real buying hypotheses that deserve distinct copy.
+
+        Requirements:
+        - merge weak or overlapping angles
+        - keep only the hypotheses that would change the opener, proof, or CTA
+        - explain each angle in plain operator language
+        - note which segments or titles should receive each angle
+  - id: prompt-builder-1
+    type: skill
+    position:
+      x: 780
+      y: 220
+    config:
+      skillRef: gtm/email-prompt-building
+      prompt: |-
+        Build a self-contained first-email prompt for this campaign.
+
+        The prompt must bake in:
+        - voice rules
+        - banned phrasing
+        - proof-point selection logic
+        - competitive-awareness rules
+        - CTA calibration by audience and message angle
+        - exact instructions for using the actual fields present in the segmented contact list
+
+        The resulting prompt should be good enough that email-generation does not need to reread external files.
+  - id: prompt-eval-1
+    type: evaluator
+    position:
+      x: 1040
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) self-containment, (2) clarity of field usage, (3) proof relevance, (4) distinctness of the
+        messaging hypotheses, (5) coverage of banned phrasing and risky claims, and (6) CTA calibration for different
+        audience types. Fail if the generator would still need outside context to write good emails.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: prompt-builder-1
+      skillRefs:
+        - gtm/context-building
+        - gtm/hypothesis-building
+        - gtm/email-prompt-building
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 1300
+      y: 220
+    config:
+      strategy: |-
+        Create up to 6 message branches from the approved segmented list.
+
+        Branching rules:
+        - make one branch per meaningful hypothesis or cohort
+        - keep Tier 1 rows isolated enough for individualized copy
+        - group Tier 2 rows by shared hypothesis
+        - exclude Tier 3 and rows missing required contact data
+
+        Each branch should carry:
+        - the target rows
+        - the shared hypothesis
+        - the proof points most likely to fit
+        - banned angles to avoid
+        - the expected CTA level
+      maxBranches: 6
+  - id: email-generation-1
+    type: skill
+    position:
+      x: 1560
+      y: 220
+    config:
+      skillRef: gtm/email-generation
+      prompt: |-
+        Generate first-touch emails for this branch using the approved prompt template.
+
+        Rules:
+        - Tier 1 rows should feel individually written
+        - Tier 2 rows can be reusable but still need row-specific personalization
+        - preserve row IDs and branch labels
+        - obey all banned phrasing and CTA rules from the prompt
+        - if a row lacks enough data for credible personalization, flag it for manual review instead of forcing bad copy
+  - id: simulation-1
+    type: skill
+    position:
+      x: 1820
+      y: 220
+    config:
+      skillRef: gtm/email-response-simulation
+      prompt: |-
+        Pressure-test this branch with one representative high-priority prospect.
+
+        Rules:
+        - if the branch has Tier 1 prospects, pick the highest-priority one
+        - otherwise pick one representative Tier 2 prospect
+        - run the full skeptical buyer review
+        - extract branch-level "keep / change" rules from the review
+        - provide one rewritten example email that demonstrates the fixes
+
+        The goal is not to review every row. The goal is to make the branch smarter before final handoff.
+  - id: merger-1
+    type: merger
+    position:
+      x: 2080
+      y: 220
+    config:
+      strategy: assemble
+      prompt: |-
+        Compile the branch outputs into one final email pack.
+
+        Include:
+        - the final branch-by-branch messaging summary
+        - any systemic fixes learned from simulation
+        - a manual-review queue for risky or under-personalized rows
+        - the email CSV or table handoff structure expected by campaign-sending
+
+        Resolve contradictory branch guidance before handing off.
+  - id: final-eval-1
+    type: evaluator
+    position:
+      x: 2340
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) message differentiation between branches, (2) personalization depth, (3) voice
+        consistency, (4) CTA calibration, (5) realism of the buyer simulation, and (6) upload readiness. Fail if the
+        final pack still reads like one generic blast or if too many risky rows escaped the manual-review queue.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: email-generation-1
+      skillRefs:
+        - gtm/email-generation
+        - gtm/email-response-simulation
+  - id: campaign-sending-1
+    type: skill
+    position:
+      x: 2600
+      y: 220
+    config:
+      skillRef: gtm/campaign-sending
+      prompt: |-
+        Prepare the final email pack for the user's sequencer.
+
+        Requirements:
+        - map every required standard field and every custom personalization field
+        - create or find the campaign only after confirming the mapping
+        - upload leads only if the user provides provider credentials and confirms the handoff
+        - always present the pre-send checklist
+        - never activate the campaign automatically
+
+        If credentials or provider choice are missing, leave a precise handoff instead of guessing.
+  - id: output-1
+    type: output
+    position:
+      x: 2860
+      y: 220
+    config:
+      title: Segmented Outreach Pack
+      format: markdown
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-hypotheses
+    source: context-1
+    target: hypotheses-1
+    type: default
+  - id: e-hypotheses-prompt
+    source: hypotheses-1
+    target: prompt-builder-1
+    type: default
+  - id: e-prompt-eval
+    source: prompt-builder-1
+    target: prompt-eval-1
+    type: default
+  - id: e-prompt-eval-splitter
+    source: prompt-eval-1
+    target: splitter-1
+    type: pass
+  - id: e-prompt-eval-retry
+    source: prompt-eval-1
+    target: prompt-builder-1
+    type: fail
+  - id: e-splitter-email
+    source: splitter-1
+    target: email-generation-1
+    type: default
+  - id: e-email-simulation
+    source: email-generation-1
+    target: simulation-1
+    type: default
+  - id: e-simulation-merger
+    source: simulation-1
+    target: merger-1
+    type: default
+  - id: e-merger-final-eval
+    source: merger-1
+    target: final-eval-1
+    type: default
+  - id: e-final-eval-campaign
+    source: final-eval-1
+    target: campaign-sending-1
+    type: pass
+  - id: e-final-eval-retry
+    source: final-eval-1
+    target: email-generation-1
+    type: fail
+  - id: e-campaign-output
+    source: campaign-sending-1
+    target: output-1
+    type: default

@@ -1,0 +1,115 @@
+id: delivery-plan-phase
+stage: strategy
+emoji: "\U0001F4D0"
+headline: Plan the next implementation phase before coding starts
+how: Break the next phase into concrete slices, dependencies, and validation checks before execution begins.
+input: A project brief, scoped feature, or roadmap segment to plan
+output: Phase plan with small tasks, sequencing notes, and a validation contract
+use_when: You know what should be built next and want a concrete phase plan before execution starts.
+steps:
+  - Break the next phase into ordered task slices with dependencies and risks
+  - Review and tighten the plan, then produce a validation contract
+pack:
+  id: delivery-foundation
+  label: Delivery Factory
+  journey_stage: plan
+  recommended_next:
+    - delivery-verify-phase
+contract_in:
+  - kind: project_brief
+    title: Project Brief
+    description: The shaped outcome and constraints for the work.
+    required: true
+  - kind: research_pack
+    title: Research Pack
+    description: Helpful evidence and open questions gathered before planning this phase.
+    required: false
+  - kind: requirements_spec
+    title: Requirements Spec
+    description: Helpful reference for scope and quality constraints.
+    required: false
+  - kind: roadmap
+    title: Roadmap
+    description: Useful sequencing context for the next phase.
+    required: false
+contract_out:
+  - kind: phase_plan
+    title: Phase Plan
+    description: Concrete tasks, sequence, dependencies, and risks for the next build phase.
+  - kind: validation_contract
+    title: Validation Contract
+    description: How this phase will be checked before it is considered complete.
+execution_policy:
+  profile_id: delivery_plan
+  summary: Small-task planning with review gates
+  description: Make the next phase executable, testable, and reviewable before implementation starts.
+  tags:
+    - spec_first
+    - small_tasks
+    - review_gates
+  notes:
+    - Prefer tasks that can be completed and verified independently.
+    - Define validation before execution starts.
+version: 1
+name: "Delivery Factory: Plan Phase"
+description: Convert shaped project context into a concrete phase plan and validation contract before implementation begins.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the project brief, roadmap segment, or scoped feature you want planned next.
+  - id: planner-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Create a concrete Phase Plan for the next implementation stage. Include:
+        1) objective,
+        2) scope and non-scope,
+        3) ordered task slices,
+        4) dependencies and risks,
+        5) rollout notes,
+        6) Validation Contract with tests, checks, or review criteria required before completion.
+        Keep tasks small and explicit.
+  - id: reviewer-1
+    type: skill
+    position:
+      x: 640
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Review this phase plan. Tighten vague tasks, surface hidden dependencies, and strengthen the validation contract.
+        Return the improved final plan ready for execution.
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Phase Plan and Validation Contract
+edges:
+  - id: e-input-planner
+    source: input-1
+    target: planner-1
+    type: default
+  - id: e-planner-reviewer
+    source: planner-1
+    target: reviewer-1
+    type: default
+  - id: e-reviewer-output
+    source: reviewer-1
+    target: output-1
+    type: default

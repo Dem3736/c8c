@@ -15,7 +15,7 @@ name: CTO Product Spec
 description: Generate a CTO-grade product specification from idea to modular implementation details
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 45
 nodes:
   - id: input-1

@@ -1,0 +1,223 @@
+id: seed-account-map-pipeline
+stage: research
+emoji: "\U0001F3AF"
+headline: Turn a handful of best customers into a scored target account map
+how: Captures why existing wins closed, converts that into explicit buying hypotheses, builds and enriches an account table, then tiers who deserves attention now
+input: 3-10 seed customers or closed-won accounts, ICP notes, geography and size constraints, and any do-not-contact domains
+output: A prioritized target-account table with hypothesis fit, timing signals, personalization hooks, and Tier 1/2/3 recommendations
+steps:
+  - Turn real wins into explicit "why they buy" hypotheses in plain seller language.
+  - Build a candidate account universe and reject vague search angles before enrichment.
+  - Add only the research columns needed to prove fit, timing, and hook quality.
+  - Tier every account and explain why it belongs in this campaign or why it should wait.
+version: 1
+name: Seed Account Map Pipeline
+description: Starting from real customers that already bought, build a target-account universe, enrich it with only the signals that matter, and explain in operator language why each account belongs in the next campaign
+credits:
+  - label: GTM Skills
+    href: https://github.com/extruct-ai/gtm-skills
+    note: Original Extruct GTM skill pack this workflow composes.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 45
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Seed customers, ICP notes, geo filters, exclusions, and what a "good fit" looks like
+  - id: context-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      skillRef: gtm/context-building
+      prompt: |-
+        Build or update only the context sections needed for this campaign.
+
+        Prioritize:
+        - What We Do: email-safe value prop, key numbers, and language we can safely use in outreach
+        - ICP: who usually buys, what company shapes convert, and who gets involved
+        - Win Cases: the specific customers or deals the user gave us
+        - Proof Library: proof points that can later support outreach
+        - DNC: domains or account types that should be excluded
+
+        Ask only for missing essentials. Keep the resulting context practical and campaign-ready, not bloated.
+  - id: hypotheses-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      skillRef: gtm/hypothesis-building
+      prompt: |-
+        Using the context plus the seed customer list, generate 4-6 hypotheses for "why companies like these buy."
+
+        Requirements for each hypothesis:
+        - short name
+        - 2-3 sentence description in plain seller language, not analyst jargon
+        - best-fit company type
+        - search angle that list-building can actually use
+        - disqualifier signs that should keep bad-fit accounts out
+        - one timing signal that would make outreach feel relevant now
+
+        The tone should sound like an experienced AE or founder saying "we win when..." rather than a consultant report.
+  - id: hypothesis-eval-1
+    type: evaluator
+    position:
+      x: 840
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) whether each hypothesis is rooted in real win patterns rather than generic market trends,
+        (2) whether best-fit company types are narrow enough to search, (3) whether the search angles are concrete and
+        executable, (4) whether disqualifiers are clear enough to keep noise out, and (5) whether the set covers
+        distinct buying motions instead of repeating the same idea with different wording. Fail if any angle is too
+        vague to drive list-building.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: hypotheses-1
+      skillRefs:
+        - gtm/context-building
+        - gtm/hypothesis-building
+  - id: list-building-1
+    type: skill
+    position:
+      x: 1120
+      y: 220
+    config:
+      skillRef: gtm/list-building
+      prompt: |-
+        Use the approved hypotheses and seed wins to build a working company table for this campaign.
+
+        Rules:
+        - Prefer lookalike search when the seed domains are strong.
+        - Use semantic search or discovery only where it adds net-new relevant coverage.
+        - Target roughly 200-500 accounts unless the user asked for a different range.
+        - Preserve which hypothesis or seed win produced each company.
+        - Deduplicate by domain and remove all DNC domains.
+        - Keep a short note on why each account made the cut.
+
+        If coverage is weak, say which hypothesis underperformed and why.
+  - id: enrichment-design-1
+    type: skill
+    position:
+      x: 1400
+      y: 220
+    config:
+      skillRef: gtm/enrichment-design
+      prompt: |-
+        Use segmentation mode.
+
+        Design 4-6 enrichment columns that answer four questions for every account:
+        1. Does this company really match one of our hypotheses?
+        2. Is there a timely trigger or pain signal right now?
+        3. Is there a usable personalization hook for future outreach?
+        4. Is the data rich enough to work now, or should we hold it back?
+
+        Keep the column budget tight. For each proposed column, explain why it exists and then output the final
+        column_configs for list-enrichment.
+  - id: list-enrichment-1
+    type: skill
+    position:
+      x: 1680
+      y: 220
+    config:
+      skillRef: gtm/list-enrichment
+      prompt: |-
+        Add only the approved new columns to the company table, run enrichment, monitor progress, and report where
+        quality is weak or N/A rates are too high.
+
+        Do not declare the table ready until you have shown sample rows and made a call on whether the data is strong
+        enough to support segmentation.
+  - id: enrichment-eval-1
+    type: evaluator
+    position:
+      x: 1960
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on whether the enrichment output makes segmentation possible. Judge signal clarity, N/A rate,
+        usefulness of the personalization hooks, and whether a seller could decide who to work first from this table.
+        Fail if the enrichment is noisy, redundant, or too shallow to tier accounts confidently.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: enrichment-design-1
+      skillRefs:
+        - gtm/enrichment-design
+        - gtm/list-enrichment
+  - id: segmentation-1
+    type: skill
+    position:
+      x: 2240
+      y: 220
+    config:
+      skillRef: gtm/list-segmentation
+      prompt: |-
+        Assign every company one primary hypothesis and a Tier 1, Tier 2, or Tier 3 status.
+
+        Output rules:
+        - For every Tier 1 and Tier 2 company, include a one-line rationale in operator language: "we should talk to
+          them because..."
+        - Call out the strongest hook signal that future outreach should use.
+        - For Tier 3 or unmatched companies, explain exactly what is missing or why the fit is weak.
+        - End with summary stats and the first accounts the team should work.
+  - id: output-1
+    type: output
+    position:
+      x: 2520
+      y: 220
+    config:
+      title: Seed Account Map
+      format: markdown
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-hypotheses
+    source: context-1
+    target: hypotheses-1
+    type: default
+  - id: e-hypotheses-eval
+    source: hypotheses-1
+    target: hypothesis-eval-1
+    type: default
+  - id: e-hypothesis-eval-list
+    source: hypothesis-eval-1
+    target: list-building-1
+    type: pass
+  - id: e-hypothesis-eval-retry
+    source: hypothesis-eval-1
+    target: hypotheses-1
+    type: fail
+  - id: e-list-design
+    source: list-building-1
+    target: enrichment-design-1
+    type: default
+  - id: e-design-enrich
+    source: enrichment-design-1
+    target: list-enrichment-1
+    type: default
+  - id: e-enrich-eval
+    source: list-enrichment-1
+    target: enrichment-eval-1
+    type: default
+  - id: e-enrich-eval-segmentation
+    source: enrichment-eval-1
+    target: segmentation-1
+    type: pass
+  - id: e-enrich-eval-retry
+    source: enrichment-eval-1
+    target: enrichment-design-1
+    type: fail
+  - id: e-segmentation-output
+    source: segmentation-1
+    target: output-1
+    type: default

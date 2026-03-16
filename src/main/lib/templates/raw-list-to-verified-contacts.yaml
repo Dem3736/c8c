@@ -1,0 +1,255 @@
+id: raw-list-to-verified-contacts
+stage: outreach
+emoji: "\U0001F4C7"
+headline: Turn a messy account list into verified contacts your team can actually work
+how: Cleans the raw list, frames fit hypotheses, enriches only the signals that matter, tiers the companies, then finds and verifies the right people
+input: A CSV, pasted account list, or existing Extruct table plus ICP notes, target roles, geography, and exclusions
+output: A clean company table, prioritized people table, verified contact CSV, and a coverage report showing who still needs manual work
+steps:
+  - Normalize the raw list and define what "good fit" means before adding any enrichment.
+  - Add the smallest useful set of fit and personalization columns, then tier the companies.
+  - Find the right people only for the accounts worth pursuing.
+  - Verify emails, measure coverage, and surface the gaps before anyone starts sending.
+version: 1
+name: Raw List to Verified Contacts
+description: Take a rough account list and turn it into a usable contact book with fit signals, tiers, right-role coverage, and verified emails instead of a half-broken spreadsheet
+credits:
+  - label: GTM Skills
+    href: https://github.com/extruct-ai/gtm-skills
+    note: Original Extruct GTM skill pack this workflow composes.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 60
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 240
+    config:
+      inputType: text
+      required: true
+      placeholder: CSV or account list, target roles, ICP notes, geo filters, and any excluded domains
+  - id: context-1
+    type: skill
+    position:
+      x: 260
+      y: 240
+    config:
+      skillRef: gtm/context-building
+      prompt: |-
+        Build or update the minimal GTM context needed for list qualification and contact selection.
+
+        Focus on:
+        - ICP: which company shapes and roles are actually worth pursuing
+        - What We Do: a crisp email-safe value prop the later steps can reason from
+        - Win Cases: the customers or patterns that define good fit
+        - DNC: excluded domains, partners, customers, or markets
+
+        Ask only for the missing pieces needed to make downstream decisions.
+  - id: hypotheses-1
+    type: skill
+    position:
+      x: 520
+      y: 240
+    config:
+      skillRef: gtm/hypothesis-building
+      prompt: |-
+        Generate 3-5 explicit fit hypotheses for the incoming account list.
+
+        Each hypothesis should say:
+        - what type of company this list might contain
+        - why that company would care right now
+        - what we need to confirm during enrichment
+        - what signals would make the account a poor fit
+
+        Keep the language practical and easy to use in later tiering.
+  - id: table-creation-1
+    type: skill
+    position:
+      x: 780
+      y: 240
+    config:
+      skillRef: gtm/table-creation
+      prompt: |-
+        Parse the raw list, normalize domains, deduplicate aggressively, preserve useful metadata, and create or reuse
+        a company table for this campaign.
+
+        Report:
+        - rows uploaded
+        - rows skipped and why
+        - duplicates removed
+        - table URL or ID for the rest of the workflow
+  - id: enrichment-design-1
+    type: skill
+    position:
+      x: 1040
+      y: 240
+    config:
+      skillRef: gtm/enrichment-design
+      prompt: |-
+        Blend segmentation mode with light personalization.
+
+        Design the smallest useful set of 4-6 columns that answer:
+        1. Is this company in our ICP?
+        2. Which fit hypothesis does it match best?
+        3. What changed recently or what signal makes outreach timely?
+        4. What concrete hook could we mention?
+        5. Should this account be held back because data is weak or fit is poor?
+
+        Output column_configs ready for list-enrichment.
+  - id: list-enrichment-1
+    type: skill
+    position:
+      x: 1300
+      y: 240
+    config:
+      skillRef: gtm/list-enrichment
+      prompt: |-
+        Add the approved enrichment columns to the table, run only those new columns, monitor progress, and show
+        sample rows once enough data is complete to judge quality.
+  - id: segmentation-1
+    type: skill
+    position:
+      x: 1560
+      y: 240
+    config:
+      skillRef: gtm/list-segmentation
+      prompt: |-
+        Use the enriched table and hypotheses to assign one primary hypothesis and a Tier 1, Tier 2, or Tier 3 status
+        to every company.
+
+        Rules:
+        - Tier 1 and Tier 2 should include a clear rationale and the best hook for future outreach.
+        - Tier 3 should explain what is missing or why the fit is weak.
+        - Call out any companies that look promising but need more research before people-search.
+  - id: segmentation-eval-1
+    type: evaluator
+    position:
+      x: 1820
+      y: 240
+    config:
+      criteria: >-
+        Score 1-10 on: (1) whether the tiering feels believable, (2) whether the hypotheses are specific enough to
+        separate good accounts from bad ones, (3) whether the enrichment data gives enough evidence to know who to
+        work, and (4) whether the output creates a manageable Tier 1 and Tier 2 list instead of promoting everything.
+        Fail if the table still looks noisy or indecisive.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: enrichment-design-1
+      skillRefs:
+        - gtm/enrichment-design
+        - gtm/list-enrichment
+        - gtm/list-segmentation
+  - id: people-search-1
+    type: skill
+    position:
+      x: 2080
+      y: 240
+    config:
+      skillRef: gtm/people-search
+      prompt: |-
+        For Tier 1 and Tier 2 companies only, find 2-5 relevant people per account.
+
+        Coverage goals:
+        - one likely decision maker
+        - one evaluator or operator
+        - one likely internal champion if it exists
+
+        Use roles the user provided when available. Otherwise infer broad role families from the ICP and hypotheses and
+        explain the choice.
+  - id: email-search-1
+    type: skill
+    position:
+      x: 2340
+      y: 240
+    config:
+      skillRef: gtm/email-search
+      prompt: |-
+        Enrich the resulting people table with verified emails and optional phones.
+
+        Rules:
+        - start with the user's preferred provider; if they have none, ask once and recommend a sensible default
+        - report expected credit usage before running
+        - deduplicate and remove invalid results
+        - output clean contacts plus company-level and role-level coverage stats
+
+        If hit rate is weak and the user allows it, run a second provider only on the misses.
+  - id: contact-eval-1
+    type: evaluator
+    position:
+      x: 2600
+      y: 240
+    config:
+      criteria: >-
+        Score 1-10 on: (1) role relevance, (2) verified email coverage by company, (3) cleanliness and dedup quality
+        of the contact set, and (4) whether the team now has enough real contacts to launch outreach without another
+        data-cleaning round. Fail if too many companies have no viable contacts or the wrong roles dominate the list.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: people-search-1
+      skillRefs:
+        - gtm/people-search
+        - gtm/email-search
+  - id: output-1
+    type: output
+    position:
+      x: 2860
+      y: 240
+    config:
+      title: Verified Contact Book
+      format: markdown
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-hypotheses
+    source: context-1
+    target: hypotheses-1
+    type: default
+  - id: e-hypotheses-table
+    source: hypotheses-1
+    target: table-creation-1
+    type: default
+  - id: e-table-design
+    source: table-creation-1
+    target: enrichment-design-1
+    type: default
+  - id: e-design-enrich
+    source: enrichment-design-1
+    target: list-enrichment-1
+    type: default
+  - id: e-enrich-segmentation
+    source: list-enrichment-1
+    target: segmentation-1
+    type: default
+  - id: e-segmentation-eval
+    source: segmentation-1
+    target: segmentation-eval-1
+    type: default
+  - id: e-segmentation-eval-people
+    source: segmentation-eval-1
+    target: people-search-1
+    type: pass
+  - id: e-segmentation-eval-retry
+    source: segmentation-eval-1
+    target: enrichment-design-1
+    type: fail
+  - id: e-people-email
+    source: people-search-1
+    target: email-search-1
+    type: default
+  - id: e-email-contact-eval
+    source: email-search-1
+    target: contact-eval-1
+    type: default
+  - id: e-contact-eval-output
+    source: contact-eval-1
+    target: output-1
+    type: pass
+  - id: e-contact-eval-retry
+    source: contact-eval-1
+    target: people-search-1
+    type: fail

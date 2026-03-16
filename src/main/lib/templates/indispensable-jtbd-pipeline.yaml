@@ -16,7 +16,7 @@ description: Extract jobs from raw product data, segment users, score opportunit
   essence, sharpen positioning, and clarify messaging — with quality-gate evaluation loop
 defaults:
   model: sonnet
-  maxTurns: 60
+  maxTurns: 120
   timeout_minutes: 45
 nodes:
   - id: input-1

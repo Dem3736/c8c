@@ -1,0 +1,79 @@
+id: delivery-map-codebase
+stage: research
+emoji: "\U0001F5FA"
+headline: Map an existing codebase before planning changes
+how: Build a fast orientation map of the repository, its architecture, and the highest-risk areas before you shape work.
+input: A repository or project folder path
+output: Codebase map with architecture, main flows, hotspots, and open questions
+use_when: You are about to change an existing codebase and need a reliable map before deciding what to build.
+steps:
+  - Inspect the repository structure, entry points, and runtime paths
+  - Build an orientation map covering architecture, key flows, hotspots, and open questions
+pack:
+  id: delivery-foundation
+  label: Delivery Factory
+  journey_stage: map
+  entrypoint: true
+  recommended_next:
+    - delivery-shape-project
+contract_out:
+  - kind: codebase_map
+    title: Codebase Map
+    description: Architecture, key flows, hotspots, and open questions for the existing repository.
+execution_policy:
+  profile_id: delivery_map
+  summary: Evidence-first orientation
+  description: Inspect what exists before proposing solutions or plans.
+  tags:
+    - evidence_first
+  notes:
+    - Ground the map in the repository, not assumptions.
+version: 1
+name: "Delivery Factory: Map Codebase"
+description: Inspect an existing repository and turn it into a practical orientation map for downstream planning.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 20
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: directory
+      required: true
+      placeholder: Choose the project folder you want mapped.
+  - id: mapper-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Inspect this codebase and create a practical codebase map. Cover:
+        1) what the product appears to do,
+        2) major directories and responsibilities,
+        3) key entry points and runtime paths,
+        4) important data flows or user flows,
+        5) risky or confusing areas,
+        6) open questions that should be answered before planning changes.
+        Keep the output concise, concrete, and grounded in observed repository structure.
+  - id: output-1
+    type: output
+    position:
+      x: 640
+      y: 200
+    config:
+      title: Codebase Map
+edges:
+  - id: e-input-mapper
+    source: input-1
+    target: mapper-1
+    type: default
+  - id: e-mapper-output
+    source: mapper-1
+    target: output-1
+    type: default

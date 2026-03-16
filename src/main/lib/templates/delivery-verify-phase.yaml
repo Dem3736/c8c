@@ -1,0 +1,107 @@
+id: delivery-verify-phase
+stage: operations
+emoji: "\U0001F9EA"
+headline: Verify a finished phase against its plan before calling it done
+how: Turn the implemented outcome into a verification report, then require an explicit review gate before the phase is considered complete.
+input: Implementation notes, evidence, or links that should be checked against the phase plan
+output: Approved verification report with findings, gaps, and completion decision
+use_when: A phase has been implemented and you want a visible verification pass before declaring it complete.
+steps:
+  - Compare the delivered work against the phase plan and validation contract
+  - Require an explicit review decision before the verification report is finalized
+pack:
+  id: delivery-foundation
+  label: Delivery Factory
+  journey_stage: verify
+contract_in:
+  - kind: phase_plan
+    title: Phase Plan
+    description: The agreed objective, slices, and scope for the phase.
+    required: true
+  - kind: validation_contract
+    title: Validation Contract
+    description: The checks and acceptance criteria that define completion.
+    required: true
+  - kind: research_pack
+    title: Research Pack
+    description: Helpful evidence and risks that verification should keep in view.
+    required: false
+contract_out:
+  - kind: verification_report
+    title: Verification Report
+    description: Approved summary of what passed, what failed, and whether the phase is ready to close.
+execution_policy:
+  profile_id: delivery_verify
+  summary: Review-gated verification
+  description: Compare the work against its contract, then require explicit human signoff before completion.
+  tags:
+    - test_first
+    - review_gates
+    - human_gate_required
+  notes:
+    - Verification should name gaps, not just celebrate completion.
+    - The final report is only complete after human review.
+version: 1
+name: "Delivery Factory: Verify Phase"
+description: Check the delivered outcome against the phase plan and validation contract, then finalize an approved verification report.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste implementation notes, test evidence, or review context for the phase you want verified.
+  - id: verifier-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Create a Verification Report for this delivery phase. Compare the available implementation evidence
+        against the Phase Plan and Validation Contract. Include:
+        1) what was verified,
+        2) checks that appear to pass,
+        3) gaps or failures,
+        4) unresolved risks,
+        5) recommended disposition: ready to close, needs follow-up, or blocked.
+        Keep the report concise, explicit, and reviewable.
+  - id: approval-1
+    type: approval
+    position:
+      x: 640
+      y: 200
+    config:
+      message: Approve the verification report before this phase is marked ready to close.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 120
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Verification Report
+edges:
+  - id: e-input-verifier
+    source: input-1
+    target: verifier-1
+    type: default
+  - id: e-verifier-approval
+    source: verifier-1
+    target: approval-1
+    type: default
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default
