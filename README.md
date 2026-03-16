@@ -34,6 +34,18 @@ It looks like Apple Shortcuts — but under the hood it has directed graphs, eva
 | **02** | Wire the pipeline  | Connect nodes on a visual canvas. Add evaluators, splitters, approval gates.  |
 | **03** | Run it             | Hit run. Watch data flow through every node. See tokens, cost, time — live.   |
 
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><strong>Works<br/>with</strong></td>
+    <td align="center">⌘<br/><sub>Claude Code</sub></td>
+    <td align="center">⌘<br/><sub>Codex CLI</sub></td>
+    <td align="center">⌘<br/><sub>Claude SDK</sub></td>
+  </tr>
+</table>
+<em>If it speaks to an LLM, it's a node.</em>
+</div>
+
 <p align="center">
   <img src="public/demo.png" alt="c8c workflow editor" width="720" />
 </p>
@@ -113,6 +125,19 @@ Claude Code, OpenAI Codex, and Claude SDK. Pick the right provider and model per
 
 <br/>
 
+## Why c8c is special
+
+|  |  |
+| --- | --- |
+| **Graph-based execution.** | Workflows are directed graphs, not linear chains. Branch, merge, retry — the topology matches your problem. |
+| **Evaluator retry loops.** | Outputs are scored against criteria automatically. Fail → retry from any node. No manual re-runs. |
+| **Per-node cost tracking.** | Tokens, cost, and duration tracked at every node and every run. No surprises. |
+| **YAML-defined pipelines.** | Workflows are portable YAML files. Version-control them, share them, run them from CLI or GUI. |
+| **Desktop-first privacy.** | Everything runs on your machine. No cloud accounts, no data leaving your laptop. |
+| **Provider-agnostic nodes.** | Each node picks its own provider and model. Mix Claude, Codex, and SDK in one pipeline. |
+
+<br/>
+
 ## What c8c is not
 
 |  |  |
@@ -121,6 +146,18 @@ Claude Code, OpenAI Codex, and Claude SDK. Pick the right provider and model per
 | **Not a chatbot.** | No conversations. Pipelines have inputs, operations, and outputs. |
 | **Not a code editor.** | c8c orchestrates provider-backed skills. Use Claude Code or Codex to do the work, use c8c to chain the skills. |
 | **Not cloud-only.** | Desktop-first. Your data stays on your machine. |
+
+<br/>
+
+## Why "c8c"?
+
+Like i18n (*internationalization*), k8s (*kubernetes*), and n8n (*nodemation*):
+
+**c8c** = **c**yberneti**c**
+
+Cybernetics — the science of control, feedback, and communication in systems. Founded by Norbert Wiener in 1948. From Greek *kybernetes*: helmsman, the one who steers.
+
+The two C's originally stood for **C**laude **C**ode.
 
 <br/>
 
@@ -144,6 +181,25 @@ npm run dev
 > **Requirements:** Node.js 20+, Claude Code CLI and/or OpenAI Codex CLI installed
 >
 > Provider setup and troubleshooting: [`docs/codex-provider-switch.md`](docs/codex-provider-switch.md)
+
+<br/>
+
+## FAQ
+
+**What does a typical setup look like?**
+Download the app or `npm run dev`. Point it at a project folder. Your workflows live in `.c8c/` as YAML files — version-control them with your code.
+
+**Can I run workflows without the desktop app?**
+Yes. The CLI runner (`c8c-workflow run pipeline.yaml`) runs the same engine headless. Ship it in CI, cron, or scripts.
+
+**How is c8c different from Claude Code or Codex?**
+c8c *uses* those tools. It chains their skills into pipelines — with evaluators, parallel branches, and cost tracking. Claude Code does the work; c8c orchestrates it.
+
+**Can I use different models in one pipeline?**
+Yes. Each node picks its own model — Opus for complex reasoning, Haiku for fast classification, Sonnet for the middle ground.
+
+**Where are my workflows stored?**
+Project workflows live in `{project}/.c8c/*.yaml`. Global workflows in `~/.c8c/chains/`. Everything is local files.
 
 <br/>
 
@@ -218,18 +274,6 @@ We welcome contributions. See the [contributing guide](CONTRIBUTING.md) for deta
 
 - [GitHub Issues](https://github.com/bluzir/c8c/issues) — Bugs and feature requests
 - [GitHub Discussions](https://github.com/bluzir/c8c/discussions) — Ideas and RFCs
-
-<br/>
-
-## Why "c8c"?
-
-Like i18n (*internationalization*), k8s (*kubernetes*), and n8n (*nodemation*):
-
-**c8c** = **c**yberneti**c**
-
-Cybernetics — the science of control, feedback, and communication in systems. Founded by Norbert Wiener in 1948. From Greek *kybernetes*: helmsman, the one who steers.
-
-The two C's originally stood for **C**laude **C**ode.
 
 <br/>
 
