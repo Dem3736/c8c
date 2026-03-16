@@ -3,6 +3,10 @@ import { useSetAtom } from "jotai"
 import type { Workflow, WorkflowFile, DiscoveredSkill } from "@shared/types"
 import { toast } from "sonner"
 import {
+  clearWorkflowTemplateContextForKeyAtom,
+  moveWorkflowTemplateContextAtom,
+} from "@/lib/store"
+import {
   clearWorkflowExecutionStateAtom,
   moveWorkflowExecutionStateAtom,
   toWorkflowExecutionKey,
@@ -55,6 +59,8 @@ export function useToolbarActions({
 }: UseToolbarActionsArgs) {
   const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
+  const moveWorkflowTemplateContext = useSetAtom(moveWorkflowTemplateContextAtom)
+  const clearWorkflowTemplateContextForKey = useSetAtom(clearWorkflowTemplateContextForKeyAtom)
   const { addNotification } = useInboxNotifications()
   const refreshProjectData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!selectedProject) return
@@ -103,13 +109,17 @@ export function useToolbarActions({
       fromKey: toWorkflowExecutionKey(path),
       toKey: toWorkflowExecutionKey(renamedPath),
     })
+    moveWorkflowTemplateContext({
+      fromKey: toWorkflowExecutionKey(path),
+      toKey: toWorkflowExecutionKey(renamedPath),
+    })
     setSelectedWorkflowPath(renamedPath)
     if (selectedProject) {
       const wfs = await window.api.listProjectWorkflows(selectedProject)
       setWorkflows(wfs)
     }
     return renamedPath
-  }, [moveWorkflowExecutionState, selectedProject, setSelectedWorkflowPath, setWorkflows, workflow.name])
+  }, [moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflows, workflow.name])
 
   const save = useCallback(async () => {
     if (!workflowPath) return false
@@ -141,6 +151,10 @@ export function useToolbarActions({
         fromKey: toWorkflowExecutionKey(workflowPath),
         toKey: toWorkflowExecutionKey(filePath),
       })
+      moveWorkflowTemplateContext({
+        fromKey: toWorkflowExecutionKey(workflowPath),
+        toKey: toWorkflowExecutionKey(filePath),
+      })
       setSelectedWorkflowPath(filePath)
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       if (selectedProject) {
@@ -159,7 +173,7 @@ export function useToolbarActions({
       showPersistentError(errorMessage(error, "Failed to save workflow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
+  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
 
   const openFile = useCallback(async () => {
     try {
@@ -168,6 +182,7 @@ export function useToolbarActions({
       setCurrentWorkflow(result.chain)
       setSelectedWorkflowPath(result.filePath)
       setWorkflowSavedSnapshot(workflowSnapshot(result.chain))
+      clearWorkflowTemplateContextForKey(toWorkflowExecutionKey(result.filePath))
       if (selectedProject) {
         const wfs = await window.api.listProjectWorkflows(selectedProject)
         setWorkflows(wfs)
@@ -185,7 +200,7 @@ export function useToolbarActions({
       showPersistentError(errorMessage(error, "Failed to import workflow"))
       return false
     }
-  }, [addNotification, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
+  }, [addNotification, clearWorkflowTemplateContextForKey, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
 
   const renameWorkflow = useCallback(async (nextName: string) => {
     if (!workflowPath) return false
@@ -196,6 +211,10 @@ export function useToolbarActions({
     try {
       const renamedPath = await window.api.renameWorkflow(workflowPath, trimmed)
       moveWorkflowExecutionState({
+        fromKey: toWorkflowExecutionKey(workflowPath),
+        toKey: toWorkflowExecutionKey(renamedPath),
+      })
+      moveWorkflowTemplateContext({
         fromKey: toWorkflowExecutionKey(workflowPath),
         toKey: toWorkflowExecutionKey(renamedPath),
       })
@@ -216,7 +235,7 @@ export function useToolbarActions({
       showPersistentError(errorMessage(error, "Failed to rename workflow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
+  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
 
   const deleteWorkflow = useCallback(async () => {
     if (!workflowPath) return false
@@ -224,6 +243,7 @@ export function useToolbarActions({
     try {
       await window.api.deleteWorkflow(workflowPath)
       clearWorkflowExecutionState(toWorkflowExecutionKey(workflowPath))
+      clearWorkflowTemplateContextForKey(toWorkflowExecutionKey(workflowPath))
       setSelectedWorkflowPath(null)
       setCurrentWorkflow(createEmptyWorkflow())
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
@@ -240,7 +260,7 @@ export function useToolbarActions({
       showPersistentError(errorMessage(error, "Failed to delete workflow"))
       return false
     }
-  }, [addNotification, clearWorkflowExecutionState, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
+  }, [addNotification, clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
 
   return {
     refreshProjectData,

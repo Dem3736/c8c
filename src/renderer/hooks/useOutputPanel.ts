@@ -1,12 +1,15 @@
 import { useAtom } from "jotai"
 import {
   currentWorkflowAtom,
-  selectedNodeIdAtom,
 } from "@/lib/store"
 import {
   activeNodeIdAtom,
+  artifactPersistenceErrorAtom,
+  artifactPersistenceStatusAtom,
+  artifactRecordsAtom,
   evalResultsAtom,
   finalContentAtom,
+  inspectedNodeIdAtom,
   nodeStatesAtom,
   reportPathAtom,
   runStatusAtom,
@@ -22,7 +25,7 @@ export function useOutputPanel() {
   const [runOutcome] = useAtom(runOutcomeAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
-  const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
+  const [selectedNodeId, setSelectedNodeId] = useAtom(inspectedNodeIdAtom)
   const [finalContent] = useAtom(finalContentAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [evalResults] = useAtom(evalResultsAtom)
@@ -31,6 +34,9 @@ export function useOutputPanel() {
   const [pastRuns] = useAtom(workflowHistoryRunsAtom)
   const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [workspace] = useAtom(workspaceAtom)
+  const [artifactRecords] = useAtom(artifactRecordsAtom)
+  const [artifactPersistenceStatus] = useAtom(artifactPersistenceStatusAtom)
+  const [artifactPersistenceError] = useAtom(artifactPersistenceErrorAtom)
 
   return {
     runStatus,
@@ -48,5 +54,8 @@ export function useOutputPanel() {
     selectedPastRun,
     setSelectedPastRun,
     workspace,
+    artifactRecords,
+    artifactPersistenceStatus,
+    artifactPersistenceError,
   }
 }

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type Ref } from "react"
 import { Provider as JotaiProvider } from "jotai"
-import { useAtom, useAtomValue } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { PanelLeft, PanelLeftOpen } from "lucide-react"
 import { Toaster } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -8,6 +8,8 @@ import { ProjectSidebar } from "@/components/ProjectSidebar"
 import { WorkflowPanel } from "@/components/WorkflowPanel"
 import { SkillsPage } from "@/components/SkillsPage"
 import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
+import { ArtifactsPage } from "@/components/ArtifactsPage"
+import { FactoryPage } from "@/components/FactoryPage"
 import { SettingsPage } from "@/components/SettingsPage"
 import { NotificationsPage } from "@/components/NotificationsPage"
 import { OnboardingWizard } from "@/components/OnboardingWizard"
@@ -16,6 +18,7 @@ import { AppStatusBar } from "@/components/AppStatusBar"
 import { MultiRunDashboard } from "@/components/MultiRunDashboard"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
+import { ExecutionProvider } from "@/hooks/useChainExecution"
 import {
   mainViewAtom,
   desktopRuntimeAtom,
@@ -28,6 +31,7 @@ import {
   webSearchBackendAtom,
   projectsAtom,
   selectedProjectAtom,
+  setWorkflowTemplateContextForKeyAtom,
   workflowsAtom,
   workflowSavedSnapshotAtom,
   selectedWorkflowPathAtom,
@@ -59,8 +63,10 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/cn"
 import { toast } from "sonner"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
+import { buildTemplateRunContext } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { STAGE_META } from "@/lib/template-stages"
+import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 
 function SidebarVisibilityToggle({
   desktopRuntime,
@@ -123,9 +129,11 @@ const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
 
   if (mainView === "onboarding") return <OnboardingWizard />
+  if (mainView === "factory") return <FactoryPage />
   if (mainView === "workflow_create") return <WorkflowCreatePage />
   if (mainView === "skills") return <SkillsPage />
   if (mainView === "templates") return <WorkflowsTemplatesPage />
+  if (mainView === "artifacts") return <ArtifactsPage />
   if (mainView === "settings") return <SettingsPage />
   if (mainView === "inbox") return <NotificationsPage />
 
@@ -147,6 +155,7 @@ const AppShell = memo(function AppShell() {
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [, setProviderSettings] = useAtom(providerSettingsAtom)
   const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
   const [, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
@@ -316,12 +325,28 @@ const AppShell = memo(function AppShell() {
     const nextWorkflow = resolveTemplateWorkflow(deepLinkTemplate, webSearchBackend)
     setWorkflow(nextWorkflow)
     setSelectedWorkflowPath(null)
+    setWorkflowTemplateContextForKey({
+      key: toWorkflowExecutionKey(null),
+      context: buildTemplateRunContext({
+        template: {
+          ...deepLinkTemplate,
+          workflow: nextWorkflow,
+        },
+        workflowPath: null,
+      }),
+    })
     setMainView("thread")
     setDeepLinkTemplate(null)
     toast.success(`Template "${deepLinkTemplate.name}" applied`, {
       action: {
         label: "Undo",
-        onClick: () => setWorkflow(previousWorkflow),
+        onClick: () => {
+          setWorkflow(previousWorkflow)
+          setWorkflowTemplateContextForKey({
+            key: toWorkflowExecutionKey(null),
+            context: null,
+          })
+        },
       },
     })
   }
@@ -338,6 +363,16 @@ const AppShell = memo(function AppShell() {
       setSelectedWorkflowPath(filePath)
       setWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      setWorkflowTemplateContextForKey({
+        key: toWorkflowExecutionKey(filePath),
+        context: buildTemplateRunContext({
+          template: {
+            ...deepLinkTemplate,
+            workflow: loadedWorkflow,
+          },
+          workflowPath: filePath,
+        }),
+      })
       setMainView("thread")
       setDeepLinkTemplate(null)
       toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from template`)
@@ -478,10 +513,12 @@ const AppShell = memo(function AppShell() {
 export function App() {
   return (
     <JotaiProvider>
-      <TooltipProvider delayDuration={180}>
-        <AppShell />
-        <Toaster position="bottom-right" closeButton />
-      </TooltipProvider>
+      <ExecutionProvider>
+        <TooltipProvider delayDuration={180}>
+          <AppShell />
+          <Toaster position="bottom-right" closeButton />
+        </TooltipProvider>
+      </ExecutionProvider>
     </JotaiProvider>
   )
 }

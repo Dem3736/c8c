@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import {
   templateBrowserOpenAtom,
   currentWorkflowAtom,
   selectedWorkflowPathAtom,
+  setWorkflowTemplateContextForKeyAtom,
   workflowEntryStateAtom,
   webSearchBackendAtom,
   type WorkflowTemplate,
@@ -27,11 +28,17 @@ import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
 import {
+  buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
+  deriveTemplateExecutionDisciplineLabels,
+  deriveTemplateJourneyStageLabel,
+  deriveTemplatePackStagePath,
   deriveTemplateUseWhen,
+  formatArtifactContractLabel,
 } from "@/lib/workflow-entry"
 import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
+import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 
 interface TemplateBrowserProps {
   onApply?: (template: WorkflowTemplate, previousWorkflow: unknown) => void
@@ -43,6 +50,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [runStatus] = useAtom(runStatusAtom)
   const [templates, setTemplates] = useState<WorkflowTemplate[]>(initialTemplates ?? [])
@@ -79,6 +87,16 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
   const selected = templates.find((t) => t.id === selectedId)
   const selectedOptionId = selectedId ? `template-option-${selectedId}` : undefined
+  const selectedPackStageLabel = selected ? deriveTemplateJourneyStageLabel(selected) : null
+  const selectedDisciplineLabels = selected ? deriveTemplateExecutionDisciplineLabels(selected) : []
+  const selectedPackStages = selected?.pack
+    ? deriveTemplatePackStagePath(templates, selected.pack.id)
+    : []
+  const selectedRecommendedNext = selected
+    ? (selected.pack?.recommendedNext || [])
+      .map((id) => templates.find((candidate) => candidate.id === id)?.name)
+      .filter((name): name is string => Boolean(name))
+    : []
 
   const closeBrowser = useCallback(() => {
     setOpen(false)
@@ -105,10 +123,18 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     } else {
       setWorkflow(nextWorkflow)
     }
+    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
     setWorkflowEntryState(buildTemplateWorkflowEntryState({
       template: resolvedTemplate,
       workflowPath: selectedWorkflowPath,
     }))
+    setWorkflowTemplateContextForKey({
+      key: workflowKey,
+      context: buildTemplateRunContext({
+        template: resolvedTemplate,
+        workflowPath: selectedWorkflowPath,
+      }),
+    })
     setOpen(false)
     setSelectedId(null)
     setConfirmPending(null)
@@ -118,6 +144,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
         onClick: () => {
           setWorkflow(previousWorkflow as typeof workflow)
           setWorkflowEntryState(null)
+          setWorkflowTemplateContextForKey({ key: workflowKey, context: null })
         },
       },
     })
@@ -238,6 +265,20 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                       <p className="ui-meta-text mt-1">
                         {deriveTemplateCardCopy(template)}
                       </p>
+                      {(template.pack || template.executionPolicy?.tags?.length) && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {template.pack && (
+                            <Badge variant="outline" size="compact">
+                              {template.pack.label}
+                            </Badge>
+                          )}
+                          {template.pack?.entrypoint && (
+                            <Badge variant="info" size="compact">
+                              Start here
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Button>
@@ -279,7 +320,74 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     <span className="ui-meta-label text-muted-foreground">You get</span>
                     <p className="text-body-sm">{selected.output}</p>
                   </div>
+                  {selected.pack && (
+                    <div>
+                      <span className="ui-meta-label text-muted-foreground">Factory pack</span>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline" size="compact">{selected.pack.label}</Badge>
+                        {selectedPackStageLabel ? <Badge variant="secondary" size="compact">{selectedPackStageLabel}</Badge> : null}
+                        {selected.pack.entrypoint ? <Badge variant="info" size="compact">Start here</Badge> : null}
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {selectedPackStages.length > 0 && (
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">Stages included</span>
+                    <p className="text-body-sm text-foreground">{selectedPackStages.join(" -> ")}</p>
+                  </div>
+                )}
+
+                {selected.contractIn?.length ? (
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">Requires</span>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {selected.contractIn.map((contract) => (
+                        <Badge key={`${selected.id}-in-${contract.kind}-${contract.title || ""}`} variant="outline" size="compact">
+                          {formatArtifactContractLabel(contract)}
+                          {contract.required === false ? " (optional)" : ""}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selected.contractOut?.length ? (
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">Produces</span>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {selected.contractOut.map((contract) => (
+                        <Badge key={`${selected.id}-out-${contract.kind}-${contract.title || ""}`} variant="secondary" size="compact">
+                          {formatArtifactContractLabel(contract)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedDisciplineLabels.length > 0 && (
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">Execution discipline</span>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {selectedDisciplineLabels.map((label) => (
+                        <Badge key={`${selected.id}-discipline-${label}`} variant="info" size="compact">
+                          {label}
+                        </Badge>
+                      ))}
+                    </div>
+                    {selected.executionPolicy?.description ? (
+                      <p className="mt-2 text-body-sm text-muted-foreground">{selected.executionPolicy.description}</p>
+                    ) : null}
+                  </div>
+                )}
+
+                {selectedRecommendedNext.length > 0 && (
+                  <div>
+                    <span className="ui-meta-label text-muted-foreground">Next</span>
+                    <p className="text-body-sm text-foreground">{selectedRecommendedNext.join(" -> ")}</p>
+                  </div>
+                )}
 
                 <details className="rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
                   <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">

@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { createContext, createElement, useCallback, useContext, type ReactNode } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import {
   currentWorkflowAtom,
@@ -25,15 +25,27 @@ import {
   workspaceAtom,
   type WorkflowExecutionState,
 } from "@/features/execution"
+import type { RunResult, Workflow } from "@shared/types"
 
-export function useChainExecution() {
+interface ExecutionActionsContextValue {
+  run: (executionMode?: "plan" | "edit") => Promise<void>
+  cancel: () => Promise<void>
+  rerunFrom: (fromNodeId: string, options?: { workspace?: string | null }) => Promise<void>
+  continueRun: (runToContinue: RunResult) => Promise<void>
+  continueWithWorkflow: (
+    runToContinue: RunResult,
+    workflowForRun: Workflow,
+    workflowPathForRun: string | null,
+  ) => Promise<boolean>
+}
+
+const ExecutionActionsContext = createContext<ExecutionActionsContextValue | null>(null)
+
+export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [runStatus] = useAtom(runStatusAtom)
   const [runId] = useAtom(runIdAtom)
-  const [nodeStates] = useAtom(nodeStatesAtom)
-  const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [workspace] = useAtom(workspaceAtom)
   const setPastRuns = useSetAtom(pastRunsAtom)
-  const [evalResults] = useAtom(evalResultsAtom)
   const setApprovalRequests = useSetAtom(approvalRequestsAtom)
   const [workflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [inputValue] = useAtom(inputValueAtom)
@@ -75,5 +87,31 @@ export function useChainExecution() {
     workspace,
   })
 
-  return { runStatus, nodeStates, activeNodeId, evalResults, workspace, run, cancel, rerunFrom, continueRun, continueWithWorkflow }
+  return createElement(
+    ExecutionActionsContext.Provider,
+    { value: { run, cancel, rerunFrom, continueRun, continueWithWorkflow } },
+    children,
+  )
+}
+
+export function useChainExecution() {
+  const actions = useContext(ExecutionActionsContext)
+  if (!actions) {
+    throw new Error("useChainExecution must be used within ExecutionProvider")
+  }
+
+  const [runStatus] = useAtom(runStatusAtom)
+  const [nodeStates] = useAtom(nodeStatesAtom)
+  const [activeNodeId] = useAtom(activeNodeIdAtom)
+  const [evalResults] = useAtom(evalResultsAtom)
+  const [workspace] = useAtom(workspaceAtom)
+
+  return {
+    runStatus,
+    nodeStates,
+    activeNodeId,
+    evalResults,
+    workspace,
+    ...actions,
+  }
 }

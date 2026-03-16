@@ -1,0 +1,269 @@
+import { mkdir, readFile, readdir } from "node:fs/promises"
+import { join, relative, resolve } from "node:path"
+import type {
+  ArtifactContract,
+  ArtifactRecord,
+  PersistArtifactsFromRunRequest,
+  PersistArtifactsFromRunResult,
+  RunResult,
+} from "@shared/types"
+import { writeFileAtomic } from "./atomic-write"
+import { isWithinRoot } from "./security-paths"
+import { logWarn } from "./structured-log"
+
+const ARTIFACTS_DIR_SEGMENTS = [".c8c", "artifacts"] as const
+
+interface StoredArtifactMetadata extends ArtifactRecord {
+  version: 1
+  contract: ArtifactContract
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code
+    return typeof code === "string" ? code : undefined
+  }
+  return undefined
+}
+
+function sanitizeFileSegment(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "artifact"
+}
+
+function titleCaseFromIdentifier(value: string): string {
+  return value
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function normalizeRelativePath(projectPath: string, filePath: string): string {
+  return relative(projectPath, filePath).replace(/\\/g, "/")
+}
+
+function buildArtifactBaseName(runId: string, kind: string): string {
+  return `${sanitizeFileSegment(runId)}-${sanitizeFileSegment(kind)}`
+}
+
+function buildArtifactMarkdown(
+  contract: ArtifactContract,
+  record: ArtifactRecord,
+  reportContent: string,
+): string {
+  const headerLines = [
+    `# ${record.title}`,
+    "",
+    `Artifact kind: \`${record.kind}\``,
+    `Generated from run: \`${record.runId}\``,
+  ]
+
+  if (record.caseLabel) {
+    headerLines.push(`Case: ${record.caseLabel}`)
+  }
+  if (record.caseId) {
+    headerLines.push(`Case ID: \`${record.caseId}\``)
+  }
+
+  if (record.workflowName) {
+    headerLines.push(`Workflow: ${record.workflowName}`)
+  }
+  if (record.templateName) {
+    headerLines.push(`Template: ${record.templateName}`)
+  }
+  if (contract.description?.trim()) {
+    headerLines.push("")
+    headerLines.push(contract.description.trim())
+  }
+
+  const body = reportContent.trim() || "_No report content was available for this artifact._"
+  return `${headerLines.join("\n")}\n\n---\n\n${body}\n`
+}
+
+async function readRunResultMetadata(workspace: string): Promise<RunResult> {
+  const raw = await readFile(join(workspace, "run-result.json"), "utf-8")
+  return JSON.parse(raw) as RunResult
+}
+
+async function readRunReportContent(
+  projectPath: string,
+  workspace: string,
+  runResult: RunResult,
+): Promise<string> {
+  const fallbackPath = join(workspace, "report.md")
+  const candidatePaths = [
+    runResult.reportPath && isWithinRoot(resolve(runResult.reportPath), projectPath)
+      ? runResult.reportPath
+      : null,
+    fallbackPath,
+  ].filter((value): value is string => Boolean(value))
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      return await readFile(candidatePath, "utf-8")
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        logWarn("artifact-store", "read_report_failed", {
+          workspace,
+          candidatePath,
+          error: String(error),
+        })
+      }
+    }
+  }
+
+  return ""
+}
+
+async function readExistingArtifactMetadata(metadataPath: string): Promise<StoredArtifactMetadata | null> {
+  try {
+    const raw = await readFile(metadataPath, "utf-8")
+    return JSON.parse(raw) as StoredArtifactMetadata
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("artifact-store", "read_existing_metadata_failed", {
+        metadataPath,
+        error: String(error),
+      })
+    }
+    return null
+  }
+}
+
+function resolveArtifactsDir(projectPath: string): string {
+  return join(resolve(projectPath), ...ARTIFACTS_DIR_SEGMENTS)
+}
+
+export async function persistArtifactsFromRun(
+  input: PersistArtifactsFromRunRequest,
+): Promise<PersistArtifactsFromRunResult> {
+  if (!input.contracts.length) {
+    return { artifacts: [] }
+  }
+
+  const projectPath = resolve(input.projectPath)
+  const workspace = resolve(input.workspace)
+  const artifactsDir = resolveArtifactsDir(projectPath)
+  await mkdir(artifactsDir, { recursive: true })
+
+  const runResult = await readRunResultMetadata(workspace)
+  const reportContent = await readRunReportContent(projectPath, workspace, runResult)
+  const artifacts: ArtifactRecord[] = []
+
+  for (const contract of input.contracts) {
+    const title = contract.title?.trim() || titleCaseFromIdentifier(contract.kind)
+    const baseName = buildArtifactBaseName(runResult.runId, contract.kind)
+    const contentPath = join(artifactsDir, `${baseName}.md`)
+    const metadataPath = join(artifactsDir, `${baseName}.json`)
+    const existing = await readExistingArtifactMetadata(metadataPath)
+    const now = Date.now()
+
+    const record: ArtifactRecord = {
+      id: existing?.id || `${runResult.runId}:${contract.kind}`,
+      kind: contract.kind,
+      title,
+      description: contract.description,
+      caseId: input.caseId || existing?.caseId,
+      caseLabel: input.caseLabel || existing?.caseLabel,
+      sourceArtifactIds: input.sourceArtifactIds || existing?.sourceArtifactIds,
+      projectPath,
+      workspace,
+      runId: runResult.runId,
+      templateId: input.templateId,
+      templateName: input.templateName,
+      workflowPath: input.workflowPath || runResult.workflowPath,
+      workflowName: input.workflowName || runResult.workflowName,
+      relativePath: normalizeRelativePath(projectPath, contentPath),
+      contentPath,
+      metadataPath,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    }
+
+    const storedMetadata: StoredArtifactMetadata = {
+      version: 1,
+      ...record,
+      contract,
+    }
+
+    await writeFileAtomic(contentPath, buildArtifactMarkdown(contract, record, reportContent))
+    await writeFileAtomic(metadataPath, JSON.stringify(storedMetadata, null, 2))
+    artifacts.push(record)
+  }
+
+  return { artifacts }
+}
+
+export async function listProjectArtifacts(projectPath: string): Promise<ArtifactRecord[]> {
+  const artifactsDir = resolveArtifactsDir(projectPath)
+  try {
+    const entries = await readdir(artifactsDir, { withFileTypes: true })
+    const artifactRecords = await Promise.all(entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .map(async (entry) => {
+        const metadataPath = join(artifactsDir, entry.name)
+        try {
+          const raw = await readFile(metadataPath, "utf-8")
+          const parsed = JSON.parse(raw) as Partial<StoredArtifactMetadata>
+          if (
+            typeof parsed.id !== "string"
+            || typeof parsed.kind !== "string"
+            || typeof parsed.title !== "string"
+            || typeof parsed.contentPath !== "string"
+            || typeof parsed.relativePath !== "string"
+            || typeof parsed.runId !== "string"
+          ) {
+            return null
+          }
+
+          return {
+            id: parsed.id,
+            kind: parsed.kind,
+            title: parsed.title,
+            description: parsed.description,
+            caseId: typeof parsed.caseId === "string" ? parsed.caseId : undefined,
+            caseLabel: typeof parsed.caseLabel === "string" ? parsed.caseLabel : undefined,
+            sourceArtifactIds: Array.isArray(parsed.sourceArtifactIds)
+              ? parsed.sourceArtifactIds.filter((value): value is string => typeof value === "string")
+              : undefined,
+            projectPath: typeof parsed.projectPath === "string" ? parsed.projectPath : resolve(projectPath),
+            workspace: typeof parsed.workspace === "string" ? parsed.workspace : "",
+            runId: parsed.runId,
+            templateId: typeof parsed.templateId === "string" ? parsed.templateId : undefined,
+            templateName: typeof parsed.templateName === "string" ? parsed.templateName : undefined,
+            workflowPath: typeof parsed.workflowPath === "string" ? parsed.workflowPath : undefined,
+            workflowName: typeof parsed.workflowName === "string" ? parsed.workflowName : undefined,
+            relativePath: parsed.relativePath,
+            contentPath: parsed.contentPath,
+            metadataPath: typeof parsed.metadataPath === "string" ? parsed.metadataPath : metadataPath,
+            createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : 0,
+            updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+          } satisfies ArtifactRecord
+        } catch (error) {
+          logWarn("artifact-store", "read_artifact_metadata_failed", {
+            metadataPath,
+            error: String(error),
+          })
+          return null
+        }
+      }))
+
+    return artifactRecords
+      .filter((record): record is ArtifactRecord => record !== null)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("artifact-store", "list_project_artifacts_failed", {
+        projectPath,
+        artifactsDir,
+        error: String(error),
+      })
+    }
+    return []
+  }
+}

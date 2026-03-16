@@ -3,6 +3,7 @@ import { atomWithStorage } from "jotai/utils"
 import { SIDEBAR_DEFAULT_WIDTH } from "@/lib/sidebar-layout"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
+import { toWorkflowExecutionKey } from "./workflow-execution"
 import type {
   BatchItemResult,
   BatchSummary,
@@ -25,7 +26,7 @@ import type {
 } from "@shared/types"
 import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
 import type { WebSearchBackend } from "./web-search-backend"
-import type { WorkflowEntryState } from "./workflow-entry"
+import type { WorkflowEntryState, WorkflowTemplateRunContext } from "./workflow-entry"
 
 // Re-export shared types for convenience
 export type {
@@ -117,7 +118,7 @@ export const currentWorkflowAtom = atom<Workflow>({
   version: 1,
   name: "",
   description: "",
-  defaults: { model: "sonnet", maxTurns: 60, timeout_minutes: 30, maxParallel: 8 },
+  defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
   nodes: [],
   edges: [],
 })
@@ -125,7 +126,7 @@ export const workflowSavedSnapshotAtom = atom(workflowSnapshot({
   version: 1,
   name: "",
   description: "",
-  defaults: { model: "sonnet", maxTurns: 60, timeout_minutes: 30, maxParallel: 8 },
+  defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
   nodes: [],
   edges: [],
 }))
@@ -168,7 +169,7 @@ export const globalExecutionDefaultsAtom = atomWithStorage<{
   maxTurns: number
   timeout_minutes: number
   maxParallel: number
-}>("c8c:global-execution-defaults", { model: "sonnet", maxTurns: 60, timeout_minutes: 30, maxParallel: 8 })
+}>("c8c:global-execution-defaults", { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 })
 
 export const providerSettingsAtom = atom<ProviderSettings>({
   defaultProvider: "claude",
@@ -220,15 +221,27 @@ export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
 // App pages
 export type MainView =
   | "thread"
+  | "factory"
   | "workflow_create"
   | "skills"
   | "templates"
+  | "artifacts"
   | "settings"
   | "inbox"
   | "onboarding"
 export const mainViewAtom = atomWithStorage<MainView>(
   "c8c:main-view",
   "thread",
+)
+
+export const selectedFactoryCaseIdAtom = atomWithStorage<string | null>(
+  "c8c:selected-factory-case-id",
+  null,
+)
+
+export const selectedInboxTaskKeyAtom = atomWithStorage<string | null>(
+  "c8c:selected-inbox-task-key",
+  null,
 )
 
 // ── Inbox / Notification Memory ───────────────────────
@@ -334,6 +347,70 @@ export const workflowCreateDraftPromptAtom = atom("")
 export const workflowCreatePendingMessageAtom = atom<Record<string, string>>({})
 export const workflowCreatePendingEntryAtom = atom<Record<string, string>>({})
 export const workflowEntryStateAtom = atom<WorkflowEntryState | null>(null)
+export const workflowTemplateContextsAtom = atom<Record<string, WorkflowTemplateRunContext>>({})
+export const selectedWorkflowTemplateContextAtom = atom(
+  (get) => get(workflowTemplateContextsAtom)[toWorkflowExecutionKey(get(selectedWorkflowPathAtom))] ?? null,
+  (get, set, context: WorkflowTemplateRunContext | null) => {
+    const key = toWorkflowExecutionKey(get(selectedWorkflowPathAtom))
+    const contexts = get(workflowTemplateContextsAtom)
+    if (!context) {
+      if (!(key in contexts)) return
+      const next = { ...contexts }
+      delete next[key]
+      set(workflowTemplateContextsAtom, next)
+      return
+    }
+    set(workflowTemplateContextsAtom, {
+      ...contexts,
+      [key]: context,
+    })
+  },
+)
+export const setWorkflowTemplateContextForKeyAtom = atom(
+  null,
+  (get, set, { key, context }: { key: string; context: WorkflowTemplateRunContext | null }) => {
+    const contexts = get(workflowTemplateContextsAtom)
+    if (!context) {
+      if (!(key in contexts)) return
+      const next = { ...contexts }
+      delete next[key]
+      set(workflowTemplateContextsAtom, next)
+      return
+    }
+    set(workflowTemplateContextsAtom, {
+      ...contexts,
+      [key]: context,
+    })
+  },
+)
+export const moveWorkflowTemplateContextAtom = atom(
+  null,
+  (get, set, { fromKey, toKey }: { fromKey: string; toKey: string }) => {
+    if (fromKey === toKey) return
+    const contexts = get(workflowTemplateContextsAtom)
+    const source = contexts[fromKey]
+    if (!source) return
+    const next = {
+      ...contexts,
+      [toKey]: {
+        ...source,
+        workflowPath: toKey === toWorkflowExecutionKey(null) ? null : toKey,
+      },
+    }
+    delete next[fromKey]
+    set(workflowTemplateContextsAtom, next)
+  },
+)
+export const clearWorkflowTemplateContextForKeyAtom = atom(
+  null,
+  (get, set, key: string) => {
+    const contexts = get(workflowTemplateContextsAtom)
+    if (!(key in contexts)) return
+    const next = { ...contexts }
+    delete next[key]
+    set(workflowTemplateContextsAtom, next)
+  },
+)
 
 // ── Chat Panel ──────────────────────────────────────────
 

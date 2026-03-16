@@ -1,9 +1,12 @@
 import { cn } from "@/lib/cn"
 import {
+  ArrowRight,
   FileText,
   History,
   Copy,
   Download,
+  FolderTree,
+  RotateCcw,
 } from "lucide-react"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -30,7 +33,7 @@ import {
 import { useOutputPanel } from "@/hooks/useOutputPanel"
 import { HistoryTab } from "@/components/output/HistoryTab"
 import { LogTab, NodesTab, formatCost } from "@/components/output/OutputSections"
-import type { LoadedRunResult, RunResult } from "@shared/types"
+import type { LoadedRunResult, RunResult, WorkflowTemplate } from "@shared/types"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -130,9 +133,13 @@ export function OutputPanel({
   reviewedRunError = null,
   onStartNewRun,
   onOpenInbox,
+  onOpenArtifacts,
+  nextStageTemplate = null,
+  onRunNextStage,
+  nextStagePending = false,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
-  onRerunFrom?: (nodeId: string) => Promise<void> | void
+  onRerunFrom?: (nodeId: string, options?: { workspace?: string | null }) => Promise<void> | void
   onContinueRun?: (run: RunResult) => Promise<void> | void
   requestedTab?: { tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null
   reviewingPastRun?: boolean
@@ -142,14 +149,18 @@ export function OutputPanel({
   reviewedRunError?: string | null
   onStartNewRun?: () => void
   onOpenInbox?: () => void
+  onOpenArtifacts?: () => void
+  nextStageTemplate?: WorkflowTemplate | null
+  onRunNextStage?: (() => Promise<void> | void) | null
+  nextStagePending?: boolean
 }) {
   const {
     runStatus,
     runOutcome,
     nodeStates,
     activeNodeId,
-    selectedNodeId,
-    setSelectedNodeId,
+    selectedNodeId: inspectedNodeId,
+    setSelectedNodeId: setInspectedNodeId,
     finalContent,
     workflow,
     evalResults,
@@ -159,6 +170,9 @@ export function OutputPanel({
     selectedPastRun,
     setSelectedPastRun,
     workspace,
+    artifactRecords,
+    artifactPersistenceStatus,
+    artifactPersistenceError,
   } = useOutputPanel()
   const [activeTab, setActiveTab] = useState("nodes")
   const [copiedResult, setCopiedResult] = useState(false)
@@ -173,11 +187,12 @@ export function OutputPanel({
   const previousRunStatusRef = useRef(runStatus)
   const latestPastRun = pastRuns[0] || null
   const selectedReviewRun = reviewedRun || selectedPastRun || latestPastRun
+  const rerunWorkspace = reviewingPastRun ? selectedReviewRun?.workspace || null : workspace
 
   const handleRerunFrom = useCallback((nodeId: string) => {
-    if (!onRerunFrom || !workspace) return
-    void onRerunFrom(nodeId)
-  }, [onRerunFrom, workspace])
+    if (!onRerunFrom || !rerunWorkspace) return
+    void onRerunFrom(nodeId, { workspace: rerunWorkspace })
+  }, [onRerunFrom, rerunWorkspace])
 
   const reviewingRunHistory = reviewingPastRun && runStatus === "idle" && !!selectedReviewRun
   const reviewSnapshot = reviewingRunHistory ? reviewedRunDetails?.snapshot || null : null
@@ -186,7 +201,6 @@ export function OutputPanel({
   const displayNodeStates = reviewingRunHistory ? (reviewSnapshot?.nodeStates || {}) : nodeStates
   const displayRuntimeMeta = reviewingRunHistory ? (reviewSnapshot?.runtimeMeta || {}) : runtimeMeta
   const displayEvalResults = reviewingRunHistory ? (reviewSnapshot?.evalResults || {}) : evalResults
-  const displayActiveNodeId = reviewingRunHistory ? selectedNodeId : activeNodeId
 
   // Filter out template nodes that were replaced by runtime branches
   const replacedTemplateIds = new Set(
@@ -245,6 +259,14 @@ export function OutputPanel({
   })
 
   const allDisplayNodes = [...displayNodes, ...runtimeBranchNodes]
+  const inspectableNodeIds = new Set([
+    ...allDisplayNodes.map((node) => node.id),
+    ...Object.keys(displayNodeStates),
+  ])
+  const selectedNodeId = inspectedNodeId && inspectableNodeIds.has(inspectedNodeId)
+    ? inspectedNodeId
+    : null
+  const displayActiveNodeId = reviewingRunHistory ? selectedNodeId : activeNodeId
   const displayLabelByNodeId = new Map(allDisplayNodes.map((node) => [node.id, node.label]))
   for (const node of workflow.nodes) {
     if (!displayLabelByNodeId.has(node.id)) {
@@ -380,6 +402,40 @@ export function OutputPanel({
     ? typeof displayNodeStates[selectedStageId]?.output?.content === "string" && displayNodeStates[selectedStageId]!.output!.content.trim().length > 0
     : false
   const selectedStageStatusLabel = formatOutputStatusLabel(selectedStageStatus)
+  const nextStageId = allDisplayNodes.find((node) => {
+    const status = displayNodeStates[node.id]?.status || "pending"
+    return status === "queued" || status === "pending"
+  })?.id || null
+  const selectedStageContextLabel = selectedStageId
+    ? selectedStageId === displayActiveNodeId && (
+      selectedStageStatus === "running"
+      || selectedStageStatus === "waiting_approval"
+      || selectedStageStatus === "waiting_human"
+      || selectedStageStatus === "failed"
+    )
+      ? selectedStageStatus === "failed"
+        ? "Stage needing attention"
+        : selectedStageStatus === "running"
+          ? "Current stage"
+          : "Blocked stage"
+      : !reviewingRunHistory && selectedStageId === nextStageId
+        ? "Next stage"
+        : selectedStageStatus === "completed" || selectedStageStatus === "skipped"
+          ? "Completed stage"
+          : "Selected stage"
+    : "Selected stage"
+  const selectedStageContextToneClass = "border-hairline bg-surface-2/60"
+  const selectedStageContextLabelClass = selectedStageId === displayActiveNodeId && selectedStageStatus === "running"
+    ? "text-status-info"
+    : selectedStageId === displayActiveNodeId && (selectedStageStatus === "waiting_approval" || selectedStageStatus === "waiting_human")
+      ? "text-status-warning"
+      : selectedStageStatus === "failed"
+        ? "text-status-danger"
+        : !reviewingRunHistory && selectedStageId === nextStageId
+          ? "text-foreground"
+          : selectedStageStatus === "completed" || selectedStageStatus === "skipped"
+            ? "text-status-success"
+            : "text-muted-foreground"
   const activitySummaryItems = [
     `${formatCost(accumulatedCost)}${budgetCost != null ? ` / ${formatCost(budgetCost)}` : ""} cost`,
     `${formatTokenCount(totalTokens)} tokens${budgetTokens != null ? ` / ${formatTokenCount(budgetTokens)}` : ""}`,
@@ -398,13 +454,30 @@ export function OutputPanel({
     && !!selectedReviewRun
   const stoppedLiveRun = !reviewingRunHistory && runStatus === "done" && (runOutcome === "cancelled" || runOutcome === "interrupted")
   const canStartFreshRun = Boolean(onStartNewRun) && !isRunInFlight(runStatus) && (reviewingRunHistory || runStatus === "done" || runStatus === "error" || pastRuns.length > 0)
+  const canRerunStages = Boolean(onRerunFrom) && !isRunInFlight(runStatus) && !!rerunWorkspace
+  const canRerunSelectedStage = Boolean(
+    selectedStageId
+    && canRerunStages
+    && (selectedStageStatus === "completed" || selectedStageStatus === "failed"),
+  )
+  const showArtifactContinuation = !reviewingRunHistory && runOutcome === "completed" && (
+    artifactPersistenceStatus !== "idle"
+    || artifactRecords.length > 0
+    || Boolean(artifactPersistenceError)
+    || Boolean(nextStageTemplate)
+  )
+  const artifactContinuationToneClass = artifactPersistenceStatus === "error"
+    ? "border-status-danger/20 bg-status-danger/8"
+    : artifactPersistenceStatus === "saved"
+      ? "border-status-success/20 bg-status-success/8"
+      : "border-hairline bg-surface-2/50"
 
   const openNodeDetails = useCallback((nodeId: string) => {
-    setSelectedNodeId(nodeId)
+    setInspectedNodeId(nodeId)
     const hasNodeOutput = typeof displayNodeStates[nodeId]?.output?.content === "string"
       && displayNodeStates[nodeId]!.output!.content.trim().length > 0
     setActiveTab(hasNodeOutput ? "result" : "log")
-  }, [displayNodeStates, setSelectedNodeId])
+  }, [displayNodeStates, setInspectedNodeId])
 
   const handleCopyResult = useCallback(async () => {
     if (!canCopyResult) return
@@ -467,10 +540,10 @@ export function OutputPanel({
     if (requestedTab.tab === "result" && !hasResult) return
     if (requestedTab.tab === "history" && pastRuns.length === 0) return
     if (requestedTab.nodeId) {
-      setSelectedNodeId(requestedTab.nodeId)
+      setInspectedNodeId(requestedTab.nodeId)
     }
     setActiveTab(requestedTab.tab)
-  }, [hasResult, pastRuns.length, requestedTab, setSelectedNodeId])
+  }, [hasResult, pastRuns.length, requestedTab, setInspectedNodeId])
 
   useEffect(() => {
     if (runStatus !== "done" || !hasResult) {
@@ -624,10 +697,10 @@ export function OutputPanel({
             <div className="rounded-lg surface-soft p-4">
               <div className="space-y-2">
                 {selectedStagePresentation && (
-                  <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
+                  <div className={cn("rounded-lg border px-3 py-2.5", selectedStageContextToneClass)}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="ui-meta-label text-muted-foreground">Selected stage</div>
+                        <div className={cn("ui-meta-label", selectedStageContextLabelClass)}>{selectedStageContextLabel}</div>
                         <div className="text-body-sm font-medium text-foreground">
                           {selectedStagePresentation.title}
                         </div>
@@ -684,10 +757,10 @@ export function OutputPanel({
               {(!reviewingRunHistory || canInspectSavedRun) && (
                 <>
               {selectedStagePresentation && (
-                <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
+                <div className={cn("rounded-lg border px-3 py-2.5", selectedStageContextToneClass)}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="ui-meta-label text-muted-foreground">Selected stage</div>
+                      <div className={cn("ui-meta-label", selectedStageContextLabelClass)}>{selectedStageContextLabel}</div>
                       <div className="mt-1 text-body-sm font-medium text-foreground">
                         {selectedStagePresentation.title}
                       </div>
@@ -696,14 +769,28 @@ export function OutputPanel({
                         {selectedStageBranchLabel ? ` · ${selectedStageBranchLabel}` : ""}
                       </div>
                     </div>
-                    <div className="ui-badge-row">
-                      <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                        {selectedStageStatusLabel}
-                      </Badge>
-                      {selectedStageHasOutput && (
-                        <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-                          Output ready
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div className="ui-badge-row">
+                        <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                          {selectedStageStatusLabel}
                         </Badge>
+                        {selectedStageHasOutput && (
+                          <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
+                            Output ready
+                          </Badge>
+                        )}
+                      </div>
+                      {canRerunSelectedStage && selectedStageId && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7"
+                          onClick={() => handleRerunFrom(selectedStageId)}
+                        >
+                          <RotateCcw size={12} />
+                          Rerun from here
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -733,7 +820,7 @@ export function OutputPanel({
                 nodeStates={displayNodeStates}
                 activeNodeId={displayActiveNodeId}
                 evalResults={displayEvalResults}
-                canRerun={!reviewingRunHistory && runStatus !== "running" && !!workspace && !!onRerunFrom}
+                canRerun={canRerunStages}
                 onRerunFrom={handleRerunFrom}
                 onSelectNode={openNodeDetails}
               />
@@ -854,9 +941,9 @@ export function OutputPanel({
               {(!reviewingRunHistory || canInspectSavedRun) && (
                 <>
               {selectedStagePresentation && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+                <div className={cn("flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5", selectedStageContextToneClass)}>
                   <div className="min-w-0">
-                    <div className="ui-meta-label text-muted-foreground">Inspecting log</div>
+                    <div className={cn("ui-meta-label", selectedStageContextLabelClass)}>{selectedStageContextLabel}</div>
                     <div className="text-body-sm font-medium text-foreground">
                       {selectedStagePresentation.title}
                     </div>
@@ -876,6 +963,18 @@ export function OutputPanel({
                       </Badge>
                     )}
                   </div>
+                  {canRerunSelectedStage && selectedStageId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      onClick={() => handleRerunFrom(selectedStageId)}
+                    >
+                      <RotateCcw size={12} />
+                      Rerun from here
+                    </Button>
+                  )}
                 </div>
               )}
               <LogTab selectedNodeId={selectedStageId} nodeStates={displayNodeStates} evalResults={displayEvalResults} />
@@ -908,7 +1007,7 @@ export function OutputPanel({
                       <Select
                         value={selectedResultNodeId || undefined}
                         onValueChange={(nextNodeId) => {
-                          setSelectedNodeId(nextNodeId)
+                          setInspectedNodeId(nextNodeId)
                         }}
                       >
                         <SelectTrigger className="h-control-sm w-[320px] text-body-sm">
@@ -965,6 +1064,71 @@ export function OutputPanel({
                   {reviewedRunError}
                 </div>
               )}
+              {showArtifactContinuation && (
+                <div className={cn("rounded-lg border px-3 py-3", artifactContinuationToneClass)}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="ui-meta-label text-muted-foreground">Factory continuation</div>
+                      <div className="mt-1 text-body-sm font-medium text-foreground">
+                        {artifactPersistenceStatus === "saving"
+                          ? "Saving artifacts for downstream stages..."
+                          : artifactRecords.length > 0
+                            ? `${artifactRecords.length} artifact${artifactRecords.length === 1 ? "" : "s"} created from this run`
+                            : "No persisted artifacts were created from this run yet."}
+                      </div>
+                      {artifactPersistenceError ? (
+                        <p className="mt-1 ui-meta-text text-status-danger">
+                          {artifactPersistenceError}
+                        </p>
+                      ) : nextStageTemplate ? (
+                        <p className="mt-1 ui-meta-text text-muted-foreground">
+                          Next stage available: {nextStageTemplate.name}
+                        </p>
+                      ) : artifactPersistenceStatus === "saved" ? (
+                        <p className="mt-1 ui-meta-text text-muted-foreground">
+                          This run saved its outputs as reusable project artifacts.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {onOpenArtifacts && artifactPersistenceStatus === "saved" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={onOpenArtifacts}
+                        >
+                          <FolderTree size={12} />
+                          Open artifacts
+                        </Button>
+                      )}
+                      {nextStageTemplate && onRunNextStage && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void Promise.resolve(onRunNextStage())
+                          }}
+                          disabled={artifactPersistenceStatus !== "saved" || nextStagePending}
+                        >
+                          <ArrowRight size={12} />
+                          {nextStagePending ? "Opening next stage..." : "Run next stage"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {artifactRecords.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {artifactRecords.map((artifact) => (
+                        <Badge key={artifact.id} variant="outline" className="ui-meta-text px-2 py-0">
+                          {artifact.title}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 {(reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath) && (
                   <Button
@@ -981,7 +1145,7 @@ export function OutputPanel({
                     Open Report
                     <span
                       className={cn("text-muted-foreground truncate", PREVIEW_MAX_W)}
-                      title={reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath}
+                      title={(reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath) ?? undefined}
                     >
                       {(reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath)?.split("/").pop()}
                     </span>

@@ -114,6 +114,7 @@ export const runIdAtom = createSelectedWorkflowExecutionFieldAtom("runId")
 export const runWorkflowPathAtom = createSelectedWorkflowExecutionFieldAtom("runWorkflowPath")
 export const nodeStatesAtom = createSelectedWorkflowExecutionFieldAtom("nodeStates")
 export const activeNodeIdAtom = createSelectedWorkflowExecutionFieldAtom("activeNodeId")
+export const inspectedNodeIdAtom = createSelectedWorkflowExecutionFieldAtom("inspectedNodeId")
 export const evalResultsAtom = createSelectedWorkflowExecutionFieldAtom("evalResults")
 export const finalContentAtom = createSelectedWorkflowExecutionFieldAtom("finalContent")
 export const reportPathAtom = createSelectedWorkflowExecutionFieldAtom("reportPath")
@@ -123,6 +124,9 @@ export const selectedPastRunAtom = createSelectedWorkflowExecutionFieldAtom("sel
 export const runtimeNodesAtom = createSelectedWorkflowExecutionFieldAtom("runtimeNodes")
 export const runtimeEdgesAtom = createSelectedWorkflowExecutionFieldAtom("runtimeEdges")
 export const runtimeMetaAtom = createSelectedWorkflowExecutionFieldAtom("runtimeMeta")
+export const artifactRecordsAtom = createSelectedWorkflowExecutionFieldAtom("artifactRecords")
+export const artifactPersistenceStatusAtom = createSelectedWorkflowExecutionFieldAtom("artifactPersistenceStatus")
+export const artifactPersistenceErrorAtom = createSelectedWorkflowExecutionFieldAtom("artifactPersistenceError")
 
 export const runsByWorkflowPathAtom = atom<Record<string, RunResult[]>>((get) => {
   const runs = get(pastRunsAtom)

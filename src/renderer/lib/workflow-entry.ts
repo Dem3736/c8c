@@ -1,7 +1,12 @@
 import type {
+  ArtifactContract,
+  ArtifactRecord,
+  InputAttachment,
   InputNodeConfig,
   OutputNodeConfig,
   Workflow,
+  WorkflowExecutionPolicyProfile,
+  WorkflowTemplatePackMetadata,
   WorkflowTemplate,
 } from "@shared/types"
 
@@ -24,6 +29,21 @@ export interface WorkflowEntryState {
   readinessText: string
 }
 
+export interface WorkflowTemplateRunContext {
+  templateId: string
+  templateName: string
+  workflowPath: string | null
+  workflowName: string
+  source: Extract<WorkflowEntrySource, "template" | "template_customize">
+  caseId?: string
+  caseLabel?: string
+  sourceArtifactIds?: string[]
+  pack?: WorkflowTemplatePackMetadata
+  contractIn?: ArtifactContract[]
+  contractOut?: ArtifactContract[]
+  executionPolicy?: WorkflowExecutionPolicyProfile
+}
+
 const DEFAULT_INPUT_PLACEHOLDER = "Enter your input text, paste a URL, or describe what to process..."
 
 function collapseWhitespace(value: string) {
@@ -41,6 +61,75 @@ function lowerFirst(value: string) {
   return value.charAt(0).toLowerCase() + value.slice(1)
 }
 
+function titleCaseFromIdentifier(value: string) {
+  return value
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function createFactoryCaseId(seed: string) {
+  return `case:${seed}:${Date.now().toString(36)}`
+}
+
+export function deriveArtifactCaseKey(artifact: Pick<ArtifactRecord, "caseId" | "workflowPath" | "runId">) {
+  if (typeof artifact.caseId === "string" && artifact.caseId.trim().length > 0) {
+    return artifact.caseId
+  }
+  return `legacy:${artifact.workflowPath || artifact.runId}`
+}
+
+function deriveCaseIdentity(template: WorkflowTemplate, sourceArtifacts?: ArtifactRecord[]) {
+  const firstArtifactWithCase = sourceArtifacts?.find((artifact) => typeof artifact.caseId === "string" && artifact.caseId.trim().length > 0)
+  if (firstArtifactWithCase?.caseId) {
+    return {
+      caseId: firstArtifactWithCase.caseId,
+      caseLabel: firstArtifactWithCase.caseLabel || template.name,
+    }
+  }
+
+  if (template.pack) {
+    return {
+      caseId: createFactoryCaseId(template.pack.id || template.id),
+      caseLabel: template.name,
+    }
+  }
+
+  return {
+    caseId: undefined,
+    caseLabel: undefined,
+  }
+}
+
+const JOURNEY_STAGE_LABELS: Record<string, string> = {
+  map: "Map",
+  intake: "Intake",
+  shape: "Shape",
+  research: "Research",
+  plan: "Plan",
+  execute: "Execute",
+  verify: "Verify",
+  operate: "Operate",
+}
+
+const EXECUTION_POLICY_TAG_LABELS: Record<string, string> = {
+  evidence_first: "Evidence-first",
+  spec_first: "Spec-first",
+  small_tasks: "Small tasks",
+  fresh_workers: "Fresh workers",
+  test_first: "Test-first",
+  review_gates: "Review gates",
+  isolated_workspace: "Isolated workspace",
+  human_gate_required: "Human gate required",
+  voice_locked: "Voice-locked",
+  no_slop: "No-slop review",
+  publish_gate: "Publish gate",
+  critique_loops: "Critique loops",
+  variant_exploration: "Variant exploration",
+  consistency_checks: "Consistency checks",
+}
+
 function deriveEntryTitle(name: string | undefined) {
   const normalized = collapseWhitespace(name || "")
   if (!normalized || normalized === "new-workflow") {
@@ -50,6 +139,11 @@ function deriveEntryTitle(name: string | undefined) {
 }
 
 export function deriveTemplateUseWhen(template: WorkflowTemplate) {
+  const explicitUseWhen = collapseWhitespace(template.useWhen || "")
+  if (explicitUseWhen) {
+    return ensureSentence(explicitUseWhen, "You want a ready-to-run flow that you can adapt to this job.")
+  }
+
   const base = collapseWhitespace(template.description || template.headline || template.how)
   if (!base) {
     return "You want a ready-to-run flow that you can adapt to this job."
@@ -65,6 +159,74 @@ export function deriveTemplateUseWhen(template: WorkflowTemplate) {
 
 export function deriveTemplateCardCopy(template: WorkflowTemplate) {
   return deriveTemplateUseWhen(template)
+}
+
+export function deriveTemplateJourneyStageLabel(template: WorkflowTemplate) {
+  const stage = template.pack?.journeyStage
+  if (!stage) return null
+  return JOURNEY_STAGE_LABELS[stage] ?? titleCaseFromIdentifier(stage)
+}
+
+export function deriveTemplateExecutionDisciplineLabels(template: WorkflowTemplate) {
+  const tags = template.executionPolicy?.tags || []
+  if (tags.length > 0) {
+    return tags.map((tag) => EXECUTION_POLICY_TAG_LABELS[tag] ?? titleCaseFromIdentifier(tag))
+  }
+
+  const summary = collapseWhitespace(template.executionPolicy?.summary || "")
+  return summary ? [summary] : []
+}
+
+export function formatArtifactContractLabel(contract: ArtifactContract | string) {
+  if (typeof contract === "string") {
+    return titleCaseFromIdentifier(contract)
+  }
+
+  const explicitTitle = collapseWhitespace(contract.title || "")
+  if (explicitTitle) return explicitTitle
+  return titleCaseFromIdentifier(contract.kind)
+}
+
+export function deriveTemplatePackStagePath(templates: WorkflowTemplate[], packId: string) {
+  const labels: string[] = []
+  const seen = new Set<string>()
+
+  for (const template of templates) {
+    if (template.pack?.id !== packId) continue
+    const label = deriveTemplateJourneyStageLabel(template)
+    if (!label || seen.has(label)) continue
+    seen.add(label)
+    labels.push(label)
+  }
+
+  return labels
+}
+
+function buildTemplateEntrySummary(template: WorkflowTemplate, source: Extract<WorkflowEntrySource, "template" | "template_customize">) {
+  const packLabel = collapseWhitespace(template.pack?.label || "")
+  const stageLabel = deriveTemplateJourneyStageLabel(template)
+  const disciplineSummary = collapseWhitespace(template.executionPolicy?.summary || "")
+  const summaryParts: string[] = []
+
+  if (packLabel && stageLabel) {
+    summaryParts.push(`This ${packLabel} starting point opens the ${lowerFirst(stageLabel)} stage.`)
+  } else if (source === "template_customize") {
+    summaryParts.push("This proven starting point is open for agent refinement.")
+  } else {
+    summaryParts.push("This starting point is ready to run as-is.")
+  }
+
+  if (disciplineSummary) {
+    summaryParts.push(ensureSentence(`It follows ${lowerFirst(disciplineSummary)}`, ""))
+  }
+
+  summaryParts.push(
+    source === "template_customize"
+      ? "You can run it as soon as the flow looks right."
+      : "Add the input below, then run it or refine it.",
+  )
+
+  return summaryParts.join(" ").trim()
 }
 
 function deriveWorkflowInputText(workflow: Workflow) {
@@ -95,8 +257,8 @@ function deriveWorkflowOutputText(workflow: Workflow, fallback: string) {
     return ensureSentence(explicitTitle, fallback)
   }
 
-  if (workflow.description.trim()) {
-    return ensureSentence(workflow.description, fallback)
+  if (workflow.description?.trim()) {
+    return ensureSentence(workflow.description!, fallback)
   }
 
   return fallback
@@ -171,13 +333,90 @@ export function buildTemplateWorkflowEntryState({
     workflowName: template.workflow.name || template.name,
     source,
     title: template.name,
-    summary: source === "template_customize"
-      ? "This proven starting point is open for agent refinement. You can run it as soon as the flow looks right."
-      : "This starting point is ready to run as-is. Add the input below, then run it or refine it.",
+    summary: buildTemplateEntrySummary(template, source),
     contractLabel: "Use this when",
     contractText: deriveTemplateUseWhen(template),
     inputText: ensureSentence(template.input, "Add the source material this flow should work from."),
     outputText: ensureSentence(template.output, "A final result ready to review."),
     readinessText: describeWorkflowReadiness(template.workflow),
   }
+}
+
+export function buildTemplateRunContext({
+  template,
+  workflowPath,
+  source = "template",
+  sourceArtifacts = [],
+}: {
+  template: WorkflowTemplate
+  workflowPath: string | null
+  source?: Extract<WorkflowEntrySource, "template" | "template_customize">
+  sourceArtifacts?: ArtifactRecord[]
+}): WorkflowTemplateRunContext {
+  const { caseId, caseLabel } = deriveCaseIdentity(template, sourceArtifacts)
+  return {
+    templateId: template.id,
+    templateName: template.name,
+    workflowPath,
+    workflowName: template.workflow.name || template.name,
+    source,
+    caseId,
+    caseLabel,
+    sourceArtifactIds: sourceArtifacts.map((artifact) => artifact.id),
+    pack: template.pack,
+    contractIn: template.contractIn,
+    contractOut: template.contractOut,
+    executionPolicy: template.executionPolicy,
+  }
+}
+
+export function areTemplateContractsSatisfied(
+  contracts: ArtifactContract[] | undefined,
+  artifacts: ArtifactRecord[],
+) {
+  if (!contracts?.length) return true
+  const availableKinds = new Set(artifacts.map((artifact) => artifact.kind))
+  return contracts
+    .filter((contract) => contract.required !== false)
+    .every((contract) => availableKinds.has(contract.kind))
+}
+
+export function selectArtifactsForTemplateContracts(
+  contracts: ArtifactContract[] | undefined,
+  artifacts: ArtifactRecord[],
+) {
+  if (!contracts?.length) return artifacts
+  const latestArtifactByKind = new Map<string, ArtifactRecord>()
+  const sortedArtifacts = [...artifacts].sort((left, right) => right.updatedAt - left.updatedAt)
+
+  for (const artifact of sortedArtifacts) {
+    if (!latestArtifactByKind.has(artifact.kind)) {
+      latestArtifactByKind.set(artifact.kind, artifact)
+    }
+  }
+
+  const selected: ArtifactRecord[] = []
+  const seenKinds = new Set<string>()
+  for (const contract of contracts) {
+    if (seenKinds.has(contract.kind)) continue
+    seenKinds.add(contract.kind)
+    const artifact = latestArtifactByKind.get(contract.kind)
+    if (artifact) {
+      selected.push(artifact)
+    }
+  }
+
+  return selected
+}
+
+export function buildArtifactAttachmentSeedInput(artifactAttachments: InputAttachment[]) {
+  if (artifactAttachments.length === 0) {
+    return "Add the context this stage should work from before running."
+  }
+
+  if (artifactAttachments.length === 1) {
+    return "Use the attached artifact as the primary context for this stage. Add any extra scope or constraints here before running."
+  }
+
+  return "Use the attached artifacts as the primary context for this stage. Add any extra scope or constraints here before running."
 }

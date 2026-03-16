@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react"
+import { useAtomValue } from "jotai"
 import { toast } from "sonner"
 import { createWorkflowExecutionController } from "./controller"
 import type { WorkflowExecutionController } from "./controller"
 import type { ApprovalRequest, WorkflowExecutionState } from "@/lib/workflow-execution"
+import { workflowTemplateContextsAtom } from "@/lib/store"
 import type { ActiveExecutionSnapshot, RunResult } from "@shared/types"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
@@ -25,6 +27,9 @@ export function useExecutionController({
 }: UseExecutionControllerArgs): WorkflowExecutionController {
   const controllerRef = useRef<WorkflowExecutionController | null>(null)
   const { addNotification } = useInboxNotifications()
+  const workflowTemplateContexts = useAtomValue(workflowTemplateContextsAtom)
+  const workflowTemplateContextsRef = useRef(workflowTemplateContexts)
+  workflowTemplateContextsRef.current = workflowTemplateContexts
 
   if (!controllerRef.current) {
     controllerRef.current = createWorkflowExecutionController({
@@ -43,7 +48,7 @@ export function useExecutionController({
           source: "workflow",
         })
       },
-      onRunFinished: (state) => {
+      onRunFinished: ({ workflowKey, state }) => {
         if (state.runOutcome === "failed") return
         const workflowName = state.workflowName || "Workflow"
         const title = state.runOutcome === "completed"
@@ -62,6 +67,56 @@ export function useExecutionController({
           description,
           level: state.runOutcome === "completed" ? "success" : state.runOutcome === "cancelled" ? "warning" : "error",
           source: "workflow",
+        })
+
+        const templateContext = workflowTemplateContextsRef.current[workflowKey]
+        if (
+          state.runOutcome !== "completed"
+          || !state.projectPath
+          || !state.workspace
+          || !templateContext?.contractOut?.length
+        ) {
+          return
+        }
+
+        controllerRef.current?.updateExecutionForKey(workflowKey, (previous) => ({
+          ...previous,
+          artifactRecords: [],
+          artifactPersistenceStatus: "saving",
+          artifactPersistenceError: null,
+        }))
+
+        void window.api.persistArtifactsFromRun({
+          projectPath: state.projectPath,
+          workspace: state.workspace,
+          caseId: templateContext.caseId,
+          caseLabel: templateContext.caseLabel,
+          sourceArtifactIds: templateContext.sourceArtifactIds,
+          templateId: templateContext.templateId,
+          templateName: templateContext.templateName,
+          workflowPath: templateContext.workflowPath,
+          workflowName: state.workflowName,
+          contracts: templateContext.contractOut,
+        }).then((result) => {
+          controllerRef.current?.updateExecutionForKey(workflowKey, (previous) => ({
+            ...previous,
+            artifactRecords: result.artifacts,
+            artifactPersistenceStatus: "saved",
+            artifactPersistenceError: null,
+          }))
+        }).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
+          controllerRef.current?.updateExecutionForKey(workflowKey, (previous) => ({
+            ...previous,
+            artifactPersistenceStatus: "error",
+            artifactPersistenceError: message,
+          }))
+          addNotification({
+            title: `Artifact persistence failed: ${workflowName}`,
+            description: message,
+            level: "error",
+            source: "workflow",
+          })
         })
       },
       onError: (scope, error) => {

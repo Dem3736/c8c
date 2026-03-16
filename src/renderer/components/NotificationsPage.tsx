@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { useAtom } from "jotai"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useAtom, useAtomValue } from "jotai"
 import {
   AlertTriangle,
   BellRing,
@@ -18,14 +18,18 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
+import { ScopeBanner } from "@/components/ui/scope-banner"
 import { Textarea } from "@/components/ui/textarea"
 import {
   currentWorkflowAtom,
   inboxNotificationsAtom,
   mainViewAtom,
   selectedProjectAtom,
+  selectedFactoryCaseIdAtom,
+  selectedInboxTaskKeyAtom,
   selectedWorkflowPathAtom,
   type InboxNotification,
+  workflowTemplateContextsAtom,
   workflowSavedSnapshotAtom,
 } from "@/lib/store"
 import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
@@ -33,9 +37,10 @@ import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 import { useChainExecution } from "@/hooks/useChainExecution"
 import { cn } from "@/lib/cn"
 import { getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
+import { deriveArtifactCaseKey } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { selectedPastRunAtom } from "@/features/execution"
-import type { HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult, Workflow } from "@shared/types"
+import type { ArtifactRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult, Workflow } from "@shared/types"
 
 const LEVEL_META: Record<InboxNotification["level"], { icon: typeof CheckCircle2; tone: string; badge: string }> = {
   info: {
@@ -121,6 +126,12 @@ interface TaskStageMeta {
   group: string
 }
 
+interface CaseOption {
+  id: string
+  label: string
+  updatedAt: number
+}
+
 function taskStageKey(task: Pick<HumanTaskSummary, "workflowPath" | "nodeId"> | Pick<HumanTaskSnapshot, "workflowPath" | "nodeId">): string | null {
   if (!task.workflowPath) return null
   return `${task.workflowPath}::${task.nodeId}`
@@ -139,19 +150,23 @@ function deriveTaskStageMeta(workflow: Workflow, nodeId: string): TaskStageMeta 
 export function NotificationsPage() {
   const [notifications] = useAtom(inboxNotificationsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflow] = useAtom(currentWorkflowAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
+  const workflowTemplateContexts = useAtomValue(workflowTemplateContextsAtom)
   const { continueWithWorkflow } = useChainExecution()
   const { markRead, markAllRead, clearAll } = useInboxNotifications()
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
   const [sourceFilter, setSourceFilter] = useState<"all" | InboxNotification["source"]>("all")
+  const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
+  const [artifactsLoading, setArtifactsLoading] = useState(false)
   const [humanTasks, setHumanTasks] = useState<HumanTaskSummary[]>([])
   const [humanTasksLoading, setHumanTasksLoading] = useState(false)
   const [humanTasksError, setHumanTasksError] = useState<string | null>(null)
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedTaskId, setSelectedTaskId] = useAtom(selectedInboxTaskKeyAtom)
   const [selectedTask, setSelectedTask] = useState<HumanTaskSnapshot | null>(null)
   const [taskAnswers, setTaskAnswers] = useState<Record<string, unknown>>({})
   const [taskLoading, setTaskLoading] = useState(false)
@@ -162,36 +177,120 @@ export function NotificationsPage() {
     markAllRead()
   }, [markAllRead])
 
-  const refreshHumanTasks = async () => {
+  const refreshHumanTasks = useCallback(async () => {
     setHumanTasksLoading(true)
     setHumanTasksError(null)
     try {
       const tasks = await window.api.listHumanTasks(selectedProject || undefined)
       setHumanTasks(tasks)
-      setSelectedTaskId((previous) => {
-        if (previous && tasks.some((task) => taskSelectionKey(task) === previous)) {
-          return previous
-        }
-        return tasks[0] ? taskSelectionKey(tasks[0]) : null
-      })
     } catch (error) {
       setHumanTasksError(error instanceof Error ? error.message : String(error))
       setHumanTasks([])
-      setSelectedTaskId(null)
     } finally {
       setHumanTasksLoading(false)
     }
-  }
+  }, [selectedProject])
 
-  useEffect(() => {
-    void refreshHumanTasks()
-    // selectedTask is intentionally excluded so project changes don't retrigger on local detail updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshArtifacts = useCallback(async () => {
+    if (!selectedProject) {
+      setArtifacts([])
+      setArtifactsLoading(false)
+      return
+    }
+    setArtifactsLoading(true)
+    try {
+      setArtifacts(await window.api.listProjectArtifacts(selectedProject))
+    } catch {
+      setArtifacts([])
+    } finally {
+      setArtifactsLoading(false)
+    }
   }, [selectedProject])
 
   useEffect(() => {
+    void refreshHumanTasks()
+    void refreshArtifacts()
+    // selectedTask is intentionally excluded so project changes don't retrigger on local detail updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject, refreshArtifacts, refreshHumanTasks])
+
+  const caseScope = useMemo(() => {
+    const caseByWorkflowPath = new Map<string, string>()
+    const caseByRunId = new Map<string, string>()
+    const caseMetaById = new Map<string, CaseOption>()
+    const rememberCase = (id: string, label: string, updatedAt: number) => {
+      const existing = caseMetaById.get(id)
+      if (existing) {
+        caseMetaById.set(id, {
+          id,
+          label: existing.label || label,
+          updatedAt: Math.max(existing.updatedAt, updatedAt),
+        })
+        return
+      }
+      caseMetaById.set(id, { id, label, updatedAt })
+    }
+
+    for (const artifact of artifacts) {
+      const caseId = deriveArtifactCaseKey(artifact)
+      rememberCase(caseId, artifact.caseLabel || artifact.workflowName || artifact.title || "Case", artifact.updatedAt)
+      if (artifact.workflowPath) caseByWorkflowPath.set(artifact.workflowPath, caseId)
+      caseByRunId.set(artifact.runId, caseId)
+    }
+
+    for (const [workflowKey, context] of Object.entries(workflowTemplateContexts)) {
+      if (!context.caseId) continue
+      rememberCase(context.caseId, context.caseLabel || context.workflowName || context.templateName || "Case", 0)
+      if (context.workflowPath) {
+        caseByWorkflowPath.set(context.workflowPath, context.caseId)
+      } else if (workflowKey !== "__draft__") {
+        caseByWorkflowPath.set(workflowKey, context.caseId)
+      }
+    }
+
+    return {
+      caseByWorkflowPath,
+      caseByRunId,
+      caseOptions: Array.from(caseMetaById.values()).sort((left, right) => right.updatedAt - left.updatedAt),
+    }
+  }, [artifacts, workflowTemplateContexts])
+
+  const caseIdByTaskKey = useMemo(() => {
+    const next = new Map<string, string>()
+    for (const task of humanTasks) {
+      const caseId = (task.workflowPath && caseScope.caseByWorkflowPath.get(task.workflowPath))
+        || caseScope.caseByRunId.get(task.sourceRunId)
+      if (!caseId) continue
+      next.set(taskSelectionKey(task), caseId)
+    }
+    return next
+  }, [caseScope.caseByRunId, caseScope.caseByWorkflowPath, humanTasks])
+
+  const caseLabelById = useMemo(
+    () => new Map(caseScope.caseOptions.map((entry) => [entry.id, entry.label])),
+    [caseScope.caseOptions],
+  )
+
+  const visibleHumanTasks = useMemo(() => {
+    if (!selectedCaseId) return humanTasks
+    return humanTasks.filter((task) => caseIdByTaskKey.get(taskSelectionKey(task)) === selectedCaseId)
+  }, [caseIdByTaskKey, humanTasks, selectedCaseId])
+
+  const selectedCaseOption = useMemo(
+    () => caseScope.caseOptions.find((entry) => entry.id === selectedCaseId) || null,
+    [caseScope.caseOptions, selectedCaseId],
+  )
+
+  useEffect(() => {
+    if (selectedTaskId && visibleHumanTasks.some((task) => taskSelectionKey(task) === selectedTaskId)) {
+      return
+    }
+    setSelectedTaskId(visibleHumanTasks[0] ? taskSelectionKey(visibleHumanTasks[0]) : null)
+  }, [selectedTaskId, setSelectedTaskId, visibleHumanTasks])
+
+  useEffect(() => {
     const summary = selectedTaskId
-      ? humanTasks.find((task) => taskSelectionKey(task) === selectedTaskId) || null
+      ? visibleHumanTasks.find((task) => taskSelectionKey(task) === selectedTaskId) || null
       : null
     if (!summary) {
       setSelectedTask(null)
@@ -209,7 +308,7 @@ export function NotificationsPage() {
     }).finally(() => {
       setTaskLoading(false)
     })
-  }, [humanTasks, selectedTaskId])
+  }, [selectedTaskId, visibleHumanTasks])
 
   useEffect(() => {
     const workflowPaths = Array.from(new Set(
@@ -260,7 +359,7 @@ export function NotificationsPage() {
   )
 
   const unreadCount = notifications.filter((notification) => !notification.read).length
-  const openHumanTaskCount = humanTasks.length
+  const openHumanTaskCount = visibleHumanTasks.length
   const selectedTaskStageMeta = selectedTask ? taskStageMetaByKey[taskStageKey(selectedTask) || ""] || null : null
   const selectedTaskPrimaryField = primaryTaskFieldLabel(selectedTask)
 
@@ -380,9 +479,24 @@ export function NotificationsPage() {
     <PageShell>
       <PageHeader
         title="Inbox"
-        subtitle="Review open workflow tasks and keep up with important workflow, batch, agent, and system events."
+        subtitle={
+          selectedCaseOption
+            ? `Review open gates for ${selectedCaseOption.label} and keep up with important workflow, batch, agent, and system events.`
+            : "Review open workflow tasks and keep up with important workflow, batch, agent, and system events."
+        }
         actions={(
           <>
+            {selectedCaseId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMainView("factory")}
+              >
+                <ArrowUpRight size={14} />
+                Back to case
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -425,6 +539,50 @@ export function NotificationsPage() {
         )}
       />
 
+      {(selectedCaseOption || caseScope.caseOptions.length > 1) && (
+        <section className="rounded-xl surface-panel p-4 space-y-3">
+          {selectedCaseOption ? (
+            <ScopeBanner
+              eyebrow="Case scope"
+              description={
+                artifactsLoading
+                  ? "Resolving case lineage..."
+                  : `Showing ${openHumanTaskCount} open gate${openHumanTaskCount === 1 ? "" : "s"} for ${selectedCaseOption.label}.`
+              }
+              actions={(
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedCaseId(null)}>
+                  Show all cases
+                </Button>
+              )}
+            />
+          ) : null}
+
+          {caseScope.caseOptions.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={selectedCaseId === null ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setSelectedCaseId(null)}
+              >
+                All cases
+              </Button>
+              {caseScope.caseOptions.slice(0, 6).map((entry) => (
+                <Button
+                  key={entry.id}
+                  type="button"
+                  variant={selectedCaseId === entry.id ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedCaseId(entry.id)}
+                >
+                  {entry.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="rounded-xl surface-panel p-5 space-y-4">
         <SectionHeading
           title="Needs your input"
@@ -447,16 +605,22 @@ export function NotificationsPage() {
             <div className="mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-lg border border-hairline bg-surface-2/80">
               <Inbox size={20} className="text-muted-foreground" />
             </div>
-            <p className="mt-4 text-body-md font-medium text-foreground">No open review or input tasks</p>
+            <p className="mt-4 text-body-md font-medium text-foreground">
+              {selectedCaseOption ? "No open gates for this case" : "No open review or input tasks"}
+            </p>
             <p className="mt-1 text-body-sm text-muted-foreground">
-              Flows that need structured answers or review gates will appear here.
+              {selectedCaseOption
+                ? "Switch to all cases or continue this case in Factory if you want to move it forward."
+                : "Flows that need structured answers or review gates will appear here."}
             </p>
           </article>
         ) : (
           <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
             <div className="overflow-hidden rounded-lg border border-hairline bg-surface-2/40">
-              {humanTasks.map((task) => {
+              {visibleHumanTasks.map((task) => {
                 const stageMeta = taskStageMetaByKey[taskStageKey(task) || ""] || null
+                const taskCaseId = caseIdByTaskKey.get(taskSelectionKey(task)) || null
+                const taskCaseLabel = taskCaseId ? caseLabelById.get(taskCaseId) || null : null
                 return (
                   <button
                     key={`${task.workspace}:${task.taskId}`}
@@ -476,6 +640,11 @@ export function NotificationsPage() {
                           <Badge variant={task.kind === "approval" ? "warning" : "info"} size="pill">
                             {taskKindLabel(task)}
                           </Badge>
+                          {!selectedCaseId && taskCaseLabel && (
+                            <Badge variant="outline" size="pill" className="text-muted-foreground">
+                              {taskCaseLabel}
+                            </Badge>
+                          )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
                           <span>{task.workflowName}</span>
@@ -569,7 +738,7 @@ export function NotificationsPage() {
                             </div>
                             <Checkbox
                               checked={Boolean(value)}
-                              onCheckedChange={(next) => handleTaskFieldChange(field, Boolean(next))}
+                              onChange={(e) => handleTaskFieldChange(field, e.target.checked)}
                             />
                           </div>
                         )
@@ -605,8 +774,8 @@ export function NotificationsPage() {
                                   <label key={option.value} className="flex items-center gap-2 text-body-sm text-foreground">
                                     <Checkbox
                                       checked={checked}
-                                      onCheckedChange={(next) => {
-                                        const nextValues = next
+                                      onChange={(e) => {
+                                        const nextValues = e.target.checked
                                           ? [...selectedValues, option.value]
                                           : selectedValues.filter((item) => item !== option.value)
                                         handleTaskFieldChange(field, nextValues)

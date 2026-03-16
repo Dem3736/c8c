@@ -17,7 +17,7 @@ interface WorkflowExecutionControllerDeps {
   setPastRuns: (runs: RunResult[]) => void
   listRuns: (projectPath: string) => Promise<RunResult[]>
   onRunFailed: (message: string) => void
-  onRunFinished?: (state: WorkflowExecutionState) => void
+  onRunFinished?: (args: { workflowKey: string; state: WorkflowExecutionState }) => void
   onError: (scope: string, error: unknown) => void
 }
 
@@ -178,7 +178,7 @@ export class WorkflowExecutionController {
     }
 
     if (transition.effects.runFinished) {
-      this.deps.onRunFinished?.(transition.nextState)
+      this.deps.onRunFinished?.({ workflowKey, state: transition.nextState })
       this.clearRunTracking(event.runId)
       this.previousExecutionSnapshots.delete(workflowKey)
       this.workflowSnapshots.delete(workflowKey)

@@ -200,7 +200,7 @@ describe("WorkflowExecutionController", () => {
       type: "node-done",
       runId: "run-1",
       nodeId: "output",
-      output: { type: "text", content: "Final answer" },
+      output: { content: "Final answer", metadata: { source: "output" } },
     })
 
     expect(controller.getExecutionState(renamedKey).runStatus).toBe("running")

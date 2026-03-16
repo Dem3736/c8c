@@ -29,6 +29,8 @@ interface UseWorkflowCrudParams {
   workflowHasActiveRun: (workflowPath: string) => boolean
   moveWorkflowExecutionState: (params: { fromKey: string; toKey: string }) => void
   clearWorkflowExecutionState: (workflowKey: string) => void
+  moveWorkflowTemplateContext: (params: { fromKey: string; toKey: string }) => void
+  clearWorkflowTemplateContext: (workflowKey: string) => void
   onProjectAdd?: (projectPath: string) => void
   onWorkflowCreate?: (workflowPath: string) => void
 }
@@ -78,6 +80,8 @@ export function useWorkflowCrud({
   workflowHasActiveRun,
   moveWorkflowExecutionState,
   clearWorkflowExecutionState,
+  moveWorkflowTemplateContext,
+  clearWorkflowTemplateContext,
   onProjectAdd,
   onWorkflowCreate,
 }: UseWorkflowCrudParams) {
@@ -286,6 +290,10 @@ export function useWorkflowCrud({
         fromKey: toWorkflowExecutionKey(workflow.path),
         toKey: toWorkflowExecutionKey(renamedPath),
       })
+      moveWorkflowTemplateContext({
+        fromKey: toWorkflowExecutionKey(workflow.path),
+        toKey: toWorkflowExecutionKey(renamedPath),
+      })
 
       if (selectedProject) {
         const refreshed = await window.api.listProjectWorkflows(selectedProject)
@@ -326,6 +334,7 @@ export function useWorkflowCrud({
     try {
       await window.api.deleteWorkflow(workflow.path)
       clearWorkflowExecutionState(toWorkflowExecutionKey(workflow.path))
+      clearWorkflowTemplateContext(toWorkflowExecutionKey(workflow.path))
 
       if (selectedProject) {
         const refreshed = await window.api.listProjectWorkflows(selectedProject)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -25,6 +26,7 @@ import {
   projectsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
+  setWorkflowTemplateContextForKeyAtom,
   workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
@@ -47,11 +49,17 @@ import { STAGE_ORDER, STAGE_META } from "@/lib/template-stages"
 import type { WorkflowTemplateStage } from "@shared/types"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 import {
+  buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
+  deriveTemplateExecutionDisciplineLabels,
+  deriveTemplateJourneyStageLabel,
+  deriveTemplatePackStagePath,
   deriveTemplateUseWhen,
+  formatArtifactContractLabel,
 } from "@/lib/workflow-entry"
 import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
+import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 
 function TemplateCard({
   template,
@@ -78,6 +86,20 @@ function TemplateCard({
         <p className="text-body-sm text-muted-foreground mt-1 line-clamp-2">
           {deriveTemplateCardCopy(template)}
         </p>
+        {(template.pack || template.executionPolicy?.tags?.length) && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {template.pack && (
+              <Badge variant="outline" size="compact">
+                {template.pack.label}
+              </Badge>
+            )}
+            {template.pack?.entrypoint && (
+              <Badge variant="info" size="compact">
+                Start here
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
     </Button>
   )
@@ -85,17 +107,27 @@ function TemplateCard({
 
 function TemplateDetailPanel({
   template,
+  allTemplates,
   onUse,
   disabled,
   onClose,
 }: {
   template: WorkflowTemplate
+  allTemplates: WorkflowTemplate[]
   onUse: (template: WorkflowTemplate) => void
   disabled?: boolean
   onClose: () => void
 }) {
   const sourceKind = getTemplateSourceKind(template)
   const sourceLabel = getTemplateSourceLabel(template)
+  const packStageLabel = deriveTemplateJourneyStageLabel(template)
+  const disciplineLabels = deriveTemplateExecutionDisciplineLabels(template)
+  const packStages = template.pack
+    ? deriveTemplatePackStagePath(allTemplates, template.pack.id)
+    : []
+  const recommendedNext = (template.pack?.recommendedNext || [])
+    .map((id) => allTemplates.find((candidate) => candidate.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
 
   return (
     <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
@@ -140,10 +172,77 @@ function TemplateDetailPanel({
           <span className="ui-meta-label text-muted-foreground">You get</span>
           <p className="mt-1 text-body-sm">{template.output}</p>
         </div>
+        {template.pack && (
+          <div>
+            <span className="ui-meta-label text-muted-foreground">Factory pack</span>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant="outline" size="compact">{template.pack.label}</Badge>
+              {packStageLabel ? <Badge variant="secondary" size="compact">{packStageLabel}</Badge> : null}
+              {template.pack.entrypoint ? <Badge variant="info" size="compact">Start here</Badge> : null}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto ui-scroll-region px-4 py-4">
         <div className="space-y-4">
+          {packStages.length > 0 && (
+            <div>
+              <span className="ui-meta-label text-muted-foreground">Stages included</span>
+              <p className="mt-1 text-body-sm text-foreground">{packStages.join(" -> ")}</p>
+            </div>
+          )}
+
+          {template.contractIn?.length ? (
+            <div>
+              <span className="ui-meta-label text-muted-foreground">Requires</span>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {template.contractIn.map((contract) => (
+                  <Badge key={`${template.id}-in-${contract.kind}-${contract.title || ""}`} variant="outline" size="compact">
+                    {formatArtifactContractLabel(contract)}
+                    {contract.required === false ? " (optional)" : ""}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {template.contractOut?.length ? (
+            <div>
+              <span className="ui-meta-label text-muted-foreground">Produces</span>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {template.contractOut.map((contract) => (
+                  <Badge key={`${template.id}-out-${contract.kind}-${contract.title || ""}`} variant="secondary" size="compact">
+                    {formatArtifactContractLabel(contract)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {disciplineLabels.length > 0 && (
+            <div>
+              <span className="ui-meta-label text-muted-foreground">Execution discipline</span>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {disciplineLabels.map((label) => (
+                  <Badge key={`${template.id}-discipline-${label}`} variant="info" size="compact">
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+              {template.executionPolicy?.description ? (
+                <p className="mt-2 text-body-sm text-muted-foreground">{template.executionPolicy.description}</p>
+              ) : null}
+            </div>
+          )}
+
+          {recommendedNext.length > 0 && (
+            <div>
+              <span className="ui-meta-label text-muted-foreground">Next</span>
+              <p className="mt-1 text-body-sm text-foreground">{recommendedNext.join(" -> ")}</p>
+            </div>
+          )}
+
           <div>
             <span className="ui-meta-label text-muted-foreground">Why this flow fits</span>
             <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
@@ -196,6 +295,7 @@ export function WorkflowsTemplatesPage() {
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [runStatus] = useAtom(runStatusAtom)
   const [targetProjectPath, setTargetProjectPath] = useState<string | null>(selectedProject)
@@ -232,7 +332,7 @@ export function WorkflowsTemplatesPage() {
     const q = query.trim().toLowerCase()
     if (!q) return templates
     return templates.filter((template) =>
-      `${template.name} ${template.description} ${template.headline} ${template.how} ${template.stage} ${getTemplateSourceLabel(template)} ${template.marketplaceName || ""}`
+      `${template.name} ${template.description} ${template.headline} ${template.how} ${template.useWhen || ""} ${template.stage} ${template.pack?.label || ""} ${template.pack?.journeyStage || ""} ${template.contractIn?.map((contract) => `${contract.kind} ${contract.title || ""}`).join(" ") || ""} ${template.contractOut?.map((contract) => `${contract.kind} ${contract.title || ""}`).join(" ") || ""} ${template.executionPolicy?.summary || ""} ${template.executionPolicy?.tags?.join(" ") || ""} ${getTemplateSourceLabel(template)} ${template.marketplaceName || ""}`
         .toLowerCase()
         .includes(q),
     )
@@ -275,6 +375,7 @@ export function WorkflowsTemplatesPage() {
 
     const previousWorkflow = structuredClone(workflow)
     const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
+    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
     setWorkflow(nextWorkflow)
     setWorkflowEntryState(buildTemplateWorkflowEntryState({
       template: {
@@ -283,6 +384,16 @@ export function WorkflowsTemplatesPage() {
       },
       workflowPath: selectedWorkflowPath,
     }))
+    setWorkflowTemplateContextForKey({
+      key: workflowKey,
+      context: buildTemplateRunContext({
+        template: {
+          ...template,
+          workflow: nextWorkflow,
+        },
+        workflowPath: selectedWorkflowPath,
+      }),
+    })
     setMainView("thread")
     setPendingTemplate(null)
     toast.success(`"${template.name}" is ready to run`, {
@@ -291,6 +402,7 @@ export function WorkflowsTemplatesPage() {
         onClick: () => {
           setWorkflow(previousWorkflow)
           setWorkflowEntryState(null)
+          setWorkflowTemplateContextForKey({ key: workflowKey, context: null })
         },
       },
     })
@@ -315,6 +427,16 @@ export function WorkflowsTemplatesPage() {
         },
         workflowPath: filePath,
       }))
+      setWorkflowTemplateContextForKey({
+        key: toWorkflowExecutionKey(filePath),
+        context: buildTemplateRunContext({
+          template: {
+            ...template,
+            workflow: loadedWorkflow,
+          },
+          workflowPath: filePath,
+        }),
+      })
       setMainView("thread")
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || template.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
@@ -422,6 +544,7 @@ export function WorkflowsTemplatesPage() {
           {selectedTemplate && (
             <TemplateDetailPanel
               template={selectedTemplate}
+              allTemplates={templates}
               onUse={confirmApplyTemplate}
               disabled={projects.length === 0}
               onClose={() => setSelectedTemplateId(null)}

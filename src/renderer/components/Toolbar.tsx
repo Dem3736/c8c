@@ -291,6 +291,12 @@ export function Toolbar({
       case "templates":
         setMainView("templates")
         return
+      case "factory":
+        setMainView("factory")
+        return
+      case "artifacts":
+        setMainView("artifacts")
+        return
       case "generate":
         openWorkflowCreate()
         return
@@ -499,8 +505,14 @@ export function Toolbar({
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Create</DropdownMenuLabel>
+                <DropdownMenuItem disabled={!selectedProject} onSelect={() => void handleActionMenu("factory")}>
+                  Open factory
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("templates")}>
                   Browse templates
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!selectedProject} onSelect={() => void handleActionMenu("artifacts")}>
+                  Open artifacts
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("generate")}>
                   Create with Agent

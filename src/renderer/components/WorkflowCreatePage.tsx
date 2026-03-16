@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import {
   chatPanelOpenAtom,
   currentWorkflowAtom,
@@ -14,6 +14,7 @@ import {
   workflowCreatePendingEntryAtom,
   workflowCreatePendingMessageAtom,
   workflowEntryStateAtom,
+  setWorkflowTemplateContextForKeyAtom,
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   workflowsAtom,
@@ -68,9 +69,13 @@ import {
 import type { WorkflowTemplate } from "@shared/types"
 import { cn } from "@/lib/cn"
 import {
+  buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
+  deriveTemplateExecutionDisciplineLabels,
+  deriveTemplateJourneyStageLabel,
 } from "@/lib/workflow-entry"
+import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 
 const POPULAR_TEMPLATE_LIMIT = 12
 const CREATE_SURFACE_MAX_WIDTH = "max-w-[1040px]"
@@ -110,6 +115,20 @@ function TemplateSuggestionCard({
           <p className="line-clamp-3 text-body-md font-medium text-foreground">
             {templateCardCopy(template)}
           </p>
+          {(template.pack || template.executionPolicy?.tags?.length) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {template.pack && (
+                <Badge variant="outline" size="compact">
+                  {template.pack.label}
+                </Badge>
+              )}
+              {template.pack?.entrypoint ? (
+                <Badge variant="info" size="compact">
+                  Start here
+                </Badge>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
       <p className="mt-auto w-full min-w-0 truncate ui-meta-text text-muted-foreground">{template.name}</p>
@@ -164,6 +183,7 @@ export function WorkflowCreatePage() {
   const [, setPendingCreateEntry] = useAtom(workflowCreatePendingEntryAtom)
   const [, setPendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [promptHelperOpen, setPromptHelperOpen] = useState(false)
   const [promptScaffold, setPromptScaffold] = useState<WorkflowCreatePromptScaffold>(
     EMPTY_WORKFLOW_CREATE_SCAFFOLD,
@@ -283,6 +303,8 @@ export function WorkflowCreatePage() {
     () => (targetProjectPath ? projectFolderName(targetProjectPath) : null),
     [targetProjectPath],
   )
+  const pendingTemplateStageLabel = pendingTemplate ? deriveTemplateJourneyStageLabel(pendingTemplate) : null
+  const pendingTemplateDisciplineLabels = pendingTemplate ? deriveTemplateExecutionDisciplineLabels(pendingTemplate) : []
   const scaffoldFieldCount = useMemo(
     () => countWorkflowCreateScaffoldFields(promptScaffold),
     [promptScaffold],
@@ -302,6 +324,7 @@ export function WorkflowCreatePage() {
       pendingMessage?: string
       pendingEntryRequest?: string
       entryState?: ReturnType<typeof buildTemplateWorkflowEntryState>
+      templateContext?: ReturnType<typeof buildTemplateRunContext>
     },
   ) => {
     const loadedWorkflow = await window.api.loadWorkflow(filePath)
@@ -325,6 +348,10 @@ export function WorkflowCreatePage() {
         : prev
     ))
     setWorkflowEntryState(options?.entryState ?? null)
+    setWorkflowTemplateContextForKey({
+      key: toWorkflowExecutionKey(filePath),
+      context: options?.templateContext ?? null,
+    })
     setDraftPrompt("")
     setPromptScaffold(EMPTY_WORKFLOW_CREATE_SCAFFOLD)
     setPromptHelperOpen(false)
@@ -372,6 +399,13 @@ export function WorkflowCreatePage() {
           },
           workflowPath: filePath,
         }),
+        templateContext: buildTemplateRunContext({
+          template: {
+            ...template,
+            workflow: nextWorkflow,
+          },
+          workflowPath: filePath,
+        }),
       })
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || template.name}" is ready in ${targetProjectName || "your project"}`)
@@ -396,6 +430,14 @@ export function WorkflowCreatePage() {
       await openWorkflowFile(filePath, targetProjectPath, {
         pendingMessage: buildTemplateCustomizationPrompt(template),
         entryState: buildTemplateWorkflowEntryState({
+          template: {
+            ...template,
+            workflow: nextWorkflow,
+          },
+          workflowPath: filePath,
+          source: "template_customize",
+        }),
+        templateContext: buildTemplateRunContext({
           template: {
             ...template,
             workflow: nextWorkflow,
@@ -758,6 +800,32 @@ export function WorkflowCreatePage() {
             ) : (
               <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-3 text-body-sm text-muted-foreground">
                 Select or add a project first so this starting point has somewhere to open.
+              </div>
+            )}
+            {(pendingTemplate?.pack || pendingTemplateDisciplineLabels.length > 0) && (
+              <div className="rounded-lg border border-hairline bg-surface-2/40 px-3 py-3 space-y-2">
+                {pendingTemplate?.pack && (
+                  <div>
+                    <p className="ui-meta-text text-muted-foreground">Factory pack</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="outline" size="compact">{pendingTemplate.pack.label}</Badge>
+                      {pendingTemplateStageLabel ? <Badge variant="secondary" size="compact">{pendingTemplateStageLabel}</Badge> : null}
+                      {pendingTemplate.pack.entrypoint ? <Badge variant="info" size="compact">Start here</Badge> : null}
+                    </div>
+                  </div>
+                )}
+                {pendingTemplateDisciplineLabels.length > 0 && (
+                  <div>
+                    <p className="ui-meta-text text-muted-foreground">Execution discipline</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {pendingTemplateDisciplineLabels.map((label) => (
+                        <Badge key={`pending-template-discipline-${label}`} variant="info" size="compact">
+                          {label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CanvasDialogBody>

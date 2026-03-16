@@ -10,6 +10,8 @@ import {
   currentWorkflowAtom,
   skillsAtom,
   mainViewAtom,
+  clearWorkflowTemplateContextForKeyAtom,
+  moveWorkflowTemplateContextAtom,
   workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   unreadInboxCountAtom,
@@ -30,7 +32,9 @@ import {
   FilePlus2,
   Plus,
   Sparkles,
+  Factory,
   LayoutTemplate,
+  FileStack,
   Inbox,
   Settings,
   Pencil,
@@ -110,6 +114,8 @@ export function ProjectSidebar({
   const [unreadInboxCount] = useAtom(unreadInboxCountAtom)
   const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
+  const moveWorkflowTemplateContext = useSetAtom(moveWorkflowTemplateContextAtom)
+  const clearWorkflowTemplateContext = useSetAtom(clearWorkflowTemplateContextForKeyAtom)
   const [workflowSearchQuery, setWorkflowSearchQuery] = useState("")
   const [expandedWorkflowLists, setExpandedWorkflowLists] = useState<Record<string, boolean>>({})
   const [sidebarScrolling, setSidebarScrolling] = useState(false)
@@ -127,6 +133,7 @@ export function ProjectSidebar({
   }
   const clearDraftExecutionState = () => {
     clearWorkflowExecutionState(toWorkflowExecutionKey(null))
+    clearWorkflowTemplateContext(toWorkflowExecutionKey(null))
   }
   const {
     projectWorkflowsCache,
@@ -186,6 +193,8 @@ export function ProjectSidebar({
     workflowHasActiveRun,
     moveWorkflowExecutionState,
     clearWorkflowExecutionState,
+    moveWorkflowTemplateContext,
+    clearWorkflowTemplateContext,
     onProjectAdd,
     onWorkflowCreate,
   })
@@ -361,10 +370,24 @@ export function ProjectSidebar({
         />
 
         <SidebarNavItem
+          icon={Factory}
+          label="Factory"
+          active={mainView === "factory"}
+          onClick={() => setMainView("factory")}
+        />
+
+        <SidebarNavItem
           icon={LayoutTemplate}
           label="Templates"
           active={mainView === "templates"}
           onClick={() => setMainView("templates")}
+        />
+
+        <SidebarNavItem
+          icon={FileStack}
+          label="Artifacts"
+          active={mainView === "artifacts"}
+          onClick={() => setMainView("artifacts")}
         />
 
         <SidebarNavItem

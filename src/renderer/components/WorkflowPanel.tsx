@@ -6,18 +6,25 @@ import {
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   currentWorkflowAtom,
+  inputAttachmentsAtom,
   inputValueAtom,
   viewModeAtom,
   chatPanelOpenAtom,
   workflowDirtyAtom,
   mainViewAtom,
+  selectedWorkflowTemplateContextAtom,
+  setWorkflowTemplateContextForKeyAtom,
   workflowCreatePendingMessageAtom,
   workflowEntryStateAtom,
+  workflowSavedSnapshotAtom,
   chatPanelWidthAtom,
   workflowReviewModeAtom,
+  webSearchBackendAtom,
+  workflowsAtom,
 } from "@/lib/store"
 import {
   activeNodeIdAtom,
+  artifactRecordsAtom,
   finalContentAtom,
   nodeStatesAtom,
   reportPathAtom,
@@ -47,6 +54,7 @@ import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
 import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
 import { useSelectedRunReview } from "@/hooks/useSelectedRunReview"
+import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
 import {
   List,
   LayoutGrid,
@@ -65,11 +73,19 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import type { WorkflowEntryState } from "@/lib/workflow-entry"
+import {
+  areTemplateContractsSatisfied,
+  formatArtifactContractLabel,
+  selectArtifactsForTemplateContracts,
+} from "@/lib/workflow-entry"
+import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
+import type { ArtifactContract, ArtifactRecord, WorkflowTemplate } from "@shared/types"
 import { buildRunProgressSummary, formatElapsedTime, type RunProgressSummary } from "@/lib/run-progress"
 
 function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
@@ -272,17 +288,130 @@ function RunStrip({
   )
 }
 
+function ProjectArtifactsPanel({
+  artifacts,
+  loading,
+  error,
+  requiredContracts,
+  onOpenArtifact,
+  onOpenArtifactLibrary,
+}: {
+  artifacts: ArtifactRecord[]
+  loading: boolean
+  error: string | null
+  requiredContracts?: ArtifactContract[]
+  onOpenArtifact: (artifact: ArtifactRecord) => void
+  onOpenArtifactLibrary: () => void
+}) {
+  const latestArtifacts = artifacts.slice(0, 6)
+  const availableKinds = new Set(artifacts.map((artifact) => artifact.kind))
+  const requiredLabels = (requiredContracts || []).map((contract) => ({
+    label: formatArtifactContractLabel(contract),
+    satisfied: availableKinds.has(contract.kind),
+    optional: contract.required === false,
+  }))
+
+  return (
+    <section className="rounded-lg border border-hairline bg-surface-1/70 px-4 py-3 ui-fade-slide-in">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="section-kicker">Project artifacts</div>
+          <p className="mt-1 text-body-sm text-muted-foreground">
+            Reusable typed outputs from this project that downstream stages can consume.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="ui-meta-text px-2 py-0">
+            {artifacts.length} saved
+          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            onClick={onOpenArtifactLibrary}
+          >
+            See all
+          </Button>
+        </div>
+      </div>
+
+      {requiredLabels.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <div className="ui-meta-label text-muted-foreground">This stage expects</div>
+          <div className="flex flex-wrap gap-1.5">
+            {requiredLabels.map((item) => (
+              <Badge
+                key={`${item.label}-${item.optional ? "optional" : "required"}`}
+                variant={item.satisfied ? "success" : "outline"}
+                className="ui-meta-text px-2 py-0"
+              >
+                {item.label}{item.optional ? " (optional)" : ""}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3">
+        {loading ? (
+          <div className="ui-meta-text text-muted-foreground">Loading project artifacts...</div>
+        ) : error ? (
+          <div role="alert" className="ui-meta-text text-status-danger">{error}</div>
+        ) : latestArtifacts.length === 0 ? (
+          <div className="ui-meta-text text-muted-foreground">No project artifacts saved yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {latestArtifacts.map((artifact) => (
+              <div
+                key={artifact.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2/60 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-body-sm font-medium text-foreground">{artifact.title}</div>
+                  <div className="ui-meta-text text-muted-foreground">
+                    {formatArtifactContractLabel(artifact.kind)}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => onOpenArtifact(artifact)}
+                >
+                  Open
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
-  const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
-  const [inputValue] = useAtom(inputValueAtom)
+  const [inputValue, setInputValue] = useAtom(inputValueAtom)
+  const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [chatPanelWidth] = useAtom(chatPanelWidthAtom)
   const [chatStatus] = useAtom(chatStatusAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
+  const [, setWorkflows] = useAtom(workflowsAtom)
+  const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
+  const [webSearchBackend] = useAtom(webSearchBackendAtom)
+  const [selectedWorkflowTemplateContext] = useAtom(selectedWorkflowTemplateContextAtom)
+  const [, setWorkflowTemplateContextForKey] = useAtom(setWorkflowTemplateContextForKeyAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
+  const [artifactRecords] = useAtom(artifactRecordsAtom)
+  const [projectArtifacts, setProjectArtifacts] = useState<ArtifactRecord[]>([])
+  const [projectArtifactsLoading, setProjectArtifactsLoading] = useState(false)
+  const [projectArtifactsError, setProjectArtifactsError] = useState<string | null>(null)
   const [finalContent] = useAtom(finalContentAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [reportPath] = useAtom(reportPathAtom)
@@ -305,6 +434,8 @@ export function WorkflowPanel() {
   const inputPanelRef = useRef<HTMLDivElement | null>(null)
   const [showEntryEditor, setShowEntryEditor] = useState(false)
   const [prepareNewRun, setPrepareNewRun] = useState(false)
+  const [packTemplates, setPackTemplates] = useState<WorkflowTemplate[]>([])
+  const [launchingNextStage, setLaunchingNextStage] = useState(false)
   const [elapsed, setElapsed] = useState("")
   const [outputTabRequest, setOutputTabRequest] = useState<{ tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null>(null)
   const [flowSurfaceMode, setFlowSurfaceMode] = useState<"outline" | "edit">("outline")
@@ -384,6 +515,57 @@ export function WorkflowPanel() {
     }
   }, [runStatus, setWorkflowEntryState, workflowEntryState])
 
+  useEffect(() => {
+    if (!selectedProject) {
+      setProjectArtifacts([])
+      setProjectArtifactsLoading(false)
+      setProjectArtifactsError(null)
+      return
+    }
+
+    let cancelled = false
+    setProjectArtifactsLoading(true)
+    setProjectArtifactsError(null)
+
+    void window.api.listProjectArtifacts(selectedProject).then((artifacts) => {
+      if (cancelled) return
+      setProjectArtifacts(artifacts)
+    }).catch((error) => {
+      if (cancelled) return
+      setProjectArtifacts([])
+      setProjectArtifactsError(error instanceof Error ? error.message : String(error))
+    }).finally(() => {
+      if (!cancelled) {
+        setProjectArtifactsLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedProject, artifactRecords])
+
+  useEffect(() => {
+    if (!selectedWorkflowTemplateContext?.pack?.recommendedNext?.length) {
+      setPackTemplates([])
+      return
+    }
+
+    let cancelled = false
+    void window.api.listTemplates().then((templates) => {
+      if (cancelled) return
+      setPackTemplates(templates)
+    }).catch((error) => {
+      if (cancelled) return
+      console.error("[WorkflowPanel] failed to load pack templates:", error)
+      setPackTemplates([])
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedWorkflowTemplateContext])
+
   const hasMeaningfulContent = workflowHasMeaningfulContent(workflow)
   const workflowHasGeneratedSteps = workflow.nodes.some(
     (node) => node.type !== "input" && node.type !== "output",
@@ -406,6 +588,30 @@ export function WorkflowPanel() {
     defaultValue: inputNode?.type === "input" ? inputNode.config.defaultValue : undefined,
   })
   const readyToRun = inputValidation.valid && workflow.nodes.some((node) => node.type === "skill")
+  const combinedArtifactRecords = useMemo(() => {
+    const byId = new Map<string, ArtifactRecord>()
+    for (const artifact of projectArtifacts) {
+      byId.set(artifact.id, artifact)
+    }
+    for (const artifact of artifactRecords) {
+      byId.set(artifact.id, artifact)
+    }
+    return Array.from(byId.values()).sort((left, right) => right.updatedAt - left.updatedAt)
+  }, [artifactRecords, projectArtifacts])
+  const nextStageTemplate = useMemo(() => {
+    const recommendedNext = selectedWorkflowTemplateContext?.pack?.recommendedNext || []
+    if (recommendedNext.length === 0 || packTemplates.length === 0) return null
+
+    return recommendedNext
+      .map((templateId) => packTemplates.find((template) => template.id === templateId) || null)
+      .find((template): template is WorkflowTemplate =>
+        template !== null && areTemplateContractsSatisfied(template.contractIn, combinedArtifactRecords),
+      ) || null
+  }, [combinedArtifactRecords, packTemplates, selectedWorkflowTemplateContext])
+  const nextStageArtifacts = useMemo(
+    () => selectArtifactsForTemplateContracts(nextStageTemplate?.contractIn, combinedArtifactRecords),
+    [combinedArtifactRecords, nextStageTemplate],
+  )
   const showCreateDraftSkeleton = (
     viewMode === "list"
     && selectedWorkflowPath != null
@@ -508,6 +714,58 @@ export function WorkflowPanel() {
     })
   }
 
+  const handleOpenArtifact = async (artifact: ArtifactRecord) => {
+    const openError = await window.api.openPath(artifact.contentPath)
+    if (!openError) return
+    toast.error("Could not open artifact", {
+      description: openError,
+    })
+  }
+
+  const handleRunNextStage = async () => {
+    if (!selectedProject || !nextStageTemplate || launchingNextStage) return
+
+    setLaunchingNextStage(true)
+    try {
+      const launch = await prepareTemplateStageLaunch({
+        projectPath: selectedProject,
+        template: nextStageTemplate,
+        webSearchBackend,
+        artifacts: nextStageArtifacts,
+      })
+
+      setWorkflows(launch.refreshedWorkflows)
+      setSelectedWorkflowPath(launch.filePath)
+      setWorkflow(launch.loadedWorkflow)
+      setWorkflowSavedSnapshot(launch.savedSnapshot)
+      setInputValue(launch.inputSeed)
+      setWorkflowEntryState(launch.entryState)
+      setWorkflowTemplateContextForKey({
+        key: toWorkflowExecutionKey(launch.filePath),
+        context: launch.templateContext,
+      })
+      setPrepareNewRun(false)
+      setWorkflowReviewMode(false)
+      setMainView("thread")
+      setViewMode("list")
+      setOutputTabRequest(null)
+
+      toast.success(`Opened next stage: ${nextStageTemplate.name}`)
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setInputAttachments(launch.artifactAttachments)
+          focusInputPanel()
+        })
+      })
+    } catch (error) {
+      toast.error("Could not open the next stage", {
+        description: String(error),
+      })
+    } finally {
+      setLaunchingNextStage(false)
+    }
+  }
+
   const handleStartNewRun = () => {
     if (runStatus !== "idle") {
       resetExecution()
@@ -552,7 +810,7 @@ export function WorkflowPanel() {
   }, [prepareNewRun, runStatus])
 
   const focusStageDetails = ({ nodeId, preferredTab }: { nodeId: string; preferredTab: "nodes" | "log" | "result" }) => {
-    if (runStatus === "idle") return
+    if (runStatus === "idle" && !showIdleReviewMode) return
     requestOutputTab(preferredTab, nodeId)
   }
 
@@ -710,6 +968,7 @@ export function WorkflowPanel() {
                     reviewedRunError={reviewedRunError}
                     onStartNewRun={handleStartNewRun}
                     onOpenInbox={() => setMainView("inbox")}
+                    onOpenArtifacts={() => setMainView("artifacts")}
                   />
                 </SectionErrorBoundary>
               </div>
@@ -755,12 +1014,34 @@ export function WorkflowPanel() {
                       <div ref={inputPanelRef}>
                         <InputPanel label="What to provide" />
                       </div>
+                      {selectedProject && (
+                        <ProjectArtifactsPanel
+                          artifacts={combinedArtifactRecords}
+                          loading={projectArtifactsLoading}
+                          error={projectArtifactsError}
+                          requiredContracts={selectedWorkflowTemplateContext?.contractIn}
+                          onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
+                          onOpenArtifactLibrary={() => setMainView("artifacts")}
+                        />
+                      )}
                     </>
                   )}
                   {showIdleInputPanel && (
-                    <div ref={inputPanelRef}>
-                      <InputPanel label="Input to run" compact />
-                    </div>
+                    <>
+                      <div ref={inputPanelRef}>
+                        <InputPanel label="Input to run" compact />
+                      </div>
+                      {selectedProject && (
+                        <ProjectArtifactsPanel
+                          artifacts={combinedArtifactRecords}
+                          loading={projectArtifactsLoading}
+                          error={projectArtifactsError}
+                          requiredContracts={selectedWorkflowTemplateContext?.contractIn}
+                          onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
+                          onOpenArtifactLibrary={() => setMainView("artifacts")}
+                        />
+                      )}
+                    </>
                   )}
                   {showIdleReviewMode && (
                     <div
@@ -780,6 +1061,10 @@ export function WorkflowPanel() {
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
+                          onOpenArtifacts={() => setMainView("artifacts")}
+                          nextStageTemplate={nextStageTemplate}
+                          onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
+                          nextStagePending={launchingNextStage}
                         />
                       </SectionErrorBoundary>
                     </div>
@@ -811,6 +1096,10 @@ export function WorkflowPanel() {
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
+                          onOpenArtifacts={() => setMainView("artifacts")}
+                          nextStageTemplate={nextStageTemplate}
+                          onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
+                          nextStagePending={launchingNextStage}
                         />
                       </SectionErrorBoundary>
                     </div>

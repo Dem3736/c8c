@@ -1,5 +1,6 @@
 import type {
   ActiveExecutionSnapshot,
+  ArtifactRecord,
   BatchEvent,
   ChatConversation,
   ChatEvent,
@@ -18,6 +19,8 @@ import type {
   McpToolInfo,
   LoadedRunResult,
   PluginMcpServerInfo,
+  PersistArtifactsFromRunRequest,
+  PersistArtifactsFromRunResult,
   ProviderDiagnostics,
   ProviderId,
   ProviderSettings,
@@ -126,6 +129,8 @@ export interface C8cApi {
   loadRunResult: (workspace: string) => Promise<LoadedRunResult | null>
   openReport: (reportPath: string) => Promise<string>
   getActiveExecutions: () => Promise<ActiveExecutionSnapshot[]>
+  persistArtifactsFromRun: (input: PersistArtifactsFromRunRequest) => Promise<PersistArtifactsFromRunResult>
+  listProjectArtifacts: (projectPath: string) => Promise<ArtifactRecord[]>
   chatSendMessage: (
     workflowPath: string,
     message: string,

@@ -160,11 +160,13 @@ function buildRuntimeCardCopy({
   node,
   state,
   retryLabel,
+  runtimeFocusKind,
   runtimeBranchSummary,
 }: {
   node: WorkflowNode
   state?: NodeState
   retryLabel: string | null
+  runtimeFocusKind: "current" | "next" | null
   runtimeBranchSummary: RuntimeBranchSummary | null
 }) {
   const status = state?.status ?? "pending"
@@ -199,7 +201,7 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: "Waiting for input",
+      summary: runtimeFocusKind === "next" ? "Next stage in queue" : "Waiting for input",
       detail: "This flow will start once the required input is ready.",
       metricsLabel,
       branchLabel,
@@ -233,7 +235,11 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: runtimeBranchSummary ? "Ready to fan out through this stage" : "Ready when the flow reaches this stage",
+      summary: runtimeFocusKind === "next"
+        ? "Next stage in queue"
+        : runtimeBranchSummary
+          ? "Ready to fan out through this stage"
+          : "Ready when the flow reaches this stage",
       detail: compactRuntimeText(config.prompt, 160) || "This stage will run when upstream work finishes.",
       metricsLabel,
       branchLabel,
@@ -268,7 +274,7 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: "Will check quality before moving on",
+      summary: runtimeFocusKind === "next" ? "Next quality gate" : "Will check quality before moving on",
       detail: `Threshold ${config.threshold}/10${retryLabel ? ` · Retry from ${retryLabel}` : ""}`,
       metricsLabel,
       branchLabel,
@@ -302,7 +308,7 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: "Will split work into parallel stages",
+      summary: runtimeFocusKind === "next" ? "Next stage will fan out work" : "Will split work into parallel stages",
       detail: branchLabel || `Up to ${config.maxBranches || 8} branches can run from here.`,
       metricsLabel,
       branchLabel,
@@ -336,7 +342,7 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: "Will combine branch outputs",
+      summary: runtimeFocusKind === "next" ? "Next stage will merge branches" : "Will combine branch outputs",
       detail: `Using the ${config.strategy} merge strategy.`,
       metricsLabel,
       branchLabel,
@@ -370,7 +376,7 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: "May pause here for review",
+      summary: runtimeFocusKind === "next" ? "Next stage is a review gate" : "May pause here for review",
       detail: compactRuntimeText(config.message, 160) || "This gate can stop the flow for a human decision.",
       metricsLabel,
       branchLabel,
@@ -407,7 +413,7 @@ function buildRuntimeCardCopy({
       }
     }
     return {
-      summary: "Will pause for human input",
+      summary: runtimeFocusKind === "next" ? "Next stage needs human input" : "Will pause for human input",
       detail: compactRuntimeText(config.staticRequest?.instructions, 160) || "This stage will block until someone answers the request.",
       metricsLabel,
       branchLabel,
@@ -440,7 +446,7 @@ function buildRuntimeCardCopy({
     }
   }
   return {
-    summary: "Will assemble the final result",
+    summary: runtimeFocusKind === "next" ? "Next stage will assemble the result" : "Will assemble the final result",
     detail: `Output format: ${config.format || "markdown"}`,
     metricsLabel,
     branchLabel,
@@ -454,6 +460,58 @@ function getPreviewStatusLabel(status: NodeStatus) {
   if (status === "failed") return "Issue"
   if (status === "completed") return "Done"
   return "Queued"
+}
+
+function getRuntimeStatusLabel(status: NodeStatus | undefined) {
+  if (status === "running") return "Running"
+  if (status === "waiting_approval") return "Awaiting approval"
+  if (status === "waiting_human") return "Awaiting input"
+  if (status === "failed") return "Needs attention"
+  if (status === "completed") return "Completed"
+  if (status === "skipped") return "Skipped"
+  if (status === "queued") return "Queued"
+  return "Pending"
+}
+
+function getRuntimeStatusBadgeVariant(status: NodeStatus | undefined): "info" | "warning" | "destructive" | "success" | "secondary" {
+  if (status === "running") return "info"
+  if (status === "waiting_approval" || status === "waiting_human") return "warning"
+  if (status === "failed") return "destructive"
+  if (status === "completed") return "success"
+  return "secondary"
+}
+
+function getRuntimeStatusDotStyle(status: NodeStatus | undefined): { core: string; ring?: string } {
+  if (status === "running") {
+    return {
+      core: "bg-status-info",
+      ring: "bg-status-info/35",
+    }
+  }
+  if (status === "waiting_approval" || status === "waiting_human") {
+    return {
+      core: "bg-status-warning",
+      ring: "bg-status-warning/35",
+    }
+  }
+  if (status === "failed") {
+    return {
+      core: "bg-status-danger",
+    }
+  }
+  if (status === "completed") {
+    return {
+      core: "bg-status-success",
+    }
+  }
+  if (status === "queued") {
+    return {
+      core: "bg-primary/70",
+    }
+  }
+  return {
+    core: "bg-muted-foreground/55",
+  }
 }
 
 interface NodeCardProps {
@@ -471,6 +529,7 @@ interface NodeCardProps {
   onSelect: () => void
   resolveNodeLabel?: (nodeId: string) => string
   runtimeMode?: boolean
+  runtimeFocusKind?: "current" | "next" | null
   runtimeBranchSummary?: RuntimeBranchSummary | null
 }
 
@@ -489,6 +548,7 @@ export function NodeCard({
   onSelect,
   resolveNodeLabel,
   runtimeMode = false,
+  runtimeFocusKind = null,
   runtimeBranchSummary = null,
 }: NodeCardProps) {
   const [expanded, setExpanded] = useState(false)
@@ -598,6 +658,7 @@ export function NodeCard({
       node,
       state,
       retryLabel,
+      runtimeFocusKind,
       runtimeBranchSummary,
     })
     : null
@@ -632,25 +693,61 @@ export function NodeCard({
   }
 
   if (runtimeMode) {
-    const runtimeSurfaceClass = state?.status === "running"
-      ? "border-status-info/35 bg-status-info/5"
-      : state?.status === "waiting_approval" || state?.status === "waiting_human"
-        ? "border-status-warning/35 bg-status-warning/8"
-        : state?.status === "failed"
-          ? "border-status-danger/35 bg-status-danger/6"
-      : state?.status === "completed"
-            ? "border-status-success/30 bg-surface-1"
-            : "border-border bg-surface-1"
+    const runtimeStatus = state?.status || "pending"
+    const runtimeSurfaceClass = runtimeFocusKind === "current"
+      ? runtimeStatus === "running"
+        ? "border-status-info/30 bg-status-info/4"
+        : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human"
+          ? "border-status-warning/30 bg-status-warning/5"
+          : runtimeStatus === "failed"
+            ? "border-status-danger/30 bg-status-danger/5"
+            : "border-primary/20 bg-primary/4"
+      : runtimeFocusKind === "next"
+        ? "border-border bg-surface-1"
+        : runtimeStatus === "running"
+          ? "border-border bg-status-info/3"
+          : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human"
+            ? "border-border bg-status-warning/3"
+            : runtimeStatus === "failed"
+              ? "border-border bg-status-danger/3"
+              : "border-border bg-surface-1"
+    const runtimeFocusLabel = runtimeFocusKind === "current"
+      ? runtimeStatus === "failed"
+        ? "Attention"
+        : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human"
+          ? "Blocked"
+          : "Current"
+      : runtimeFocusKind === "next"
+        ? "Next"
+        : null
+    const runtimeSelectionLabel = isSelected && runtimeFocusKind === null ? "Inspecting" : null
+    const runtimeStatusBadgeVariant = getRuntimeStatusBadgeVariant(runtimeStatus)
+    const runtimeStatusDotStyle = getRuntimeStatusDotStyle(runtimeStatus)
+    const runtimeAccentBarClass = runtimeFocusKind === "current"
+      ? runtimeStatus === "running"
+        ? "bg-status-info/80"
+        : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human"
+          ? "bg-status-warning/85"
+          : runtimeStatus === "failed"
+            ? "bg-status-danger/85"
+            : "bg-primary/60"
+      : runtimeStatus === "failed"
+        ? "bg-status-danger/45"
+        : null
+    const runtimeStatusLabel = getRuntimeStatusLabel(runtimeStatus)
 
     return (
       <div
         className={cn(
-          "h-[224px] overflow-hidden rounded-xl border ui-elevation-base transition-[border-color,box-shadow,background-color] ui-motion-fast",
+          "relative h-[224px] overflow-hidden rounded-xl border ui-elevation-base transition-[border-color,box-shadow,background-color] ui-motion-fast",
           runtimeSurfaceClass,
-          isSelected && "ring-2 ring-primary/20 shadow-[0_10px_30px_rgba(15,23,42,0.06)]",
-          isActive && "border-primary/35 shadow-[0_14px_36px_rgba(15,23,42,0.08)]",
+          isSelected && "ring-1 ring-foreground/10 shadow-[0_10px_30px_rgba(15,23,42,0.05)]",
+          (isActive || runtimeFocusKind === "current") && "shadow-[0_14px_36px_rgba(15,23,42,0.08)]",
         )}
       >
+        {runtimeAccentBarClass && (
+          <div aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 top-0 h-1", runtimeAccentBarClass)} />
+        )}
         <button
           type="button"
           onClick={onSelect}
@@ -659,28 +756,59 @@ export function NodeCard({
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
-              <div className="truncate ui-meta-label text-muted-foreground">
-                {runtimeHeading.stepLabel}
+              <div className="flex items-center gap-1.5">
+                <div className="truncate ui-meta-label text-muted-foreground">
+                  {runtimeHeading.stepLabel}
+                </div>
+                {runtimeStatusDotStyle.ring ? (
+                  <span className="ui-status-beacon" aria-hidden="true">
+                    <span className={cn("ui-status-beacon-ring", runtimeStatusDotStyle.ring)} />
+                    <span className={cn("ui-status-beacon-core", runtimeStatusDotStyle.core)} />
+                  </span>
+                ) : (
+                  <span
+                    className={cn("h-2.5 w-2.5 shrink-0 rounded-full border border-surface-1/80 shadow-sm", runtimeStatusDotStyle.core)}
+                    aria-hidden="true"
+                  />
+                )}
               </div>
               <div className="ui-meta-text text-muted-foreground">
                 {runtimePresentation.kind}
               </div>
             </div>
-            {showStatusBadge && (
+            <div className="flex flex-col items-end gap-1">
+              {runtimeSelectionLabel && (
+                <Badge
+                  variant="outline"
+                  className="shrink-0 border-hairline px-1.5 py-0 ui-meta-text text-muted-foreground"
+                >
+                  {runtimeSelectionLabel}
+                </Badge>
+              )}
+              {runtimeFocusLabel && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "shrink-0 px-1.5 py-0 ui-meta-text",
+                    runtimeFocusKind === "current" && runtimeStatus === "running" && "border-status-info/30 bg-status-info/10 text-status-info",
+                    runtimeFocusKind === "current" && (runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human") && "border-status-warning/30 bg-status-warning/10 text-status-warning",
+                    runtimeFocusKind === "current" && runtimeStatus === "failed" && "border-status-danger/30 bg-status-danger/10 text-status-danger",
+                    runtimeFocusKind === "next" && "border-hairline bg-surface-2 text-foreground",
+                  )}
+                >
+                  {runtimeFocusLabel}
+                </Badge>
+              )}
               <Badge
-                variant="outline"
+                variant={runtimeStatusBadgeVariant}
                 className={cn(
-                  "shrink-0 px-1.5 py-0 ui-meta-text",
-                  state?.status === "running" && "border-status-info/30 text-status-info",
-                  (state?.status === "waiting_approval" || state?.status === "waiting_human") && "border-status-warning/30 text-status-warning",
-                  state?.status === "failed" && "border-status-danger/30 text-status-danger",
-                  state?.status === "completed" && "border-status-success/30 text-status-success",
-                  (!state?.status || state.status === "queued") && "text-muted-foreground",
+                  "shrink-0 px-1.5 py-0 ui-meta-text shadow-none",
+                  (runtimeStatus === "pending" || runtimeStatus === "queued") && "border-hairline bg-surface-2 text-muted-foreground",
                 )}
               >
-                {statusLabel}
+                {runtimeStatusLabel}
               </Badge>
-            )}
+            </div>
           </div>
 
           <div className="flex min-h-[3.25rem] items-start gap-3">
@@ -761,7 +889,13 @@ export function NodeCard({
             )}
             {!runtimeCardCopy?.metricsLabel && !runtimeCardCopy?.branchLabel && (
               <span className="ui-meta-text text-muted-foreground">
-                {state?.status === "pending" ? "Waiting for upstream work" : "No run metrics yet"}
+                {runtimeStatus === "pending"
+                  ? runtimeFocusKind === "next"
+                    ? "This is the next stage in line"
+                    : "Waiting for upstream work"
+                  : runtimeStatus === "queued"
+                    ? "Queued to run"
+                    : "No run metrics yet"}
               </span>
             )}
             </div>

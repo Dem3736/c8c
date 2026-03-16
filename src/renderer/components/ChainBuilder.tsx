@@ -8,7 +8,7 @@ import {
   type WorkflowNode,
   type DiscoveredSkill,
 } from "@/lib/store"
-import { activeNodeIdAtom, nodeStatesAtom, runtimeMetaAtom } from "@/features/execution"
+import { activeNodeIdAtom, inspectedNodeIdAtom, nodeStatesAtom, runtimeMetaAtom } from "@/features/execution"
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
@@ -26,6 +26,7 @@ import { NodeCard, type RuntimeBranchSummary } from "./NodeCard"
 import { SkillPicker } from "./SkillPicker"
 import { Plus, BarChart3, GitFork, ArrowDown as ArrowDownIcon, ArrowRight as ArrowRightIcon, Hand } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { getRuntimeBranchDetail, getRuntimeBranchLabel } from "@/lib/runtime-flow-labels"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -205,7 +206,8 @@ export function ChainBuilder({
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
-  const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
+  const [builderSelectedNodeId, setBuilderSelectedNodeId] = useAtom(selectedNodeIdAtom)
+  const [inspectedNodeId, setInspectedNodeId] = useAtom(inspectedNodeIdAtom)
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
   const isReorderSafe = isLinearChainReorderSafe(workflow)
@@ -280,12 +282,21 @@ export function ChainBuilder({
   const resolvedActiveNodeId = activeNodeId && displayRuntimeMeta[activeNodeId]?.templateId
     ? displayRuntimeMeta[activeNodeId].templateId
     : activeNodeId
+  const selectedNodeId = flowCardMode ? inspectedNodeId : builderSelectedNodeId
   const resolvedSelectedNodeId = selectedNodeId && displayRuntimeMeta[selectedNodeId]?.templateId
     ? displayRuntimeMeta[selectedNodeId].templateId
     : selectedNodeId
   const contextNode = chainContextMenu
     ? workflow.nodes.find((node) => node.id === chainContextMenu.nodeId) || null
     : null
+
+  const setSelectedNode = (nodeId: string) => {
+    if (flowCardMode) {
+      setInspectedNodeId(nodeId)
+      return
+    }
+    setBuilderSelectedNodeId(nodeId)
+  }
 
   const getNodePresentation = (node: WorkflowNode) => {
     const directState = displayNodeStates[node.id]
@@ -304,21 +315,83 @@ export function ChainBuilder({
     return { effectiveState, runtimeBranchSummary }
   }
 
+  const orderedMonitorStages = useMemo(() => {
+    if (!runtimeMode) return []
+    return orderedNodes.map((node) => {
+      const presentation = getNodePresentation(node)
+      return {
+        node,
+        status: presentation.effectiveState?.status || "pending",
+      }
+    })
+  }, [orderedNodes, runtimeMode, aggregateBranchStatesByTemplate, displayNodeStates, runtimeBranchSummariesByTemplate, singleSplitterBranchSummary])
+
+  const monitorCurrentStage = useMemo(() => {
+    if (!runtimeMode) return null
+    return orderedMonitorStages.find((entry) =>
+      entry.status === "running"
+      || entry.status === "waiting_approval"
+      || entry.status === "waiting_human"
+      || entry.status === "failed",
+    ) || null
+  }, [orderedMonitorStages, runtimeMode])
+
+  const monitorNextStage = useMemo(() => {
+    if (!runtimeMode) return null
+    return orderedMonitorStages.find((entry) =>
+      entry.status === "queued" || entry.status === "pending",
+    ) || null
+  }, [orderedMonitorStages, runtimeMode])
+
+  const monitorLatestCompletedStage = useMemo(() => {
+    if (!runtimeMode) return null
+    return [...orderedMonitorStages].reverse().find((entry) =>
+      entry.status === "completed" || entry.status === "skipped",
+    ) || null
+  }, [orderedMonitorStages, runtimeMode])
+
   const monitorFocusNodeId = useMemo(() => {
     if (!runtimeMode) return null
-    if (resolvedActiveNodeId) return resolvedActiveNodeId
-    return orderedNodes.find((node) => {
-      const presentation = getNodePresentation(node)
-      const status = presentation.effectiveState?.status
-      return status === "waiting_approval" || status === "waiting_human" || status === "failed" || status === "running"
-    })?.id ?? null
-  }, [orderedNodes, resolvedActiveNodeId, runtimeMode])
+    return monitorCurrentStage?.node.id
+      || monitorNextStage?.node.id
+      || monitorLatestCompletedStage?.node.id
+      || null
+  }, [monitorCurrentStage, monitorLatestCompletedStage, monitorNextStage, runtimeMode])
+
+  const monitorCounts = useMemo(() => {
+    if (!runtimeMode) {
+      return { completed: 0, pending: 0, blocked: 0 }
+    }
+    return {
+      completed: orderedMonitorStages.filter((entry) => entry.status === "completed" || entry.status === "skipped").length,
+      pending: orderedMonitorStages.filter((entry) => entry.status === "pending" || entry.status === "queued").length,
+      blocked: orderedMonitorStages.filter((entry) =>
+        entry.status === "failed" || entry.status === "waiting_approval" || entry.status === "waiting_human",
+      ).length,
+    }
+  }, [orderedMonitorStages, runtimeMode])
 
   useEffect(() => {
     if (!runtimeMode || !monitorFocusNodeId) return
     const step = stepRefs.current[monitorFocusNodeId]
     step?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
   }, [monitorFocusNodeId, runtimeMode])
+
+  useEffect(() => {
+    if (!runtimeMode || !monitorFocusNodeId) return
+
+    const selectedMonitorStatus = orderedMonitorStages.find((entry) => entry.node.id === resolvedSelectedNodeId)?.status || null
+    const shouldResyncSelection = !resolvedSelectedNodeId
+      || (
+        monitorCurrentStage !== null
+        && resolvedSelectedNodeId !== monitorCurrentStage.node.id
+        && (selectedMonitorStatus === "pending" || selectedMonitorStatus === "queued")
+      )
+
+    if (shouldResyncSelection) {
+      setInspectedNodeId(monitorFocusNodeId)
+    }
+  }, [monitorCurrentStage, monitorFocusNodeId, orderedMonitorStages, resolvedSelectedNodeId, runtimeMode, setInspectedNodeId])
 
   const getNodeDisplayLabel = (nodeId: string) => {
     const node = workflow.nodes.find((n) => n.id === nodeId)
@@ -397,7 +470,7 @@ export function ChainBuilder({
       return next
     })
     if (nextSelectedId) {
-      setSelectedNodeId(nextSelectedId)
+      setSelectedNode(nextSelectedId)
     }
   }
 
@@ -409,7 +482,7 @@ export function ChainBuilder({
       return next
     })
     if (nextSelectedId) {
-      setSelectedNodeId(nextSelectedId)
+      setSelectedNode(nextSelectedId)
     }
   }
 
@@ -421,7 +494,7 @@ export function ChainBuilder({
       return next
     })
     if (nextSelectedId) {
-      setSelectedNodeId(nextSelectedId)
+      setSelectedNode(nextSelectedId)
     }
   }
 
@@ -433,7 +506,7 @@ export function ChainBuilder({
       return next
     })
     if (nextSelectedId) {
-      setSelectedNodeId(nextSelectedId)
+      setSelectedNode(nextSelectedId)
     }
   }
 
@@ -445,7 +518,7 @@ export function ChainBuilder({
       return next
     })
     if (nextSelectedId) {
-      setSelectedNodeId(nextSelectedId)
+      setSelectedNode(nextSelectedId)
     }
   }
 
@@ -549,7 +622,7 @@ export function ChainBuilder({
           if (flowCardMode) return
           event.preventDefault()
           event.stopPropagation()
-          setSelectedNodeId(node.id)
+          setSelectedNode(node.id)
           setChainContextMenu({
             x: event.clientX,
             y: event.clientY,
@@ -594,12 +667,13 @@ export function ChainBuilder({
           onMoveDown={isReorderSafe ? () => moveNode(node.id, "down") : undefined}
           onConfigChange={(config) => updateNodeConfig(node.id, config)}
           onSelect={() => {
-            setSelectedNodeId(node.id)
+            setSelectedNode(node.id)
             onStageSelect?.({ nodeId: node.id, preferredTab })
           }}
           resolveNodeLabel={getNodeDisplayLabel}
           compact={compact}
           runtimeMode={flowCardMode}
+          runtimeFocusKind={monitorCurrentStage?.node.id === node.id ? "current" : monitorNextStage?.node.id === node.id ? "next" : null}
           runtimeBranchSummary={runtimeBranchSummary}
         />
       </div>
@@ -624,13 +698,47 @@ export function ChainBuilder({
             <h2 className="section-kicker">{runtimeMode ? "Flow" : "Flow map"}</h2>
             <p className="ui-meta-text text-muted-foreground">
               {runtimeMode
-                ? "Select a stage to inspect below."
+                ? "Current and next stages are called out below. Select any stage to inspect its activity."
                 : reviewSnapshot
                   ? "Review the selected saved run from left to right."
                   : "Review the stages from left to right before you run or refine the flow."}
             </p>
           </div>
-          <span className="ui-meta-text tabular-nums text-muted-foreground">{orderedNodes.length} stages</span>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {runtimeMode && monitorCurrentStage && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "ui-meta-text px-2 py-0",
+                  monitorCurrentStage.status === "running" && "border-status-info/30 bg-status-info/10 text-status-info",
+                  (monitorCurrentStage.status === "waiting_approval" || monitorCurrentStage.status === "waiting_human") && "border-status-warning/30 bg-status-warning/10 text-status-warning",
+                  monitorCurrentStage.status === "failed" && "border-status-danger/30 bg-status-danger/10 text-status-danger",
+                )}
+              >
+                {monitorCurrentStage.status === "running"
+                  ? `Current: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`
+                  : monitorCurrentStage.status === "failed"
+                    ? `Needs attention: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`
+                    : `Blocked at: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`}
+              </Badge>
+            )}
+            {runtimeMode && monitorNextStage && (
+              <Badge variant="outline" className="ui-meta-text px-2 py-0 border-primary/25 bg-primary/5 text-foreground">
+                Next: {getNodeDisplayLabel(monitorNextStage.node.id)}
+              </Badge>
+            )}
+            {runtimeMode && (
+              <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
+                {monitorCounts.completed}/{orderedMonitorStages.length} done
+              </Badge>
+            )}
+            {runtimeMode && monitorCounts.pending > 0 && (
+              <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
+                {monitorCounts.pending} pending
+              </Badge>
+            )}
+            <span className="ui-meta-text tabular-nums text-muted-foreground">{orderedNodes.length} stages</span>
+          </div>
         </div>
       ) : (
         <h2 className="section-kicker">Pipeline Builder</h2>
@@ -744,7 +852,7 @@ export function ChainBuilder({
             <DropdownMenuLabel>{getNodeDisplayLabel(contextNode.id)}</DropdownMenuLabel>
             <DropdownMenuItem
               onSelect={() => {
-                setSelectedNodeId(contextNode.id)
+                setSelectedNode(contextNode.id)
                 setChainContextMenu(null)
               }}
             >

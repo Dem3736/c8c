@@ -1,5 +1,5 @@
 import type {
-  EvalCriterion,
+  ArtifactRecord,
   EvaluationResult,
   InputAttachment,
   LoadedRunResult,
@@ -13,7 +13,10 @@ import type {
   WorkflowRuntimeMeta,
 } from "@shared/types"
 
+export type { EvalCriterion, EvaluationResult } from "@shared/types"
+
 export type ExecutionRunStatus = "idle" | "starting" | "running" | "paused" | "cancelling" | "done" | "error"
+export type ArtifactPersistenceStatus = "idle" | "saving" | "saved" | "error"
 
 export interface WorkflowExecutionState {
   runStatus: ExecutionRunStatus
@@ -29,6 +32,7 @@ export interface WorkflowExecutionState {
   workflowSnapshot: Workflow | null
   nodeStates: Record<string, NodeState>
   activeNodeId: string | null
+  inspectedNodeId: string | null
   evalResults: Record<string, EvaluationResult[]>
   finalContent: string
   reportPath: string | null
@@ -37,6 +41,9 @@ export interface WorkflowExecutionState {
   runtimeNodes: WorkflowNode[]
   runtimeEdges: WorkflowEdge[]
   runtimeMeta: WorkflowRuntimeMeta
+  artifactRecords: ArtifactRecord[]
+  artifactPersistenceStatus: ArtifactPersistenceStatus
+  artifactPersistenceError: string | null
 }
 
 export interface ApprovalRequest {
@@ -81,6 +88,7 @@ export function createEmptyWorkflowExecutionState(): WorkflowExecutionState {
     workflowSnapshot: null,
     nodeStates: {},
     activeNodeId: null,
+    inspectedNodeId: null,
     evalResults: {},
     finalContent: "",
     reportPath: null,
@@ -89,6 +97,9 @@ export function createEmptyWorkflowExecutionState(): WorkflowExecutionState {
     runtimeNodes: [],
     runtimeEdges: [],
     runtimeMeta: {},
+    artifactRecords: [],
+    artifactPersistenceStatus: "idle",
+    artifactPersistenceError: null,
   }
 }
 
@@ -134,12 +145,16 @@ export function createExecutionStartState(
     workflowSnapshot: structuredClone(workflow),
     nodeStates,
     activeNodeId: null,
+    inspectedNodeId: null,
     evalResults: {},
     finalContent: "",
     reportPath: null,
     runtimeNodes: [],
     runtimeEdges: [],
     runtimeMeta: {},
+    artifactRecords: [],
+    artifactPersistenceStatus: "idle",
+    artifactPersistenceError: null,
   }
 }
 

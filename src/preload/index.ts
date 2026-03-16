@@ -5,6 +5,7 @@ import type {
   BatchEvent,
   TelemetrySettings,
   TelemetryUiEvent,
+  ArtifactRecord,
   ChatConversation,
   ChatEvent,
   ChatSessionSnapshot,
@@ -19,6 +20,8 @@ import type {
   McpServerInfo,
   McpTestResult,
   McpToolInfo,
+  PersistArtifactsFromRunRequest,
+  PersistArtifactsFromRunResult,
   RunResult,
   SkillLibrary,
   UpdateEvent,
@@ -162,6 +165,10 @@ const api: C8cApi = {
   loadRunResult: (workspace: string) => ipcRenderer.invoke("executor:load-run-result", workspace),
   openReport: (reportPath: string) => ipcRenderer.invoke("executor:open-report", reportPath),
   getActiveExecutions: () => ipcRenderer.invoke("executor:get-active-executions"),
+  persistArtifactsFromRun: (input: PersistArtifactsFromRunRequest) =>
+    ipcRenderer.invoke("executor:persist-artifacts-from-run", input) as Promise<PersistArtifactsFromRunResult>,
+  listProjectArtifacts: (projectPath: string) =>
+    ipcRenderer.invoke("executor:list-project-artifacts", projectPath) as Promise<ArtifactRecord[]>,
 
   // Libraries
   listLibraries: () => ipcRenderer.invoke("libraries:list"),

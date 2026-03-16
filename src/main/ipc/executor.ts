@@ -20,17 +20,21 @@ import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { scanAllSkills } from "../lib/skill-scanner"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
+import { listProjectArtifacts, persistArtifactsFromRun } from "../lib/artifact-store"
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type {
   ActiveBatchRun,
   ActiveExecutionSnapshot,
   ActiveWorkflowRun,
+  ArtifactRecord,
   EvaluationResult,
   HumanTaskSnapshot,
   HumanTaskSubmitInput,
   HumanTaskSummary,
   LoadedRunResult,
+  PersistArtifactsFromRunRequest,
+  PersistArtifactsFromRunResult,
   PersistedRunSnapshot,
   WorkflowEvent,
   Workflow,
@@ -45,6 +49,7 @@ import {
   resolveWorkflowProviderId,
 } from "../lib/provider-runtime"
 import { sendWorkflowEvent } from "../workflow-notifications"
+import { hydratePersistedRunSnapshotLogs } from "./run-snapshot"
 
 let runCounter = 0
 let batchCounter = 0
@@ -121,6 +126,16 @@ async function getActiveExecutionsForWindow(windowId: number): Promise<ActiveExe
 
     const snapshot = await getWorkflowRunSnapshot(executionId)
     if (!snapshot?.manifest || !snapshot.state) return null
+    const hydratedSnapshot = await hydratePersistedRunSnapshotLogs(snapshot.workspace, {
+      nodeStates: snapshot.state.nodeStates,
+      runtimeNodes: snapshot.state.runtimeNodes || [],
+      runtimeEdges: snapshot.state.runtimeEdges || [],
+      runtimeMeta: snapshot.state.runtimeMeta || {},
+      input: snapshot.state.input,
+      evalResults: {},
+      humanTasks: snapshot.state.humanTasks || {},
+    })
+
     const runSnapshot: ActiveWorkflowRun = {
       kind: "run" as const,
       runId: executionId,
@@ -131,10 +146,10 @@ async function getActiveExecutionsForWindow(windowId: number): Promise<ActiveExe
       status: snapshot.paused ? "paused" : "running",
       startedAt: snapshot.manifest.startedAt,
       updatedAt: snapshot.manifest.updatedAt,
-      nodeStates: snapshot.state.nodeStates,
-      runtimeNodes: snapshot.state.runtimeNodes || [],
-      runtimeEdges: snapshot.state.runtimeEdges || [],
-      runtimeMeta: snapshot.state.runtimeMeta || {},
+      nodeStates: hydratedSnapshot.nodeStates,
+      runtimeNodes: hydratedSnapshot.runtimeNodes || [],
+      runtimeEdges: hydratedSnapshot.runtimeEdges || [],
+      runtimeMeta: hydratedSnapshot.runtimeMeta || {},
     }
     return runSnapshot
   }))
@@ -197,7 +212,7 @@ async function loadPersistedRunSnapshot(workspace: string): Promise<PersistedRun
   try {
     const raw = await readFile(join(workspace, "run-state.json"), "utf-8")
     const parsed = JSON.parse(raw) as PersistedRunSnapshot
-    return {
+    return await hydratePersistedRunSnapshotLogs(workspace, {
       nodeStates: parsed.nodeStates || {},
       runtimeNodes: parsed.runtimeNodes || [],
       runtimeEdges: parsed.runtimeEdges || [],
@@ -205,7 +220,7 @@ async function loadPersistedRunSnapshot(workspace: string): Promise<PersistedRun
       input: parsed.input,
       evalResults: parsed.evalResults || {},
       humanTasks: parsed.humanTasks || {},
-    }
+    })
   } catch (error) {
     if (errorCode(error) !== "ENOENT") {
       logWarn("executor-ipc", "load_run_snapshot_failed", {
@@ -719,6 +734,24 @@ export function registerExecutorHandlers() {
   ipcMain.handle("executor:open-report", async (_e, reportPath: string) => {
     const safeReportPath = await assertReportPath(reportPath)
     return shell.openPath(safeReportPath)
+  })
+
+  ipcMain.handle(
+    "executor:persist-artifacts-from-run",
+    async (_e, input: PersistArtifactsFromRunRequest): Promise<PersistArtifactsFromRunResult> => {
+      const safeProjectPath = await assertProjectPath(input.projectPath)
+      const safeWorkspace = await assertRunWorkspacePath(input.workspace)
+      return persistArtifactsFromRun({
+        ...input,
+        projectPath: safeProjectPath,
+        workspace: safeWorkspace,
+      })
+    },
+  )
+
+  ipcMain.handle("executor:list-project-artifacts", async (_e, projectPath: string): Promise<ArtifactRecord[]> => {
+    const safeProjectPath = await assertProjectPath(projectPath)
+    return listProjectArtifacts(safeProjectPath)
   })
 
   ipcMain.handle(

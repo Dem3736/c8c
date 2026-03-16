@@ -174,9 +174,13 @@ export function useExecutionCommands({
     }
   }, [controller, recordExecutionError, runId, runStatus, selectedWorkflowPath])
 
-  const rerunFrom = useCallback(async (fromNodeId: string) => {
+  const rerunFrom = useCallback(async (
+    fromNodeId: string,
+    options?: { workspace?: string | null },
+  ) => {
     if (isRunInFlight(runStatus)) return
-    if (!workspace || !workflow.nodes.length) return
+    const rerunWorkspace = options?.workspace ?? workspace
+    if (!rerunWorkspace || !workflow.nodes.length) return
 
     const workflowKeyForRun = toWorkflowExecutionKey(selectedWorkflowPath ?? null)
     const workflowForRun = controller.getExecutionState(workflowKeyForRun).workflowSnapshot ?? workflow
@@ -191,7 +195,7 @@ export function useExecutionCommands({
       const result = await window.api.rerunFrom(
         fromNodeId,
         workflowForExecution,
-        workspace,
+        rerunWorkspace,
         selectedProject ?? undefined,
         selectedWorkflowPath ?? undefined,
         webSearchBackend,

@@ -1,10 +1,10 @@
 import { useCallback } from "react"
 import { useSetAtom } from "jotai"
-import { selectedNodeIdAtom } from "@/lib/store"
 import {
   activeNodeIdAtom,
   evalResultsAtom,
   finalContentAtom,
+  inspectedNodeIdAtom,
   nodeStatesAtom,
   reportPathAtom,
   runIdAtom,
@@ -31,7 +31,7 @@ export function useExecutionReset({
   const setFinalContent = useSetAtom(finalContentAtom)
   const setNodeStates = useSetAtom(nodeStatesAtom)
   const setActiveNodeId = useSetAtom(activeNodeIdAtom)
-  const setSelectedNodeId = useSetAtom(selectedNodeIdAtom)
+  const setInspectedNodeId = useSetAtom(inspectedNodeIdAtom)
   const setReportPath = useSetAtom(reportPathAtom)
   const setSelectedPastRun = useSetAtom(selectedPastRunAtom)
   const setEvalResults = useSetAtom(evalResultsAtom)
@@ -46,7 +46,7 @@ export function useExecutionReset({
     setFinalContent("")
     setNodeStates({})
     setActiveNodeId(null)
-    setSelectedNodeId(null)
+    setInspectedNodeId(null)
     setEvalResults({})
     setRuntimeNodes([])
     setRuntimeEdges([])
@@ -72,7 +72,7 @@ export function useExecutionReset({
     setRuntimeMeta,
     setRuntimeNodes,
     setRunStatus,
-    setSelectedNodeId,
+    setInspectedNodeId,
     setSelectedPastRun,
   ])
 }
