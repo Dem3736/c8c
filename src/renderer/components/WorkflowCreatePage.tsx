@@ -71,7 +71,6 @@ import {
   buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
 } from "@/lib/workflow-entry"
-import { STAGE_META } from "@/lib/template-stages"
 
 const POPULAR_TEMPLATE_LIMIT = 12
 const CREATE_SURFACE_MAX_WIDTH = "max-w-[1040px]"
@@ -111,7 +110,6 @@ function TemplateSuggestionCard({
           <p className="line-clamp-3 text-body-md font-medium text-foreground">
             {templateCardCopy(template)}
           </p>
-          <p className="mt-1 ui-meta-text text-muted-foreground">{STAGE_META[template.stage].label}</p>
         </div>
       </div>
       <p className="mt-auto w-full min-w-0 truncate ui-meta-text text-muted-foreground">{template.name}</p>
@@ -743,20 +741,23 @@ export function WorkflowCreatePage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Open this starting point</DialogTitle>
+            <DialogTitle>Use this starting point</DialogTitle>
             <DialogDescription>
-              &ldquo;{pendingTemplate?.name}&rdquo; is ready to use. Create it directly, or open it with the agent and customize it for this project.
+              &ldquo;{pendingTemplate?.name}&rdquo; is ready to use. Start with it directly, or open it with the agent and tailor it first.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody className="space-y-3">
             {targetProjectPath ? (
               <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
-                <p className="ui-meta-text text-muted-foreground">Project</p>
+                <p className="ui-meta-text text-muted-foreground">Selected project</p>
                 <p className="mt-1 text-body-md font-medium text-foreground">{targetProjectName}</p>
+                <p className="mt-1 text-body-sm text-muted-foreground">
+                  It will open here ready to run or refine.
+                </p>
               </div>
             ) : (
               <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-3 text-body-sm text-muted-foreground">
-                Select or add a project first. The template will be created as a workflow file in that project.
+                Select or add a project first so this starting point has somewhere to open.
               </div>
             )}
           </CanvasDialogBody>
@@ -792,7 +793,7 @@ export function WorkflowCreatePage() {
               loadingText="Creating workflow"
               onClick={() => pendingTemplate && void handleCreateFromTemplate(pendingTemplate)}
             >
-              Create in project
+              Use now
             </Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>

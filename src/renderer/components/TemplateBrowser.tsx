@@ -26,7 +26,6 @@ import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
-import { STAGE_META } from "@/lib/template-stages"
 import {
   buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
@@ -231,16 +230,11 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     setSelectedId(template.id)
                     applyTemplate(template)
                   }}
-                >
+                  >
                   <div className="flex items-start gap-3">
                     <span className="text-lg mt-0.5 flex-shrink-0" aria-hidden>{template.emoji}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="ui-badge-row">
-                        <span className="text-body-md font-medium truncate">{template.headline}</span>
-                        <Badge size="compact" variant="outline">
-                          {STAGE_META[template.stage].label}
-                        </Badge>
-                      </div>
+                      <span className="text-body-md font-medium truncate block">{template.headline}</span>
                       <p className="ui-meta-text mt-1">
                         {deriveTemplateCardCopy(template)}
                       </p>

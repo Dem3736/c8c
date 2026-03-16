@@ -122,6 +122,8 @@ function WorkflowEntryLanding({
   entry,
   displayTitle,
   readyToRun,
+  onPrimaryAction,
+  primaryActionLabel,
   onRefine,
   onToggleEditor,
   showEditor,
@@ -131,6 +133,8 @@ function WorkflowEntryLanding({
   entry: WorkflowEntryState
   displayTitle: string
   readyToRun: boolean
+  onPrimaryAction: () => void
+  primaryActionLabel: string
   onRefine: () => void
   onToggleEditor: () => void
   showEditor: boolean
@@ -156,6 +160,10 @@ function WorkflowEntryLanding({
           </div>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
+          <Button size="sm" onClick={onPrimaryAction}>
+            <Play size={14} />
+            {primaryActionLabel}
+          </Button>
           {canRefine && (
             <Button variant="outline" size="sm" onClick={onRefine}>
               <MessageSquare size={14} />
@@ -291,6 +299,7 @@ export function WorkflowPanel() {
   const outputPanelRef = useRef<HTMLDivElement | null>(null)
   const chatPanelShellRef = useRef<HTMLDivElement | null>(null)
   const chatPanelToggleRef = useRef<HTMLButtonElement | null>(null)
+  const inputPanelRef = useRef<HTMLDivElement | null>(null)
   const [showEntryEditor, setShowEntryEditor] = useState(false)
   const [prepareNewRun, setPrepareNewRun] = useState(false)
   const [elapsed, setElapsed] = useState("")
@@ -482,6 +491,16 @@ export function WorkflowPanel() {
 
   const openResult = () => {
     requestOutputTab(hasResult ? "result" : "nodes")
+  }
+
+  const focusInputPanel = () => {
+    const inputPanel = inputPanelRef.current
+    if (!inputPanel) return
+    inputPanel.scrollIntoView({ behavior: "smooth", block: "start" })
+    window.requestAnimationFrame(() => {
+      const focusTarget = inputPanel.querySelector<HTMLElement>("textarea, input, [contenteditable='true']")
+      focusTarget?.focus()
+    })
   }
 
   useEffect(() => {
@@ -701,17 +720,29 @@ export function WorkflowPanel() {
                         entry={activeEntryState}
                         displayTitle={workflow.name || activeEntryState.title}
                         readyToRun={readyToRun}
+                        onPrimaryAction={() => {
+                          if (readyToRun) {
+                            void run()
+                            return
+                          }
+                          focusInputPanel()
+                        }}
+                        primaryActionLabel={readyToRun ? "Run now" : "Add input to run"}
                         onRefine={() => setChatOpen(true)}
                         onToggleEditor={() => setShowEntryEditor((prev) => !prev)}
                         showEditor={showEntryEditor}
                         canRefine={canShowAgentPanel}
                         onDismiss={() => setWorkflowEntryState(null)}
                       />
-                      <InputPanel label="What to provide" />
+                      <div ref={inputPanelRef}>
+                        <InputPanel label="What to provide" />
+                      </div>
                     </>
                   )}
                   {showIdleInputPanel && (
-                    <InputPanel label="Input to run" compact />
+                    <div ref={inputPanelRef}>
+                      <InputPanel label="Input to run" compact />
+                    </div>
                   )}
                   {showIdleReviewMode && (
                     <div

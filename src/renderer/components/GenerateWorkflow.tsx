@@ -25,6 +25,7 @@ import { Loader2, Sparkles } from "lucide-react"
 import { useWorkflowGeneration } from "@/hooks/useWorkflowGeneration"
 import { buildGeneratedWorkflowEntryState } from "@/lib/workflow-entry"
 import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
+import { projectFolderName } from "@/components/sidebar/projectSidebarUtils"
 
 const STEP_LABELS: Record<string, string> = {
   starting: "Getting the draft ready...",
@@ -84,10 +85,11 @@ export function GenerateWorkflow() {
   const progressLabel = progress
     ? STEP_LABELS[progress.step] || `${progress.step}...`
     : null
+  const targetLabel = selectedProject ? projectFolderName(selectedProject) : null
   const generateButtonLabel = useMemo(() => {
     if (generating) return "Preparing flow..."
-    return target === "new" ? "Prepare flow" : "Replace with this flow"
-  }, [generating, target])
+    return "Prepare flow"
+  }, [generating])
 
   return (
     <Dialog
@@ -106,44 +108,6 @@ export function GenerateWorkflow() {
           <p className="text-body-md text-muted-foreground">
             Describe the job, the input you will give it, and the result you want back. The agent will prepare a runnable flow you can run or refine.
           </p>
-
-          <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-3">
-            <p className="ui-meta-label text-muted-foreground">Where it will go</p>
-            <p className="mt-1 text-body-sm text-foreground">
-              {target === "new"
-                ? selectedProject
-                  ? "Create a new workflow file in the selected project."
-                  : "Select a project to create a new workflow file."
-                : "Replace the current workflow draft and keep editing from the same file path until you save."}
-            </p>
-            {target === "replace" && replaceCurrentBlockedReason && (
-              <p className="mt-2 text-body-sm text-status-warning">{replaceCurrentBlockedReason}</p>
-            )}
-            <div className="mt-2 flex flex-wrap gap-2">
-              {target === "new" && selectedWorkflowPath ? (
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => setTarget("replace")}
-                  disabled={generating}
-                >
-                  Replace current instead
-                </Button>
-              ) : null}
-              {target === "replace" && selectedProject ? (
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => setTarget("new")}
-                  disabled={generating}
-                >
-                  Save as a new workflow instead
-                </Button>
-              ) : null}
-            </div>
-          </div>
 
           <Textarea
             id="workflow-desc"
@@ -174,6 +138,48 @@ export function GenerateWorkflow() {
             {skills.length > 0
               ? `${skills.length} project and plugin skills are available if the flow needs them.`
               : "No project skills discovered yet. The agent will still prepare a runnable draft."}
+          </div>
+
+          <div className="rounded-lg border border-dashed border-hairline bg-surface-2/40 px-3 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="ui-meta-label text-muted-foreground">How to open the draft</p>
+                <p className="mt-1 text-body-sm text-foreground">
+                  {target === "new"
+                    ? targetLabel
+                      ? `Open it as a new starting point in ${targetLabel}.`
+                      : "Select a project first to open this as a new starting point."
+                    : "Use the current draft as the starting point."}
+                </p>
+                {target === "replace" && replaceCurrentBlockedReason && (
+                  <p className="mt-2 text-body-sm text-status-warning">{replaceCurrentBlockedReason}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {target === "new" && selectedWorkflowPath ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setTarget("replace")}
+                    disabled={generating}
+                  >
+                    Use current draft instead
+                  </Button>
+                ) : null}
+                {target === "replace" && selectedProject ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setTarget("new")}
+                    disabled={generating}
+                  >
+                    Open as new instead
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
         </CanvasDialogBody>
 

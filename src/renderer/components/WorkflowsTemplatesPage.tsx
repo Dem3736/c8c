@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAtom } from "jotai"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -76,12 +75,7 @@ function TemplateCard({
       <span className="text-xl flex-shrink-0 mt-0.5" aria-hidden>{template.emoji}</span>
       <div className="min-w-0 flex-1">
         <h3 className="text-body-md font-semibold">{template.headline}</h3>
-        <div className="mt-1 flex flex-wrap gap-1">
-          <Badge variant="outline" size="compact">
-            {STAGE_META[template.stage].label}
-          </Badge>
-        </div>
-        <p className="text-body-sm text-muted-foreground mt-0.5 line-clamp-2">
+        <p className="text-body-sm text-muted-foreground mt-1 line-clamp-2">
           {deriveTemplateCardCopy(template)}
         </p>
       </div>
@@ -100,7 +94,6 @@ function TemplateDetailPanel({
   disabled?: boolean
   onClose: () => void
 }) {
-  const stageMeta = STAGE_META[template.stage]
   const sourceKind = getTemplateSourceKind(template)
   const sourceLabel = getTemplateSourceLabel(template)
 
@@ -113,12 +106,7 @@ function TemplateDetailPanel({
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-body-md font-semibold text-foreground">{template.name}</h3>
-              <Badge variant="outline" size="compact">
-                {stageMeta.label}
-              </Badge>
-            </div>
+            <h3 className="text-body-md font-semibold text-foreground">{template.name}</h3>
             <p className="ui-meta-text mt-1 text-muted-foreground">{template.headline}</p>
             {template.description && (
               <p className="mt-2 text-body-sm text-muted-foreground">
@@ -260,19 +248,6 @@ export function WorkflowsTemplatesPage() {
     [filteredTemplates, selectedTemplateId],
   )
 
-  // Group templates by stage for the "all" view
-  const groupedTemplates = useMemo(() => {
-    if (activeStage !== "all") return null
-    const groups: { stage: WorkflowTemplateStage; templates: WorkflowTemplate[] }[] = []
-    for (const stage of STAGE_ORDER) {
-      const stageTemplates = filteredTemplates.filter((t) => t.stage === stage)
-      if (stageTemplates.length > 0) {
-        groups.push({ stage, templates: stageTemplates })
-      }
-    }
-    return groups
-  }, [activeStage, filteredTemplates])
-
   const hasActiveFilters = activeStage !== "all" || query.trim().length > 0
 
   const clearFilters = () => {
@@ -388,6 +363,7 @@ export function WorkflowsTemplatesPage() {
         )}
         filters={(
           <>
+          <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">What do you need help with?</span>
           <Button
             variant={activeStage === "all" ? "secondary" : "outline"}
             size="xs"
@@ -437,18 +413,6 @@ export function WorkflowsTemplatesPage() {
               <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
                 No templates match this filter.
               </div>
-            ) : groupedTemplates ? (
-              <div className="space-y-6">
-                {groupedTemplates.map(({ stage, templates: stageTemplates }) => (
-                  <div key={stage}>
-                    <div className="mb-2">
-                      <h3 className="text-body-md font-semibold">{STAGE_META[stage].label}</h3>
-                      <p className="ui-meta-text text-muted-foreground">{STAGE_META[stage].description}</p>
-                    </div>
-                    {renderTemplateGrid(stageTemplates)}
-                  </div>
-                ))}
-              </div>
             ) : (
               renderTemplateGrid(filteredTemplates)
             )}
@@ -469,15 +433,15 @@ export function WorkflowsTemplatesPage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Open this starting point</DialogTitle>
+            <DialogTitle>Use this starting point</DialogTitle>
             <DialogDescription>
-              Create a new workflow file, or replace the current draft with &ldquo;{pendingTemplate?.name}&rdquo;.
+              &ldquo;{pendingTemplate?.name}&rdquo; is ready to use. Pick whether to open it in the selected project or reuse the current draft.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody className="space-y-2">
             {projects.length > 0 ? (
               <div className="space-y-1">
-                <p className="ui-meta-text text-muted-foreground">Create in project</p>
+                <p className="ui-meta-text text-muted-foreground">Selected project</p>
                 <Select
                   value={targetProjectPath ?? ""}
                   onValueChange={(value) => setTargetProjectPath(value)}
@@ -499,7 +463,7 @@ export function WorkflowsTemplatesPage() {
               </div>
             ) : (
               <p className="text-body-sm text-muted-foreground">
-                Add a project in sidebar to create a workflow file from this template.
+                Add a project in the sidebar to use this starting point there.
               </p>
             )}
           </CanvasDialogBody>
@@ -512,7 +476,7 @@ export function WorkflowsTemplatesPage() {
               disabled={!targetProjectPath}
               onClick={() => pendingTemplate && targetProjectPath && void doCreateFromTemplate(pendingTemplate, targetProjectPath)}
             >
-              Create in project
+              Use in selected project
             </Button>
             <Button
               variant="outline"
@@ -521,7 +485,7 @@ export function WorkflowsTemplatesPage() {
               title={replaceCurrentBlockedReason || undefined}
               onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}
             >
-              Replace current
+              Use current draft
             </Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>
