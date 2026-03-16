@@ -35,6 +35,7 @@ await build({
     "@zed-industries/codex-acp",
     "ai",
     "gray-matter",
+    "yaml",
   ],
   format: "esm",
   outfile: resolve(distDir, "index.js"),

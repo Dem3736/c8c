@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { dirname, resolve } from "node:path"
+import { homedir } from "node:os"
+import { dirname, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import YAML from "yaml"
 import {
@@ -24,7 +25,6 @@ import {
 import { prepareWorkspaceMcpConfig } from "../../../src/main/lib/mcp-config.js"
 import { ClaudeAgentProvider } from "../../../src/main/lib/providers/claude-agent-provider.js"
 import { CodexAgentProvider } from "../../../src/main/lib/providers/codex-agent-provider.js"
-import { allowedReportRoots } from "../../../src/main/lib/security-paths.js"
 import { scanAllSkills } from "../../../src/main/lib/skill-scanner.js"
 
 type Command = "run" | "resume" | "rerun-from" | "inspect" | "events" | "hil" | "help"
@@ -340,11 +340,26 @@ function parseHilDataJson(raw: string | undefined): Record<string, unknown> {
   return parsed as Record<string, unknown>
 }
 
+function resolveCliHomeDir(): string {
+  return process.env.HOME || process.env.USERPROFILE || homedir()
+}
+
+async function loadConfiguredProjectRoots(): Promise<string[]> {
+  const config = await readJsonMaybe<{ projects?: unknown }>(join(resolveCliHomeDir(), ".c8c", "config.json"))
+  if (!config || !Array.isArray(config.projects)) return []
+  return [...new Set(
+    config.projects
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => resolve(value)),
+  )]
+}
+
 async function resolveHilRoots(projectPath?: string): Promise<string[]> {
   if (projectPath) {
     return [resolve(projectPath, ".c8c", "runs")]
   }
-  return allowedReportRoots()
+  const configuredProjects = await loadConfiguredProjectRoots()
+  return configuredProjects.map((root) => join(root, ".c8c", "runs"))
 }
 
 function printHilTaskSummary(task: WorkflowHilTaskSummary): void {
