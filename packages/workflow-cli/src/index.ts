@@ -5,8 +5,15 @@ import { dirname, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import YAML from "yaml"
 import {
+  approvalTaskId,
   createWorkflowRunner,
+  getWorkflowHilTask,
+  getWorkflowHilTaskByRef,
+  listWorkflowHilTasks,
+  resolveWorkflowHilTaskByRef,
   writeWorkflowApprovalDecision,
+  type WorkflowHilTaskRecord,
+  type WorkflowHilTaskSummary,
   type ProviderId,
   type Workflow,
   type WorkflowEvent,
@@ -17,9 +24,10 @@ import {
 import { prepareWorkspaceMcpConfig } from "../../../src/main/lib/mcp-config.js"
 import { ClaudeAgentProvider } from "../../../src/main/lib/providers/claude-agent-provider.js"
 import { CodexAgentProvider } from "../../../src/main/lib/providers/codex-agent-provider.js"
+import { allowedReportRoots } from "../../../src/main/lib/security-paths.js"
 import { scanAllSkills } from "../../../src/main/lib/skill-scanner.js"
 
-type Command = "run" | "resume" | "rerun-from" | "inspect" | "events" | "help"
+type Command = "run" | "resume" | "rerun-from" | "inspect" | "events" | "hil" | "help"
 type ApprovalRequestedEvent = Extract<WorkflowEvent, { type: "approval-requested" }>
 
 interface CliFlags {
@@ -35,6 +43,11 @@ interface CliFlags {
   argsJson?: string
   token?: string
   approve?: boolean
+  task?: string
+  dataJson?: string
+  comment?: string
+  idempotencyKey?: string
+  editedContent?: string
 }
 
 interface OpenClawRunArgsJson {
@@ -50,6 +63,8 @@ interface OpenClawCompatibilityContext {
   workflow: Workflow
   projectPath?: string
   provider?: ProviderId
+  taskId?: string
+  checkpointKind?: "approval"
 }
 
 interface OpenClawResumeTokenPayload {
@@ -68,6 +83,7 @@ type OpenClawEnvelope =
         prompt: string
         items: Array<Record<string, unknown>>
         resumeToken: string
+        taskId?: string
       }
     }
   | {
@@ -119,7 +135,12 @@ function printUsage(): void {
   c8c-workflow resume --token <resumeToken> --approve yes|no
   c8c-workflow rerun-from <workflow.chain> <workspace> <nodeId> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow inspect <workspace>
-  c8c-workflow events <workspace>`)
+  c8c-workflow events <workspace>
+  c8c-workflow hil list [--project PATH] [--json]
+  c8c-workflow hil show --task <taskToken> [--json]
+  c8c-workflow hil respond --task <taskToken> --data-json '{"approved":true}' [--comment TEXT] [--idempotency-key KEY] [--json]
+  c8c-workflow hil approve --task <taskToken> [--comment TEXT] [--edited-content TEXT] [--idempotency-key KEY] [--json]
+  c8c-workflow hil reject --task <taskToken> [--comment TEXT] [--idempotency-key KEY] [--json]`)
 }
 
 function parseFlags(args: string[]): { positional: string[]; flags: CliFlags } {
@@ -185,6 +206,26 @@ function parseFlags(args: string[]): { positional: string[]; flags: CliFlags } {
       case "--approve":
         if (next === "yes") flags.approve = true
         if (next === "no") flags.approve = false
+        index++
+        break
+      case "--task":
+        flags.task = next || ""
+        index++
+        break
+      case "--data-json":
+        flags.dataJson = next || ""
+        index++
+        break
+      case "--comment":
+        flags.comment = next || ""
+        index++
+        break
+      case "--idempotency-key":
+        flags.idempotencyKey = next || ""
+        index++
+        break
+      case "--edited-content":
+        flags.editedContent = next || ""
         index++
         break
     }
@@ -284,6 +325,55 @@ export function decodeOpenClawResumeToken(token: string): OpenClawResumeTokenPay
   }
 
   return parsed as OpenClawResumeTokenPayload
+}
+
+function parseHilDataJson(raw: string | undefined): Record<string, unknown> {
+  if (!raw?.trim()) {
+    throw new Error("hil respond requires --data-json")
+  }
+
+  const parsed = JSON.parse(raw) as unknown
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--data-json must decode to a JSON object")
+  }
+
+  return parsed as Record<string, unknown>
+}
+
+async function resolveHilRoots(projectPath?: string): Promise<string[]> {
+  if (projectPath) {
+    return [resolve(projectPath, ".c8c", "runs")]
+  }
+  return allowedReportRoots()
+}
+
+function printHilTaskSummary(task: WorkflowHilTaskSummary): void {
+  const resolution = task.resolution ? ` (${task.resolution})` : ""
+  process.stdout.write(
+    `${task.status.toUpperCase()} ${task.task}\n`
+    + `  ${task.title}${resolution}\n`
+    + `  workflow: ${task.workflowName}\n`
+    + `  node: ${task.nodeId}\n`
+    + `  workspace: ${task.workspace}\n`,
+  )
+}
+
+function printHilTaskDetails(task: WorkflowHilTaskRecord): void {
+  process.stdout.write([
+    `Task: ${task.task}`,
+    `Task ID: ${task.taskId}`,
+    `Status: ${task.state.status}${task.state.resolution ? ` (${task.state.resolution})` : ""}`,
+    `Workflow: ${task.state.workflowName}`,
+    `Node: ${task.state.nodeId}`,
+    `Workspace: ${task.state.workspace}`,
+    `Created: ${new Date(task.state.createdAt).toISOString()}`,
+    `Updated: ${new Date(task.state.updatedAt).toISOString()}`,
+    task.state.message ? `Message: ${task.state.message}` : null,
+    task.state.content ? `Content:\n${task.state.content}` : null,
+    `Request JSON:\n${JSON.stringify(task.request, null, 2)}`,
+    task.latestResponse ? `Latest Response:\n${JSON.stringify(task.latestResponse, null, 2)}` : null,
+    "",
+  ].filter(Boolean).join("\n"))
 }
 
 function renderEventHuman(event: WorkflowEvent): string {
@@ -416,6 +506,7 @@ function buildToolRunSummary(summary: WorkflowRunSummary): Record<string, unknow
   return {
     type: "run_summary",
     runId: summary.runId,
+    chainId: summary.workspace,
     status: summary.status,
     workspace: summary.workspace,
     reportPath: summary.reportPath || null,
@@ -430,6 +521,7 @@ function buildOpenClawSuccessEnvelope(
   status: "ok" | "needs_approval" | "cancelled",
   summary: WorkflowRunSummary,
   approvalEvent: ApprovalRequestedEvent | null = null,
+  task: WorkflowHilTaskRecord | null = null,
 ): OpenClawEnvelope {
   if (status === "needs_approval") {
     if (!approvalEvent) {
@@ -446,6 +538,7 @@ function buildOpenClawSuccessEnvelope(
         items: [
           {
             nodeId: approvalEvent.nodeId,
+            taskId: task?.task,
             content: approvalEvent.content,
             allowEdit: approvalEvent.allowEdit,
           },
@@ -455,6 +548,7 @@ function buildOpenClawSuccessEnvelope(
           workspace: summary.workspace,
           nodeId: approvalEvent.nodeId,
         }),
+        taskId: task?.task,
       },
     }
   }
@@ -527,7 +621,19 @@ async function runOpenClawToolMode(args: string[], flags: CliFlags): Promise<num
   const { summary, approvalEvent } = await collectToolRunResult(handle)
 
   if (summary.status === "paused") {
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent))
+    const task = approvalEvent
+      ? await getWorkflowHilTask(summary.workspace, approvalTaskId(approvalEvent.nodeId))
+      : null
+    await writeOpenClawContext(summary.workspace, {
+      version: 1,
+      workflowPath,
+      workflow,
+      projectPath: projectPathValue,
+      provider: providerOverride,
+      taskId: task?.taskId,
+      checkpointKind: task ? "approval" : undefined,
+    })
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent, task))
     return 0
   }
 
@@ -572,7 +678,15 @@ async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
   const { summary, approvalEvent } = await collectToolRunResult(handle)
 
   if (summary.status === "paused") {
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent))
+    const task = approvalEvent
+      ? await getWorkflowHilTask(summary.workspace, approvalTaskId(approvalEvent.nodeId))
+      : null
+    await writeOpenClawContext(summary.workspace, {
+      ...context,
+      taskId: task?.taskId,
+      checkpointKind: task ? "approval" : undefined,
+    })
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent, task))
     return 0
   }
 
@@ -590,6 +704,77 @@ async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
   return 1
 }
 
+async function runHilCommand(args: string[], flags: CliFlags): Promise<number> {
+  const [subcommand = "list"] = args
+
+  if (subcommand === "list") {
+    const tasks = await listWorkflowHilTasks(await resolveHilRoots(flags.project))
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(tasks, null, 2)}\n`)
+      return 0
+    }
+    if (tasks.length === 0) {
+      process.stdout.write("No open HIL tasks.\n")
+      return 0
+    }
+    for (const task of tasks) {
+      printHilTaskSummary(task)
+    }
+    return 0
+  }
+
+  if (subcommand === "show") {
+    if (!flags.task) throw new Error("hil show requires --task")
+    const task = await getWorkflowHilTaskByRef(flags.task)
+    if (!task) throw new Error("HIL task not found")
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(task, null, 2)}\n`)
+      return 0
+    }
+    printHilTaskDetails(task)
+    return 0
+  }
+
+  if (subcommand === "respond") {
+    if (!flags.task) throw new Error("hil respond requires --task")
+    const task = await resolveWorkflowHilTaskByRef(flags.task, {
+      data: parseHilDataJson(flags.dataJson),
+      comment: flags.comment,
+      idempotencyKey: flags.idempotencyKey,
+      answeredBy: process.env.USER || process.env.USERNAME || undefined,
+      source: "cli",
+    })
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(task, null, 2)}\n`)
+    } else {
+      process.stdout.write(`Resolved ${task.task}\n`)
+    }
+    return 0
+  }
+
+  if (subcommand === "approve" || subcommand === "reject") {
+    if (!flags.task) throw new Error(`hil ${subcommand} requires --task`)
+    const task = await resolveWorkflowHilTaskByRef(flags.task, {
+      data: {
+        approved: subcommand === "approve",
+        ...(flags.editedContent !== undefined ? { editedContent: flags.editedContent } : {}),
+      },
+      comment: flags.comment,
+      idempotencyKey: flags.idempotencyKey,
+      answeredBy: process.env.USER || process.env.USERNAME || undefined,
+      source: "cli",
+    })
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(task, null, 2)}\n`)
+    } else {
+      process.stdout.write(`Resolved ${task.task} as ${subcommand}\n`)
+    }
+    return 0
+  }
+
+  throw new Error(`Unknown hil subcommand: ${subcommand}`)
+}
+
 async function runCommand(command: Command, args: string[]): Promise<number> {
   const { positional, flags } = parseFlags(args)
 
@@ -599,6 +784,10 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
 
   if (command === "resume" && flags.token) {
     return resumeOpenClawToolMode(flags)
+  }
+
+  if (command === "hil") {
+    return runHilCommand(positional, flags)
   }
 
   const runner = createRunner(flags.provider)
@@ -700,6 +889,7 @@ export async function main(): Promise<void> {
     || command === "rerun-from"
     || command === "inspect"
     || command === "events"
+    || command === "hil"
     || command === "help"
   ) ? isOpenClawToolMode(command, flags) : false
 
@@ -709,6 +899,7 @@ export async function main(): Promise<void> {
     && command !== "rerun-from"
     && command !== "inspect"
     && command !== "events"
+    && command !== "hil"
     && command !== "help"
   ) {
     printUsage()
