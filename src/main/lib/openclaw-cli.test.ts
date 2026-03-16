@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   buildOpenClawApprovalRequest,
+  buildOpenClawHumanInputRequest,
   decodeOpenClawResumeToken,
   encodeOpenClawResumeToken,
   loadWorkflow,
@@ -152,6 +153,62 @@ describe("openclaw cli helpers", () => {
       version: 1,
       workspace: "/tmp/workspace",
       nodeId: "human-1",
+    })
+  })
+
+  it("builds human input requests for generic human tasks", () => {
+    const humanInputRequest = buildOpenClawHumanInputRequest({
+      task: "task-token",
+      taskId: "human-form-1",
+      request: {
+        version: 1,
+        kind: "form",
+        title: "Capture reviewer notes",
+        instructions: "Collect reviewer details before continuing.",
+        fields: [
+          {
+            id: "reviewer",
+            type: "text",
+            label: "Reviewer",
+            required: true,
+          },
+        ],
+      },
+      state: {
+        version: 1,
+        taskId: "human-form-1",
+        chainId: "/tmp/workspace",
+        sourceRunId: "run-1",
+        kind: "form",
+        checkpointKind: "human",
+        status: "open",
+        workspace: "/tmp/workspace",
+        nodeId: "human-1",
+        workflowName: "Human flow",
+        title: "Capture reviewer notes",
+        instructions: "Collect reviewer details before continuing.",
+        summary: "Need reviewer details",
+        requestHash: "hash",
+        responseRevision: 0,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      latestResponse: null,
+    })
+
+    expect(humanInputRequest).toMatchObject({
+      type: "human_task",
+      prompt: "Collect reviewer details before continuing.",
+      task: "task-token",
+      taskId: "human-form-1",
+      request: {
+        kind: "form",
+        fields: [
+          {
+            id: "reviewer",
+          },
+        ],
+      },
     })
   })
 })

@@ -28,7 +28,7 @@ import { ClaudeAgentProvider } from "../../../src/main/lib/providers/claude-agen
 import { CodexAgentProvider } from "../../../src/main/lib/providers/codex-agent-provider.js"
 import { scanAllSkills } from "../../../src/main/lib/skill-scanner.js"
 
-type Command = "run" | "resume" | "rerun-from" | "inspect" | "events" | "hil" | "help"
+type Command = "run" | "resume" | "respond" | "rerun-from" | "inspect" | "events" | "hil" | "help"
 type ApprovalRequestedEvent = Extract<WorkflowEvent, { type: "approval-requested" }>
 
 interface CliFlags {
@@ -65,7 +65,7 @@ interface OpenClawCompatibilityContext {
   projectPath?: string
   provider?: ProviderId
   taskId?: string
-  checkpointKind?: "approval" | "human_approval"
+  checkpointKind?: "approval" | "human_approval" | "human_form"
 }
 
 interface OpenClawResumeTokenPayload {
@@ -77,7 +77,7 @@ interface OpenClawResumeTokenPayload {
 type OpenClawEnvelope =
   | {
       ok: true
-      status: "ok" | "needs_approval" | "cancelled"
+      status: "ok" | "needs_approval" | "needs_human_input" | "cancelled"
       output: Array<Record<string, unknown>>
       requiresApproval: null | {
         type: "approval_request"
@@ -85,6 +85,13 @@ type OpenClawEnvelope =
         items: Array<Record<string, unknown>>
         resumeToken: string
         taskId?: string
+      }
+      requiresHumanInput: null | {
+        type: "human_task"
+        prompt: string
+        task: string
+        taskId: string
+        request: Record<string, unknown>
       }
     }
   | {
@@ -134,6 +141,7 @@ function printUsage(): void {
   c8c-workflow run --mode tool <workflow.(json|yaml|yml)> [--args-json '{"input":"...","inputType":"text","projectPath":"/abs/path","provider":"claude"}']
   c8c-workflow resume <workflow.chain> <workspace> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow resume --token <resumeToken> --approve yes|no
+  c8c-workflow respond --task <taskToken> --data-json '{"field":"value"}' [--comment TEXT] [--idempotency-key KEY]
   c8c-workflow rerun-from <workflow.chain> <workspace> <nodeId> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow inspect <workspace>
   c8c-workflow events <workspace>
@@ -500,6 +508,7 @@ async function readOpenClawContext(workspace: string): Promise<OpenClawCompatibi
     parsed.checkpointKind
     && parsed.checkpointKind !== "approval"
     && parsed.checkpointKind !== "human_approval"
+    && parsed.checkpointKind !== "human_form"
   ) {
     throw new Error(`Invalid checkpoint kind in OpenClaw compatibility context: ${parsed.checkpointKind}`)
   }
@@ -594,8 +603,20 @@ export function buildOpenClawApprovalRequest(
   throw new Error("Approval context missing for tool-mode run")
 }
 
+export function buildOpenClawHumanInputRequest(
+  task: WorkflowHilTaskRecord,
+): NonNullable<Extract<OpenClawEnvelope, { ok: true }>["requiresHumanInput"]> {
+  return {
+    type: "human_task",
+    prompt: task.state.instructions || task.state.title,
+    task: task.task,
+    taskId: task.taskId,
+    request: task.request as Record<string, unknown>,
+  }
+}
+
 function buildOpenClawSuccessEnvelope(
-  status: "ok" | "needs_approval" | "cancelled",
+  status: "ok" | "needs_approval" | "needs_human_input" | "cancelled",
   summary: WorkflowRunSummary,
   approvalEvent: ApprovalRequestedEvent | null = null,
   task: WorkflowHilTaskRecord | null = null,
@@ -606,6 +627,20 @@ function buildOpenClawSuccessEnvelope(
       status,
       output: [buildToolRunSummary(summary)],
       requiresApproval: buildOpenClawApprovalRequest(summary, approvalEvent, task),
+      requiresHumanInput: null,
+    }
+  }
+
+  if (status === "needs_human_input") {
+    if (!task) {
+      throw new Error("Human input context missing for tool-mode run")
+    }
+    return {
+      ok: true,
+      status,
+      output: [buildToolRunSummary(summary)],
+      requiresApproval: null,
+      requiresHumanInput: buildOpenClawHumanInputRequest(task),
     }
   }
 
@@ -614,13 +649,8 @@ function buildOpenClawSuccessEnvelope(
     status,
     output: [buildToolRunSummary(summary)],
     requiresApproval: null,
+    requiresHumanInput: null,
   }
-}
-
-function buildUnsupportedOpenClawCheckpointMessage(task: WorkflowHilTaskRecord): string {
-  return task.request.kind === "form"
-    ? `OpenClaw lobster plugin only supports approval-style checkpoints; task '${task.taskId}' requires hil respond`
-    : `Workflow finished with unsupported checkpoint kind: ${task.request.kind}`
 }
 
 async function findOpenClawBlockingTask(workspace: string): Promise<WorkflowHilTaskRecord | null> {
@@ -647,6 +677,86 @@ function writeOpenClawEnvelope(envelope: OpenClawEnvelope): void {
 function isOpenClawToolMode(command: Command, flags: CliFlags): boolean {
   return (command === "run" && flags.mode === "tool")
     || (command === "resume" && Boolean(flags.token))
+    || (command === "respond" && Boolean(flags.task))
+}
+
+function checkpointKindForTask(task: WorkflowHilTaskRecord): NonNullable<OpenClawCompatibilityContext["checkpointKind"]> {
+  return task.request.kind === "approval" ? "human_approval" : "human_form"
+}
+
+async function writeToolModeContextForTask(
+  workspace: string,
+  context: OpenClawCompatibilityContext,
+  task: WorkflowHilTaskRecord,
+): Promise<void> {
+  await writeOpenClawContext(workspace, {
+    ...context,
+    taskId: task.taskId,
+    checkpointKind: checkpointKindForTask(task),
+  })
+}
+
+async function continueOpenClawWorkspace(
+  workspace: string,
+  context: OpenClawCompatibilityContext,
+  flags: CliFlags,
+): Promise<{ summary: WorkflowRunSummary; approvalEvent: ApprovalRequestedEvent | null }> {
+  const runner = createRunner(flags.provider || context.provider)
+  const handle = await runner.resumeRun({
+    workflow: context.workflow,
+    workspace,
+    projectPath: context.projectPath,
+    workflowPath: context.workflowPath,
+    approvalBehavior: "suspend",
+  })
+  return collectToolRunResult(handle)
+}
+
+async function handleOpenClawToolSummary(
+  summary: WorkflowRunSummary,
+  approvalEvent: ApprovalRequestedEvent | null,
+  context: OpenClawCompatibilityContext,
+): Promise<number> {
+  if (summary.status === "paused") {
+    const task = approvalEvent
+      ? await getWorkflowHilTask(summary.workspace, approvalTaskId(approvalEvent.nodeId))
+      : null
+    await writeOpenClawContext(summary.workspace, {
+      ...context,
+      taskId: task?.taskId,
+      checkpointKind: task ? "approval" : undefined,
+    })
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent, task))
+    return 0
+  }
+
+  if (summary.status === "blocked") {
+    const task = await findOpenClawBlockingTask(summary.workspace)
+    if (!task) {
+      writeOpenClawEnvelope(buildOpenClawErrorEnvelope("Workflow is blocked, but no open checkpoint task was found"))
+      return 1
+    }
+    await writeToolModeContextForTask(summary.workspace, context, task)
+    if (task.request.kind === "approval") {
+      writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, null, task))
+      return 0
+    }
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_human_input", summary, null, task))
+    return 0
+  }
+
+  if (summary.status === "completed") {
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("ok", summary))
+    return 0
+  }
+
+  if (summary.status === "cancelled") {
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("cancelled", summary))
+    return 0
+  }
+
+  writeOpenClawEnvelope(buildOpenClawErrorEnvelope(`Workflow finished with status: ${summary.status}`))
+  return 1
 }
 
 async function runOpenClawToolMode(args: string[], flags: CliFlags): Promise<number> {
@@ -688,62 +798,13 @@ async function runOpenClawToolMode(args: string[], flags: CliFlags): Promise<num
   })
 
   const { summary, approvalEvent } = await collectToolRunResult(handle)
-
-  if (summary.status === "paused") {
-    const task = approvalEvent
-      ? await getWorkflowHilTask(summary.workspace, approvalTaskId(approvalEvent.nodeId))
-      : null
-    await writeOpenClawContext(summary.workspace, {
-      version: 1,
-      workflowPath,
-      workflow,
-      projectPath: projectPathValue,
-      provider: providerOverride,
-      taskId: task?.taskId,
-      checkpointKind: task ? "approval" : undefined,
-    })
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent, task))
-    return 0
-  }
-
-  if (summary.status === "blocked") {
-    const task = await findOpenClawBlockingTask(summary.workspace)
-    if (!task) {
-      writeOpenClawEnvelope(buildOpenClawErrorEnvelope("Workflow is blocked, but no open checkpoint task was found"))
-      return 1
-    }
-    if (task.request.kind !== "approval") {
-      writeOpenClawEnvelope(buildOpenClawErrorEnvelope(
-        buildUnsupportedOpenClawCheckpointMessage(task),
-        "unsupported_checkpoint",
-      ))
-      return 1
-    }
-    await writeOpenClawContext(summary.workspace, {
-      version: 1,
-      workflowPath,
-      workflow,
-      projectPath: projectPathValue,
-      provider: providerOverride,
-      taskId: task.taskId,
-      checkpointKind: "human_approval",
-    })
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, null, task))
-    return 0
-  }
-
-  if (summary.status === "completed") {
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("ok", summary))
-    return 0
-  }
-
-  if (summary.status === "cancelled") {
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("cancelled", summary))
-    return 0
-  }
-
-  writeOpenClawEnvelope(buildOpenClawErrorEnvelope(`Workflow finished with status: ${summary.status}`))
-  return 1
+  return handleOpenClawToolSummary(summary, approvalEvent, {
+    version: 1,
+    workflowPath,
+    workflow,
+    projectPath: projectPathValue,
+    provider: providerOverride,
+  })
 }
 
 async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
@@ -756,7 +817,6 @@ async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
 
   const token = decodeOpenClawResumeToken(flags.token)
   const context = await readOpenClawContext(token.workspace)
-  const runner = createRunner(flags.provider || context.provider)
 
   if (context.checkpointKind === "human_approval") {
     if (!context.taskId) {
@@ -776,63 +836,40 @@ async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
     })
   }
 
-  const handle = await runner.resumeRun({
-    workflow: context.workflow,
-    workspace: token.workspace,
-    projectPath: context.projectPath,
-    workflowPath: context.workflowPath,
-    approvalBehavior: "suspend",
+  const { summary, approvalEvent } = await continueOpenClawWorkspace(token.workspace, context, flags)
+  return handleOpenClawToolSummary(summary, approvalEvent, {
+    ...context,
+    provider: flags.provider || context.provider,
+  })
+}
+
+async function respondOpenClawToolMode(flags: CliFlags): Promise<number> {
+  if (!flags.task) {
+    throw new Error("respond tool mode requires --task")
+  }
+  if (!flags.dataJson?.trim()) {
+    throw new Error("respond tool mode requires --data-json")
+  }
+
+  const task = await getWorkflowHilTaskByRef(flags.task)
+  if (!task) {
+    throw new Error("HIL task not found")
+  }
+
+  const context = await readOpenClawContext(task.state.workspace)
+  await resolveWorkflowHilTaskByRef(flags.task, {
+    data: parseHilDataJson(flags.dataJson),
+    comment: flags.comment,
+    idempotencyKey: flags.idempotencyKey,
+    answeredBy: process.env.USER || process.env.USERNAME || undefined,
+    source: "openclaw",
   })
 
-  const { summary, approvalEvent } = await collectToolRunResult(handle)
-
-  if (summary.status === "paused") {
-    const task = approvalEvent
-      ? await getWorkflowHilTask(summary.workspace, approvalTaskId(approvalEvent.nodeId))
-      : null
-    await writeOpenClawContext(summary.workspace, {
-      ...context,
-      taskId: task?.taskId,
-      checkpointKind: task ? "approval" : undefined,
-    })
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent, task))
-    return 0
-  }
-
-  if (summary.status === "blocked") {
-    const task = await findOpenClawBlockingTask(summary.workspace)
-    if (!task) {
-      writeOpenClawEnvelope(buildOpenClawErrorEnvelope("Workflow is blocked, but no open checkpoint task was found"))
-      return 1
-    }
-    if (task.request.kind !== "approval") {
-      writeOpenClawEnvelope(buildOpenClawErrorEnvelope(
-        buildUnsupportedOpenClawCheckpointMessage(task),
-        "unsupported_checkpoint",
-      ))
-      return 1
-    }
-    await writeOpenClawContext(summary.workspace, {
-      ...context,
-      taskId: task.taskId,
-      checkpointKind: "human_approval",
-    })
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, null, task))
-    return 0
-  }
-
-  if (summary.status === "completed") {
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("ok", summary))
-    return 0
-  }
-
-  if (summary.status === "cancelled") {
-    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("cancelled", summary))
-    return 0
-  }
-
-  writeOpenClawEnvelope(buildOpenClawErrorEnvelope(`Workflow finished with status: ${summary.status}`))
-  return 1
+  const { summary, approvalEvent } = await continueOpenClawWorkspace(task.state.workspace, context, flags)
+  return handleOpenClawToolSummary(summary, approvalEvent, {
+    ...context,
+    provider: flags.provider || context.provider,
+  })
 }
 
 async function runHilCommand(args: string[], flags: CliFlags): Promise<number> {
@@ -915,6 +952,10 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
 
   if (command === "resume" && flags.token) {
     return resumeOpenClawToolMode(flags)
+  }
+
+  if (command === "respond") {
+    return respondOpenClawToolMode(flags)
   }
 
   if (command === "hil") {
@@ -1017,6 +1058,7 @@ export async function main(): Promise<void> {
   const toolMode = (
     command === "run"
     || command === "resume"
+    || command === "respond"
     || command === "rerun-from"
     || command === "inspect"
     || command === "events"
@@ -1027,6 +1069,7 @@ export async function main(): Promise<void> {
   if (
     command !== "run"
     && command !== "resume"
+    && command !== "respond"
     && command !== "rerun-from"
     && command !== "inspect"
     && command !== "events"
