@@ -13,6 +13,7 @@ import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
   InputNodeConfig,
+  PersistedRunSnapshot,
   SplitterNodeConfig,
   MergerNodeConfig,
   OutputNodeConfig,
@@ -62,6 +63,7 @@ interface ChainBuilderProps {
   compact?: boolean
   mode?: "edit" | "outline" | "monitor"
   onStageSelect?: (payload: { nodeId: string; preferredTab: "nodes" | "log" | "result" }) => void
+  reviewSnapshot?: PersistedRunSnapshot | null
 }
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -190,7 +192,12 @@ function buildAggregateBranchState(
   }
 }
 
-export function ChainBuilder({ compact = false, mode = "edit", onStageSelect }: ChainBuilderProps = {}) {
+export function ChainBuilder({
+  compact = false,
+  mode = "edit",
+  onStageSelect,
+  reviewSnapshot = null,
+}: ChainBuilderProps = {}) {
   const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
@@ -210,6 +217,8 @@ export function ChainBuilder({ compact = false, mode = "edit", onStageSelect }: 
   } | null>(null)
   const flowCardMode = mode === "outline" || mode === "monitor"
   const runtimeMode = mode === "monitor"
+  const displayNodeStates = reviewSnapshot?.nodeStates ?? nodeStates
+  const displayRuntimeMeta = reviewSnapshot?.runtimeMeta ?? runtimeMeta
 
   useEffect(() => {
     return () => {
@@ -229,10 +238,10 @@ export function ChainBuilder({ compact = false, mode = "edit", onStageSelect }: 
     return [...inputNodes, ...middleNodes, ...outputNodes]
   }, [workflow.nodes])
   const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
-  const runtimeBranchIds = useMemo(() => Object.keys(runtimeMeta), [runtimeMeta])
+  const runtimeBranchIds = useMemo(() => Object.keys(displayRuntimeMeta || {}), [displayRuntimeMeta])
   const runtimeBranchSummariesByTemplate = useMemo(() => {
     const branchIdsByTemplate = new Map<string, string[]>()
-    for (const [branchId, meta] of Object.entries(runtimeMeta)) {
+    for (const [branchId, meta] of Object.entries(displayRuntimeMeta || {})) {
       if (!meta?.templateId) continue
       const existing = branchIdsByTemplate.get(meta.templateId)
       if (existing) {
@@ -244,39 +253,39 @@ export function ChainBuilder({ compact = false, mode = "edit", onStageSelect }: 
 
     const summaries = new Map<string, RuntimeBranchSummary>()
     for (const [templateId, branchIds] of branchIdsByTemplate.entries()) {
-      const summary = buildRuntimeBranchSummary(branchIds, nodeStates, runtimeMeta)
+      const summary = buildRuntimeBranchSummary(branchIds, displayNodeStates, displayRuntimeMeta || {})
       if (summary) summaries.set(templateId, summary)
     }
     return summaries
-  }, [nodeStates, runtimeMeta])
+  }, [displayNodeStates, displayRuntimeMeta])
   const aggregateBranchStatesByTemplate = useMemo(() => {
     const aggregateStates = new Map<string, NodeState>()
     for (const [templateId, summary] of runtimeBranchSummariesByTemplate.entries()) {
-      const branchIds = Object.entries(runtimeMeta)
+      const branchIds = Object.entries(displayRuntimeMeta || {})
         .filter(([, meta]) => meta.templateId === templateId)
         .map(([branchId]) => branchId)
       if (branchIds.length === 0) continue
-      aggregateStates.set(templateId, buildAggregateBranchState(branchIds, summary, nodeStates))
+      aggregateStates.set(templateId, buildAggregateBranchState(branchIds, summary, displayNodeStates))
     }
     return aggregateStates
-  }, [nodeStates, runtimeBranchSummariesByTemplate, runtimeMeta])
+  }, [displayNodeStates, displayRuntimeMeta, runtimeBranchSummariesByTemplate])
   const singleSplitterBranchSummary = useMemo(() => {
     const splitterCount = workflow.nodes.filter((node) => node.type === "splitter").length
     if (splitterCount !== 1) return null
-    return buildRuntimeBranchSummary(runtimeBranchIds, nodeStates, runtimeMeta)
-  }, [nodeStates, runtimeBranchIds, runtimeMeta, workflow.nodes])
-  const resolvedActiveNodeId = activeNodeId && runtimeMeta[activeNodeId]?.templateId
-    ? runtimeMeta[activeNodeId].templateId
+    return buildRuntimeBranchSummary(runtimeBranchIds, displayNodeStates, displayRuntimeMeta || {})
+  }, [displayNodeStates, displayRuntimeMeta, runtimeBranchIds, workflow.nodes])
+  const resolvedActiveNodeId = activeNodeId && displayRuntimeMeta[activeNodeId]?.templateId
+    ? displayRuntimeMeta[activeNodeId].templateId
     : activeNodeId
-  const resolvedSelectedNodeId = selectedNodeId && runtimeMeta[selectedNodeId]?.templateId
-    ? runtimeMeta[selectedNodeId].templateId
+  const resolvedSelectedNodeId = selectedNodeId && displayRuntimeMeta[selectedNodeId]?.templateId
+    ? displayRuntimeMeta[selectedNodeId].templateId
     : selectedNodeId
   const contextNode = chainContextMenu
     ? workflow.nodes.find((node) => node.id === chainContextMenu.nodeId) || null
     : null
 
   const getNodePresentation = (node: WorkflowNode) => {
-    const directState = nodeStates[node.id]
+    const directState = displayNodeStates[node.id]
     const aggregateState = aggregateBranchStatesByTemplate.get(node.id)
     const effectiveState = flowCardMode
       ? aggregateState && (!directState || directState.status === "pending" || directState.status === "queued")
@@ -596,7 +605,9 @@ export function ChainBuilder({ compact = false, mode = "edit", onStageSelect }: 
             <p className="ui-meta-text text-muted-foreground">
               {runtimeMode
                 ? "Select a stage to inspect below."
-                : "Review the stages from left to right before you run or refine the flow."}
+                : reviewSnapshot
+                  ? "Review the selected saved run from left to right."
+                  : "Review the stages from left to right before you run or refine the flow."}
             </p>
           </div>
           <span className="ui-meta-text tabular-nums text-muted-foreground">{orderedNodes.length} stages</span>

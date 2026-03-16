@@ -44,6 +44,7 @@ import { useWorkflowReset } from "@/hooks/useWorkflowReset"
 import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
 import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
+import { useSelectedRunReview } from "@/hooks/useSelectedRunReview"
 import {
   List,
   LayoutGrid,
@@ -425,6 +426,12 @@ export function WorkflowPanel() {
     && !showEntryLanding
     && !showIdleReviewMode
   )
+  const {
+    reviewedRun,
+    reviewedRunDetails,
+    reviewedRunLoading,
+    reviewedRunError,
+  } = useSelectedRunReview(showIdleReviewMode)
   const canShowAgentPanel = Boolean(selectedWorkflowPath)
   const hasResult = finalContent.trim().length > 0
     || reportPath !== null
@@ -661,6 +668,10 @@ export function WorkflowPanel() {
                     onRerunFrom={rerunFrom}
                     onContinueRun={continueRun}
                     requestedTab={outputTabRequest}
+                    reviewedRun={reviewedRun}
+                    reviewedRunDetails={reviewedRunDetails}
+                    reviewedRunLoading={reviewedRunLoading}
+                    reviewedRunError={reviewedRunError}
                   />
                 </SectionErrorBoundary>
               </div>
@@ -713,6 +724,10 @@ export function WorkflowPanel() {
                           onContinueRun={continueRun}
                           requestedTab={outputTabRequest}
                           reviewingPastRun
+                          reviewedRun={reviewedRun}
+                          reviewedRunDetails={reviewedRunDetails}
+                          reviewedRunLoading={reviewedRunLoading}
+                          reviewedRunError={reviewedRunError}
                           onStartNewRun={() => setPrepareNewRun(true)}
                         />
                       </SectionErrorBoundary>
@@ -724,6 +739,7 @@ export function WorkflowPanel() {
                         compact
                         mode={runStatus === "idle" ? (isFlowEditing ? "edit" : "outline") : "monitor"}
                         onStageSelect={focusStageDetails}
+                        reviewSnapshot={showIdleReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
                       />
                     </SectionErrorBoundary>
                   )}
@@ -738,6 +754,10 @@ export function WorkflowPanel() {
                           onRerunFrom={rerunFrom}
                           onContinueRun={continueRun}
                           requestedTab={outputTabRequest}
+                          reviewedRun={reviewedRun}
+                          reviewedRunDetails={reviewedRunDetails}
+                          reviewedRunLoading={reviewedRunLoading}
+                          reviewedRunError={reviewedRunError}
                         />
                       </SectionErrorBoundary>
                     </div>

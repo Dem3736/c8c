@@ -13,6 +13,7 @@ import type {
   McpServerInfo,
   McpTestResult,
   McpToolInfo,
+  LoadedRunResult,
   PluginMcpServerInfo,
   ProviderDiagnostics,
   ProviderId,
@@ -119,7 +120,7 @@ export interface C8cApi {
     webSearchBackend?: "builtin" | "exa",
   ) => Promise<string | { error: string } | null>
   listRuns: (projectPath: string) => Promise<RunResult[]>
-  loadRunResult: (workspace: string) => Promise<(RunResult & { reportContent: string }) | null>
+  loadRunResult: (workspace: string) => Promise<LoadedRunResult | null>
   openReport: (reportPath: string) => Promise<string>
   getActiveExecutions: () => Promise<ActiveExecutionSnapshot[]>
   chatSendMessage: (

@@ -30,7 +30,7 @@ import {
 import { useOutputPanel } from "@/hooks/useOutputPanel"
 import { HistoryTab } from "@/components/output/HistoryTab"
 import { LogTab, NodesTab, formatCost } from "@/components/output/OutputSections"
-import type { RunResult } from "@shared/types"
+import type { LoadedRunResult, RunResult } from "@shared/types"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
@@ -122,6 +122,10 @@ export function OutputPanel({
   onContinueRun,
   requestedTab,
   reviewingPastRun = false,
+  reviewedRun = null,
+  reviewedRunDetails = null,
+  reviewedRunLoading = false,
+  reviewedRunError = null,
   onStartNewRun,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
@@ -129,6 +133,10 @@ export function OutputPanel({
   onContinueRun?: (run: RunResult) => Promise<void> | void
   requestedTab?: { tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null
   reviewingPastRun?: boolean
+  reviewedRun?: RunResult | null
+  reviewedRunDetails?: LoadedRunResult | null
+  reviewedRunLoading?: boolean
+  reviewedRunError?: string | null
   onStartNewRun?: () => void
 }) {
   const {
@@ -150,9 +158,6 @@ export function OutputPanel({
   const [activeTab, setActiveTab] = useState("nodes")
   const [copiedResult, setCopiedResult] = useState(false)
   const [resultReadyPulse, setResultReadyPulse] = useState(false)
-  const [selectedPastRunDetails, setSelectedPastRunDetails] = useState<(RunResult & { reportContent: string }) | null>(null)
-  const [selectedPastRunLoading, setSelectedPastRunLoading] = useState(false)
-  const [selectedPastRunError, setSelectedPastRunError] = useState<string | null>(null)
   const [outputContextMenu, setOutputContextMenu] = useState<
     | { x: number, y: number, scope: "result" }
     | null
@@ -162,16 +167,23 @@ export function OutputPanel({
   const resultSignalShownRef = useRef(false)
   const previousRunStatusRef = useRef(runStatus)
   const latestPastRun = pastRuns[0] || null
-  const reviewedRun = selectedPastRun || latestPastRun
+  const selectedReviewRun = reviewedRun || selectedPastRun || latestPastRun
 
   const handleRerunFrom = useCallback((nodeId: string) => {
     if (!onRerunFrom || !workspace) return
     void onRerunFrom(nodeId)
   }, [onRerunFrom, workspace])
 
+  const reviewingRunHistory = reviewingPastRun && runStatus === "idle" && !!selectedReviewRun
+  const reviewSnapshot = reviewingRunHistory ? reviewedRunDetails?.snapshot || null : null
+  const displayNodeStates = reviewingRunHistory ? (reviewSnapshot?.nodeStates || {}) : nodeStates
+  const displayRuntimeMeta = reviewingRunHistory ? (reviewSnapshot?.runtimeMeta || {}) : runtimeMeta
+  const displayEvalResults = reviewingRunHistory ? (reviewSnapshot?.evalResults || {}) : evalResults
+  const displayActiveNodeId = reviewingRunHistory ? selectedNodeId : activeNodeId
+
   // Filter out template nodes that were replaced by runtime branches
   const replacedTemplateIds = new Set(
-    Object.values(runtimeMeta).map((m) => m.templateId).filter(Boolean),
+    Object.values(displayRuntimeMeta).map((m) => m.templateId).filter(Boolean),
   )
 
   const displayNodes = workflow.nodes
@@ -185,7 +197,7 @@ export function OutputPanel({
 
   // Add runtime branch nodes (created by splitter expansion)
   const staticNodeIds = new Set(workflow.nodes.map((n) => n.id))
-  const runtimeBranchIds = Object.keys(nodeStates)
+  const runtimeBranchIds = Object.keys(displayNodeStates)
     .filter((id) => id.includes("::") && !staticNodeIds.has(id))
 
   const templateById = new Map(workflow.nodes.map((n) => [n.id, n]))
@@ -193,7 +205,7 @@ export function OutputPanel({
   const templateLabelCounts = new Map<string, number>()
 
   for (const branchId of runtimeBranchIds) {
-    const meta = runtimeMeta[branchId]
+    const meta = displayRuntimeMeta[branchId]
     if (!meta) continue
     const templateNode = templateById.get(meta.templateId)
     const templateLabel = templateNode
@@ -204,7 +216,7 @@ export function OutputPanel({
   }
 
   const runtimeBranchNodes = runtimeBranchIds.map((id) => {
-    const meta = runtimeMeta[id]
+    const meta = displayRuntimeMeta[id]
     if (!meta) {
       return { id, label: `branch: ${id.split("::").pop()}`, type: "skill" as const, indent: true }
     }
@@ -233,7 +245,7 @@ export function OutputPanel({
     }
   }
   const workflowOrderIndex = new Map(workflow.nodes.map((node, index) => [node.id, index]))
-  const resultNodeOptions = Object.entries(nodeStates)
+  const resultNodeOptions = Object.entries(displayNodeStates)
     .filter(([, state]) => typeof state.output?.content === "string")
     .map(([id, state]) => {
       const workflowNode = templateById.get(id)
@@ -259,7 +271,7 @@ export function OutputPanel({
   // Parallel execution indicator
   const totalBranches = runtimeBranchNodes.length
   const completedBranches = runtimeBranchNodes.filter((n) => {
-    const status = nodeStates[n.id]?.status
+    const status = displayNodeStates[n.id]?.status
     return status === "completed" || status === "failed" || status === "skipped"
   }).length
   const branchesProgressPct = totalBranches > 0
@@ -269,15 +281,15 @@ export function OutputPanel({
   // Budget tracking
   const budgetCost = workflow.defaults?.budget_cost_usd ?? null
   const budgetTokens = workflow.defaults?.budget_tokens ?? null
-  const accumulatedCost = Object.values(nodeStates).reduce(
+  const accumulatedCost = Object.values(displayNodeStates).reduce(
     (sum, s) => sum + (s.metrics?.cost_usd || 0),
     0,
   )
-  const totalTokensIn = Object.values(nodeStates).reduce(
+  const totalTokensIn = Object.values(displayNodeStates).reduce(
     (sum, s) => sum + (s.metrics?.tokens_in || 0),
     0,
   )
-  const totalTokensOut = Object.values(nodeStates).reduce(
+  const totalTokensOut = Object.values(displayNodeStates).reduce(
     (sum, s) => sum + (s.metrics?.tokens_out || 0),
     0,
   )
@@ -295,13 +307,12 @@ export function OutputPanel({
           ? "Budget notice: over 70% of cost limit is used."
           : null
 
-  const reviewingRunHistory = reviewingPastRun && runStatus === "idle" && !!reviewedRun
-  const historicalResultContent = selectedPastRunDetails?.reportContent || ""
-  const hasNodeStates = Object.keys(nodeStates).length > 0
+  const historicalResultContent = reviewedRunDetails?.reportContent || ""
+  const hasNodeStates = Object.keys(displayNodeStates).length > 0
   const hasFinalResult = finalContent.trim().length > 0
   const hasStageResult = resultNodeOptions.length > 0
   const hasLiveResult = hasFinalResult || hasStageResult
-  const hasHistoricalResult = reviewingRunHistory && !!reviewedRun
+  const hasHistoricalResult = reviewingRunHistory && !!selectedReviewRun
   const hasResult = hasLiveResult || hasHistoricalResult
   const outputResultNode = resultNodeOptions.find((option) => templateById.get(option.id)?.type === "output") || null
   const selectedResultNodeId = selectedNodeId && resultNodeOptionIds.has(selectedNodeId)
@@ -310,8 +321,8 @@ export function OutputPanel({
   const selectedResultNode = selectedResultNodeId
     ? resultNodeOptions.find((option) => option.id === selectedResultNodeId) || null
     : null
-  const selectedResultOutput = selectedResultNodeId ? nodeStates[selectedResultNodeId]?.output : undefined
-  const selectedResultMeta = selectedResultNodeId ? runtimeMeta[selectedResultNodeId] : undefined
+  const selectedResultOutput = selectedResultNodeId ? displayNodeStates[selectedResultNodeId]?.output : undefined
+  const selectedResultMeta = selectedResultNodeId ? displayRuntimeMeta[selectedResultNodeId] : undefined
   const selectedResultWorkflowNode = selectedResultNodeId
     ? templateById.get(selectedResultMeta?.templateId || selectedResultNodeId) || null
     : null
@@ -328,7 +339,7 @@ export function OutputPanel({
     ? getRuntimeBranchDetail(selectedResultMeta)
     : null
   const selectedResultContent = selectedResultNodeId
-    ? (nodeStates[selectedResultNodeId]?.output?.content || "")
+    ? (displayNodeStates[selectedResultNodeId]?.output?.content || "")
     : null
   const displayedResultContent = reviewingRunHistory
     ? historicalResultContent
@@ -336,12 +347,15 @@ export function OutputPanel({
   const isDisplayedResultEmpty = displayedResultContent.trim().length === 0
   const canCopyResult = displayedResultContent.length > 0
   const showIdleState = runStatus === "idle" && !hasNodeStates && !hasLiveResult && !reviewingRunHistory
-  const selectedStageId = selectedNodeId || activeNodeId
-  const selectedStageMeta = selectedStageId ? runtimeMeta[selectedStageId] : undefined
+  const defaultReviewStageId = reviewingRunHistory
+    ? allDisplayNodes[0]?.id || null
+    : null
+  const selectedStageId = selectedNodeId || displayActiveNodeId || defaultReviewStageId
+  const selectedStageMeta = selectedStageId ? displayRuntimeMeta[selectedStageId] : undefined
   const selectedStageWorkflowNode = selectedStageId
     ? templateById.get(selectedStageMeta?.templateId || selectedStageId) || null
     : null
-  const selectedStageOutput = selectedStageId ? nodeStates[selectedStageId]?.output : undefined
+  const selectedStageOutput = selectedStageId ? displayNodeStates[selectedStageId]?.output : undefined
   const selectedStagePresentation = selectedStageWorkflowNode
     ? getRuntimeStagePresentation(selectedStageWorkflowNode, {
       fallbackId: selectedStageId || undefined,
@@ -354,9 +368,9 @@ export function OutputPanel({
   const selectedStageBranchDetail = selectedStageMeta
     ? getRuntimeBranchDetail(selectedStageMeta)
     : null
-  const selectedStageStatus = selectedStageId ? (nodeStates[selectedStageId]?.status || "pending") : null
+  const selectedStageStatus = selectedStageId ? (displayNodeStates[selectedStageId]?.status || "pending") : null
   const selectedStageHasOutput = selectedStageId
-    ? typeof nodeStates[selectedStageId]?.output?.content === "string" && nodeStates[selectedStageId]!.output!.content.trim().length > 0
+    ? typeof displayNodeStates[selectedStageId]?.output?.content === "string" && displayNodeStates[selectedStageId]!.output!.content.trim().length > 0
     : false
   const selectedStageStatusLabel = formatOutputStatusLabel(selectedStageStatus)
   const activitySummaryItems = [
@@ -364,16 +378,17 @@ export function OutputPanel({
     `${formatTokenCount(totalTokens)} tokens${budgetTokens != null ? ` / ${formatTokenCount(budgetTokens)}` : ""}`,
     totalBranches > 0 ? `${branchesProgressPct}% branches ready` : null,
   ].filter(Boolean) as string[]
-  const selectedRunLabel = reviewedRun
-    ? `${reviewedRun.workflowName || workflow.name || "Workflow"} · ${formatRunCompletedAt(reviewedRun)}`
+  const selectedRunLabel = selectedReviewRun
+    ? `${selectedReviewRun.workflowName || workflow.name || "Workflow"} · ${formatRunCompletedAt(selectedReviewRun)}`
     : null
+  const canInspectSavedRun = reviewingRunHistory && !!reviewSnapshot && !reviewedRunLoading && !reviewedRunError
 
   const openNodeDetails = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId)
-    const hasNodeOutput = typeof nodeStates[nodeId]?.output?.content === "string"
-      && nodeStates[nodeId]!.output!.content.trim().length > 0
+    const hasNodeOutput = typeof displayNodeStates[nodeId]?.output?.content === "string"
+      && displayNodeStates[nodeId]!.output!.content.trim().length > 0
     setActiveTab(hasNodeOutput ? "result" : "log")
-  }, [nodeStates, setSelectedNodeId])
+  }, [displayNodeStates, setSelectedNodeId])
 
   const handleCopyResult = useCallback(async () => {
     if (!canCopyResult) return
@@ -424,40 +439,6 @@ export function OutputPanel({
       setActiveTab("nodes")
     }
   }, [activeTab, hasResult])
-
-  useEffect(() => {
-    if (!reviewingRunHistory || !reviewedRun?.workspace) {
-      setSelectedPastRunDetails(null)
-      setSelectedPastRunError(null)
-      setSelectedPastRunLoading(false)
-      return
-    }
-    let cancelled = false
-    setSelectedPastRunLoading(true)
-    setSelectedPastRunError(null)
-    window.api.loadRunResult(reviewedRun.workspace)
-      .then((result) => {
-        if (cancelled) return
-        if (!result) {
-          setSelectedPastRunDetails(null)
-          setSelectedPastRunError("Saved run details are unavailable for this workflow.")
-          return
-        }
-        setSelectedPastRunDetails(result)
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setSelectedPastRunDetails(null)
-        setSelectedPastRunError("Could not load the selected run result.")
-        console.error("[OutputPanel] load past run failed:", error)
-      })
-      .finally(() => {
-        if (!cancelled) setSelectedPastRunLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [reviewedRun?.runId, reviewedRun?.workspace, reviewingRunHistory])
 
   useEffect(() => {
     if (activeTab === "history" && pastRuns.length === 0) {
@@ -521,7 +502,7 @@ export function OutputPanel({
             <label className="section-kicker">
               Inspect
             </label>
-            {reviewingRunHistory && reviewedRun && (
+            {reviewingRunHistory && selectedReviewRun && (
               <p className="mt-1 ui-meta-text text-muted-foreground">
                 Reviewing the latest saved run instead of opening an empty draft.
               </p>
@@ -532,7 +513,7 @@ export function OutputPanel({
               <div className="flex items-center gap-2 rounded-lg border border-hairline bg-surface-1/80 px-2 py-1 ui-elevation-inset">
                 <span className="ui-meta-label text-muted-foreground">Runs</span>
                 <Select
-                  value={reviewedRun?.runId || undefined}
+                  value={selectedReviewRun?.runId || undefined}
                   onValueChange={(nextRunId) => {
                     const nextRun = pastRuns.find((run) => run.runId === nextRunId) || null
                     setSelectedPastRun(nextRun)
@@ -582,7 +563,7 @@ export function OutputPanel({
               </TabsTrigger>
               <TabsTrigger value="history" className="px-3 py-1 text-body-sm" disabled={pastRuns.length === 0}>
                 <History size={12} className="mr-1" />
-                Runs{pastRuns.length > 0 && ` (${pastRuns.length})`}
+                History{pastRuns.length > 0 && ` (${pastRuns.length})`}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -615,9 +596,9 @@ export function OutputPanel({
                 </p>
               </div>
             </div>
-          ) : reviewingRunHistory ? (
-            <div className="rounded-xl surface-soft p-4">
-              <div className="space-y-3">
+          ) : (
+            <>
+              {reviewingRunHistory && (
                 <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -627,22 +608,31 @@ export function OutputPanel({
                       </div>
                     </div>
                     <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                      {reviewedRun?.status || "completed"}
+                      {selectedReviewRun?.status || "completed"}
                     </Badge>
                   </div>
                   <p className="mt-1 ui-meta-text text-muted-foreground">
-                    Review the saved result below, switch runs from the selector, or start a new run when you are ready.
+                    Switch runs from the selector above, or inspect this saved run stage by stage below.
                   </p>
                 </div>
-                {onStartNewRun && (
-                  <Button variant="outline" size="sm" className="h-control-sm self-start" onClick={onStartNewRun}>
-                    Start a new run
-                  </Button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
+              )}
+              {reviewingRunHistory && reviewedRunLoading && (
+                <div className="rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
+                  Loading saved run activity...
+                </div>
+              )}
+              {reviewingRunHistory && !reviewedRunLoading && reviewedRunError && (
+                <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
+                  {reviewedRunError}
+                </div>
+              )}
+              {reviewingRunHistory && !reviewedRunLoading && !reviewedRunError && !reviewSnapshot && (
+                <div className="rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
+                  This saved run still has its final result, but the full stage snapshot is unavailable.
+                </div>
+              )}
+              {(!reviewingRunHistory || canInspectSavedRun) && (
+                <>
               {selectedStagePresentation && (
                 <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -690,63 +680,69 @@ export function OutputPanel({
               )}
               <NodesTab
                 nodes={allDisplayNodes}
-                nodeStates={nodeStates}
-                activeNodeId={activeNodeId}
-                evalResults={evalResults}
-                canRerun={runStatus !== "running" && !!workspace && !!onRerunFrom}
+                nodeStates={displayNodeStates}
+                activeNodeId={displayActiveNodeId}
+                evalResults={displayEvalResults}
+                canRerun={!reviewingRunHistory && runStatus !== "running" && !!workspace && !!onRerunFrom}
                 onRerunFrom={handleRerunFrom}
                 onSelectNode={openNodeDetails}
               />
 
-              <div
-                data-open={runStatus === "done" ? "true" : "false"}
-                className="ui-collapsible"
-              >
-                <div className="ui-collapsible-inner">
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-status-success/20 bg-status-success/8 px-3 py-2 ui-meta-text text-status-success"
-                  >
-                    <span>Run complete. You can inspect the result now.</span>
-                    {hasResult && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-status-success hover:bg-status-success/10 hover:text-status-success"
-                        onClick={() => setActiveTab("result")}
+                  {!reviewingRunHistory && (
+                    <>
+                      <div
+                        data-open={runStatus === "done" ? "true" : "false"}
+                        className="ui-collapsible"
                       >
-                        View result
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div
-                data-open={runStatus === "error" ? "true" : "false"}
-                className="ui-collapsible"
-              >
-                <div className="ui-collapsible-inner">
-                  <div
-                    role="alert"
-                    className="mt-2 space-y-1 rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger"
-                  >
-                    <div className="font-medium text-status-danger">Run needs attention</div>
-                    {Object.entries(nodeStates)
-                      .filter(([, s]) => s.status === "failed" && s.error)
-                      .map(([id, s]) => {
-                        const node = allDisplayNodes.find((n) => n.id === id)
-                        return (
-                          <div key={id} className="text-status-danger/80">
-                            <span className="font-medium">{node?.label || id}:</span>{" "}
-                            {s.error}
+                        <div className="ui-collapsible-inner">
+                          <div
+                            role="status"
+                            aria-live="polite"
+                            className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-status-success/20 bg-status-success/8 px-3 py-2 ui-meta-text text-status-success"
+                          >
+                            <span>Run complete. You can inspect the result now.</span>
+                            {hasResult && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-status-success hover:bg-status-success/10 hover:text-status-success"
+                                onClick={() => setActiveTab("result")}
+                              >
+                                View result
+                              </Button>
+                            )}
                           </div>
-                        )
-                      })}
-                  </div>
-                </div>
-              </div>
+                        </div>
+                      </div>
+                      <div
+                        data-open={runStatus === "error" ? "true" : "false"}
+                        className="ui-collapsible"
+                      >
+                        <div className="ui-collapsible-inner">
+                          <div
+                            role="alert"
+                            className="mt-2 space-y-1 rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger"
+                          >
+                            <div className="font-medium text-status-danger">Run needs attention</div>
+                            {Object.entries(displayNodeStates)
+                              .filter(([, s]) => s.status === "failed" && s.error)
+                              .map(([id, s]) => {
+                                const node = allDisplayNodes.find((n) => n.id === id)
+                                return (
+                                  <div key={id} className="text-status-danger/80">
+                                    <span className="font-medium">{node?.label || id}:</span>{" "}
+                                    {s.error}
+                                  </div>
+                                )
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </>
           )}
         </TabsContent>
@@ -756,12 +752,25 @@ export function OutputPanel({
             <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
               Activity details will appear here after you start a run.
             </div>
-          ) : reviewingRunHistory ? (
-            <div className="rounded-lg surface-soft p-4 text-body-sm text-muted-foreground">
-              Saved runs keep the final result and report file. Start a new run to inspect live activity and logs again.
-            </div>
           ) : (
             <div className="space-y-2">
+              {reviewingRunHistory && reviewedRunLoading && (
+                <div className="rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
+                  Loading saved run log...
+                </div>
+              )}
+              {reviewingRunHistory && !reviewedRunLoading && reviewedRunError && (
+                <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
+                  {reviewedRunError}
+                </div>
+              )}
+              {reviewingRunHistory && !reviewedRunLoading && !reviewedRunError && !reviewSnapshot && (
+                <div className="rounded-lg surface-soft p-4 text-body-sm text-muted-foreground">
+                  This saved run does not include a stage log snapshot. You can still inspect the saved result.
+                </div>
+              )}
+              {(!reviewingRunHistory || canInspectSavedRun) && (
+                <>
               {selectedStagePresentation && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
                   <div className="min-w-0">
@@ -787,7 +796,9 @@ export function OutputPanel({
                   </div>
                 </div>
               )}
-              <LogTab selectedNodeId={selectedStageId} nodeStates={nodeStates} evalResults={evalResults} />
+              <LogTab selectedNodeId={selectedStageId} nodeStates={displayNodeStates} evalResults={displayEvalResults} />
+                </>
+              )}
             </div>
           )}
         </TabsContent>
@@ -838,7 +849,7 @@ export function OutputPanel({
                   <div className="ui-badge-row">
                     {reviewingRunHistory ? (
                       <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                        {reviewedRun?.status || "completed"}
+                        {selectedReviewRun?.status || "completed"}
                       </Badge>
                     ) : selectedResultPresentation && (
                       <Badge variant="outline" className="ui-meta-text px-2 py-0">
@@ -847,7 +858,7 @@ export function OutputPanel({
                     )}
                     <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
                       {reviewingRunHistory
-                        ? (reviewedRun ? formatRunDuration(reviewedRun) : "Saved run")
+                        ? (selectedReviewRun ? formatRunDuration(selectedReviewRun) : "Saved run")
                         : (selectedResultBranchLabel || (isDisplayedResultEmpty ? "No content" : "Ready to review"))}
                     </Badge>
                   </div>
@@ -862,24 +873,24 @@ export function OutputPanel({
                   </p>
                 )}
               </div>
-              {reviewingRunHistory && selectedPastRunLoading && (
+              {reviewingRunHistory && reviewedRunLoading && (
                 <div className="rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
                   Loading saved run output...
                 </div>
               )}
-              {reviewingRunHistory && !selectedPastRunLoading && selectedPastRunError && (
+              {reviewingRunHistory && !reviewedRunLoading && reviewedRunError && (
                 <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
-                  {selectedPastRunError}
+                  {reviewedRunError}
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                {(reviewingRunHistory ? reviewedRun?.reportPath : reportPath) && (
+                {(reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath) && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const nextReportPath = reviewingRunHistory ? reviewedRun?.reportPath : reportPath
+                      const nextReportPath = reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath
                       if (!nextReportPath) return
                       void handleOpenReport(nextReportPath)
                     }}
@@ -888,9 +899,9 @@ export function OutputPanel({
                     Open Report
                     <span
                       className={cn("text-muted-foreground truncate", PREVIEW_MAX_W)}
-                      title={reviewingRunHistory ? reviewedRun?.reportPath : reportPath}
+                      title={reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath}
                     >
-                      {(reviewingRunHistory ? reviewedRun?.reportPath : reportPath)?.split("/").pop()}
+                      {(reviewingRunHistory ? selectedReviewRun?.reportPath : reportPath)?.split("/").pop()}
                     </span>
                   </Button>
                 )}
@@ -951,9 +962,10 @@ export function OutputPanel({
             runStatus={runStatus}
             onOpenReport={handleOpenReport}
             onContinueRun={onContinueRun}
-            selectedRunId={reviewedRun?.runId || null}
+            selectedRunId={selectedReviewRun?.runId || null}
             onSelectRun={(run) => {
               setSelectedPastRun(run)
+              setActiveTab("result")
             }}
           />
         </TabsContent>

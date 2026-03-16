@@ -1,5 +1,8 @@
 import type {
+  EvalCriterion,
+  EvaluationResult,
   InputAttachment,
+  LoadedRunResult,
   NodeState,
   RunResult,
   RunStatus,
@@ -11,21 +14,6 @@ import type {
 } from "@shared/types"
 
 export type ExecutionRunStatus = "idle" | "starting" | "running" | "paused" | "cancelling" | "done" | "error"
-
-export interface EvalCriterion {
-  id: string
-  score: number
-  weight?: number
-}
-
-export interface EvaluationResult {
-  attempt: number
-  score: number
-  reason: string
-  passed: boolean
-  fix_instructions?: string
-  criteria?: EvalCriterion[]
-}
 
 export interface WorkflowExecutionState {
   runStatus: ExecutionRunStatus
@@ -73,7 +61,7 @@ export interface WorkflowExecutionTransition {
 
 export interface WorkflowInputAttachmentApi {
   readFileContent: (path: string, projectPath: string) => Promise<{ content: string; truncated?: boolean }>
-  loadRunResult: (workspace: string) => Promise<{ reportContent?: string | null } | null>
+  loadRunResult: (workspace: string) => Promise<LoadedRunResult | null>
 }
 
 export const DRAFT_WORKFLOW_EXECUTION_KEY = "__draft__"

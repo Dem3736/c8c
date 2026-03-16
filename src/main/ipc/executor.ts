@@ -21,6 +21,10 @@ import type {
   ActiveBatchRun,
   ActiveExecutionSnapshot,
   ActiveWorkflowRun,
+  EvaluationResult,
+  LoadedRunResult,
+  PersistedRunSnapshot,
+  WorkflowEvent,
   Workflow,
   WorkflowInput,
   RunResult,
@@ -162,6 +166,76 @@ async function assertRunWorkspacePath(workspace: string): Promise<string> {
 async function assertReportPath(reportPath: string): Promise<string> {
   const reportRoots = await allowedReportRoots()
   return assertWithinRoots(resolve(reportPath), reportRoots, "Report path")
+}
+
+function createEmptyRunSnapshot(): PersistedRunSnapshot {
+  return {
+    nodeStates: {},
+    runtimeNodes: [],
+    runtimeEdges: [],
+    runtimeMeta: {},
+    evalResults: {},
+  }
+}
+
+async function loadPersistedRunSnapshot(workspace: string): Promise<PersistedRunSnapshot | null> {
+  try {
+    const raw = await readFile(join(workspace, "run-state.json"), "utf-8")
+    const parsed = JSON.parse(raw) as PersistedRunSnapshot
+    return {
+      nodeStates: parsed.nodeStates || {},
+      runtimeNodes: parsed.runtimeNodes || [],
+      runtimeEdges: parsed.runtimeEdges || [],
+      runtimeMeta: parsed.runtimeMeta || {},
+      input: parsed.input,
+      evalResults: parsed.evalResults || {},
+    }
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("executor-ipc", "load_run_snapshot_failed", {
+        workspace,
+        error: errorMessage(error),
+      })
+    }
+    return null
+  }
+}
+
+async function loadPersistedEvalResults(workspace: string): Promise<Record<string, EvaluationResult[]>> {
+  try {
+    const raw = await readFile(join(workspace, "events.jsonl"), "utf-8")
+    const evalResults: Record<string, EvaluationResult[]> = {}
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      let event: WorkflowEvent
+      try {
+        event = JSON.parse(trimmed) as WorkflowEvent
+      } catch {
+        continue
+      }
+      if (event.type !== "eval-result") continue
+      const existing = evalResults[event.nodeId] || []
+      existing.push({
+        attempt: event.attempt,
+        score: event.score,
+        reason: event.reason,
+        passed: event.passed,
+        fix_instructions: event.fix_instructions,
+        criteria: event.criteria,
+      })
+      evalResults[event.nodeId] = existing
+    }
+    return evalResults
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      logWarn("executor-ipc", "load_run_eval_results_failed", {
+        workspace,
+        error: errorMessage(error),
+      })
+    }
+    return {}
+  }
 }
 
 async function scaffoldWorkflowWithTelemetry(
@@ -531,7 +605,12 @@ export function registerExecutorHandlers() {
           }
         }
       }
-      return { ...meta, reportContent }
+      const snapshot = (await loadPersistedRunSnapshot(safeWorkspace)) || createEmptyRunSnapshot()
+      if (!snapshot.evalResults || Object.keys(snapshot.evalResults).length === 0) {
+        snapshot.evalResults = await loadPersistedEvalResults(safeWorkspace)
+      }
+      const loadedResult: LoadedRunResult = { ...meta, reportContent, snapshot }
+      return loadedResult
     } catch (error) {
       logWarn("executor-ipc", "load_run_result_failed", {
         workspace,

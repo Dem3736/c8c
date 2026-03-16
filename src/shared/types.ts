@@ -445,6 +445,21 @@ export interface RuntimeMetaEntry {
 
 export type WorkflowRuntimeMeta = Record<string, RuntimeMetaEntry>
 
+export interface EvalCriterion {
+  id: string
+  score: number
+  weight?: number
+}
+
+export interface EvaluationResult {
+  attempt: number
+  score: number
+  reason: string
+  passed: boolean
+  fix_instructions?: string
+  criteria?: EvalCriterion[]
+}
+
 // ── Structured Log ──────────────────────────────────────
 
 export type LogEntry =
@@ -513,6 +528,20 @@ export interface RunResult {
   totalTokensOut?: number
   evalScores?: Record<string, number>
   durationMs?: number
+}
+
+export interface PersistedRunSnapshot {
+  nodeStates: Record<string, NodeState>
+  runtimeNodes?: WorkflowNode[]
+  runtimeEdges?: WorkflowEdge[]
+  runtimeMeta?: WorkflowRuntimeMeta
+  input?: WorkflowInput
+  evalResults?: Record<string, EvaluationResult[]>
+}
+
+export interface LoadedRunResult extends RunResult {
+  reportContent: string
+  snapshot: PersistedRunSnapshot | null
 }
 
 // ── Batch Runs ────────────────────────────────────────
