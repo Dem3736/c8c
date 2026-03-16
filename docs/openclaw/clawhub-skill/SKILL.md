@@ -1,11 +1,11 @@
-# chain-runner OpenClaw
+# c8c OpenClaw
 
 Use this skill when you want OpenClaw to execute a deterministic `chain-runner`
 workflow instead of improvising the entire task in a single agent session.
 
 ## When to use it
 
-Use `chain-runner-openclaw` when:
+Use the packaged CLI compatibility path when:
 
 - the task already exists as a workflow file
 - the task needs deterministic branching, evaluators, or retry behavior
@@ -19,22 +19,22 @@ Do not use it when:
 
 ## Setup checklist
 
-1. Install the `chain-runner-openclaw` binary.
-2. Set the OpenClaw Lobster plugin `lobsterPath` to that binary.
+1. Install `@c8c-ai/cli`.
+2. Set the OpenClaw Lobster plugin `lobsterPath` to `/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster`.
 3. Keep workflow files in a stable project path.
 4. Use absolute paths when calling the binary from OpenClaw.
 
 ## Invocation pattern
 
 ```bash
-chain-runner-openclaw run --mode tool /abs/path/workflow.yaml --args-json '{"input":"...","inputType":"text","projectPath":"/abs/path/project","provider":"claude"}'
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster run --mode tool /abs/path/workflow.yaml --args-json '{"input":"...","inputType":"text","projectPath":"/abs/path/project","provider":"claude"}'
 ```
 
 If the result returns `needs_approval`, resume with:
 
 ```bash
-chain-runner-openclaw resume --token '<resume-token>' --approve yes
-chain-runner-openclaw resume --token '<resume-token>' --approve no
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster resume --token '<resume-token>' --approve yes
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster resume --token '<resume-token>' --approve no
 ```
 
 ## Local operator fallback

@@ -196,7 +196,7 @@ Workflows are directed acyclic graphs defined in YAML. The runtime expands the g
 ## Roadmap
 
 - ⚪ Template marketplace — share and discover pipelines
-- ⚪ CLI runner — `c8c run pipeline.yaml` without the desktop app
+- ⚪ CLI runner — `c8c-workflow run pipeline.yaml` without the desktop app
 - ⚪ Scheduled runs — cron-based pipeline execution
 - ⚪ Webhooks — trigger pipelines from external events
 - ⚪ Plugin system — custom node types

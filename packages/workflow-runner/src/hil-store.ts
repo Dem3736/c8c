@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { mkdir, readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
-import { writeFileAtomic } from "../../../src/main/lib/atomic-write.js"
+import { writeFileAtomic } from "./lib/atomic-write.js"
 
 export type WorkflowHilTaskKind = "approval" | "form"
 export type WorkflowHilTaskStatus = "open" | "answered" | "rejected" | "timed_out" | "consumed"

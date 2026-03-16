@@ -20,6 +20,10 @@
     "./provider-metadata": {
       "types": "./dist/provider-metadata.d.ts",
       "import": "./dist/provider-metadata.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "scripts": {

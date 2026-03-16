@@ -10,9 +10,9 @@ const repoRoot = resolve(packageRoot, "../..")
 const distDir = resolve(packageRoot, "dist")
 const tscCliPath = resolve(repoRoot, "node_modules/typescript/lib/tsc.js")
 
-async function writeDeclarationWrapper(entrypoint) {
+async function writeDeclarationWrapper(entrypoint, sourcePath = entrypoint) {
   const wrapperPath = resolve(distDir, `${entrypoint}.d.ts`)
-  const targetPath = `./types/packages/workflow-runner/src/${entrypoint}.js`
+  const targetPath = `./types/packages/workflow-runner/src/${sourcePath}.js`
   await mkdir(dirname(wrapperPath), { recursive: true })
   await writeFile(wrapperPath, `export * from "${targetPath}"\n`)
 }
@@ -24,6 +24,7 @@ await build({
   bundle: true,
   entryPoints: {
     index: "./src/index.ts",
+    node: "./src/node/index.ts",
     schema: "./src/schema.ts",
     "provider-metadata": "./src/provider-metadata.ts",
   },
@@ -42,6 +43,7 @@ await execFile(process.execPath, [tscCliPath, "-p", resolve(packageRoot, "tsconf
 
 await Promise.all([
   writeDeclarationWrapper("index"),
+  writeDeclarationWrapper("node", "node/index"),
   writeDeclarationWrapper("schema"),
   writeDeclarationWrapper("provider-metadata"),
 ])

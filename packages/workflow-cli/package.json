@@ -1,16 +1,38 @@
 {
-  "name": "@c8c/workflow-cli",
+  "name": "@c8c-ai/cli",
   "version": "0.1.0",
-  "description": "CLI for running c8c workflows on top of @c8c/workflow-runner",
+  "description": "Headless CLI for running c8c workflows",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bluzir/c8c.git"
+  },
+  "homepage": "https://github.com/bluzir/c8c",
+  "bugs": {
+    "url": "https://github.com/bluzir/c8c/issues"
+  },
+  "keywords": [
+    "c8c",
+    "cli",
+    "workflow",
+    "automation",
+    "codex",
+    "claude"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "bin": {
-    "c8c-workflow": "./dist/index.js",
-    "chain-runner-openclaw": "./dist/index.js"
+    "c8c-workflow": "./dist/index.js"
   },
   "scripts": {
     "build": "node ./scripts/build.mjs",
@@ -19,7 +41,6 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
     "@anthropic-ai/claude-agent-sdk": "^0.2.45",
-    "@c8c/workflow-runner": "workspace:*",
     "@claude-tools/runner": "workspace:*",
     "@mcpc-tech/acp-ai-provider": "^0.2.8",
     "@zed-industries/codex-acp": "^0.10.0",
@@ -28,6 +49,7 @@
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@c8c/workflow-runner": "workspace:*",
     "@types/node": "^20.17.50",
     "typescript": "^5.4.5"
   }

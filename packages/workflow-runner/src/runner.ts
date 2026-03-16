@@ -3,40 +3,40 @@ import { access, appendFile, mkdtemp, mkdir, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { promisify } from "node:util"
-import { drainExecutionHandle } from "../../../src/main/lib/agent-execution.js"
-import { withExecutionSlot } from "../../../src/main/lib/execution-pool.js"
-import { buildEvaluatorPrompt, parseEvaluatorOutput } from "../../../src/main/lib/evaluator.js"
+import { drainExecutionHandle } from "./lib/agent-execution.js"
+import { withExecutionSlot } from "./lib/execution-pool.js"
+import { buildEvaluatorPrompt, parseEvaluatorOutput } from "./lib/evaluator.js"
 import {
   createInitialNodeStates,
   findReadyNodes,
   getDownstreamNodeIds,
   getOutgoingEdges,
   isRunComplete,
-} from "../../../src/main/lib/graph-engine.js"
-import { LogParser } from "../../../src/main/lib/log-parser.js"
-import { buildMergerPrompt, mergeResults } from "../../../src/main/lib/node-executors/merger.js"
+} from "./lib/graph-engine.js"
+import { LogParser } from "./lib/log-parser.js"
+import { buildMergerPrompt, mergeResults } from "./lib/node-executors/merger.js"
 import {
   buildSplitterPrompt,
   buildSplitterRecoveryPrompt,
   heuristicSplitInput,
   parseSplitterOutput,
   shouldRetrySplitter,
-} from "../../../src/main/lib/node-executors/splitter.js"
-import { buildNodeMeta, classifyError, collectMetrics, estimateCost } from "../../../src/main/lib/observability.js"
+} from "./lib/node-executors/splitter.js"
+import { buildNodeMeta, classifyError, collectMetrics, estimateCost } from "./lib/observability.js"
 import {
   collapseSplitterExpansion,
   expandSplitter,
   type RuntimeWorkflow,
   type Subtask,
-} from "../../../src/main/lib/runtime-graph.js"
+} from "./lib/runtime-graph.js"
 import {
   finalizeRunPidManifest,
   initRunPidManifest,
   recordRunPidExit,
   recordRunPidStart,
   type RunPidManifestMode,
-} from "../../../src/main/lib/run-pid-manifest.js"
-import { writeFileAtomic } from "../../../src/main/lib/atomic-write.js"
+} from "./lib/run-pid-manifest.js"
+import { writeFileAtomic } from "./lib/atomic-write.js"
 import {
   approvalTaskId,
   getWorkflowHilTask,

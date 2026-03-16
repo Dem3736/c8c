@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import YAML from "yaml"
 import {
   approvalTaskId,
-  createWorkflowRunner,
   getWorkflowHilTask,
   getWorkflowHilTaskByRef,
   listWorkflowHilTasks,
@@ -23,13 +22,54 @@ import {
   type WorkflowRunHandle,
   type WorkflowRunSummary,
 } from "@c8c/workflow-runner"
-import { prepareWorkspaceMcpConfig } from "../../../src/main/lib/mcp-config.js"
-import { ClaudeAgentProvider } from "../../../src/main/lib/providers/claude-agent-provider.js"
-import { CodexAgentProvider } from "../../../src/main/lib/providers/codex-agent-provider.js"
-import { scanAllSkills } from "../../../src/main/lib/skill-scanner.js"
+import {
+  execClaude,
+  findClaudeExecutable,
+  getClaudeCodeSubscriptionStatus,
+  execCodex,
+  findCodexExecutable,
+  getCodexApiKey,
+  createNodeWorkflowRunner,
+  validateWorkflowExtended,
+} from "@c8c/workflow-runner/node"
 
-type Command = "run" | "resume" | "respond" | "rerun-from" | "inspect" | "events" | "hil" | "help"
+type Command = "run" | "resume" | "respond" | "rerun-from" | "inspect" | "events" | "hil" | "validate" | "doctor" | "help" | "version"
 type ApprovalRequestedEvent = Extract<WorkflowEvent, { type: "approval-requested" }>
+type PersistedRunManifest = {
+  workflowPath?: string
+}
+
+interface ValidationOutput {
+  workflowPath: string
+  projectPath: string
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+  scannedSkills: number | null
+}
+
+interface DoctorProviderResult {
+  provider: ProviderId
+  ready: boolean
+  executablePath: string | null
+  version: string | null
+  available: boolean
+  authenticated: boolean
+  authState: "authenticated" | "unauthenticated" | "unknown"
+  authMethod: string | null
+  blockingError: string | null
+  note: string | null
+}
+
+interface DoctorOutput {
+  ok: boolean
+  node: {
+    version: string
+    supported: boolean
+    requiredMajor: number
+  }
+  providers: DoctorProviderResult[]
+}
 
 interface CliFlags {
   provider?: ProviderId
@@ -104,44 +144,19 @@ type OpenClawEnvelope =
 
 const OPENCLAW_CONTEXT_FILE = "openclaw-compat.json"
 
-let claudeAgentProvider: ClaudeAgentProvider | null = null
-let codexAgentProvider: CodexAgentProvider | null = null
-
-function resolveAgentProvider(providerId: ProviderId) {
-  if (providerId === "claude") {
-    claudeAgentProvider ||= new ClaudeAgentProvider()
-    return claudeAgentProvider
-  }
-  if (providerId === "codex") {
-    codexAgentProvider ||= new CodexAgentProvider()
-    return codexAgentProvider
-  }
-  throw new Error(`Unsupported provider: ${providerId}`)
-}
-
 function createRunner(providerOverride?: ProviderId) {
-  return createWorkflowRunner({
-    startProviderTask(providerId, options) {
-      return resolveAgentProvider(providerId).executeTask(options)
-    },
-    resolveWorkflowProviderId(workflow) {
-      return Promise.resolve(providerOverride || workflow.defaults?.provider || "claude")
-    },
-    resolveNodeProviderId(_node, workflow) {
-      return Promise.resolve(providerOverride || workflow.defaults?.provider || "claude")
-    },
-    prepareWorkspaceMcpConfig,
-    scanSkills: scanAllSkills,
-  })
+  return createNodeWorkflowRunner(providerOverride)
 }
 
 function printUsage(): void {
   console.log(`Usage:
   c8c-workflow run <workflow.chain> [--input TEXT | --input-file PATH] [--input-type text|url|directory] [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow run --mode tool <workflow.(json|yaml|yml)> [--args-json '{"input":"...","inputType":"text","projectPath":"/abs/path","provider":"claude"}']
+  c8c-workflow resume <workspace> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow resume <workflow.chain> <workspace> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow resume --token <resumeToken> --approve yes|no
   c8c-workflow respond --task <taskToken> --data-json '{"field":"value"}' [--comment TEXT] [--idempotency-key KEY]
+  c8c-workflow rerun-from <workspace> <nodeId> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow rerun-from <workflow.chain> <workspace> <nodeId> [--project PATH] [--provider claude|codex] [--json] [--jsonl] [--auto-approve]
   c8c-workflow inspect <workspace>
   c8c-workflow events <workspace>
@@ -149,7 +164,10 @@ function printUsage(): void {
   c8c-workflow hil show --task <taskToken> [--json]
   c8c-workflow hil respond --task <taskToken> --data-json '{"approved":true}' [--comment TEXT] [--idempotency-key KEY] [--json]
   c8c-workflow hil approve --task <taskToken> [--comment TEXT] [--edited-content TEXT] [--idempotency-key KEY] [--json]
-  c8c-workflow hil reject --task <taskToken> [--comment TEXT] [--idempotency-key KEY] [--json]`)
+  c8c-workflow hil reject --task <taskToken> [--comment TEXT] [--idempotency-key KEY] [--json]
+  c8c-workflow validate <workflow.chain> [--project PATH] [--json]
+  c8c-workflow doctor [--provider claude|codex] [--json]
+  c8c-workflow --version`)
 }
 
 function parseFlags(args: string[]): { positional: string[]; flags: CliFlags } {
@@ -245,6 +263,25 @@ function parseFlags(args: string[]): { positional: string[]; flags: CliFlags } {
 
 function normalizeJsonError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+async function readPackageVersion(): Promise<string> {
+  try {
+    const raw = await readFile(new URL("../package.json", import.meta.url), "utf-8")
+    const parsed = JSON.parse(raw) as { version?: unknown }
+    return typeof parsed.version === "string" ? parsed.version : "0.0.0"
+  } catch {
+    return "0.0.0"
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function loadWorkflow(filePath: string): Promise<Workflow> {
@@ -472,6 +509,231 @@ async function readJsonMaybe<T>(filePath: string): Promise<T | null> {
   } catch {
     return null
   }
+}
+
+async function loadWorkflowFromWorkspace(
+  workspacePath: string,
+): Promise<{ workflow: Workflow; workflowPath?: string }> {
+  const workspace = resolve(workspacePath)
+  const manifest = await readJsonMaybe<PersistedRunManifest>(join(workspace, "manifest.json"))
+  if (typeof manifest?.workflowPath === "string" && manifest.workflowPath.trim()) {
+    const workflowPath = resolve(manifest.workflowPath)
+    return {
+      workflow: await loadWorkflow(workflowPath),
+      workflowPath,
+    }
+  }
+
+  const context = await readJsonMaybe<OpenClawCompatibilityContext>(openClawContextPath(workspace))
+  if (context?.workflow && typeof context.workflowPath === "string" && context.workflowPath.trim()) {
+    return {
+      workflow: context.workflow,
+      workflowPath: resolve(context.workflowPath),
+    }
+  }
+
+  throw new Error(
+    `Workspace ${workspace} does not contain workflow metadata. Use the legacy form with an explicit workflow path.`,
+  )
+}
+
+function printValidationResult(result: ValidationOutput): void {
+  process.stdout.write(`Workflow: ${result.workflowPath}\n`)
+  process.stdout.write(`Project: ${result.projectPath}\n`)
+  process.stdout.write(`Status: ${result.valid ? "valid" : "invalid"}\n`)
+  if (result.scannedSkills !== null) {
+    process.stdout.write(`Scanned skills: ${result.scannedSkills}\n`)
+  }
+
+  if (result.errors.length > 0) {
+    process.stdout.write("\nErrors:\n")
+    for (const error of result.errors) {
+      process.stdout.write(`- ${error}\n`)
+    }
+  }
+
+  if (result.warnings.length > 0) {
+    process.stdout.write("\nWarnings:\n")
+    for (const warning of result.warnings) {
+      process.stdout.write(`- ${warning}\n`)
+    }
+  }
+
+  if (result.errors.length === 0 && result.warnings.length === 0) {
+    process.stdout.write("\nNo issues found.\n")
+  }
+}
+
+function printDoctorResult(result: DoctorOutput): void {
+  process.stdout.write(`Node.js ${result.node.version} (${result.node.supported ? "supported" : "unsupported"})\n`)
+  for (const provider of result.providers) {
+    process.stdout.write(`\n${provider.provider.toUpperCase()}\n`)
+    process.stdout.write(`  ready: ${provider.ready ? "yes" : "no"}\n`)
+    process.stdout.write(`  available: ${provider.available ? "yes" : "no"}\n`)
+    process.stdout.write(`  authenticated: ${provider.authenticated ? "yes" : "no"}\n`)
+    if (provider.version) {
+      process.stdout.write(`  version: ${provider.version}\n`)
+    }
+    if (provider.executablePath) {
+      process.stdout.write(`  executable: ${provider.executablePath}\n`)
+    }
+    if (provider.authMethod) {
+      process.stdout.write(`  auth method: ${provider.authMethod}\n`)
+    }
+    if (provider.blockingError) {
+      process.stdout.write(`  issue: ${provider.blockingError}\n`)
+    }
+    if (provider.note) {
+      process.stdout.write(`  note: ${provider.note}\n`)
+    }
+  }
+}
+
+async function runValidateCommand(args: string[], flags: CliFlags): Promise<number> {
+  const workflowPathInput = args[0]
+  if (!workflowPathInput) {
+    throw new Error("validate requires <workflow.chain>")
+  }
+
+  const workflowPath = resolve(workflowPathInput)
+  const workflow = await loadWorkflow(workflowPath)
+  const projectPath = resolve(flags.project || dirname(workflowPath))
+  const result = validateWorkflowExtended(workflow)
+  const payload: ValidationOutput = {
+    workflowPath,
+    projectPath,
+    valid: result.valid,
+    errors: result.errors,
+    warnings: result.warnings,
+    scannedSkills: null,
+  }
+
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+  } else {
+    printValidationResult(payload)
+  }
+
+  return payload.valid ? 0 : 5
+}
+
+function requiredNodeMajor(): number {
+  return 20
+}
+
+async function runDoctorCommand(flags: CliFlags): Promise<number> {
+  const providers: ProviderId[] = flags.provider ? [flags.provider] : ["claude", "codex"]
+  const providerResults = await Promise.all(providers.map(async (provider): Promise<DoctorProviderResult> => {
+    if (provider === "claude") {
+      const executablePath = findClaudeExecutable()
+      let version: string | null = null
+      let available = false
+
+      try {
+        const result = await execClaude(["--version"], { timeout: 5_000 })
+        version = [result.stdout, result.stderr]
+          .join("\n")
+          .split("\n")
+          .map((line) => line.trim())
+          .find(Boolean) || null
+        available = true
+      } catch {
+        available = false
+      }
+
+      const authStatus = available
+        ? await getClaudeCodeSubscriptionStatus()
+        : {
+            loggedIn: false,
+            authMethod: null,
+            error: "Claude CLI is not installed or not available in PATH.",
+          }
+
+      return {
+        provider,
+        executablePath,
+        version,
+        available,
+        authenticated: Boolean(authStatus.loggedIn),
+        authState: authStatus.loggedIn ? "authenticated" : "unauthenticated",
+        authMethod: authStatus.loggedIn ? (authStatus.authMethod || null) : null,
+        ready: available && Boolean(authStatus.loggedIn),
+        blockingError: !available
+          ? "Claude CLI is not installed or not available in PATH."
+          : authStatus.loggedIn
+            ? null
+            : "Claude CLI is not authenticated. Run `claude login` in your terminal.",
+        note: authStatus.error || null,
+      }
+    }
+
+    const executablePath = findCodexExecutable()
+    let version: string | null = null
+    let available = false
+
+    try {
+      const result = await execCodex(["--version"], { timeout: 5_000 })
+      version = [result.stdout, result.stderr]
+        .join("\n")
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line && !line.startsWith("WARNING:")) || null
+      available = true
+    } catch {
+      available = false
+    }
+
+    const authFileExists = await fileExists(join(resolveCliHomeDir(), ".codex", "auth.json"))
+    const apiKeyConfigured = Boolean(await getCodexApiKey())
+      || Boolean(process.env.CODEX_API_KEY)
+      || Boolean(process.env.OPENAI_API_KEY)
+    const authenticated = apiKeyConfigured || authFileExists
+
+    return {
+      provider,
+      executablePath,
+      version,
+      available,
+      authenticated,
+      authState: authenticated ? "authenticated" : "unauthenticated",
+      authMethod: apiKeyConfigured ? "api_key" : (authFileExists ? "local_session" : null),
+      ready: available && authenticated,
+      blockingError: !available
+        ? "Codex CLI is not installed or not executable."
+        : authenticated
+          ? null
+          : "Codex CLI does not have a detected local login or API key.",
+      note: authenticated
+        ? (apiKeyConfigured
+            ? "Detected API key configuration."
+            : "Detected local Codex auth state.")
+        : "Set CODEX_API_KEY, OPENAI_API_KEY, or run `codex login` in a real terminal.",
+    }
+  }))
+
+  const [nodeMajorRaw] = process.versions.node.split(".")
+  const nodeMajor = Number.parseInt(nodeMajorRaw || "0", 10)
+  const node = {
+    version: process.versions.node,
+    supported: Number.isFinite(nodeMajor) && nodeMajor >= requiredNodeMajor(),
+    requiredMajor: requiredNodeMajor(),
+  }
+  const providersOk = flags.provider
+    ? providerResults.every((provider) => provider.ready)
+    : providerResults.some((provider) => provider.ready)
+  const output: DoctorOutput = {
+    ok: node.supported && providersOk,
+    node,
+    providers: providerResults,
+  }
+
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`)
+  } else {
+    printDoctorResult(output)
+  }
+
+  return output.ok ? 0 : 5
 }
 
 function openClawContextPath(workspace: string): string {
@@ -962,6 +1224,19 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
     return runHilCommand(positional, flags)
   }
 
+  if (command === "validate") {
+    return runValidateCommand(positional, flags)
+  }
+
+  if (command === "doctor") {
+    return runDoctorCommand(flags)
+  }
+
+  if (command === "version") {
+    process.stdout.write(`${await readPackageVersion()}\n`)
+    return 0
+  }
+
   const runner = createRunner(flags.provider)
 
   if (command === "inspect") {
@@ -1005,15 +1280,20 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
   }
 
   if (command === "resume") {
-    const workflowPath = positional[0]
-    const workspace = positional[1]
-    if (!workflowPath || !workspace) throw new Error("resume requires <workflow.chain> <workspace>")
-    const workflow = await loadWorkflow(workflowPath)
+    const workspace = positional.length >= 2 ? positional[1] : positional[0]
+    const explicitWorkflowPath = positional.length >= 2 ? positional[0] : undefined
+    if (!workspace) throw new Error("resume requires <workspace>")
+    const workflowContext = explicitWorkflowPath
+      ? {
+          workflow: await loadWorkflow(explicitWorkflowPath),
+          workflowPath: resolve(explicitWorkflowPath),
+        }
+      : await loadWorkflowFromWorkspace(workspace)
     const handle = await runner.resumeRun({
-      workflow,
+      workflow: workflowContext.workflow,
       workspace: resolve(workspace),
       projectPath: flags.project ? resolve(flags.project) : undefined,
-      workflowPath: resolve(workflowPath),
+      workflowPath: workflowContext.workflowPath,
     })
     const streamPromise = streamEvents(runner, handle, flags)
     const summary = await handle.result
@@ -1025,19 +1305,24 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
   }
 
   if (command === "rerun-from") {
-    const workflowPath = positional[0]
-    const workspace = positional[1]
-    const nodeId = positional[2]
-    if (!workflowPath || !workspace || !nodeId) {
-      throw new Error("rerun-from requires <workflow.chain> <workspace> <nodeId>")
+    const workspace = positional.length >= 3 ? positional[1] : positional[0]
+    const nodeId = positional.length >= 3 ? positional[2] : positional[1]
+    const explicitWorkflowPath = positional.length >= 3 ? positional[0] : undefined
+    if (!workspace || !nodeId) {
+      throw new Error("rerun-from requires <workspace> <nodeId>")
     }
-    const workflow = await loadWorkflow(workflowPath)
+    const workflowContext = explicitWorkflowPath
+      ? {
+          workflow: await loadWorkflow(explicitWorkflowPath),
+          workflowPath: resolve(explicitWorkflowPath),
+        }
+      : await loadWorkflowFromWorkspace(workspace)
     const handle = await runner.rerunFromNode({
-      workflow,
+      workflow: workflowContext.workflow,
       workspace: resolve(workspace),
       fromNodeId: nodeId,
       projectPath: flags.project ? resolve(flags.project) : undefined,
-      workflowPath: resolve(workflowPath),
+      workflowPath: workflowContext.workflowPath,
     })
     const streamPromise = streamEvents(runner, handle, flags)
     const summary = await handle.result
@@ -1053,7 +1338,10 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
 }
 
 export async function main(): Promise<void> {
-  const [command = "help", ...args] = process.argv.slice(2)
+  const [rawCommand = "help", ...args] = process.argv.slice(2)
+  const command = rawCommand === "--version" || rawCommand === "-v"
+    ? "version"
+    : rawCommand
   const { flags } = parseFlags(args)
   const toolMode = (
     command === "run"
@@ -1063,6 +1351,9 @@ export async function main(): Promise<void> {
     || command === "inspect"
     || command === "events"
     || command === "hil"
+    || command === "validate"
+    || command === "doctor"
+    || command === "version"
     || command === "help"
   ) ? isOpenClawToolMode(command, flags) : false
 
@@ -1074,6 +1365,9 @@ export async function main(): Promise<void> {
     && command !== "inspect"
     && command !== "events"
     && command !== "hil"
+    && command !== "validate"
+    && command !== "doctor"
+    && command !== "version"
     && command !== "help"
   ) {
     printUsage()

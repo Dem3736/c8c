@@ -20,8 +20,8 @@
       "@shared/*": ["./src/shared/*"],
       "@c8c/workflow-runner": ["./packages/workflow-runner/src/index.ts"],
       "@c8c/workflow-runner/*": ["./packages/workflow-runner/src/*"],
-      "@c8c/workflow-cli": ["./packages/workflow-cli/src/index.ts"],
-      "@c8c/workflow-cli/*": ["./packages/workflow-cli/src/*"]
+      "@c8c-ai/cli": ["./packages/workflow-cli/src/index.ts"],
+      "@c8c-ai/cli/*": ["./packages/workflow-cli/src/*"]
     }
   },
   "include": ["src/**/*", "packages/workflow-runner/src/**/*", "packages/workflow-cli/src/**/*"],

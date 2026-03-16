@@ -41,10 +41,11 @@ export default defineConfig(({ mode }) => {
         __POSTHOG_KEY__: JSON.stringify(posthogKey),
       },
       resolve: {
-        alias: {
-          "@shared": resolve(__dirname, "src/shared"),
-          "@c8c/workflow-runner": resolve(__dirname, "packages/workflow-runner/src/index.ts"),
-        },
+        alias: [
+          { find: "@c8c/workflow-runner/node", replacement: resolve(__dirname, "packages/workflow-runner/src/node/index.ts") },
+          { find: "@c8c/workflow-runner", replacement: resolve(__dirname, "packages/workflow-runner/src/index.ts") },
+          { find: "@shared", replacement: resolve(__dirname, "src/shared") },
+        ],
       },
       plugins: [
         externalizeDepsPlugin({
@@ -90,12 +91,13 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       resolve: {
-        alias: {
-          "@": resolve(__dirname, "src/renderer"),
-          "@shared": resolve(__dirname, "src/shared"),
-          "@c8c/workflow-runner": resolve(__dirname, "packages/workflow-runner/src/index.ts"),
-          "@c8c/workflow-runner/schema": resolve(__dirname, "packages/workflow-runner/src/schema.ts"),
-        },
+        alias: [
+          { find: "@c8c/workflow-runner/node", replacement: resolve(__dirname, "packages/workflow-runner/src/node/index.ts") },
+          { find: "@c8c/workflow-runner/schema", replacement: resolve(__dirname, "packages/workflow-runner/src/schema.ts") },
+          { find: "@c8c/workflow-runner", replacement: resolve(__dirname, "packages/workflow-runner/src/index.ts") },
+          { find: "@shared", replacement: resolve(__dirname, "src/shared") },
+          { find: "@", replacement: resolve(__dirname, "src/renderer") },
+        ],
       },
       build: {
         rollupOptions: {

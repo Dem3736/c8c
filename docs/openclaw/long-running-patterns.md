@@ -10,7 +10,7 @@ Use this when the run must start at an exact time.
 Recommended shape:
 
 ```bash
-chain-runner-openclaw run --mode tool /abs/path/workflow.yaml --args-json '{"projectPath":"/abs/path/project","provider":"claude"}'
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster run --mode tool /abs/path/workflow.yaml --args-json '{"projectPath":"/abs/path/project","provider":"claude"}'
 ```
 
 Use `cron` for:
@@ -31,7 +31,7 @@ Pattern:
 
 1. OpenClaw heartbeat gathers current context.
 2. The heartbeat decides whether a deterministic workflow should run.
-3. If yes, it invokes `chain-runner-openclaw run --mode tool ...`.
+3. If yes, it invokes the packaged `dist/lobster` wrapper in `@c8c-ai/cli`.
 
 Use `heartbeat` for:
 
@@ -52,7 +52,7 @@ main interaction.
 Pattern:
 
 1. OpenClaw spawns a background session.
-2. The spawned session invokes `chain-runner-openclaw`.
+2. The spawned session invokes the packaged `dist/lobster` wrapper.
 3. OpenClaw announces the result back into chat or inbox.
 
 Use `sessions_spawn` for:

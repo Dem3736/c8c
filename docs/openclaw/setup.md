@@ -8,19 +8,19 @@ OpenClaw as the trigger/orchestration layer.
 OpenClaw's current lobster plugin validates that `lobsterPath` ends with a file
 named `lobster` (or `lobster.cmd` on Windows). For that reason this package
 ships a wrapper executable at `dist/lobster` that forwards into the same
-`chain-runner` CLI entrypoint.
+`c8c-workflow` CLI entrypoint.
 
 Example absolute path:
 
 ```bash
-/abs/path/to/node_modules/@c8c/workflow-cli/dist/lobster
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster
 ```
 
 Minimal plugin config example:
 
 ```json
 {
-  "lobsterPath": "/abs/path/to/node_modules/@c8c/workflow-cli/dist/lobster"
+  "lobsterPath": "/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster"
 }
 ```
 
@@ -29,7 +29,7 @@ Minimal plugin config example:
 OpenClaw calls the binary with:
 
 ```bash
-/abs/path/to/node_modules/@c8c/workflow-cli/dist/lobster run --mode tool /abs/path/workflow.yaml --args-json '{"input":"draft copy","inputType":"text","projectPath":"/abs/path/project","provider":"claude"}'
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster run --mode tool /abs/path/workflow.yaml --args-json '{"input":"draft copy","inputType":"text","projectPath":"/abs/path/project","provider":"claude"}'
 ```
 
 If a checkpoint needs approval, stdout returns `status: "needs_approval"` plus a
@@ -38,8 +38,8 @@ resume token.
 Resume looks like:
 
 ```bash
-/abs/path/to/node_modules/@c8c/workflow-cli/dist/lobster resume --token '<resume-token>' --approve yes
-/abs/path/to/node_modules/@c8c/workflow-cli/dist/lobster resume --token '<resume-token>' --approve no
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster resume --token '<resume-token>' --approve yes
+/abs/path/to/node_modules/@c8c-ai/cli/dist/lobster resume --token '<resume-token>' --approve no
 ```
 
 ## Native HIL path
