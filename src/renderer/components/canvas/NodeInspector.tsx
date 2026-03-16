@@ -746,11 +746,9 @@ function HumanFields({
     onChange({
       ...config,
       staticRequest: {
-        version: 1,
-        title: request.title || "",
-        fields: request.fields || [],
         ...request,
         ...patch,
+        version: 1,
         kind: config.mode,
       },
     })
@@ -836,10 +834,10 @@ function HumanFields({
               value={firstField?.label || ""}
               onChange={(e) => updateRequest({
                 fields: [{
+                  ...firstField,
                   id: firstField?.id || "response",
                   type: firstField?.type || "textarea",
                   required: firstField?.required ?? true,
-                  ...firstField,
                   label: e.target.value,
                 }],
               })}
@@ -857,11 +855,11 @@ function HumanFields({
               value={firstField?.placeholder || ""}
               onChange={(e) => updateRequest({
                 fields: [{
+                  ...firstField,
                   id: firstField?.id || "response",
                   label: firstField?.label || "Response",
                   type: firstField?.type || "textarea",
                   required: firstField?.required ?? true,
-                  ...firstField,
                   placeholder: e.target.value,
                 }],
               })}

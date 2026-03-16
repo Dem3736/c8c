@@ -721,11 +721,9 @@ export function HumanNodeEditor({ nodeId, config, onConfigChange }: {
     onConfigChange({
       ...config,
       staticRequest: {
-        version: 1,
-        title: request.title || "",
-        fields: request.fields || [],
         ...request,
         ...patch,
+        version: 1,
         kind: config.mode,
       },
     })
@@ -811,10 +809,10 @@ export function HumanNodeEditor({ nodeId, config, onConfigChange }: {
               value={firstField?.label || ""}
               onChange={(event) => updateRequest({
                 fields: [{
+                  ...firstField,
                   id: firstField?.id || "response",
                   type: firstField?.type || "textarea",
                   required: firstField?.required ?? true,
-                  ...firstField,
                   label: event.target.value,
                 }],
               })}
@@ -832,11 +830,11 @@ export function HumanNodeEditor({ nodeId, config, onConfigChange }: {
               value={firstField?.placeholder || ""}
               onChange={(event) => updateRequest({
                 fields: [{
+                  ...firstField,
                   id: firstField?.id || "response",
                   label: firstField?.label || "Response",
                   type: firstField?.type || "textarea",
                   required: firstField?.required ?? true,
-                  ...firstField,
                   placeholder: event.target.value,
                 }],
               })}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { EvaluationResult } from "@/lib/store"
+import type { EvalCriterion, EvaluationResult } from "@/lib/store"
 import type { LogEntry, NodeState } from "@shared/types"
 import { cn } from "@/lib/cn"
 import { mergeLogEntriesForDisplay } from "@/lib/log-display"
@@ -656,7 +656,7 @@ export function LogTab({
                 </div>
                 {er.criteria && er.criteria.length > 0 && (
                   <div className="px-2 space-y-1">
-                    {er.criteria.map((c) => (
+                    {er.criteria.map((c: EvalCriterion) => (
                       <div key={c.id} className="flex items-center gap-2 ui-meta-text">
                         <span className="w-20 truncate text-muted-foreground">{c.id}</span>
                         <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">

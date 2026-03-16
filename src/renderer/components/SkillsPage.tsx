@@ -68,7 +68,7 @@ const FAVORITE_LIBRARY_IDS = [
   "composio-skills",
 ] as const
 
-const FAVORITE_LIBRARY_ORDER = new Map(
+const FAVORITE_LIBRARY_ORDER = new Map<string, number>(
   FAVORITE_LIBRARY_IDS.map((id, index) => [id, index]),
 )
 
