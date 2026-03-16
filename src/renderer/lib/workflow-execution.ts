@@ -143,7 +143,10 @@ export function createExecutionStartState(
   }
 }
 
-export function createCancelledExecutionState(previousState: WorkflowExecutionState): WorkflowExecutionState {
+export function createCancelledExecutionState(
+  previousState: WorkflowExecutionState,
+  completedAt = Date.now(),
+): WorkflowExecutionState {
   const nodeStates = { ...previousState.nodeStates }
   for (const [nodeId, nodeState] of Object.entries(nodeStates)) {
     if (nodeState.status === "running" || nodeState.status === "queued" || nodeState.status === "waiting_approval") {
@@ -156,7 +159,9 @@ export function createCancelledExecutionState(previousState: WorkflowExecutionSt
   return {
     ...previousState,
     runStatus: "done",
+    runOutcome: "cancelled",
     runStartedAt: null,
+    completedAt,
     runId: null,
     runWorkflowPath: null,
     activeNodeId: null,

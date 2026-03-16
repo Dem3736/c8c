@@ -22,6 +22,7 @@ import {
   nodeStatesAtom,
   reportPathAtom,
   runStartedAtAtom,
+  runOutcomeAtom,
   runStatusAtom,
   runtimeMetaAtom,
   runtimeNodesAtom,
@@ -41,6 +42,7 @@ import { ChatPanel } from "./chat/ChatPanel"
 import { WorkflowSettingsPanel } from "./WorkflowSettingsPanel"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { useWorkflowReset } from "@/hooks/useWorkflowReset"
+import { useExecutionReset } from "@/hooks/useExecutionReset"
 import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
 import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
@@ -285,6 +287,7 @@ export function WorkflowPanel() {
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [reportPath] = useAtom(reportPathAtom)
   const [runStartedAt] = useAtom(runStartedAtAtom)
+  const [runOutcome] = useAtom(runOutcomeAtom)
   const [runStatus] = useAtom(runStatusAtom)
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
   const [runtimeNodes] = useAtom(runtimeNodesAtom)
@@ -307,6 +310,7 @@ export function WorkflowPanel() {
   const [flowSurfaceMode, setFlowSurfaceMode] = useState<"outline" | "edit">("outline")
   const previousRunStatusRef = useRef(runStatus)
   const pendingListAutoScrollRef = useRef(false)
+  const resetExecution = useExecutionReset({ clearReportPath: true })
 
   useWorkflowReset()
   useWorkflowValidation()
@@ -453,8 +457,9 @@ export function WorkflowPanel() {
     runtimeMeta,
     nodeStates,
     runStatus,
+    runOutcome,
     activeNodeId,
-  }), [activeNodeId, nodeStates, runStatus, runtimeMeta, runtimeNodes, workflow])
+  }), [activeNodeId, nodeStates, runOutcome, runStatus, runtimeMeta, runtimeNodes, workflow])
   const isRuntimeFlowView = viewMode === "list" && runStatus !== "idle"
   const listShellClass = isRuntimeFlowView
     ? "w-full px-[var(--content-gutter)] py-4 space-y-3"
@@ -500,6 +505,18 @@ export function WorkflowPanel() {
     window.requestAnimationFrame(() => {
       const focusTarget = inputPanel.querySelector<HTMLElement>("textarea, input, [contenteditable='true']")
       focusTarget?.focus()
+    })
+  }
+
+  const handleStartNewRun = () => {
+    if (runStatus !== "idle") {
+      resetExecution()
+      setOutputTabRequest(null)
+    }
+    setPrepareNewRun(true)
+    setViewMode("list")
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => focusInputPanel())
     })
   }
 
@@ -691,6 +708,7 @@ export function WorkflowPanel() {
                     reviewedRunDetails={reviewedRunDetails}
                     reviewedRunLoading={reviewedRunLoading}
                     reviewedRunError={reviewedRunError}
+                    onStartNewRun={handleStartNewRun}
                     onOpenInbox={() => setMainView("inbox")}
                   />
                 </SectionErrorBoundary>
@@ -760,7 +778,7 @@ export function WorkflowPanel() {
                           reviewedRunDetails={reviewedRunDetails}
                           reviewedRunLoading={reviewedRunLoading}
                           reviewedRunError={reviewedRunError}
-                          onStartNewRun={() => setPrepareNewRun(true)}
+                          onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
                         />
                       </SectionErrorBoundary>
@@ -791,6 +809,7 @@ export function WorkflowPanel() {
                           reviewedRunDetails={reviewedRunDetails}
                           reviewedRunLoading={reviewedRunLoading}
                           reviewedRunError={reviewedRunError}
+                          onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
                         />
                       </SectionErrorBoundary>

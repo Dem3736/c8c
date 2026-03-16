@@ -10,6 +10,7 @@ import {
   nodeStatesAtom,
   reportPathAtom,
   runStatusAtom,
+  runOutcomeAtom,
   runtimeMetaAtom,
   selectedPastRunAtom,
   workflowHistoryRunsAtom,
@@ -18,6 +19,7 @@ import {
 
 export function useOutputPanel() {
   const [runStatus] = useAtom(runStatusAtom)
+  const [runOutcome] = useAtom(runOutcomeAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
@@ -32,6 +34,7 @@ export function useOutputPanel() {
 
   return {
     runStatus,
+    runOutcome,
     nodeStates,
     activeNodeId,
     selectedNodeId,

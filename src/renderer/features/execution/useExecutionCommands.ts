@@ -137,31 +137,42 @@ export function useExecutionCommands({
   const cancel = useCallback(async () => {
     if (!isRunInFlight(runStatus)) return
     const executionKey = toWorkflowExecutionKey(selectedWorkflowPath ?? null)
+    const previousRunStatus = runStatus
 
     controller.updateExecutionForKey(executionKey, (previous) => ({
       ...previous,
       runStatus: "cancelling",
     }))
 
-    if (runId) {
-      try {
-        await window.api.cancelRun(runId)
-      } catch (error) {
-        console.error("[useChainExecution] cancelRun failed:", error)
-        toast.error("Could not cancel run", {
-          description: String(error),
-        })
-        recordExecutionError("Could not cancel run", String(error))
+    if (!runId) {
+      controller.cancelExecution(executionKey, null)
+      return
+    }
+
+    try {
+      const cancelled = await window.api.cancelRun(runId)
+      if (!cancelled) {
+        toast.error("Could not cancel run")
+        recordExecutionError("Could not cancel run")
         controller.updateExecutionForKey(executionKey, (previous) => ({
           ...previous,
-          runStatus: "running",
+          runStatus: previousRunStatus,
         }))
         return
       }
+      controller.cancelExecution(executionKey, runId)
+    } catch (error) {
+      console.error("[useChainExecution] cancelRun failed:", error)
+      toast.error("Could not cancel run", {
+        description: String(error),
+      })
+      recordExecutionError("Could not cancel run", String(error))
+      controller.updateExecutionForKey(executionKey, (previous) => ({
+        ...previous,
+        runStatus: previousRunStatus,
+      }))
     }
-
-    controller.cancelExecution(executionKey, runId)
-  }, [controller, runId, runStatus, selectedWorkflowPath])
+  }, [controller, recordExecutionError, runId, runStatus, selectedWorkflowPath])
 
   const rerunFrom = useCallback(async (fromNodeId: string) => {
     if (isRunInFlight(runStatus)) return

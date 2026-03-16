@@ -11,6 +11,7 @@ import {
 } from "@/lib/store"
 import {
   nodeStatesAtom,
+  runOutcomeAtom,
   runStartedAtAtom,
   runStatusAtom,
   runtimeNodesAtom,
@@ -63,6 +64,7 @@ export function AppStatusBar() {
   const [defaultProvider] = useAtom(defaultProviderAtom)
   const [activeExecutionProvider] = useAtom(activeExecutionProviderAtom)
   const [runStatus] = useAtom(runStatusAtom)
+  const [runOutcome] = useAtom(runOutcomeAtom)
   const [runStartedAt] = useAtom(runStartedAtAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
@@ -146,10 +148,14 @@ export function AppStatusBar() {
                 ? "running"
                 : "waiting"
           : runStatus === "done"
-          ? "completed"
-          : "failed"
+            ? runOutcome === "cancelled" || runOutcome === "interrupted"
+              ? "stopped"
+              : "completed"
+            : "failed"
   const runProgressClass = runStatus === "done"
-    ? "border-status-success/30 text-status-success"
+    ? runOutcome === "cancelled" || runOutcome === "interrupted"
+      ? "border-status-warning/40 text-status-warning"
+      : "border-status-success/30 text-status-success"
     : runStatus === "error"
       ? "border-status-danger/30 text-status-danger"
       : runStatus === "paused"

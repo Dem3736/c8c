@@ -35,6 +35,7 @@ import ReactMarkdown, { type Components as MarkdownComponents } from "react-mark
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
 import { toast } from "sonner"
+import { isRunInFlight } from "@/lib/workflow-execution"
 
 const PREVIEW_MAX_W = "max-w-52" as const
 const MARKDOWN_PROSE_CLASS = "prose-c8c"
@@ -144,6 +145,7 @@ export function OutputPanel({
 }) {
   const {
     runStatus,
+    runOutcome,
     nodeStates,
     activeNodeId,
     selectedNodeId,
@@ -394,6 +396,8 @@ export function OutputPanel({
     && openReviewTaskCount === 0
     && !!onContinueRun
     && !!selectedReviewRun
+  const stoppedLiveRun = !reviewingRunHistory && runStatus === "done" && (runOutcome === "cancelled" || runOutcome === "interrupted")
+  const canStartFreshRun = Boolean(onStartNewRun) && !isRunInFlight(runStatus) && (reviewingRunHistory || runStatus === "done" || runStatus === "error" || pastRuns.length > 0)
 
   const openNodeDetails = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId)
@@ -545,7 +549,7 @@ export function OutputPanel({
                 </Select>
               </div>
             )}
-            {onStartNewRun && runStatus === "idle" && pastRuns.length > 0 && (
+            {canStartFreshRun && (
               <Button variant="outline" size="sm" className="h-control-sm" onClick={onStartNewRun}>
                 New run
               </Button>
@@ -744,20 +748,52 @@ export function OutputPanel({
                           <div
                             role="status"
                             aria-live="polite"
-                            className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-status-success/20 bg-status-success/8 px-3 py-2 ui-meta-text text-status-success"
-                          >
-                            <span>Run complete. You can inspect the result now.</span>
-                            {hasResult && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-status-success hover:bg-status-success/10 hover:text-status-success"
-                                onClick={() => setActiveTab("result")}
-                              >
-                                View result
-                              </Button>
+                            className={cn(
+                              "mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ui-meta-text",
+                              stoppedLiveRun
+                                ? "border border-status-warning/20 bg-status-warning/8 text-status-warning"
+                                : "border border-status-success/20 bg-status-success/8 text-status-success",
                             )}
+                          >
+                            <span>
+                              {stoppedLiveRun
+                                ? "Run stopped. Start a new run when you are ready."
+                                : "Run complete. You can inspect the result now."}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {hasResult && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className={cn(
+                                    "h-7 px-2",
+                                    stoppedLiveRun
+                                      ? "text-status-warning hover:bg-status-warning/10 hover:text-status-warning"
+                                      : "text-status-success hover:bg-status-success/10 hover:text-status-success",
+                                  )}
+                                  onClick={() => setActiveTab("result")}
+                                >
+                                  View result
+                                </Button>
+                              )}
+                              {canStartFreshRun && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className={cn(
+                                    "h-7 px-2",
+                                    stoppedLiveRun
+                                      ? "text-status-warning hover:bg-status-warning/10 hover:text-status-warning"
+                                      : "text-status-success hover:bg-status-success/10 hover:text-status-success",
+                                  )}
+                                  onClick={onStartNewRun}
+                                >
+                                  New run
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -971,7 +1007,7 @@ export function OutputPanel({
                   <Download size={12} />
                   Export
                 </Button>
-                {reviewingRunHistory && onStartNewRun && (
+                {canStartFreshRun && (
                   <Button type="button" variant="outline" size="sm" onClick={onStartNewRun}>
                     New run
                   </Button>

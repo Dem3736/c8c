@@ -1,5 +1,6 @@
 import type {
   NodeState,
+  RunStatus,
   Workflow,
   WorkflowNode,
   WorkflowRuntimeMeta,
@@ -85,6 +86,7 @@ export function buildRunProgressSummary({
   runtimeMeta,
   nodeStates,
   runStatus,
+  runOutcome,
   activeNodeId,
 }: {
   workflow: Workflow
@@ -92,6 +94,7 @@ export function buildRunProgressSummary({
   runtimeMeta: WorkflowRuntimeMeta
   nodeStates: Record<string, NodeState>
   runStatus: RunStripStatus
+  runOutcome?: RunStatus | null
   activeNodeId: string | null
 }): RunProgressSummary {
   const graphNodes = runtimeNodes.length > 0 ? runtimeNodes : workflow.nodes
@@ -169,8 +172,16 @@ export function buildRunProgressSummary({
       phaseLabel = "Running"
     }
   } else if (runStatus === "done") {
-    phaseLabel = failedSteps > 0 ? "Finished with issues" : "Completed"
-    tone = failedSteps > 0 ? "warning" : "success"
+    if (runOutcome === "cancelled" || runOutcome === "interrupted") {
+      phaseLabel = "Stopped"
+      tone = "warning"
+    } else if (runOutcome === "blocked") {
+      phaseLabel = "Waiting for input"
+      tone = "warning"
+    } else {
+      phaseLabel = failedSteps > 0 ? "Finished with issues" : "Completed"
+      tone = failedSteps > 0 ? "warning" : "success"
+    }
   } else if (runStatus === "error") {
     phaseLabel = "Failed"
     tone = "danger"

@@ -326,6 +326,7 @@ describe("workflow execution state", () => {
     const nextState = createCancelledExecutionState(previousState)
 
     expect(nextState.runStatus).toBe("done")
+    expect(nextState.runOutcome).toBe("cancelled")
     expect(nextState.runId).toBeNull()
     expect(nextState.activeNodeId).toBeNull()
     expect(nextState.nodeStates.branch.status).toBe("skipped")
