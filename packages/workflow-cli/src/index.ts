@@ -13,6 +13,7 @@ import {
   listWorkflowHilTasks,
   resolveWorkflowHilTaskByRef,
   writeWorkflowApprovalDecision,
+  writeWorkflowHilTaskResponse,
   type WorkflowHilTaskRecord,
   type WorkflowHilTaskSummary,
   type ProviderId,
@@ -64,7 +65,7 @@ interface OpenClawCompatibilityContext {
   projectPath?: string
   provider?: ProviderId
   taskId?: string
-  checkpointKind?: "approval"
+  checkpointKind?: "approval" | "human_approval"
 }
 
 interface OpenClawResumeTokenPayload {
@@ -495,6 +496,13 @@ async function readOpenClawContext(workspace: string): Promise<OpenClawCompatibi
   if (parsed.provider && parsed.provider !== "claude" && parsed.provider !== "codex") {
     throw new Error(`Invalid provider in OpenClaw compatibility context: ${parsed.provider}`)
   }
+  if (
+    parsed.checkpointKind
+    && parsed.checkpointKind !== "approval"
+    && parsed.checkpointKind !== "human_approval"
+  ) {
+    throw new Error(`Invalid checkpoint kind in OpenClaw compatibility context: ${parsed.checkpointKind}`)
+  }
 
   return parsed as OpenClawCompatibilityContext
 }
@@ -533,6 +541,59 @@ function buildToolRunSummary(summary: WorkflowRunSummary): Record<string, unknow
   }
 }
 
+export function buildOpenClawApprovalRequest(
+  summary: WorkflowRunSummary,
+  approvalEvent: ApprovalRequestedEvent | null = null,
+  task: WorkflowHilTaskRecord | null = null,
+): NonNullable<Extract<OpenClawEnvelope, { ok: true }>["requiresApproval"]> {
+  if (approvalEvent) {
+    return {
+      type: "approval_request",
+      prompt: approvalEvent.message || `Approval required for ${approvalEvent.nodeId}`,
+      items: [
+        {
+          nodeId: approvalEvent.nodeId,
+          taskId: task?.task,
+          content: approvalEvent.content,
+          allowEdit: approvalEvent.allowEdit,
+        },
+      ],
+      resumeToken: encodeOpenClawResumeToken({
+        version: 1,
+        workspace: summary.workspace,
+        nodeId: approvalEvent.nodeId,
+      }),
+      taskId: task?.task,
+    }
+  }
+
+  if (task?.request.kind === "approval") {
+    const defaultEditedContent = typeof task.request.defaults?.editedContent === "string"
+      ? task.request.defaults.editedContent
+      : undefined
+    return {
+      type: "approval_request",
+      prompt: task.state.instructions || task.state.title,
+      items: [
+        {
+          nodeId: task.state.nodeId,
+          taskId: task.task,
+          content: defaultEditedContent || task.state.summary || "",
+          allowEdit: Boolean(task.state.allowEdit),
+        },
+      ],
+      resumeToken: encodeOpenClawResumeToken({
+        version: 1,
+        workspace: summary.workspace,
+        nodeId: task.state.nodeId,
+      }),
+      taskId: task.task,
+    }
+  }
+
+  throw new Error("Approval context missing for tool-mode run")
+}
+
 function buildOpenClawSuccessEnvelope(
   status: "ok" | "needs_approval" | "cancelled",
   summary: WorkflowRunSummary,
@@ -540,32 +601,11 @@ function buildOpenClawSuccessEnvelope(
   task: WorkflowHilTaskRecord | null = null,
 ): OpenClawEnvelope {
   if (status === "needs_approval") {
-    if (!approvalEvent) {
-      throw new Error("Approval event missing for paused tool-mode run")
-    }
-
     return {
       ok: true,
       status,
       output: [buildToolRunSummary(summary)],
-      requiresApproval: {
-        type: "approval_request",
-        prompt: approvalEvent.message || `Approval required for ${approvalEvent.nodeId}`,
-        items: [
-          {
-            nodeId: approvalEvent.nodeId,
-            taskId: task?.task,
-            content: approvalEvent.content,
-            allowEdit: approvalEvent.allowEdit,
-          },
-        ],
-        resumeToken: encodeOpenClawResumeToken({
-          version: 1,
-          workspace: summary.workspace,
-          nodeId: approvalEvent.nodeId,
-        }),
-        taskId: task?.task,
-      },
+      requiresApproval: buildOpenClawApprovalRequest(summary, approvalEvent, task),
     }
   }
 
@@ -575,6 +615,19 @@ function buildOpenClawSuccessEnvelope(
     output: [buildToolRunSummary(summary)],
     requiresApproval: null,
   }
+}
+
+function buildUnsupportedOpenClawCheckpointMessage(task: WorkflowHilTaskRecord): string {
+  return task.request.kind === "form"
+    ? `OpenClaw lobster plugin only supports approval-style checkpoints; task '${task.taskId}' requires hil respond`
+    : `Workflow finished with unsupported checkpoint kind: ${task.request.kind}`
+}
+
+async function findOpenClawBlockingTask(workspace: string): Promise<WorkflowHilTaskRecord | null> {
+  const candidates = await listWorkflowHilTasks([dirname(workspace)], { includeResolved: true })
+  const taskSummary = candidates.find((task) => task.workspace === workspace && task.status === "open")
+  if (!taskSummary) return null
+  return getWorkflowHilTask(workspace, taskSummary.taskId)
 }
 
 function buildOpenClawErrorEnvelope(message: string, type = "runtime_error"): OpenClawEnvelope {
@@ -653,6 +706,32 @@ async function runOpenClawToolMode(args: string[], flags: CliFlags): Promise<num
     return 0
   }
 
+  if (summary.status === "blocked") {
+    const task = await findOpenClawBlockingTask(summary.workspace)
+    if (!task) {
+      writeOpenClawEnvelope(buildOpenClawErrorEnvelope("Workflow is blocked, but no open checkpoint task was found"))
+      return 1
+    }
+    if (task.request.kind !== "approval") {
+      writeOpenClawEnvelope(buildOpenClawErrorEnvelope(
+        buildUnsupportedOpenClawCheckpointMessage(task),
+        "unsupported_checkpoint",
+      ))
+      return 1
+    }
+    await writeOpenClawContext(summary.workspace, {
+      version: 1,
+      workflowPath,
+      workflow,
+      projectPath: projectPathValue,
+      provider: providerOverride,
+      taskId: task.taskId,
+      checkpointKind: "human_approval",
+    })
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, null, task))
+    return 0
+  }
+
   if (summary.status === "completed") {
     writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("ok", summary))
     return 0
@@ -679,9 +758,23 @@ async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
   const context = await readOpenClawContext(token.workspace)
   const runner = createRunner(flags.provider || context.provider)
 
-  await writeWorkflowApprovalDecision(token.workspace, token.nodeId, {
-    approved: flags.approve,
-  })
+  if (context.checkpointKind === "human_approval") {
+    if (!context.taskId) {
+      throw new Error("OpenClaw context missing human approval taskId")
+    }
+    await writeWorkflowHilTaskResponse({
+      workspace: token.workspace,
+      taskId: context.taskId,
+      data: {
+        approved: flags.approve,
+      },
+      source: "openclaw",
+    })
+  } else {
+    await writeWorkflowApprovalDecision(token.workspace, token.nodeId, {
+      approved: flags.approve,
+    })
+  }
 
   const handle = await runner.resumeRun({
     workflow: context.workflow,
@@ -703,6 +796,28 @@ async function resumeOpenClawToolMode(flags: CliFlags): Promise<number> {
       checkpointKind: task ? "approval" : undefined,
     })
     writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, approvalEvent, task))
+    return 0
+  }
+
+  if (summary.status === "blocked") {
+    const task = await findOpenClawBlockingTask(summary.workspace)
+    if (!task) {
+      writeOpenClawEnvelope(buildOpenClawErrorEnvelope("Workflow is blocked, but no open checkpoint task was found"))
+      return 1
+    }
+    if (task.request.kind !== "approval") {
+      writeOpenClawEnvelope(buildOpenClawErrorEnvelope(
+        buildUnsupportedOpenClawCheckpointMessage(task),
+        "unsupported_checkpoint",
+      ))
+      return 1
+    }
+    await writeOpenClawContext(summary.workspace, {
+      ...context,
+      taskId: task.taskId,
+      checkpointKind: "human_approval",
+    })
+    writeOpenClawEnvelope(buildOpenClawSuccessEnvelope("needs_approval", summary, null, task))
     return 0
   }
 

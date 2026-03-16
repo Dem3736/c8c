@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
+  buildOpenClawApprovalRequest,
   decodeOpenClawResumeToken,
   encodeOpenClawResumeToken,
   loadWorkflow,
@@ -81,5 +82,76 @@ describe("openclaw cli helpers", () => {
       .toString("base64url")
 
     expect(() => decodeOpenClawResumeToken(malformed)).toThrow("Invalid OpenClaw resume token")
+  })
+
+  it("builds approval requests from human approval tasks when no approval event exists", () => {
+    const approvalRequest = buildOpenClawApprovalRequest(
+      {
+        runId: "run-1",
+        status: "blocked",
+        workspace: "/tmp/workspace",
+        reportPath: undefined,
+        totalCost: 0,
+        totalTokensIn: 0,
+        totalTokensOut: 0,
+        evalScores: {},
+        durationMs: 12,
+      },
+      null,
+      {
+        task: "task-token",
+        taskId: "human-approval-1",
+        request: {
+          version: 1,
+          kind: "approval",
+          title: "Approve draft",
+          instructions: "Review the final draft.",
+          fields: [],
+          defaults: {
+            editedContent: "Edited by reviewer",
+          },
+        },
+        state: {
+          version: 1,
+          taskId: "human-approval-1",
+          chainId: "/tmp/workspace",
+          sourceRunId: "run-1",
+          kind: "approval",
+          checkpointKind: "human",
+          status: "open",
+          workspace: "/tmp/workspace",
+          nodeId: "human-1",
+          workflowName: "Human flow",
+          title: "Approve draft",
+          instructions: "Review the final draft.",
+          summary: "Draft summary",
+          allowEdit: true,
+          requestHash: "hash",
+          responseRevision: 0,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        latestResponse: null,
+      },
+    )
+
+    expect(approvalRequest).toMatchObject({
+      type: "approval_request",
+      prompt: "Review the final draft.",
+      taskId: "task-token",
+      items: [
+        {
+          nodeId: "human-1",
+          taskId: "task-token",
+          content: "Edited by reviewer",
+          allowEdit: true,
+        },
+      ],
+    })
+    expect(decodeOpenClawResumeToken(approvalRequest.resumeToken)).toEqual({
+      version: 1,
+      workspace: "/tmp/workspace",
+      nodeId: "human-1",
+    })
   })
 })
