@@ -1,0 +1,279 @@
+id: remotion-video-director-pipeline
+stage: code
+emoji: "\U0001F3AC"
+headline: Turn a video brief into a gated Remotion delivery flow with parallel scene builds
+how: Frames the video, gates the scenario, fans out scene implementation, assembles the project, adds audio, and loops through expert review before handoff
+input: A video brief with audience, desired action, constraints, assets, and either an existing Remotion repo path or permission to scaffold one
+output: A render-ready Remotion project, first-pass MP4 or blocked render plan, audio direction, and a scored revision list
+steps:
+  - Frame the brief, archetype, and creative direction
+  - Design a build-ready scene system and gate it before implementation
+  - Split scene implementation into parallel build tickets and assemble the project
+  - Add audio, render a first pass, and run multi-expert review plus final ship gate
+version: 1
+name: Remotion Video Director Pipeline
+description: Turn Remotion Video Director into a production pipeline with parallel scene builds, assembly, audio integration, and explicit review gates
+defaults:
+  model: sonnet
+  maxTurns: 90
+  timeout_minutes: 75
+  maxParallel: 4
+  permissionMode: edit
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Video brief, assets, constraints, and Remotion repo path if any
+  - id: think-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      skillRef: remotion-video-director/think
+      prompt: |-
+        Run Phase 1 (Think) around the user's brief.
+
+        Execution rules:
+        - Ask discovery questions one at a time until you know purpose, audience, desired action, constraints, assets,
+          and whether this should update an existing Remotion repo or create a new one.
+        - Choose the best-fit archetype: product launch, recurring data report, narrative intro, technical demo, or
+          growth marketing.
+        - Offer style directions and converge on one direction or concrete references.
+        - Assemble a 3-4 expert panel and synthesize an implementation-ready creative brief.
+
+        Output markdown with sections:
+        - Working Assumptions
+        - Creative Brief
+        - Expert Roundtable
+        - Asset Gaps
+        - Build Context
+
+        Do not design scenes yet.
+  - id: design-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      skillRef: remotion-video-director/design
+      prompt: |-
+        Run Phase 2 (Design).
+
+        Convert the approved brief into a build-ready Remotion scenario. For each scene define:
+        - scene id
+        - purpose
+        - exact on-screen content
+        - frame start and duration at 30fps
+        - transition envelope
+        - components and motion pattern
+        - data inputs
+        - asset dependencies
+        - success criteria
+
+        Also define:
+        - shared theme tokens for color, typography, and motion
+        - a reusable config/data shape for recurring runs or variants
+        - 3-6 scene build clusters that can be implemented independently in parallel
+
+        Keep each scene focused on exactly one idea. Cut tangential material.
+  - id: design-eval-1
+    type: evaluator
+    position:
+      x: 840
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) brief-to-scene coherence, (2) scene focus and one-idea-per-scene discipline, (3)
+        frame-budget realism and transition timing, (4) cleanliness of the config/data model for reuse, and (5)
+        implementation readiness for parallel build work. Fail if the plan is vague, overstuffed, poorly timed, or
+        not clearly splittable into self-contained build tasks.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: design-1
+      skillRefs:
+        - remotion-video-director
+        - remotion-dev/build
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 1120
+      y: 220
+    config:
+      strategy: |-
+        From the approved scenario, create 3-6 self-contained scene build tasks.
+
+        Each task must include:
+        - cluster id and covered scene ids
+        - narrative purpose
+        - exact frame windows and transition touchpoints
+        - required components and shared theme/data contracts
+        - assets or screenshots needed
+        - expected file outputs
+        - definition of done for the branch
+
+        Minimize cross-branch coupling. Shared tokens, root composition wiring, and final sequencing belong to
+        assembly, not the branch tasks.
+      maxBranches: 6
+  - id: build-1
+    type: skill
+    position:
+      x: 1400
+      y: 220
+    config:
+      skillRef: remotion-dev/build
+      permissionMode: edit
+      maxTurns: 120
+      prompt: |-
+        Implement the assigned scene cluster inside the current Remotion project, or scaffold the required files if the
+        project does not exist yet. Use the official remotion-dev/skills knowledge surface for API-level choices.
+
+        Build rules:
+        - Prefer explicit files and commands; never use interactive init wizards.
+        - Use useCurrentFrame(), interpolate(), spring(), Sequence, staticFile(), and clamped animation envelopes.
+        - Do not rely on CSS-only animation for timed motion.
+        - Keep text readable at video resolution and respect safe zones.
+        - If assets are missing, add typed placeholders plus precise TODO notes instead of inventing fake media.
+
+        Output:
+        - files created or changed
+        - scene components and contracts
+        - any blockers
+        - exact render dependencies this cluster expects from assembly
+  - id: merger-1
+    type: merger
+    position:
+      x: 1680
+      y: 220
+    config:
+      strategy: assemble
+      prompt: |-
+        Assemble the branch outputs into one renderable Remotion app.
+
+        Responsibilities:
+        - create or update Root.tsx, composition registration, scene sequencing, shared theme, and central config
+        - integrate all scene clusters without breaking frame budgets or transitions
+        - preserve reusable data boundaries so variants or recurring renders stay possible
+        - output the canonical render command and the project file map
+
+        If the assembly cannot render yet, explain the precise blocker and where it lives.
+  - id: audio-1
+    type: skill
+    position:
+      x: 1960
+      y: 220
+    config:
+      skillRef: remotion-video-director/audio
+      permissionMode: edit
+      prompt: |-
+        Run the audio layer using the approved creative direction.
+
+        Tasks:
+        - propose music mood and Pixabay search terms
+        - wire background music with fade in/out and scene-adaptive volume
+        - if voice-over helps, draft the narration at no more than 3 words per second and specify ducking behavior
+        - render a first pass MP4 if dependencies and assets are ready; otherwise leave exact commands and blockers
+        - keep audio assets explicit in public/ and do not fabricate files
+
+        Output sections:
+        - Music Plan
+        - Voice-over Plan
+        - Audio Integration
+        - First Render Status
+        - Remaining Gaps
+  - id: review-1
+    type: skill
+    position:
+      x: 2240
+      y: 220
+    config:
+      skillRef: remotion-video-director/review
+      prompt: |-
+        Run Phase 4 (Review) on the first render if available, otherwise on the assembled project plus render plan.
+
+        Use the archetype-appropriate expert panel to produce:
+        - a scorecard covering hook clarity, core message, pacing, visual readability, target action, audience fit,
+          and 2-3 archetype-specific dimensions
+        - expert perspectives with scene or frame references
+        - a prioritized revision list focused on the smallest high-leverage changes
+
+        Keep the advice concrete and bounded.
+  - id: final-eval-1
+    type: evaluator
+    position:
+      x: 2520
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) strategic coherence from brief to final video, (2) scene-system clarity and frame-budget
+        realism, (3) Remotion implementation quality and render readiness, (4) audio strategy and overall premium
+        feel, and (5) reusability for future variants or recurring runs. Fail if the result is still vague,
+        unrenderable, or missing a concrete revision path to a polished MP4.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: design-1
+      skillRefs:
+        - remotion-video-director
+        - remotion-dev/build
+  - id: output-1
+    type: output
+    position:
+      x: 2800
+      y: 220
+    config:
+      title: Remotion Video Delivery Pack
+      format: markdown
+edges:
+  - id: e-input-think
+    source: input-1
+    target: think-1
+    type: default
+  - id: e-think-design
+    source: think-1
+    target: design-1
+    type: default
+  - id: e-design-designeval
+    source: design-1
+    target: design-eval-1
+    type: default
+  - id: e-designeval-splitter
+    source: design-eval-1
+    target: splitter-1
+    type: pass
+  - id: e-designeval-design
+    source: design-eval-1
+    target: design-1
+    type: fail
+  - id: e-splitter-build
+    source: splitter-1
+    target: build-1
+    type: default
+  - id: e-build-merger
+    source: build-1
+    target: merger-1
+    type: default
+  - id: e-merger-audio
+    source: merger-1
+    target: audio-1
+    type: default
+  - id: e-audio-review
+    source: audio-1
+    target: review-1
+    type: default
+  - id: e-review-finaleval
+    source: review-1
+    target: final-eval-1
+    type: default
+  - id: e-finaleval-output
+    source: final-eval-1
+    target: output-1
+    type: pass
+  - id: e-finaleval-design
+    source: final-eval-1
+    target: design-1
+    type: fail

@@ -25,6 +25,7 @@ import uxUiPolishAuditRaw from "./ux-ui-polish-audit.yaml?raw"
 import ctoOptimiseAuditRaw from "./cto-optimise-audit.yaml?raw"
 import indispensableJtbdPipelineRaw from "./indispensable-jtbd-pipeline.yaml?raw"
 import irresistibleResonancePipelineRaw from "./irresistible-resonance-pipeline.yaml?raw"
+import remotionVideoDirectorPipelineRaw from "./remotion-video-director-pipeline.yaml?raw"
 
 const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(deepResearchRaw, { source: "builtin" }),
@@ -50,6 +51,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(ctoOptimiseAuditRaw, { source: "builtin" }),
   parseTemplate(indispensableJtbdPipelineRaw, { source: "builtin" }),
   parseTemplate(irresistibleResonancePipelineRaw, { source: "builtin" }),
+  parseTemplate(remotionVideoDirectorPipelineRaw, { source: "builtin" }),
 ]
 
 export function getBuiltinTemplates(): WorkflowTemplate[] {
