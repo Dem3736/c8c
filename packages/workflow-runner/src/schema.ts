@@ -138,7 +138,7 @@ export interface AgentProvider {
 }
 
 export interface SkillNodeConfig {
-  skillRef: string
+  skillRef?: string
   prompt: string
   outputMode?: "auto" | "stdout" | "content_file"
   maxTurns?: number
