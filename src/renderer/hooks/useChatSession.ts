@@ -327,12 +327,6 @@ export function useChatSession() {
             },
             duration: 5000,
           })
-          addNotification({
-            title: "Workflow updated from Agent",
-            description: workflowPathRef.current || undefined,
-            level: "success",
-            source: "agent",
-          })
           break
         }
 

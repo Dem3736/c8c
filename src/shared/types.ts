@@ -396,6 +396,66 @@ export type WorkflowTemplateStage =
   | "outreach"
   | "operations"
 
+export type KnownArtifactKind =
+  | "codebase_map"
+  | "project_brief"
+  | "requirements_spec"
+  | "roadmap"
+  | "research_pack"
+  | "phase_plan"
+  | "validation_contract"
+  | "verification_report"
+  | "decision_record"
+  | "missing_input_response"
+  | "questionnaire_response"
+  | "review_edit"
+
+export type ArtifactKind = KnownArtifactKind | (string & {})
+
+export interface ArtifactContract {
+  kind: ArtifactKind
+  title?: string
+  description?: string
+  required?: boolean
+}
+
+export type WorkflowTemplateJourneyStage =
+  | "map"
+  | "intake"
+  | "shape"
+  | "research"
+  | "plan"
+  | "execute"
+  | "verify"
+  | "operate"
+  | (string & {})
+
+export interface WorkflowTemplatePackMetadata {
+  id: string
+  label: string
+  journeyStage: WorkflowTemplateJourneyStage
+  entrypoint?: boolean
+  recommendedNext?: string[]
+}
+
+export type ExecutionPolicyTag =
+  | "spec_first"
+  | "small_tasks"
+  | "fresh_workers"
+  | "test_first"
+  | "review_gates"
+  | "isolated_workspace"
+  | "human_gate_required"
+  | (string & {})
+
+export interface WorkflowExecutionPolicyProfile {
+  profileId?: string
+  summary?: string
+  description?: string
+  tags?: ExecutionPolicyTag[]
+  notes?: string[]
+}
+
 export interface WorkflowTemplate {
   id: string
   name: string
@@ -407,6 +467,11 @@ export interface WorkflowTemplate {
   input: string
   output: string
   steps: string[]
+  useWhen?: string
+  pack?: WorkflowTemplatePackMetadata
+  contractIn?: ArtifactContract[]
+  contractOut?: ArtifactContract[]
+  executionPolicy?: WorkflowExecutionPolicyProfile
   workflow: Workflow
   source?: "builtin" | "plugin" | "user"
   pluginId?: string
@@ -552,6 +617,7 @@ export interface HumanTaskSnapshot {
   updatedAt: number
   consumedAt?: number
   responseRevision: number
+  allowEdit?: boolean
   request: HumanTaskRequest
   latestResponse: HumanTaskResponse | null
 }

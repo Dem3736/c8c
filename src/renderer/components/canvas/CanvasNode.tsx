@@ -26,6 +26,10 @@ const STATUS_DOT_STYLES: Record<string, { core: string; ring?: string }> = {
     core: "bg-status-warning",
     ring: "bg-status-warning/35",
   },
+  waiting_human: {
+    core: "bg-status-warning",
+    ring: "bg-status-warning/35",
+  },
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -35,6 +39,7 @@ const STATUS_LABELS: Record<string, string> = {
   queued: "waiting",
   skipped: "skipped",
   waiting_approval: "waiting for approval",
+  waiting_human: "waiting for input",
 }
 
 function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
@@ -52,7 +57,7 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
     ? "ring-2 ring-primary/60"
     : hasValidationErrors
       ? "ring-2 ring-status-danger/50"
-      : status === "waiting_approval"
+      : status === "waiting_approval" || status === "waiting_human"
         ? "ring-2 ring-status-warning/50"
         : ""
   const statusDotStyle = showStatusDot ? STATUS_DOT_STYLES[status] || { core: "bg-muted-foreground" } : null

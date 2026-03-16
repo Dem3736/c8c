@@ -310,16 +310,15 @@ export function HistoryTab({
                   </div>
                   <Badge
                     variant={
-                      run.status === "completed"
+                      run.status === "completed" || run.status === "interrupted" || run.status === "blocked"
                         ? "outline"
-                        : run.status === "interrupted"
-                          ? "outline"
-                          : "destructive"
+                        : "destructive"
                     }
                     className={cn(
                       "ui-meta-text px-2 py-0 shrink-0",
                       run.status === "completed" && "text-status-success border-status-success/30 bg-status-success/10",
                       run.status === "interrupted" && "text-status-warning border-status-warning/30",
+                      run.status === "blocked" && "text-status-warning border-status-warning/30 bg-status-warning/10",
                     )}
                   >
                     {run.status}
@@ -345,7 +344,7 @@ export function HistoryTab({
                   size="sm"
                   className="h-control-sm"
                   disabled={!canContinue}
-                  title={canContinue ? "Continue this run from its saved workspace" : "Continue is only available for paused or interrupted runs."}
+                  title={canContinue ? "Continue this run from its saved workspace" : "Continue is only available for blocked, paused, or interrupted runs."}
                   onClick={() => {
                     if (!canContinue || !onContinueRun) return
                     void onContinueRun(run)

@@ -171,9 +171,9 @@ async function assertRunWorkspacePath(workspace: string): Promise<string> {
   return assertWithinRoots(resolve(workspace), reportRoots, "Run workspace")
 }
 
-function assertHumanTaskId(taskId: string): string {
-  if (!taskId.startsWith("human-")) {
-    throw new Error("Human task id must start with 'human-'")
+function assertHilTaskId(taskId: string): string {
+  if (!taskId.startsWith("human-") && !taskId.startsWith("approval-")) {
+    throw new Error("HIL task id must start with 'human-' or 'approval-'")
   }
   return taskId
 }
@@ -204,6 +204,7 @@ async function loadPersistedRunSnapshot(workspace: string): Promise<PersistedRun
       runtimeMeta: parsed.runtimeMeta || {},
       input: parsed.input,
       evalResults: parsed.evalResults || {},
+      humanTasks: parsed.humanTasks || {},
     }
   } catch (error) {
     if (errorCode(error) !== "ENOENT") {
@@ -327,6 +328,7 @@ function mapHilTaskSnapshot(record: NonNullable<Awaited<ReturnType<typeof getWor
     updatedAt: state.updatedAt,
     consumedAt: state.consumedAt,
     responseRevision: state.responseRevision || 0,
+    allowEdit: state.allowEdit,
     request: record.request,
     latestResponse,
   }
@@ -805,13 +807,11 @@ export function registerExecutorHandlers() {
       ? [join(await assertProjectPath(projectPath), ".c8c", "runs")]
       : await allowedReportRoots()
     const tasks = await listWorkflowHilTasks(roots)
-    return tasks
-      .filter((task) => task.taskId.startsWith("human-"))
-      .map(mapHilTaskSummary)
+    return tasks.map(mapHilTaskSummary)
   })
 
   ipcMain.handle("executor:load-human-task", async (_e, taskId: string, workspace: string): Promise<HumanTaskSnapshot | null> => {
-    const safeTaskId = assertHumanTaskId(taskId)
+    const safeTaskId = assertHilTaskId(taskId)
     const safeWorkspace = await assertRunWorkspacePath(workspace)
     const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
     return task ? mapHilTaskSnapshot(task) : null
@@ -820,27 +820,30 @@ export function registerExecutorHandlers() {
   ipcMain.handle(
     "executor:submit-human-task",
     async (_e, taskId: string, workspace: string, input: HumanTaskSubmitInput): Promise<boolean> => {
-      const safeTaskId = assertHumanTaskId(taskId)
+      const safeTaskId = assertHilTaskId(taskId)
       const safeWorkspace = await assertRunWorkspacePath(workspace)
       try {
         const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
         if (!task) return false
-        await writeWorkflowHilTaskResponse({
-          workspace: safeWorkspace,
-          taskId: safeTaskId,
-          data: task.request.kind === "approval"
-            ? {
-                approved: Boolean(input.answers.approved),
-                ...(typeof input.answers.editedContent === "string"
-                  ? { editedContent: input.answers.editedContent }
-                  : {}),
-              }
-            : { answers: input.answers },
-          comment: input.comment,
-          answeredBy: input.answeredBy,
-          idempotencyKey: input.idempotencyKey,
-          source: "runtime",
-        })
+        if (task.request.kind === "approval") {
+          await resolveApproval(
+            task.state.sourceRunId,
+            task.state.nodeId,
+            Boolean(input.answers.approved),
+            typeof input.answers.editedContent === "string" ? input.answers.editedContent : undefined,
+            safeWorkspace,
+          )
+        } else {
+          await writeWorkflowHilTaskResponse({
+            workspace: safeWorkspace,
+            taskId: safeTaskId,
+            data: { answers: input.answers },
+            comment: input.comment,
+            answeredBy: input.answeredBy,
+            idempotencyKey: input.idempotencyKey,
+            source: "runtime",
+          })
+        }
         return true
       } catch (error) {
         logWarn("executor-ipc", "submit_human_task_failed", {
@@ -856,18 +859,24 @@ export function registerExecutorHandlers() {
   ipcMain.handle(
     "executor:reject-human-task",
     async (_e, taskId: string, workspace: string, comment?: string, idempotencyKey?: string): Promise<boolean> => {
-      const safeTaskId = assertHumanTaskId(taskId)
+      const safeTaskId = assertHilTaskId(taskId)
       const safeWorkspace = await assertRunWorkspacePath(workspace)
       try {
-        await writeWorkflowHilTaskResponse({
-          workspace: safeWorkspace,
-          taskId: safeTaskId,
-          data: { answers: {} },
-          resolution: "rejected",
-          comment,
-          idempotencyKey,
-          source: "runtime",
-        })
+        const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
+        if (!task) return false
+        if (task.request.kind === "approval") {
+          await resolveApproval(task.state.sourceRunId, task.state.nodeId, false, undefined, safeWorkspace)
+        } else {
+          await writeWorkflowHilTaskResponse({
+            workspace: safeWorkspace,
+            taskId: safeTaskId,
+            data: { answers: {} },
+            resolution: "rejected",
+            comment,
+            idempotencyKey,
+            source: "runtime",
+          })
+        }
         return true
       } catch (error) {
         logWarn("executor-ipc", "reject_human_task_failed", {

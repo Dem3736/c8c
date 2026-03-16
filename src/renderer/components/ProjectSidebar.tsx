@@ -237,7 +237,7 @@ export function ProjectSidebar({
       const status = state.status || "pending"
       if (status === "completed" || status === "skipped") completedSteps += 1
       if (status === "failed") failedSteps += 1
-      if (status === "waiting_approval") waitingSteps += 1
+      if (status === "waiting_approval" || status === "waiting_human") waitingSteps += 1
     }
 
     const totalSteps = activeRunStates.length

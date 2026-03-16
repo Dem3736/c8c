@@ -238,11 +238,6 @@ export function useBatchExecution() {
       if (!workflow.nodes.length || inputs.length === 0) return
       if (pendingBatchRef.current || batchIdRef.current || batchStatus === "running") {
         toast.error("Batch run is already in progress")
-        addNotification({
-          title: "Batch run already in progress",
-          level: "warning",
-          source: "batch",
-        })
         return
       }
 
@@ -344,12 +339,6 @@ export function useBatchExecution() {
 
     toast.success("Cancelling batch run", {
       description: "Completed results will remain available.",
-    })
-    addNotification({
-      title: "Cancelling batch run",
-      description: "Completed results will remain available.",
-      level: "info",
-      source: "batch",
     })
   }, [addNotification, batchId, setBatchError])
 

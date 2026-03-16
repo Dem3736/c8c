@@ -3,6 +3,7 @@ import type {
   DiscoveredSkill,
   EdgeType,
   EvaluatorNodeConfig,
+  HumanNodeConfig,
   MergerNodeConfig,
   SkillNodeConfig,
   SplitterNodeConfig,
@@ -16,6 +17,7 @@ import {
   DEFAULT_APPROVAL_CONFIG,
   DEFAULT_EVALUATOR_CONFIG,
   DEFAULT_FANOUT_PATTERN,
+  DEFAULT_HUMAN_CONFIG,
 } from "@/lib/default-workflow-configs"
 
 function toIdFragment(value: string): string {
@@ -300,6 +302,22 @@ export function addApprovalNodeToWorkflow(
   }
 
   return addLinearNodeBeforeOutput(workflow, approvalNode)
+}
+
+export function addHumanNodeToWorkflow(
+  workflow: Workflow,
+  _now = Date.now(),
+): Workflow {
+  const nextNodeId = createNodeIdGenerator(workflow)
+  const humanId = nextNodeId("human")
+  const humanNode: WorkflowNode = {
+    id: humanId,
+    type: "human",
+    position: { x: 0, y: 0 },
+    config: structuredClone(DEFAULT_HUMAN_CONFIG) satisfies HumanNodeConfig,
+  }
+
+  return addLinearNodeBeforeOutput(workflow, humanNode)
 }
 
 export function removeNodeAndRewireWorkflow(

@@ -58,7 +58,7 @@ export function useChainExecution() {
     setPastRuns,
   })
 
-  const { run, cancel, rerunFrom, continueRun } = useExecutionCommands({
+  const { run, cancel, rerunFrom, continueRun, continueWithWorkflow } = useExecutionCommands({
     controller,
     defaultProvider,
     attachments,
@@ -75,5 +75,5 @@ export function useChainExecution() {
     workspace,
   })
 
-  return { runStatus, nodeStates, activeNodeId, evalResults, workspace, run, cancel, rerunFrom, continueRun }
+  return { runStatus, nodeStates, activeNodeId, evalResults, workspace, run, cancel, rerunFrom, continueRun, continueWithWorkflow }
 }

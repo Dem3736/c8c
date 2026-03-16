@@ -15,6 +15,7 @@ import {
 } from "@/features/execution"
 import type {
   ApprovalNodeConfig,
+  HumanNodeConfig,
   Workflow,
   WorkflowNode,
   WorkflowEdge,
@@ -135,6 +136,12 @@ export function computeLayout(
       const cfg = node.config as ApprovalNodeConfig
       label = NODE_LABELS.approval
       subtitle = cfg.message || "Manual approval gate"
+    } else if (node.type === "human") {
+      const cfg = node.config as HumanNodeConfig
+      label = cfg.staticRequest?.title || NODE_LABELS.human
+      subtitle = cfg.mode === "approval"
+        ? "Human approval gate"
+        : cfg.staticRequest?.instructions || "Structured human input"
     }
 
     // Append metrics to subtitle when node has completed

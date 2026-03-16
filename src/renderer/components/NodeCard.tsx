@@ -21,6 +21,7 @@ import type {
   SplitterNodeConfig,
   MergerNodeConfig,
   ApprovalNodeConfig,
+  HumanNodeConfig,
   NodeStatus,
 } from "@shared/types"
 import { getDefaultModelForProvider, modelLooksCompatible } from "@shared/provider-metadata"
@@ -66,6 +67,7 @@ import {
   SplitterNodeEditor,
   MergerNodeEditor,
   ApprovalNodeEditor,
+  HumanNodeEditor,
 } from "@/components/NodeCardEditors"
 
 export interface RuntimeBranchSummaryPreview {
@@ -375,6 +377,43 @@ function buildRuntimeCardCopy({
     }
   }
 
+  if (node.type === "human") {
+    const config = node.config as HumanNodeConfig
+    const taskTitle = config.staticRequest?.title || "Human input"
+    if (status === "waiting_human" || status === "running") {
+      return {
+        summary: "Waiting for human input",
+        detail: compactRuntimeText(config.staticRequest?.instructions, 160)
+          || latestLogSnippet
+          || "This flow is blocked until the required answers are submitted.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "completed") {
+      return {
+        summary: "Human input received",
+        detail: outputSnippet || latestLogSnippet || `${taskTitle} is ready for downstream stages.`,
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    if (status === "failed") {
+      return {
+        summary: "Human gate needs attention",
+        detail: compactRuntimeText(state?.error, 160) || latestLogSnippet || "This stage could not resolve the required human input.",
+        metricsLabel,
+        branchLabel,
+      }
+    }
+    return {
+      summary: "Will pause for human input",
+      detail: compactRuntimeText(config.staticRequest?.instructions, 160) || "This stage will block until someone answers the request.",
+      metricsLabel,
+      branchLabel,
+    }
+  }
+
   const config = node.config as OutputNodeConfig
   if (status === "running") {
     return {
@@ -411,6 +450,7 @@ function buildRuntimeCardCopy({
 function getPreviewStatusLabel(status: NodeStatus) {
   if (status === "running") return "Active"
   if (status === "waiting_approval") return "Review"
+  if (status === "waiting_human") return "Input"
   if (status === "failed") return "Issue"
   if (status === "completed") return "Done"
   return "Queued"
@@ -427,7 +467,7 @@ interface NodeCardProps {
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
-  onConfigChange: (config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig) => void
+  onConfigChange: (config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig | HumanNodeConfig) => void
   onSelect: () => void
   resolveNodeLabel?: (nodeId: string) => string
   runtimeMode?: boolean
@@ -474,7 +514,8 @@ export function NodeCard({
   const isSplitter = node.type === "splitter"
   const isMerger = node.type === "merger"
   const isApproval = node.type === "approval"
-  const isExpandable = isInput || isOutput || isSkill || isEvaluator || isSplitter || isMerger || isApproval
+  const isHuman = node.type === "human"
+  const isExpandable = isInput || isOutput || isSkill || isEvaluator || isSplitter || isMerger || isApproval || isHuman
   const isTerminal = isInput || isOutput
   const inputConfig = isInput ? (node.config as InputNodeConfig) : null
   const workflowProvider = workflow.defaults?.provider || defaultProvider
@@ -485,12 +526,15 @@ export function NodeCard({
   const splitterConfig = isSplitter ? (node.config as SplitterNodeConfig) : null
   const mergerConfig = isMerger ? (node.config as MergerNodeConfig) : null
   const approvalConfig = isApproval ? (node.config as ApprovalNodeConfig) : null
+  const humanConfig = isHuman ? (node.config as HumanNodeConfig) : null
 
   const title = isSkill
     ? skillConfig?.skillRef || "Unnamed Skill"
     : isOutput && outputConfig?.title
       ? outputConfig.title
-    : NODE_LABELS[node.type] || node.type
+      : isHuman && humanConfig?.staticRequest?.title
+        ? humanConfig.staticRequest.title
+        : NODE_LABELS[node.type] || node.type
   const retryLabel = evalConfig?.retryFrom ? resolveNodeLabel?.(evalConfig.retryFrom) || evalConfig.retryFrom : null
 
   const STATUS_CLASSES: Record<string, string> = {
@@ -498,6 +542,7 @@ export function NodeCard({
     failed: "border-status-danger/60",
     running: "border-foreground/40",
     waiting_approval: "border-status-warning/60 ring-1 ring-status-warning/40",
+    waiting_human: "border-status-warning/60 ring-1 ring-status-warning/40",
     skipped: "border-status-warning/50",
     queued: "border-foreground/20",
     pending: "",
@@ -510,6 +555,7 @@ export function NodeCard({
     queued: "waiting",
     skipped: "skipped",
     waiting_approval: "waiting for approval",
+    waiting_human: "waiting for input",
     pending: "pending",
     idle: "idle",
   }
@@ -518,7 +564,7 @@ export function NodeCard({
   const previewTextClass = "text-muted-foreground truncate ui-meta-text"
   const showStatusBadge = statusLabel
     && statusLabel !== "pending"
-    && (!compact || state?.status === "running" || state?.status === "failed" || state?.status === "waiting_approval")
+    && (!compact || state?.status === "running" || state?.status === "failed" || state?.status === "waiting_approval" || state?.status === "waiting_human")
   const resolvedInput = resolveWorkflowInput(inputValue, {
     inputType: inputConfig?.inputType,
     required: inputConfig?.required,
@@ -544,7 +590,8 @@ export function NodeCard({
     || (isEvaluator && evalConfig)
     || (isSplitter && splitterConfig)
     || (isMerger && mergerConfig)
-    || (isApproval && approvalConfig),
+    || (isApproval && approvalConfig)
+    || (isHuman && humanConfig)
   )
   const runtimeCardCopy = runtimeMode
     ? buildRuntimeCardCopy({
@@ -587,7 +634,7 @@ export function NodeCard({
   if (runtimeMode) {
     const runtimeSurfaceClass = state?.status === "running"
       ? "border-status-info/35 bg-status-info/5"
-      : state?.status === "waiting_approval"
+      : state?.status === "waiting_approval" || state?.status === "waiting_human"
         ? "border-status-warning/35 bg-status-warning/8"
         : state?.status === "failed"
           ? "border-status-danger/35 bg-status-danger/6"
@@ -625,7 +672,7 @@ export function NodeCard({
                 className={cn(
                   "shrink-0 px-1.5 py-0 ui-meta-text",
                   state?.status === "running" && "border-status-info/30 text-status-info",
-                  state?.status === "waiting_approval" && "border-status-warning/30 text-status-warning",
+                  (state?.status === "waiting_approval" || state?.status === "waiting_human") && "border-status-warning/30 text-status-warning",
                   state?.status === "failed" && "border-status-danger/30 text-status-danger",
                   state?.status === "completed" && "border-status-success/30 text-status-success",
                   (!state?.status || state.status === "queued") && "text-muted-foreground",
@@ -686,7 +733,7 @@ export function NodeCard({
                       className={cn(
                         "max-w-full px-1.5 py-0 ui-meta-text",
                         preview.status === "running" && "border-status-info/30 text-status-info",
-                        preview.status === "waiting_approval" && "border-status-warning/30 text-status-warning",
+                        (preview.status === "waiting_approval" || preview.status === "waiting_human") && "border-status-warning/30 text-status-warning",
                         preview.status === "failed" && "border-status-danger/30 text-status-danger",
                         preview.status === "completed" && "border-status-success/30 text-status-success",
                         (preview.status === "pending" || preview.status === "queued") && "text-muted-foreground",
@@ -809,6 +856,11 @@ export function NodeCard({
               {isApproval && !expanded && approvalConfig && (
                 <p className={previewTextClass}>
                   {approvalConfig.message || "Manual approval gate"}
+                </p>
+              )}
+              {isHuman && !expanded && humanConfig && (
+                <p className={previewTextClass}>
+                  {humanConfig.staticRequest?.title || "Human input gate"}
                 </p>
               )}
               {isSkill && skillConfig?.permissionMode && (
@@ -1105,6 +1157,9 @@ export function NodeCard({
           )}
           {isApproval && approvalConfig && (
             <ApprovalNodeEditor nodeId={node.id} config={approvalConfig} onConfigChange={onConfigChange} />
+          )}
+          {isHuman && humanConfig && (
+            <HumanNodeEditor nodeId={node.id} config={humanConfig} onConfigChange={onConfigChange} />
           )}
         </div>
       </div>

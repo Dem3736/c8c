@@ -119,11 +119,6 @@ export function useToolbarActions({
       await window.api.saveWorkflow(targetPath, workflow)
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       toast.success(`Workflow saved: ${workflowTitle}`)
-      addNotification({
-        title: `Workflow saved: ${workflowTitle}`,
-        level: "success",
-        source: "workflow",
-      })
       return true
     } catch (error) {
       addNotification({
@@ -153,12 +148,6 @@ export function useToolbarActions({
         setWorkflows(wfs)
       }
       toast.success(`Workflow saved as: ${workflowTitle}`)
-      addNotification({
-        title: `Workflow saved as: ${workflowTitle}`,
-        description: filePath,
-        level: "success",
-        source: "workflow",
-      })
       return true
     } catch (error) {
       addNotification({
@@ -185,12 +174,6 @@ export function useToolbarActions({
       }
       const workflowTitle = normalizeWorkflowTitle(result.chain.name || "") || deriveTitleFromPath(result.filePath)
       toast.success(`Workflow imported: ${workflowTitle}`)
-      addNotification({
-        title: `Workflow imported: ${workflowTitle}`,
-        description: result.filePath,
-        level: "success",
-        source: "workflow",
-      })
       return true
     } catch (error) {
       addNotification({
@@ -222,11 +205,6 @@ export function useToolbarActions({
       setWorkflowSavedSnapshot(workflowSnapshot(renamedWorkflow))
       await refreshProjectData({ silent: true })
       toast.success(`Workflow renamed: ${trimmed}`)
-      addNotification({
-        title: `Workflow renamed: ${trimmed}`,
-        level: "success",
-        source: "workflow",
-      })
       return true
     } catch (error) {
       addNotification({
@@ -251,11 +229,6 @@ export function useToolbarActions({
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
       await refreshProjectData({ silent: true })
       toast.success(`Workflow deleted: ${workflowTitle}`)
-      addNotification({
-        title: `Workflow deleted: ${workflowTitle}`,
-        level: "success",
-        source: "workflow",
-      })
       return true
     } catch (error) {
       addNotification({

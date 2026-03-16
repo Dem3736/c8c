@@ -12,6 +12,7 @@ import { activeNodeIdAtom, nodeStatesAtom, runtimeMetaAtom } from "@/features/ex
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
+  HumanNodeConfig,
   InputNodeConfig,
   PersistedRunSnapshot,
   SplitterNodeConfig,
@@ -52,6 +53,7 @@ import {
   addApprovalNodeToWorkflow,
   addEvaluatorNodeToWorkflow,
   addFanOutPatternToWorkflow,
+  addHumanNodeToWorkflow,
   addSkillNodeToWorkflow,
   isLinearChainReorderSafe,
   moveMiddleNodeBeforeTarget,
@@ -68,6 +70,7 @@ interface ChainBuilderProps {
 
 const STATUS_PRIORITY: Record<string, number> = {
   waiting_approval: 0,
+  waiting_human: 0,
   failed: 1,
   running: 2,
   queued: 3,
@@ -92,7 +95,7 @@ function buildRuntimeBranchSummary(
   for (const branchId of branchIds) {
     const status = nodeStates[branchId]?.status || "pending"
     if (status === "running") running += 1
-    else if (status === "waiting_approval") waitingApproval += 1
+    else if (status === "waiting_approval" || status === "waiting_human") waitingApproval += 1
     else if (status === "failed") failed += 1
     else if (status === "completed" || status === "skipped") completed += 1
     else pending += 1
@@ -131,7 +134,7 @@ function buildAggregateBranchState(
   nodeStates: Record<string, NodeState>,
 ): NodeState {
   const status = summary.waitingApproval > 0
-    ? "waiting_approval"
+    ? "waiting_human"
     : summary.failed > 0
       ? "failed"
       : summary.running > 0
@@ -307,7 +310,7 @@ export function ChainBuilder({
     return orderedNodes.find((node) => {
       const presentation = getNodePresentation(node)
       const status = presentation.effectiveState?.status
-      return status === "waiting_approval" || status === "failed" || status === "running"
+      return status === "waiting_approval" || status === "waiting_human" || status === "failed" || status === "running"
     })?.id ?? null
   }, [orderedNodes, resolvedActiveNodeId, runtimeMode])
 
@@ -327,6 +330,7 @@ export function ChainBuilder({
     if (node.type === "splitter") return "Splitter"
     if (node.type === "merger") return "Merger"
     if (node.type === "approval") return "Approval"
+    if (node.type === "human") return "Human"
     if (node.type === "input") return "Input"
     if (node.type === "output") return "Output"
     return nodeId
@@ -377,7 +381,7 @@ export function ChainBuilder({
 
   const updateNodeConfig = (
     nodeId: string,
-    config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig,
+    config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig | HumanNodeConfig,
   ) => {
     setWorkflowDirect((prev) => ({
       ...prev,
@@ -433,6 +437,18 @@ export function ChainBuilder({
     }
   }
 
+  const addHuman = () => {
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addHumanNodeToWorkflow(prev)
+      nextSelectedId = selectFirstNewNode(prev, next)
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
+  }
+
   const handleInsertBlock = (value: string) => {
     if (value === "evaluator") {
       addEvaluator()
@@ -444,6 +460,10 @@ export function ChainBuilder({
     }
     if (value === "approval") {
       addApproval()
+      return
+    }
+    if (value === "human") {
+      addHuman()
     }
   }
 
@@ -509,7 +529,7 @@ export function ChainBuilder({
     const { effectiveState, runtimeBranchSummary } = getNodePresentation(node)
     const preferredTab: "nodes" | "log" | "result" = typeof effectiveState?.output?.content === "string" && effectiveState.output.content.trim().length > 0
       ? "result"
-      : effectiveState?.status === "running" || effectiveState?.status === "waiting_approval" || effectiveState?.status === "failed"
+      : effectiveState?.status === "running" || effectiveState?.status === "waiting_approval" || effectiveState?.status === "waiting_human" || effectiveState?.status === "failed"
         ? "log"
         : "nodes"
 
@@ -690,6 +710,13 @@ export function ChainBuilder({
                 >
                   <GitFork size={13} className="mr-2" />
                   Add Fan-out (3 nodes)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleInsertBlock("human")}
+                  title="Blocks the flow until someone fills in structured answers."
+                >
+                  <Hand size={13} className="mr-2" />
+                  Add Human Input
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => handleInsertBlock("approval")}

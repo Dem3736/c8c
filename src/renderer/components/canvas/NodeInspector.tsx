@@ -10,6 +10,7 @@ import type {
   SplitterNodeConfig,
   MergerNodeConfig,
   ApprovalNodeConfig,
+  HumanNodeConfig,
   WorkflowNode,
 } from "@shared/types"
 import {
@@ -43,6 +44,7 @@ type AnyNodeConfig =
   | SplitterNodeConfig
   | MergerNodeConfig
   | ApprovalNodeConfig
+  | HumanNodeConfig
 
 type RuntimeConfigurableNodeConfig =
   | SkillNodeConfig
@@ -50,6 +52,7 @@ type RuntimeConfigurableNodeConfig =
   | SplitterNodeConfig
   | MergerNodeConfig
   | ApprovalNodeConfig
+  | HumanNodeConfig
 
 export function NodeInspector() {
   const [selectedNodeId, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
@@ -158,6 +161,13 @@ export function NodeInspector() {
             <ApprovalFields
               nodeId={node.id}
               config={node.config as ApprovalNodeConfig}
+              onChange={updateConfig}
+            />
+          )}
+          {node.type === "human" && (
+            <HumanFields
+              nodeId={node.id}
+              config={node.config as HumanNodeConfig}
               onChange={updateConfig}
             />
           )}
@@ -704,6 +714,172 @@ function ApprovalFields({
             aria-label="Toggle editing before approval"
           />
         </div>
+      </div>
+
+      <RuntimePolicyEditor
+        nodeId={nodeId}
+        config={config}
+        onConfigChange={onChange as (next: RuntimeConfigurableNodeConfig) => void}
+      />
+    </>
+  )
+}
+
+function HumanFields({
+  nodeId,
+  config,
+  onChange,
+}: {
+  nodeId: string
+  config: HumanNodeConfig
+  onChange: (c: HumanNodeConfig) => void
+}) {
+  const request = config.staticRequest || {
+    version: 1 as const,
+    kind: config.mode,
+    title: "",
+    fields: [],
+  }
+  const firstField = request.fields?.[0]
+
+  const updateRequest = (patch: Partial<NonNullable<HumanNodeConfig["staticRequest"]>>) => {
+    onChange({
+      ...config,
+      staticRequest: {
+        version: 1,
+        title: request.title || "",
+        fields: request.fields || [],
+        ...request,
+        ...patch,
+        kind: config.mode,
+      },
+    })
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <Label htmlFor={`insp-human-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Mode</Label>
+        <Select
+          value={config.mode}
+          onValueChange={(v) => onChange({
+            ...config,
+            mode: v as HumanNodeConfig["mode"],
+            staticRequest: config.staticRequest
+              ? { ...config.staticRequest, kind: v as HumanNodeConfig["mode"] }
+              : config.staticRequest,
+          })}
+        >
+          <SelectTrigger id={`insp-human-mode-${nodeId}`} className="w-40 h-control-md text-body-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="form">Form</SelectItem>
+            <SelectItem value="approval">Approval</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Label htmlFor={`insp-human-source-${nodeId}`} className="ui-meta-text text-muted-foreground">Request Source</Label>
+        <Select
+          value={config.requestSource}
+          onValueChange={(v) => onChange({ ...config, requestSource: v as HumanNodeConfig["requestSource"] })}
+        >
+          <SelectTrigger id={`insp-human-source-${nodeId}`} className="w-44 h-control-md text-body-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="static">Static</SelectItem>
+            <SelectItem value="upstream_json">Upstream JSON</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label htmlFor={`insp-human-title-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
+          Task Title
+        </Label>
+        <Input
+          id={`insp-human-title-${nodeId}`}
+          type="text"
+          value={request.title || ""}
+          onChange={(e) => updateRequest({ title: e.target.value })}
+          placeholder="What the human should do"
+          className="h-control-md text-body-sm"
+        />
+      </div>
+
+      <div>
+        <Label htmlFor={`insp-human-instructions-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
+          Instructions
+        </Label>
+        <TextareaWithMention
+          id={`insp-human-instructions-${nodeId}`}
+          value={request.instructions || ""}
+          onChange={(e) => updateRequest({ instructions: e.target.value })}
+          rows={3}
+          className="min-h-[72px] resize-y font-mono text-body-sm"
+          placeholder="Explain what information is needed."
+        />
+      </div>
+
+      {config.requestSource === "static" && config.mode === "form" && (
+        <div className="surface-inset-card px-2 py-2 space-y-2">
+          <div>
+            <Label htmlFor={`insp-human-field-label-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
+              Primary Field Label
+            </Label>
+            <Input
+              id={`insp-human-field-label-${nodeId}`}
+              type="text"
+              value={firstField?.label || ""}
+              onChange={(e) => updateRequest({
+                fields: [{
+                  id: firstField?.id || "response",
+                  type: firstField?.type || "textarea",
+                  required: firstField?.required ?? true,
+                  ...firstField,
+                  label: e.target.value,
+                }],
+              })}
+              placeholder="Response"
+              className="h-control-md text-body-sm"
+            />
+          </div>
+          <div>
+            <Label htmlFor={`insp-human-field-placeholder-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
+              Field Placeholder
+            </Label>
+            <Input
+              id={`insp-human-field-placeholder-${nodeId}`}
+              type="text"
+              value={firstField?.placeholder || ""}
+              onChange={(e) => updateRequest({
+                fields: [{
+                  id: firstField?.id || "response",
+                  label: firstField?.label || "Response",
+                  type: firstField?.type || "textarea",
+                  required: firstField?.required ?? true,
+                  ...firstField,
+                  placeholder: e.target.value,
+                }],
+              })}
+              placeholder="Enter the required input..."
+              className="h-control-md text-body-sm"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between rounded-md border border-hairline bg-surface-2/50 px-2 py-1.5">
+        <Label htmlFor={`insp-human-revisions-${nodeId}`} className="ui-meta-text text-muted-foreground">Allow revisions</Label>
+        <Switch
+          id={`insp-human-revisions-${nodeId}`}
+          checked={config.allowRevisions ?? true}
+          onCheckedChange={(checked) => onChange({ ...config, allowRevisions: checked })}
+          aria-label="Toggle human revisions"
+        />
       </div>
 
       <RuntimePolicyEditor

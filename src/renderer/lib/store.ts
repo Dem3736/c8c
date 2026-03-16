@@ -247,9 +247,10 @@ export interface InboxNotification {
 }
 
 const MAX_INBOX_NOTIFICATIONS = 150
+const INBOX_DEDUPE_WINDOW_MS = 15_000
 
 export const inboxNotificationsAtom = atomWithStorage<InboxNotification[]>(
-  "c8c:inbox-notifications",
+  "c8c:inbox-notifications-v2",
   [],
 )
 
@@ -264,13 +265,24 @@ export const addInboxNotificationAtom = atom(
     set,
     notification: Omit<InboxNotification, "id" | "createdAt" | "read">,
   ) => {
+    const existing = get(inboxNotificationsAtom)
+    const now = Date.now()
+    const duplicate = existing.find((entry) =>
+      entry.title === notification.title
+      && entry.description === notification.description
+      && entry.level === notification.level
+      && entry.source === notification.source
+      && (now - entry.createdAt) < INBOX_DEDUPE_WINDOW_MS,
+    )
+    if (duplicate) return
+
     const nextEntry: InboxNotification = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      createdAt: Date.now(),
+      id: `${now}-${Math.random().toString(36).slice(2, 10)}`,
+      createdAt: now,
       read: false,
       ...notification,
     }
-    const next = [nextEntry, ...get(inboxNotificationsAtom)].slice(0, MAX_INBOX_NOTIFICATIONS)
+    const next = [nextEntry, ...existing].slice(0, MAX_INBOX_NOTIFICATIONS)
     set(inboxNotificationsAtom, next)
   },
 )

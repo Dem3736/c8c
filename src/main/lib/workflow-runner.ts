@@ -80,12 +80,14 @@ export async function resolveApproval(
   nodeId: string,
   approved: boolean,
   editedContent?: string,
+  workspace?: string,
 ): Promise<boolean> {
   return workflowRunner.resolveApproval({
     runId,
     nodeId,
     approved,
     editedContent,
+    workspace,
   })
 }
 

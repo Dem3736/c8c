@@ -672,6 +672,7 @@ export function WorkflowPanel() {
                     reviewedRunDetails={reviewedRunDetails}
                     reviewedRunLoading={reviewedRunLoading}
                     reviewedRunError={reviewedRunError}
+                    onOpenInbox={() => setMainView("inbox")}
                   />
                 </SectionErrorBoundary>
               </div>
@@ -729,6 +730,7 @@ export function WorkflowPanel() {
                           reviewedRunLoading={reviewedRunLoading}
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={() => setPrepareNewRun(true)}
+                          onOpenInbox={() => setMainView("inbox")}
                         />
                       </SectionErrorBoundary>
                     </div>
@@ -758,6 +760,7 @@ export function WorkflowPanel() {
                           reviewedRunDetails={reviewedRunDetails}
                           reviewedRunLoading={reviewedRunLoading}
                           reviewedRunError={reviewedRunError}
+                          onOpenInbox={() => setMainView("inbox")}
                         />
                       </SectionErrorBoundary>
                     </div>

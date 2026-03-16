@@ -128,6 +128,7 @@ export function OutputPanel({
   reviewedRunLoading = false,
   reviewedRunError = null,
   onStartNewRun,
+  onOpenInbox,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
   onRerunFrom?: (nodeId: string) => Promise<void> | void
@@ -139,6 +140,7 @@ export function OutputPanel({
   reviewedRunLoading?: boolean
   reviewedRunError?: string | null
   onStartNewRun?: () => void
+  onOpenInbox?: () => void
 }) {
   const {
     runStatus,
@@ -177,6 +179,8 @@ export function OutputPanel({
 
   const reviewingRunHistory = reviewingPastRun && runStatus === "idle" && !!selectedReviewRun
   const reviewSnapshot = reviewingRunHistory ? reviewedRunDetails?.snapshot || null : null
+  const reviewHumanTasks = reviewingRunHistory ? Object.values(reviewSnapshot?.humanTasks || {}) : []
+  const openReviewTaskCount = reviewHumanTasks.filter((task) => task.status === "open").length
   const displayNodeStates = reviewingRunHistory ? (reviewSnapshot?.nodeStates || {}) : nodeStates
   const displayRuntimeMeta = reviewingRunHistory ? (reviewSnapshot?.runtimeMeta || {}) : runtimeMeta
   const displayEvalResults = reviewingRunHistory ? (reviewSnapshot?.evalResults || {}) : evalResults
@@ -383,6 +387,13 @@ export function OutputPanel({
     ? `${selectedReviewRun.workflowName || workflow.name || "Workflow"} · ${formatRunCompletedAt(selectedReviewRun)}`
     : null
   const canInspectSavedRun = reviewingRunHistory && !!reviewSnapshot && !reviewedRunLoading && !reviewedRunError
+  const showBlockedReviewStrip = reviewingRunHistory && selectedReviewRun?.status === "blocked"
+  const canContinueBlockedReview = showBlockedReviewStrip
+    && !!reviewSnapshot
+    && !reviewedRunLoading
+    && openReviewTaskCount === 0
+    && !!onContinueRun
+    && !!selectedReviewRun
 
   const openNodeDetails = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId)
@@ -569,6 +580,40 @@ export function OutputPanel({
             </TabsList>
           </div>
         </div>
+        {showBlockedReviewStrip && (
+          <div className="rounded-lg border border-status-warning/20 bg-status-warning/8 px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="ui-meta-label text-status-warning">Run is blocked</div>
+                <p className="mt-1 ui-meta-text text-status-warning">
+                  {openReviewTaskCount > 0
+                    ? `${openReviewTaskCount} review ${openReviewTaskCount === 1 ? "task is" : "tasks are"} still open for this run.`
+                    : "The checkpoint has been answered. Continue the run to finish the flow."}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {openReviewTaskCount > 0 && !!reviewSnapshot && onOpenInbox && (
+                  <Button type="button" variant="outline" size="sm" onClick={onOpenInbox}>
+                    Open inbox
+                  </Button>
+                )}
+                {canContinueBlockedReview && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedReviewRun || !onContinueRun) return
+                      void Promise.resolve(onContinueRun(selectedReviewRun))
+                    }}
+                  >
+                    Continue run
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <TabsContent value="nodes" className="mt-0">
           {showIdleState ? (

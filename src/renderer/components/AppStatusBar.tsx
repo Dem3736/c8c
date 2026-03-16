@@ -125,7 +125,7 @@ export function AppStatusBar() {
     const status = nodeStates[nodeId]?.status || "pending"
     if (status === "completed" || status === "skipped") completedSteps += 1
     if (status === "running") runningSteps += 1
-    if (status === "waiting_approval") waitingApprovalSteps += 1
+    if (status === "waiting_approval" || status === "waiting_human") waitingApprovalSteps += 1
     if (status === "failed") failedSteps += 1
   }
 
@@ -139,7 +139,7 @@ export function AppStatusBar() {
         ? "paused"
         : runStatus === "running"
           ? waitingApprovalSteps > 0
-            ? "waiting for approval"
+            ? "waiting for input"
             : failedSteps > 0
               ? "errors detected"
               : runningSteps > 0

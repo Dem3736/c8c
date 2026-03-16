@@ -224,6 +224,87 @@ export function useExecutionCommands({
     recordExecutionError,
   ])
 
+  const continueWithWorkflow = useCallback(async (
+    runToContinue: RunResult,
+    workflowForRun: Workflow,
+    workflowPathForRun: string | null,
+  ) => {
+    if (isRunInFlight(runStatus)) return false
+    if (!runToContinue.workspace) {
+      toast.error("Could not continue run", {
+        description: "Run workspace is missing.",
+      })
+      recordExecutionError("Could not continue run", "Run workspace is missing.")
+      return false
+    }
+    if (!workflowForRun.nodes.length) {
+      toast.error("Could not continue run", {
+        description: "Workflow has no steps.",
+      })
+      recordExecutionError("Could not continue run", "Workflow has no steps.")
+      return false
+    }
+
+    setCurrentWorkflow(workflowForRun)
+    setSelectedWorkflowPath(workflowPathForRun)
+
+    const workflowKey = controller.beginExecution(workflowForRun, workflowPathForRun, selectedProject ?? null)
+    setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
+    controller.updateExecutionForKey(workflowKey, (previous) => ({
+      ...previous,
+      workspace: runToContinue.workspace,
+    }))
+
+    const { workflowForExecution } = prepareWorkflowForExecution(
+      workflowForRun,
+      webSearchBackend,
+    )
+
+    try {
+      const result = await window.api.continueRun(
+        workflowForExecution,
+        runToContinue.workspace,
+        selectedProject ?? undefined,
+        workflowPathForRun ?? undefined,
+        webSearchBackend,
+      )
+
+      const { startedRunId, errorMessage } = resolveExecutionStartResult(
+        result,
+        "No active window is available for execution.",
+      )
+
+      if (startedRunId) {
+        controller.finishStartWithRunId(startedRunId, workflowKey)
+        return true
+      }
+
+      toast.error("Could not continue run", {
+        description: errorMessage || undefined,
+      })
+      recordExecutionError("Could not continue run", errorMessage || undefined)
+    } catch (error) {
+      console.error("[useChainExecution] continueRun failed:", error)
+      toast.error("Could not continue run", {
+        description: String(error),
+      })
+      recordExecutionError("Could not continue run", String(error))
+    }
+
+    controller.rollbackExecutionStart(workflowKey)
+    return false
+  }, [
+    controller,
+    defaultProvider,
+    recordExecutionError,
+    runStatus,
+    selectedProject,
+    setActiveExecutionProvider,
+    setCurrentWorkflow,
+    setSelectedWorkflowPath,
+    webSearchBackend,
+  ])
+
   const continueRun = useCallback(async (runToContinue: RunResult) => {
     if (isRunInFlight(runStatus)) return
     if (!runToContinue.workspace) {
@@ -266,62 +347,15 @@ export function useExecutionCommands({
       return
     }
 
-    const workflowKey = controller.beginExecution(workflowForRun, workflowPathForRun, selectedProject ?? null)
-    setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
-    controller.updateExecutionForKey(workflowKey, (previous) => ({
-      ...previous,
-      workspace: runToContinue.workspace,
-    }))
-
-    const { workflowForExecution } = prepareWorkflowForExecution(
-      workflowForRun,
-      webSearchBackend,
-    )
-
-    try {
-      const result = await window.api.continueRun(
-        workflowForExecution,
-        runToContinue.workspace,
-        selectedProject ?? undefined,
-        workflowPathForRun ?? undefined,
-        webSearchBackend,
-      )
-
-      const { startedRunId, errorMessage } = resolveExecutionStartResult(
-        result,
-        "No active window is available for execution.",
-      )
-
-      if (startedRunId) {
-        controller.finishStartWithRunId(startedRunId, workflowKey)
-        return
-      }
-
-      toast.error("Could not continue run", {
-        description: errorMessage || undefined,
-      })
-      recordExecutionError("Could not continue run", errorMessage || undefined)
-    } catch (error) {
-      console.error("[useChainExecution] continueRun failed:", error)
-      toast.error("Could not continue run", {
-        description: String(error),
-      })
-      recordExecutionError("Could not continue run", String(error))
-    }
-
-    controller.rollbackExecutionStart(workflowKey)
+    await continueWithWorkflow(runToContinue, workflowForRun, workflowPathForRun)
   }, [
-    controller,
-    defaultProvider,
+    continueWithWorkflow,
+    recordExecutionError,
     runStatus,
-    selectedProject,
     selectedWorkflowPath,
     setCurrentWorkflow,
-    setActiveExecutionProvider,
     setSelectedWorkflowPath,
-    webSearchBackend,
     workflow,
-    recordExecutionError,
   ])
 
   return {
@@ -329,5 +363,6 @@ export function useExecutionCommands({
     cancel,
     rerunFrom,
     continueRun,
+    continueWithWorkflow,
   }
 }

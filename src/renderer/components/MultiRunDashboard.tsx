@@ -175,7 +175,7 @@ function summarizeExecution(state: WorkflowExecutionState) {
     const status = state.nodeStates[nodeId]?.status || "pending"
     if (status === "completed" || status === "skipped") completedSteps += 1
     if (status === "running") runningSteps += 1
-    if (status === "waiting_approval") waitingApprovalSteps += 1
+    if (status === "waiting_approval" || status === "waiting_human") waitingApprovalSteps += 1
     if (status === "failed") failedSteps += 1
   }
 

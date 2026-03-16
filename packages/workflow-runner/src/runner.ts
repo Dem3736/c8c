@@ -201,6 +201,7 @@ export interface ApprovalDecision {
   nodeId: string
   approved: boolean
   editedContent?: string
+  workspace?: string
 }
 
 export interface WorkflowRunHandle {
@@ -2262,20 +2263,39 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               state.status = "waiting_approval"
               const approvalContent = approvalConfig.show_content ? incomingContent : ""
               let decision = await readApprovalDecision(workspace, node.id)
+              const approvalTask = !decision
+                ? await upsertApprovalHilTask({
+                    workspace,
+                    runId,
+                    workflowName: workflow.name,
+                    workflowPath,
+                    projectPath,
+                    nodeId: node.id,
+                    title: approvalConfig.message || `Approval required for ${node.id}`,
+                    message: approvalConfig.message,
+                    content: approvalContent,
+                    allowEdit: approvalConfig.allow_edit,
+                  })
+                : await getWorkflowHilTask(workspace, approvalTaskId(node.id))
+
+              if (approvalTask) {
+                state.humanTask = {
+                  taskId: approvalTask.taskId,
+                  status: approvalTask.state.status,
+                }
+              }
 
               if (!decision) {
-                await upsertApprovalHilTask({
-                  workspace,
-                  runId,
-                  workflowName: workflow.name,
-                  workflowPath,
-                  projectPath,
-                  nodeId: node.id,
-                  title: approvalConfig.message || `Approval required for ${node.id}`,
-                  message: approvalConfig.message,
-                  content: approvalContent,
-                  allowEdit: approvalConfig.allow_edit,
-                })
+                await persistRunState(workspace, nodeStates, runtimeWorkflow, persistedInput)
+                if (approvalTask) {
+                  await runtime.emitEvent({
+                    type: "human-task-created",
+                    runId,
+                    nodeId: node.id,
+                    taskId: approvalTask.taskId,
+                    title: approvalTask.state.title,
+                  })
+                }
                 await runtime.emitEvent({
                   type: "approval-requested",
                   runId,
@@ -2297,6 +2317,25 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                   approvalConfig.timeout_minutes,
                   approvalConfig.timeout_action ?? "auto_reject",
                 )
+              }
+
+              if (approvalTask) {
+                const resolution = decision.timedOut
+                  ? "timed_out"
+                  : decision.approved
+                    ? "submitted"
+                    : "rejected"
+                state.humanTask = {
+                  taskId: approvalTask.taskId,
+                  status: resolution === "submitted" ? "answered" : resolution,
+                }
+                await runtime.emitEvent({
+                  type: "human-task-resolved",
+                  runId,
+                  nodeId: node.id,
+                  taskId: approvalTask.taskId,
+                  resolution,
+                })
               }
 
               if (decision.timedOut) {
@@ -2326,7 +2365,13 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                   ? `Approval timed out (${approvalConfig.timeout_action ?? "auto_reject"})`
                   : "Rejected by user"
                 await runtime.emitEvent({ type: "node-error", runId, nodeId: node.id, error: state.error })
+                if (approvalTask) {
+                  await markWorkflowHilTaskConsumed(workspace, approvalTask.taskId)
+                }
                 return
+              }
+              if (approvalTask) {
+                await markWorkflowHilTaskConsumed(workspace, approvalTask.taskId)
               }
               break
             }
@@ -2913,7 +2958,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
 
     async resolveApproval(decision: ApprovalDecision): Promise<boolean> {
       const key = `${decision.runId}:${decision.nodeId}`
-      const workspace = runWorkspaces.get(decision.runId)
+      const workspace = decision.workspace || runWorkspaces.get(decision.runId)
       if (workspace) {
         try {
           const persistedDecision = {

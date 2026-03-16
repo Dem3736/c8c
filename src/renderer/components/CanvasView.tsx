@@ -37,6 +37,7 @@ import {
   addEdgeToWorkflow,
   addEvaluatorNodeToWorkflow,
   addFanOutPatternToWorkflow,
+  addHumanNodeToWorkflow,
   addSkillNodeToWorkflow,
   removeEdgeFromWorkflow,
   removeNodeAndRewireWorkflow,
@@ -53,6 +54,7 @@ const nodeTypes: NodeTypes = {
   splitter: CanvasNode,
   merger: CanvasNode,
   approval: CanvasNode,
+  human: CanvasNode,
 }
 
 const edgeTypes: EdgeTypes = {
@@ -176,6 +178,22 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     let nextSelectedId: string | null = null
     setWorkflow((prev) => {
       const next = addApprovalNodeToWorkflow(prev)
+      nextSelectedId = findFirstAddedNodeId(
+        prev.nodes.map((node) => node.id),
+        next.nodes.map((node) => node.id),
+      )
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
+  }, [isRunning, readOnly, setSelectedNodeId, setWorkflow])
+
+  const addHuman = useCallback(() => {
+    if (readOnly || isRunning) return
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const next = addHumanNodeToWorkflow(prev)
       nextSelectedId = findFirstAddedNodeId(
         prev.nodes.map((node) => node.id),
         next.nodes.map((node) => node.id),
@@ -397,6 +415,10 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
     }
     if (value === "approval") {
       addApproval()
+      return
+    }
+    if (value === "human") {
+      addHuman()
     }
   }
 
@@ -577,6 +599,13 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              onSelect={() => handleInsertBlock("human")}
+              title="Blocks the flow until someone fills in structured answers."
+            >
+              <Hand size={13} className="mr-2" />
+              Add Human Input
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onSelect={() => handleInsertBlock("approval")}
               title="Pauses workflow for your review before continuing."
             >
@@ -664,6 +693,15 @@ export function CanvasView({ readOnly = false, onAddSkill }: CanvasViewProps = {
               }}
             >
               Add Fan-out
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={readOnly}
+              onSelect={() => {
+                handleInsertBlock("human")
+                setCanvasContextMenu(null)
+              }}
+            >
+              Add Human Input
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={readOnly}

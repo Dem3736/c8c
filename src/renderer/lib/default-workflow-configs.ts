@@ -1,6 +1,7 @@
 import type {
   ApprovalNodeConfig,
   EvaluatorNodeConfig,
+  HumanNodeConfig,
   MergerNodeConfig,
   SkillNodeConfig,
   SplitterNodeConfig,
@@ -34,4 +35,29 @@ export const DEFAULT_APPROVAL_CONFIG: ApprovalNodeConfig = {
   message: "Review and approve this step before continuing.",
   show_content: true,
   allow_edit: false,
+}
+
+export const DEFAULT_HUMAN_CONFIG: HumanNodeConfig = {
+  mode: "form",
+  requestSource: "static",
+  staticRequest: {
+    version: 1,
+    kind: "form",
+    title: "Need human input",
+    instructions: "Provide the missing information before the flow continues.",
+    fields: [
+      {
+        id: "response",
+        type: "textarea",
+        label: "Response",
+        required: true,
+        placeholder: "Enter the information the flow needs...",
+      },
+    ],
+  },
+  timeoutAction: "fail_node",
+  submitAction: "complete_node",
+  rejectAction: "fail_node",
+  allowRevisions: true,
+  autoContinue: false,
 }
