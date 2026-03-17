@@ -4,6 +4,7 @@ import type {
   ChatSessionMessage,
   ChatSessionSnapshot,
   ChatSessionStatus,
+  Workflow,
 } from "@shared/types"
 
 interface ActiveChatSessionRecord {
@@ -11,6 +12,7 @@ interface ActiveChatSessionRecord {
   sessionId: string
   status: ChatSessionStatus
   activeToolName: string | null
+  workflow: Workflow | null
   messages: ChatSessionMessage[]
   updatedAt: number
 }
@@ -31,6 +33,7 @@ function cloneSnapshot(record: ActiveChatSessionRecord): ChatSessionSnapshot {
     sessionId: record.sessionId,
     status: record.status,
     activeToolName: record.activeToolName,
+    workflow: record.workflow ? structuredClone(record.workflow) : null,
     messages: record.messages.map(cloneMessage),
     updatedAt: record.updatedAt,
   }
@@ -81,6 +84,7 @@ export function beginActiveChatSession(
   workflowPath: string,
   sessionId: string,
   messages: ChatMessage[],
+  workflow: Workflow,
 ): void {
   const timestamp = Date.now()
   const record: ActiveChatSessionRecord = {
@@ -88,6 +92,7 @@ export function beginActiveChatSession(
     sessionId,
     status: "thinking",
     activeToolName: null,
+    workflow: structuredClone(workflow),
     messages: [...messages.map(toSessionMessage), createStreamingPlaceholder(sessionId, timestamp)],
     updatedAt: timestamp,
   }
@@ -150,9 +155,11 @@ export function applyChatEventToActiveSession(event: ChatEvent): void {
       break
     }
     case "workflow-mutated": {
+      record.workflow = structuredClone(event.workflow)
       break
     }
     case "turn-complete": {
+      record.workflow = structuredClone(event.workflow)
       record.activeToolName = null
       record.status = "idle"
       break

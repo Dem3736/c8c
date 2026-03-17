@@ -1,0 +1,100 @@
+id: content-trend-watch
+stage: content
+emoji: "\U0001F4E1"
+headline: Track trends and turn them into a usable trend digest
+how: Gather recent signals, themes, launches, and discussion patterns, then condense them into a trend digest that can drive ideation.
+input: Notes, links, feeds, or a research brief describing the market or topic space
+output: Trend digest with named themes, signals, and why they matter
+use_when: You need a current evidence base before generating a concrete post plan or drafting posts.
+steps:
+  - Extract recurring themes, launches, controversies, and shifts in the topic space
+  - Turn the raw input into a structured trend digest that can drive downstream content work
+  - Evaluate digest quality for evidence backing, specificity, and niche coverage before output
+pack:
+  id: content-factory-alpha
+  label: Content Factory
+  journey_stage: research
+  entrypoint: true
+  recommended_next:
+    - content-post-calendar
+contract_out:
+  - kind: trend_digest
+    title: Trend Digest
+    description: Current themes, signals, and emerging angles worth turning into content.
+execution_policy:
+  profile_id: content_trend_watch
+  summary: Evidence-first trend watch
+  description: Start from signals and observations before turning them into ideas or drafts.
+  tags:
+    - evidence_first
+    - consistency_checks
+  notes:
+    - Prefer concrete signals over vague “hot takes.”
+    - Make the evidence base usable for downstream ideation.
+    - “Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions.”
+version: 1
+name: "Content Factory: Trend Watch"
+description: Turn incoming research into a trend digest that can seed a content campaign.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste links, notes, scraped research, or a topic brief for the trend watch pass.
+  - id: trend-watch-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Build a Trend Digest from the provided material. Identify:
+        1) major themes,
+        2) specific signals or evidence,
+        3) what feels newly important,
+        4) contrarian or under-covered angles,
+        5) what these signals suggest for future content.
+        Keep the output structured, concise, and ready to feed into an idea backlog.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: each trend backed by concrete evidence, no hallucinated trends, covers stated niche, themes are specific not generic."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: trend-watch-1
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Trend Digest
+edges:
+  - id: e-input-trend-watch
+    source: input-1
+    target: trend-watch-1
+    type: default
+  - id: e-trend-watch-eval
+    source: trend-watch-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: trend-watch-1
+    type: fail

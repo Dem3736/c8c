@@ -9,6 +9,11 @@ steps:
   - Define page structure and key blocks
   - Generate copy for each block with quality loops
   - Assemble and run cross-block quality check
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Landing Page Generator
 description: Build landing page copy block-by-block with per-block quality loops, then assemble with cross-block QC

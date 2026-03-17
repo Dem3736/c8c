@@ -22,6 +22,7 @@ import type {
   ProviderHealth,
   ProviderId,
   ProviderSettings,
+  ResultModeId,
   SafetyProfile,
 } from "@shared/types"
 import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
@@ -239,6 +240,11 @@ export const selectedFactoryCaseIdAtom = atomWithStorage<string | null>(
   null,
 )
 
+export const selectedFactoryIdAtom = atomWithStorage<string | null>(
+  "c8c:selected-factory-id",
+  null,
+)
+
 export const selectedInboxTaskKeyAtom = atomWithStorage<string | null>(
   "c8c:selected-inbox-task-key",
   null,
@@ -343,6 +349,14 @@ export const workflowCreateContextAtom = atom<{
   projectPath: null,
   locked: false,
 })
+export const selectedResultModeIdAtom = atomWithStorage<ResultModeId>(
+  "c8c:selected-result-mode-id",
+  "development",
+)
+export const workflowCreateModeConfigsAtom = atomWithStorage<Record<string, Record<string, string>>>(
+  "c8c:workflow-create-mode-configs",
+  {},
+)
 export const workflowCreateDraftPromptAtom = atom("")
 export const workflowCreatePendingMessageAtom = atom<Record<string, string>>({})
 export const workflowCreatePendingEntryAtom = atom<Record<string, string>>({})

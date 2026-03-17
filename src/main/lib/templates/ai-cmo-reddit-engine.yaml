@@ -1,0 +1,174 @@
+id: ai-cmo-reddit-engine
+stage: outreach
+emoji: "\U0001F4AC"
+headline: Plan subreddit-native posts and comment strategy before you publish
+how: Researches subreddit fit and rules, selects the most credible Reddit motions, drafts posts plus follow-up comments, and routes everything through evaluation and approval
+input: Website, launch context, product brief, or upstream AI CMO strategy pack
+output: Reddit motion shortlist, post drafts, and comment playbook ready for manual review
+use_when: You want Reddit distribution to feel native to the community and you need an explicit anti-spam review step.
+steps:
+  - Find subreddits that fit and document their rules, norms, and risk flags
+  - Choose the most credible post angles and disclose where the product mention belongs
+  - Draft subreddit-native posts and likely comment replies
+  - Evaluate for cultural fit and spam risk, then require approval before use
+pack:
+  id: ai-cmo
+  label: AI CMO
+  journey_stage: execute
+contract_in:
+  - kind: angle_map
+    title: Angle Map
+    description: Helpful messaging angles from the planning pass.
+    required: false
+  - kind: editorial_calendar
+    title: Editorial Calendar
+    description: Helpful sequencing context for community distribution.
+    required: false
+contract_out:
+  - kind: draft
+    title: Reddit Post and Comment Kit
+    description: Subreddit-specific post drafts plus likely follow-up comments and reply handling notes.
+  - kind: distribution_bundle
+    title: Reddit Posting Plan
+    description: Community shortlist, rule notes, disclosure expectations, and timing guidance.
+execution_policy:
+  profile_id: ai_cmo_reddit
+  summary: Community-native distribution with spam controls
+  description: Treat Reddit like community participation first and product distribution second, with explicit checks for fit and self-promo risk.
+  tags:
+    - evidence_first
+    - no_slop
+    - critique_loops
+    - publish_gate
+    - human_gate_required
+  notes:
+    - If the best answer is "do not post here yet", say it clearly.
+    - Make value delivery obvious before any product mention.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "AI CMO: Reddit Engine"
+description: Research subreddit fit, draft native Reddit motions, and hold them behind a manual review gate.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 35
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste the product context or strategy output you want to translate into Reddit motions.
+  - id: research-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      prompt: >-
+        Identify the best-fit Reddit communities for this product or story. Return a shortlist with:
+        - subreddit
+        - audience and why it fits
+        - explicit posting rules
+        - tone and norm notes
+        - examples of what tends to work
+        - risk flags
+        - recommendation: good fit, possible later, or avoid
+        Be conservative about self-promo risk.
+  - id: angles-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      prompt: >-
+        Choose the best 2-3 Reddit motions from the shortlist. For each one include:
+        - subreddit
+        - post type
+        - story or value angle
+        - what useful information comes before any product mention
+        - disclosure expectation
+        - likely objections
+        - comment strategy after posting
+        Also note the cases where the product should not be mentioned directly.
+  - id: draft-1
+    type: skill
+    position:
+      x: 840
+      y: 220
+    config:
+      prompt: >-
+        Write Reddit-ready drafts for the selected motions. For each include:
+        - title
+        - body
+        - optional disclosure line
+        - 8-12 likely follow-up comments or replies
+        - escalation notes if users push back
+        Match each subreddit's norms. Avoid marketing language.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1120
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on:
+        1) subreddit fit,
+        2) rule compliance,
+        3) usefulness before promotion,
+        4) natural tone,
+        5) realism of the comment strategy.
+        Fail if the motion reads like disguised advertising or ignores community norms.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: angles-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1400
+      y: 220
+    config:
+      message: Review the Reddit shortlist, drafts, and replies before posting.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1680
+      y: 220
+    config:
+      title: Reddit Post and Comment Kit
+edges:
+  - id: e-input-research
+    source: input-1
+    target: research-1
+    type: default
+  - id: e-research-angles
+    source: research-1
+    target: angles-1
+    type: default
+  - id: e-angles-draft
+    source: angles-1
+    target: draft-1
+    type: default
+  - id: e-draft-evaluator
+    source: draft-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-approval
+    source: evaluator-1
+    target: approval-1
+    type: pass
+  - id: e-evaluator-angles
+    source: evaluator-1
+    target: angles-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

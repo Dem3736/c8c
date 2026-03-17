@@ -369,4 +369,21 @@ describe("assembleInputWithAttachments", () => {
     expect(result).toContain("## Notes")
     expect(result).toContain("Plain text note")
   })
+
+  it("reports when file attachments cannot be read without a selected project", async () => {
+    const api = {
+      readFileContent: vi.fn(),
+      loadRunResult: vi.fn(),
+    }
+
+    const result = await assembleInputWithAttachments(
+      "Base prompt",
+      [{ kind: "file", path: "/tmp/file.txt", name: "file.txt" }],
+      null,
+      api,
+    )
+
+    expect(api.readFileContent).not.toHaveBeenCalled()
+    expect(result).toContain("[Cannot read file: no project selected]")
+  })
 })

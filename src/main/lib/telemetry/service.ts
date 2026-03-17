@@ -10,6 +10,7 @@ import type {
 } from "@shared/types"
 import { createTelemetryClient } from "./index"
 import { writeFileAtomic } from "../atomic-write"
+import { logWarn } from "../structured-log"
 import type {
   TelemetryClient,
   TelemetryEventName,
@@ -117,6 +118,15 @@ async function persistState(): Promise<void> {
   await writeFileAtomic(path, JSON.stringify(telemetryState, null, 2))
 }
 
+function resetTelemetryClientToNoop(): void {
+  telemetryClient = createTelemetryClient({
+    provider: "noop",
+    posthogHost: "",
+    posthogApiKey: "",
+    consent: false,
+  })
+}
+
 function currentAppVersion(): string {
   try {
     return app.getVersion()
@@ -146,17 +156,30 @@ export async function initTelemetryService(): Promise<void> {
   }
 
   initPromise = (async () => {
-    telemetryState = await loadPersistedState()
-    telemetryClient = createTelemetryClient({
-      provider: telemetryAvailableInBuild ? configuredProvider : "noop",
-      posthogHost: __POSTHOG_HOST__,
-      posthogApiKey: __POSTHOG_KEY__,
-      consent: telemetryAvailableInBuild && telemetryState.consent,
-    })
+    try {
+      telemetryState = await loadPersistedState()
+      telemetryClient = createTelemetryClient({
+        provider: telemetryAvailableInBuild ? configuredProvider : "noop",
+        posthogHost: __POSTHOG_HOST__,
+        posthogApiKey: __POSTHOG_KEY__,
+        consent: telemetryAvailableInBuild && telemetryState.consent,
+      })
 
-    if (telemetryState.consent && !telemetryAvailableInBuild) {
-      telemetryState = { ...telemetryState, consent: false, consentSource: "default" }
-      await persistState()
+      if (telemetryState.consent && !telemetryAvailableInBuild) {
+        telemetryState = { ...telemetryState, consent: false, consentSource: "default" }
+        await persistState()
+      }
+    } catch (error) {
+      resetTelemetryClientToNoop()
+      telemetryState = {
+        ...telemetryState,
+        consent: false,
+        consentSource: "default",
+      }
+      initPromise = null
+      logWarn("telemetry-service", "init_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   })()
 

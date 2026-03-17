@@ -10,6 +10,11 @@ steps:
   - Split the plan into self-contained browser scenarios
   - Run each scenario end-to-end and capture visual QA evidence
   - Merge findings into one prioritized audit and quality-gate it
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Playwright Visual Testing Audit
 description: Map UI scenarios, click through them with browser automation, and merge the findings into a prioritized visual QA report

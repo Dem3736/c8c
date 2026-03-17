@@ -1,0 +1,103 @@
+id: courses-lesson-system
+stage: content
+emoji: "\U0001F4DA"
+headline: Turn the curriculum map into a lesson system
+how: Convert the curriculum into lesson briefs and delivery guidance so lesson production has a strong scaffold.
+input: Curriculum map plus teaching notes, format constraints, and any lesson-level preferences
+output: Lesson system with lesson briefs, objectives, and format guidance
+use_when: You have the curriculum map and need a reusable lesson system before producing final lesson assets.
+steps:
+  - Turn each curriculum module into a lesson system or lesson briefs
+  - Define objectives, lesson format, and what each lesson should accomplish
+  - Evaluate coherence, pacing, and student progression before launch preparation
+pack:
+  id: courses-factory-alpha
+  label: Courses Factory
+  journey_stage: execute
+  recommended_next:
+    - courses-launch-assets
+contract_in:
+  - kind: curriculum_map
+    title: Curriculum Map
+    description: The approved course modules and progression.
+    required: true
+contract_out:
+  - kind: lesson_system
+    title: Lesson System
+    description: Lesson briefs and structure ready for lesson production or launch prep.
+execution_policy:
+  profile_id: courses_lesson_system
+  summary: System before polish
+  description: Build lesson structure and sequencing before producing launch materials or polishing content.
+  tags:
+    - small_tasks
+    - consistency_checks
+  notes:
+    - Keep each lesson tied to a concrete learning objective.
+    - Avoid duplicate lesson scopes across the curriculum.
+version: 1
+name: "Courses Factory: Lesson System"
+description: Turn a curriculum map into lesson briefs and a reusable lesson system.
+defaults:
+  model: sonnet
+  maxTurns: 150
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the curriculum map, lesson format guidance, and any notes about delivery depth or style.
+  - id: builder-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: writer
+      prompt: >-
+        Build a Lesson System from the Curriculum Map. For each lesson or unit include:
+        1) lesson title,
+        2) objective,
+        3) key points,
+        4) delivery format,
+        5) how it moves the learner toward the transformation promise.
+        Keep the system structured and usable for downstream production.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: lessons are coherent, objectives are specific, pacing is realistic, and the lesson system is ready for production."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: builder-1
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Lesson System
+edges:
+  - id: e-input-builder
+    source: input-1
+    target: builder-1
+    type: default
+  - id: e-builder-eval
+    source: builder-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: builder-1
+    type: fail

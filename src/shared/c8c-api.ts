@@ -8,6 +8,8 @@ import type {
   ClaudeCodeSubscriptionStatus,
   DesktopRuntimeInfo,
   DiscoveredSkill,
+  ProjectFactoryBlueprint,
+  ProjectFactoryState,
   GenerationProgress,
   HumanTaskSnapshot,
   HumanTaskSubmitInput,
@@ -25,6 +27,9 @@ import type {
   ProviderId,
   ProviderSettings,
   RunResult,
+  SaveProjectFactoryBlueprintInput,
+  SpawnFactoryCasesFromArtifactInput,
+  SpawnFactoryCasesFromArtifactResult,
   SkillLibrary,
   TelemetrySettings,
   TelemetryUiEvent,
@@ -131,6 +136,10 @@ export interface C8cApi {
   getActiveExecutions: () => Promise<ActiveExecutionSnapshot[]>
   persistArtifactsFromRun: (input: PersistArtifactsFromRunRequest) => Promise<PersistArtifactsFromRunResult>
   listProjectArtifacts: (projectPath: string) => Promise<ArtifactRecord[]>
+  loadProjectFactoryBlueprint: (projectPath: string) => Promise<ProjectFactoryBlueprint | null>
+  saveProjectFactoryBlueprint: (input: SaveProjectFactoryBlueprintInput) => Promise<ProjectFactoryBlueprint>
+  loadProjectFactoryState: (projectPath: string) => Promise<ProjectFactoryState>
+  spawnFactoryCasesFromArtifact: (input: SpawnFactoryCasesFromArtifactInput) => Promise<SpawnFactoryCasesFromArtifactResult>
   chatSendMessage: (
     workflowPath: string,
     message: string,

@@ -1,0 +1,167 @@
+id: ai-cmo-hacker-news-engine
+stage: outreach
+emoji: "\U0001F4E3"
+headline: Pressure-test a Hacker News launch before you post it
+how: Judges whether the product is HN-worthy, chooses the strongest thread format, drafts the launch package and replies, then adds evaluation and review gates
+input: Website, launch context, product update, technical story, or upstream AI CMO strategy pack
+output: Hacker News launch brief, submission draft, maker comment, and reply playbook ready for review
+use_when: You want a Show HN or Ask HN motion that sounds candid and technical, with an explicit check on whether HN is even the right venue.
+steps:
+  - Judge HN fit and choose the best thread type or decide to skip
+  - Build the launch brief with title territory, proof needs, and skepticism triggers
+  - Draft the submission text, maker comment, and likely reply set
+  - Evaluate for novelty, technical credibility, and candor before review
+pack:
+  id: ai-cmo
+  label: AI CMO
+  journey_stage: execute
+contract_in:
+  - kind: angle_map
+    title: Angle Map
+    description: Helpful positioning and proof hooks from the planning pass.
+    required: false
+contract_out:
+  - kind: draft
+    title: Hacker News Launch Pack
+    description: Submission draft, maker comment, and likely reply set for a Show HN or Ask HN motion.
+  - kind: distribution_bundle
+    title: Hacker News Response Playbook
+    description: Thread type choice, skepticism map, title options, and response handling notes.
+execution_policy:
+  profile_id: ai_cmo_hn
+  summary: Candid technical launch preparation
+  description: Choose HN only when the story earns it, then write in a candid, technical tone that can survive scrutiny.
+  tags:
+    - evidence_first
+    - no_slop
+    - critique_loops
+    - publish_gate
+    - human_gate_required
+  notes:
+    - Treat "skip HN for now" as a valid outcome.
+    - Assume skeptical readers and answer with specifics.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "AI CMO: Hacker News Engine"
+description: Prepare a credible Hacker News launch package with fit judgment, technical candor, and a manual review gate.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 35
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste the launch context or product story you want to pressure-test for Hacker News.
+  - id: fit-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      prompt: >-
+        Judge whether this story belongs on Hacker News. Return:
+        - best thread type: Show HN, Ask HN, build log, technical breakdown, or skip
+        - why the HN audience would or would not care
+        - skepticism triggers
+        - proof needed to be credible
+        - what title territory feels honest
+        - what would make the post look like shallow marketing
+        Be blunt.
+  - id: brief-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      prompt: >-
+        Create the Hacker News launch brief. Include:
+        - final thread type recommendation
+        - 3 title options
+        - core submission angle
+        - what technical or product details must be included
+        - likely tough questions
+        - response principles for pricing, moat, novelty, open source, and competition
+        - explicit reasons to postpone if the story is weak
+  - id: draft-1
+    type: skill
+    position:
+      x: 840
+      y: 220
+    config:
+      prompt: >-
+        Write the Hacker News launch package:
+        - submission text or Show HN post
+        - first maker comment
+        - 10 concise replies for likely questions
+        - notes on when to answer briefly vs. when to go deep
+        Keep the tone candid, technical, and unsalesy.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1120
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on:
+        1) HN fit,
+        2) novelty or relevance,
+        3) technical credibility,
+        4) candor,
+        5) readiness for skeptical replies.
+        Fail if the launch reads like a generic promo post or if the best answer should have been to skip HN.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: brief-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1400
+      y: 220
+    config:
+      message: Review the Hacker News launch pack before posting.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1680
+      y: 220
+    config:
+      title: Hacker News Launch Pack
+edges:
+  - id: e-input-fit
+    source: input-1
+    target: fit-1
+    type: default
+  - id: e-fit-brief
+    source: fit-1
+    target: brief-1
+    type: default
+  - id: e-brief-draft
+    source: brief-1
+    target: draft-1
+    type: default
+  - id: e-draft-evaluator
+    source: draft-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-approval
+    source: evaluator-1
+    target: approval-1
+    type: pass
+  - id: e-evaluator-brief
+    source: evaluator-1
+    target: brief-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

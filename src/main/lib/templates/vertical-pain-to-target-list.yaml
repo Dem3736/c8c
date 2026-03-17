@@ -10,6 +10,11 @@ steps:
   - Distill the pain into search angles that list-building can actually run.
   - Build and enrich a first-pass account universe instead of prospecting blind.
   - Tier the list and explain which accounts deserve outreach first and why now.
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Vertical Pain to Target List
 description: Enter a new market with an evidence-backed hypothesis set, a first hunt list, and clear reasons why the top accounts should be worked first
@@ -92,7 +97,7 @@ nodes:
 
         Rules:
         - design multiple query angles, not one giant broad search
-        - target 100-300 accounts for the first pass unless the user asks otherwise
+        - target 50-100 accounts for the first pass unless the user asks otherwise
         - preserve which hypothesis or query produced each account
         - deduplicate and remove obvious bad fits early
         - say where coverage is weak and which angle needs refinement

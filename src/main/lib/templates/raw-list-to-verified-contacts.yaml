@@ -10,6 +10,11 @@ steps:
   - Add the smallest useful set of fit and personalization columns, then tier the companies.
   - Find the right people only for the accounts worth pursuing.
   - Verify emails, measure coverage, and surface the gaps before anyone starts sending.
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Raw List to Verified Contacts
 description: Take a rough account list and turn it into a usable contact book with fit signals, tiers, right-role coverage, and verified emails instead of a half-broken spreadsheet

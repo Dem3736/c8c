@@ -29,7 +29,11 @@ export async function loadChatHistory(
   try {
     const raw = await readFile(chatPath, "utf-8")
     const data = JSON.parse(raw) as ChatConversation
-    if (data.version !== 1 || !Array.isArray(data.messages)) {
+    if (
+      data.version !== 1
+      || !Array.isArray(data.messages)
+      || ("latestWorkflow" in data && data.latestWorkflow != null && typeof data.latestWorkflow !== "object")
+    ) {
       return null
     }
     return data
@@ -89,6 +93,7 @@ export function createConversation(workflowPath: string): ChatConversation {
     version: 1,
     workflowPath,
     messages: [],
+    latestWorkflow: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }

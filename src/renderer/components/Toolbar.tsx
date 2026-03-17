@@ -111,6 +111,8 @@ export function Toolbar({
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [templateNameInput, setTemplateNameInput] = useState("")
   const [saveFlash, setSaveFlash] = useState<"saved" | "imported" | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [runControlPending, setRunControlPending] = useState<"pause" | "resume" | null>(null)
   const flashTimerRef = useRef<number | null>(null)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const { openWorkflowCreate } = useWorkflowCreateNavigation()
@@ -208,6 +210,8 @@ export function Toolbar({
         : null
   const saveDisabledReason = isRunning
     ? "Cannot save while a run is in progress."
+    : isSaving
+      ? "Save in progress."
     : !workflowDirty
       ? "No unsaved changes."
       : null
@@ -246,15 +250,21 @@ export function Toolbar({
   }, [])
 
   const handlePrimarySave = useCallback(async () => {
-    if (!workflowDirty) return
-    if (workflowPath) {
-      const saved = await save()
+    if (!workflowDirty || isSaving) return
+
+    setIsSaving(true)
+    try {
+      if (workflowPath) {
+        const saved = await save()
+        if (saved) flashToolbarStatus("saved")
+        return
+      }
+      const saved = await saveAs()
       if (saved) flashToolbarStatus("saved")
-      return
+    } finally {
+      setIsSaving(false)
     }
-    const saved = await saveAs()
-    if (saved) flashToolbarStatus("saved")
-  }, [flashToolbarStatus, save, saveAs, workflowDirty, workflowPath])
+  }, [flashToolbarStatus, isSaving, save, saveAs, workflowDirty, workflowPath])
 
   const handleUndo = useCallback(() => {
     const restored = performUndo(workflow, undoStack, setUndoStack, setRedoStack)
@@ -269,6 +279,46 @@ export function Toolbar({
       setCurrentWorkflow(restored)
     }
   }, [redoStack, setCurrentWorkflow, setRedoStack, setUndoStack, workflow])
+
+  const handleResumeRun = useCallback(async () => {
+    if (!runId || runControlPending) return
+
+    setRunControlPending("resume")
+    try {
+      const resumed = await window.api.resumeRun(runId)
+      if (!resumed) {
+        toast.error("Could not resume run")
+        return
+      }
+      setRunStatus("running")
+    } catch (error) {
+      toast.error("Could not resume run", {
+        description: String(error),
+      })
+    } finally {
+      setRunControlPending(null)
+    }
+  }, [runControlPending, runId, setRunStatus])
+
+  const handlePauseRun = useCallback(async () => {
+    if (!runId || runControlPending) return
+
+    setRunControlPending("pause")
+    try {
+      const paused = await window.api.pauseRun(runId)
+      if (!paused) {
+        toast.error("Could not pause run")
+        return
+      }
+      setRunStatus("paused")
+    } catch (error) {
+      toast.error("Could not pause run", {
+        description: String(error),
+      })
+    } finally {
+      setRunControlPending(null)
+    }
+  }, [runControlPending, runId, setRunStatus])
 
   const handleActionMenu = async (value: string) => {
     switch (value) {
@@ -293,9 +343,6 @@ export function Toolbar({
         return
       case "factory":
         setMainView("factory")
-        return
-      case "artifacts":
-        setMainView("artifacts")
         return
       case "generate":
         openWorkflowCreate()
@@ -462,11 +509,11 @@ export function Toolbar({
                 variant="outline"
                 size="icon"
                 onClick={() => void handlePrimarySave()}
-                disabled={!workflowDirty || isRunning}
+                disabled={Boolean(saveDisabledReason)}
                 aria-label={saveFlash === "saved" ? "Saved" : "Save workflow"}
                 title={saveDisabledReason || undefined}
               >
-                <Save size={14} />
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               </Button>
             </TooltipTrigger>
           <TooltipContent>
@@ -505,17 +552,14 @@ export function Toolbar({
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Create</DropdownMenuLabel>
-                <DropdownMenuItem disabled={!selectedProject} onSelect={() => void handleActionMenu("factory")}>
-                  Open factory
-                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("templates")}>
                   Browse templates
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled={!selectedProject} onSelect={() => void handleActionMenu("artifacts")}>
-                  Open artifacts
-                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("generate")}>
                   Create with Agent
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!selectedProject} onSelect={() => void handleActionMenu("factory")}>
+                  Open factory (advanced)
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
@@ -594,15 +638,11 @@ export function Toolbar({
                         variant="outline"
                         size="sm"
                         className="ui-fade-slide-in-trailing gap-1.5"
-                        onClick={() => {
-                          if (runId) {
-                            void window.api.resumeRun(runId)
-                            setRunStatus("running")
-                          }
-                        }}
+                        onClick={() => void handleResumeRun()}
+                        disabled={runControlPending !== null}
                       >
-                        <Play size={14} />
-                        Resume
+                        {runControlPending === "resume" ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                        {runControlPending === "resume" ? "Resuming..." : "Resume"}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Resume run</TooltipContent>
@@ -614,16 +654,11 @@ export function Toolbar({
                         variant="outline"
                         size="sm"
                         className="ui-fade-slide-in-trailing gap-1.5"
-                        onClick={() => {
-                          if (runId) {
-                            void window.api.pauseRun(runId)
-                            setRunStatus("paused")
-                          }
-                        }}
-                        disabled={isCancelling || isStarting}
+                        onClick={() => void handlePauseRun()}
+                        disabled={isCancelling || isStarting || runControlPending !== null}
                       >
-                        <Pause size={14} />
-                        Pause
+                        {runControlPending === "pause" ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+                        {runControlPending === "pause" ? "Pausing..." : "Pause"}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Pause run (running nodes will finish)</TooltipContent>

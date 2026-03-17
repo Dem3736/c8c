@@ -60,6 +60,10 @@ async function persistWorkflowMutation(
   await saveChain(workflowPath, workflow)
 }
 
+function cloneWorkflow(workflow: Workflow): Workflow {
+  return JSON.parse(JSON.stringify(workflow)) as Workflow
+}
+
 function buildSystemPrompt(
   workflow: Workflow,
   skills: DiscoveredSkill[],
@@ -330,11 +334,13 @@ async function executeParsedToolCall(
   if (result.workflowMutated) {
     console.log("[chat-agent] workflow mutated, sending event")
     await persistWorkflowMutation(workflowPath, toolCtx.workflow)
+    conversation.latestWorkflow = cloneWorkflow(toolCtx.workflow)
+    await saveChatHistory(workflowPath, conversation)
     sendChatEvent(window, {
       type: "workflow-mutated",
       sessionId,
       workflowPath,
-      workflow: JSON.parse(JSON.stringify(toolCtx.workflow)),
+      workflow: cloneWorkflow(toolCtx.workflow),
     })
   }
 
@@ -365,6 +371,7 @@ async function finalizeConversationTurn(
     conversation.messages = conversation.messages.slice(-MAX_STORED_MESSAGES)
   }
 
+  conversation.latestWorkflow = cloneWorkflow(toolCtx.workflow)
   await saveChatHistory(workflowPath, conversation)
   console.log("[chat-agent] conversation saved, total messages:", conversation.messages.length)
 
@@ -372,7 +379,7 @@ async function finalizeConversationTurn(
     type: "turn-complete",
     sessionId,
     workflowPath,
-    workflow: JSON.parse(JSON.stringify(toolCtx.workflow)),
+    workflow: cloneWorkflow(toolCtx.workflow),
   })
 }
 
@@ -425,7 +432,7 @@ export async function handleChatMessage(
       timestamp: Date.now(),
     }
     conversation.messages.push(userMessage)
-    beginActiveChatSession(workflowPath, sessionId, conversation.messages)
+    beginActiveChatSession(workflowPath, sessionId, conversation.messages, currentWorkflow)
 
     sendChatEvent(window, {
       type: "thinking",

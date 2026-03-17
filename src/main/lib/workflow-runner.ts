@@ -26,24 +26,47 @@ const workflowRunner = createWorkflowRunner({
 })
 
 const activeHandles = new Map<string, WorkflowRunHandle>()
+const pendingCancelledRunIds = new Set<string>()
 const pausedRunIds = new Set<string>()
 
 function streamEventsToWindow(window: BrowserWindow, handle: WorkflowRunHandle): void {
   void (async () => {
-    for await (const event of handle.events) {
-      if (window.isDestroyed()) {
-        handle.cancel("window destroyed")
-        break
-      }
+    try {
+      for await (const event of handle.events) {
+        if (window.isDestroyed()) {
+          handle.cancel("window destroyed")
+          break
+        }
 
-      try {
-        sendWorkflowEvent(window, event)
-      } catch (error) {
-        logWarn("workflow-runner-adapter", "send_workflow_event_failed", {
-          runId: handle.runId,
-          eventType: event.type,
-          error: error instanceof Error ? error.message : String(error),
-        })
+        try {
+          sendWorkflowEvent(window, event)
+        } catch (error) {
+          logWarn("workflow-runner-adapter", "send_workflow_event_failed", {
+            runId: handle.runId,
+            eventType: event.type,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+    } catch (error) {
+      logWarn("workflow-runner-adapter", "event_stream_failed", {
+        runId: handle.runId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      handle.cancel("workflow event stream failed")
+      if (!window.isDestroyed()) {
+        try {
+          sendWorkflowEvent(window, {
+            type: "run-done",
+            runId: handle.runId,
+            status: "interrupted",
+          })
+        } catch (sendError) {
+          logWarn("workflow-runner-adapter", "send_stream_failure_event_failed", {
+            runId: handle.runId,
+            error: sendError instanceof Error ? sendError.message : String(sendError),
+          })
+        }
       }
     }
   })()
@@ -54,10 +77,15 @@ async function attachWindowAndWait(
   handle: WorkflowRunHandle,
 ): Promise<WorkflowRunSummary> {
   activeHandles.set(handle.runId, handle)
+  if (pendingCancelledRunIds.delete(handle.runId)) {
+    pausedRunIds.delete(handle.runId)
+    handle.cancel("cancelled before handle attached")
+  }
   streamEventsToWindow(window, handle)
   try {
     return await handle.result
   } finally {
+    pendingCancelledRunIds.delete(handle.runId)
     pausedRunIds.delete(handle.runId)
     activeHandles.delete(handle.runId)
   }
@@ -93,7 +121,10 @@ export async function resolveApproval(
 
 export function cancelWorkflowRun(runId: string): boolean {
   const handle = activeHandles.get(runId)
-  if (!handle) return false
+  if (!handle) {
+    pendingCancelledRunIds.add(runId)
+    return true
+  }
   pausedRunIds.delete(runId)
   handle.cancel("cancelled by desktop adapter")
   return true
@@ -117,15 +148,20 @@ export async function runWorkflow(
   workflowPath?: string,
   webSearchBackend?: WebSearchBackend,
 ): Promise<WorkflowRunSummary> {
-  const handle = await workflowRunner.startRun({
-    runId,
-    workflow,
-    input,
-    projectPath,
-    workflowPath,
-    webSearchBackend,
-  })
-  return attachWindowAndWait(window, handle)
+  try {
+    const handle = await workflowRunner.startRun({
+      runId,
+      workflow,
+      input,
+      projectPath,
+      workflowPath,
+      webSearchBackend,
+    })
+    return attachWindowAndWait(window, handle)
+  } catch (error) {
+    pendingCancelledRunIds.delete(runId)
+    throw error
+  }
 }
 
 export async function rerunFromNode(
@@ -138,16 +174,21 @@ export async function rerunFromNode(
   workflowPath?: string,
   webSearchBackend?: WebSearchBackend,
 ): Promise<void> {
-  const handle = await workflowRunner.rerunFromNode({
-    runId,
-    fromNodeId,
-    workflow,
-    workspace,
-    projectPath,
-    workflowPath,
-    webSearchBackend,
-  })
-  await attachWindowAndWait(window, handle)
+  try {
+    const handle = await workflowRunner.rerunFromNode({
+      runId,
+      fromNodeId,
+      workflow,
+      workspace,
+      projectPath,
+      workflowPath,
+      webSearchBackend,
+    })
+    await attachWindowAndWait(window, handle)
+  } catch (error) {
+    pendingCancelledRunIds.delete(runId)
+    throw error
+  }
 }
 
 export async function continueRunFromWorkspace(
@@ -159,15 +200,20 @@ export async function continueRunFromWorkspace(
   workflowPath?: string,
   webSearchBackend?: WebSearchBackend,
 ): Promise<void> {
-  const handle = await workflowRunner.resumeRun({
-    runId,
-    workflow,
-    workspace,
-    projectPath,
-    workflowPath,
-    webSearchBackend,
-  })
-  await attachWindowAndWait(window, handle)
+  try {
+    const handle = await workflowRunner.resumeRun({
+      runId,
+      workflow,
+      workspace,
+      projectPath,
+      workflowPath,
+      webSearchBackend,
+    })
+    await attachWindowAndWait(window, handle)
+  } catch (error) {
+    pendingCancelledRunIds.delete(runId)
+    throw error
+  }
 }
 
 export type { WorkflowRunSummary }

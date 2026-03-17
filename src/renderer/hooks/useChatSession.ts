@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState, type MutableRefObject } from "react"
-import { useAtom, useSetAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import {
   chatMessagesAtom,
   chatStatusAtom,
@@ -11,6 +11,7 @@ import {
   workflowCreatePendingEntryAtom,
   workflowCreatePendingMessageAtom,
   workflowEntryStateAtom,
+  workflowDirtyAtom,
   workflowSavedSnapshotAtom,
   type ChatMessageDisplay,
 } from "@/lib/store"
@@ -146,6 +147,7 @@ export function useChatSession() {
   const [pendingCreateEntry, setPendingCreateEntry] = useAtom(workflowCreatePendingEntryAtom)
   const [pendingCreateMessage, setPendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
+  const workflowDirty = useAtomValue(workflowDirtyAtom)
   const setWorkflowEntryState = useSetAtom(workflowEntryStateAtom)
   const [activeToolName, setActiveToolName] = useState<string | null>(null)
   const [historyLoadedWorkflowPath, setHistoryLoadedWorkflowPath] = useState<string | null>(null)
@@ -153,6 +155,7 @@ export function useChatSession() {
 
   const streamingTextRef = useRef("")
   const workflowRef = useRef(workflow)
+  const workflowDirtyRef = useRef(workflowDirty)
   const workflowPathRef = useRef(workflowPath)
   const historyRequestRef = useRef(0)
   const statusRef = useRef(status)
@@ -160,6 +163,7 @@ export function useChatSession() {
   const pendingSessionRef = useRef<string | null>(null)
   const localMessageCounterRef = useRef(0)
   workflowRef.current = workflow
+  workflowDirtyRef.current = workflowDirty
   workflowPathRef.current = workflowPath
   statusRef.current = status
   sessionIdRef.current = sessionId
@@ -178,6 +182,12 @@ export function useChatSession() {
     setSessionId(null)
     setActiveToolName(null)
   }, [setSessionId, setStatus])
+
+  const applyPersistedWorkflow = useCallback((nextWorkflow: Workflow) => {
+    workflowRef.current = nextWorkflow
+    setWorkflow(nextWorkflow)
+    setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow))
+  }, [setWorkflow, setWorkflowSavedSnapshot])
 
   const removeStreamingPlaceholder = useCallback(() => {
     setMessages((prev) =>
@@ -279,7 +289,7 @@ export function useChatSession() {
 
           const nextWorkflow = event.workflow
           if (!workflowRef.current) {
-            setWorkflow(nextWorkflow)
+            applyPersistedWorkflow(nextWorkflow)
             break
           }
 
@@ -290,8 +300,7 @@ export function useChatSession() {
             snapshot,
           ])
 
-          setWorkflow(nextWorkflow)
-          setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow))
+          applyPersistedWorkflow(nextWorkflow)
 
           const mutationWorkflowPath = workflowPathRef.current
           const pendingRequest = mutationWorkflowPath ? pendingCreateEntry[mutationWorkflowPath] : null
@@ -320,6 +329,7 @@ export function useChatSession() {
                   if (prev.length === 0) return prev
                   const last = prev[prev.length - 1]
                   if (last !== snapshot) return prev
+                  workflowRef.current = last
                   setWorkflow(last)
                   return prev.slice(0, -1)
                 })
@@ -354,6 +364,9 @@ export function useChatSession() {
         }
 
         case "turn-complete": {
+          if (isWorkflowPayload(event.workflow)) {
+            applyPersistedWorkflow(event.workflow)
+          }
           const currentWorkflow = workflowPathRef.current
           const pendingRequest = currentWorkflow ? pendingCreateEntry[currentWorkflow] : null
           if (currentWorkflow && pendingRequest && hasGeneratedWorkflowSteps(workflowRef.current)) {
@@ -410,7 +423,7 @@ export function useChatSession() {
     })
 
     return cleanup
-  }, [addNotification, nextLocalMessageId, pendingCreateEntry, removeStreamingPlaceholder, resetLocalSessionState, setMessages, setPendingCreateEntry, setSessionId, setStatus, setUndoStack, setWorkflow, setWorkflowEntryState, setWorkflowSavedSnapshot])
+  }, [addNotification, applyPersistedWorkflow, nextLocalMessageId, pendingCreateEntry, removeStreamingPlaceholder, resetLocalSessionState, setMessages, setPendingCreateEntry, setSessionId, setStatus, setUndoStack, setWorkflow, setWorkflowEntryState])
 
   // Load history when workflow changes
   useEffect(() => {
@@ -426,8 +439,24 @@ export function useChatSession() {
       return
     }
 
-    loadChatRecoveryState(workflowPath).then(({ conversation, activeSession }) => {
+    Promise.all([
+      loadChatRecoveryState(workflowPath),
+      workflowDirtyRef.current
+        ? Promise.resolve<Workflow | null>(null)
+        : window.api.loadWorkflow(workflowPath).catch((error) => {
+            console.warn("[useChatSession] workflow file sync skipped:", error)
+            return null
+          }),
+    ]).then(([{ conversation, activeSession }, fileWorkflow]) => {
       if (historyRequestRef.current !== requestId) return
+
+      if (activeSession?.workflow && isWorkflowPayload(activeSession.workflow)) {
+        applyPersistedWorkflow(activeSession.workflow)
+      } else if (!workflowDirtyRef.current && conversation?.latestWorkflow && isWorkflowPayload(conversation.latestWorkflow)) {
+        applyPersistedWorkflow(conversation.latestWorkflow)
+      } else if (!workflowDirtyRef.current && fileWorkflow) {
+        applyPersistedWorkflow(fileWorkflow)
+      }
 
       if (activeSession) {
         restoreActiveSessionState(
@@ -481,7 +510,7 @@ export function useChatSession() {
         source: "agent",
       })
     })
-  }, [addNotification, pendingCreateEntry, resetLocalSessionState, setMessages, setPendingCreateEntry, setSessionId, setStatus, setUndoStack, setWorkflowEntryState, workflowPath])
+  }, [addNotification, applyPersistedWorkflow, pendingCreateEntry, resetLocalSessionState, setMessages, setPendingCreateEntry, setSessionId, setStatus, setUndoStack, setWorkflowEntryState, workflowPath])
 
   const sendMessage = useCallback(
     async (message: string) => {

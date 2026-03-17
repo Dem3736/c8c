@@ -10,6 +10,11 @@ steps:
   - Design a build-ready scene system and gate it before implementation
   - Split scene implementation into parallel build tickets and assemble the project
   - Add audio, render a first pass, and run multi-expert review plus final ship gate
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Remotion Video Director Pipeline
 description: Turn Remotion Video Director into a production pipeline with parallel scene builds, assembly, audio integration, and explicit review gates

@@ -1,0 +1,102 @@
+id: application-tailoring-pipeline
+stage: outreach
+emoji: "\U0001F3AF"
+headline: Tailor any application for accelerators, grants, or partnerships
+how: Extract requirements and evaluation criteria from the opportunity, tailor the application to address each with concrete evidence, evaluate for completeness and differentiation.
+input: An application draft and the requirements or criteria it must address
+output: Tailored application optimized for the specific opportunity
+use_when: You need to tailor an application for an accelerator, grant, partnership, or consulting opportunity.
+steps:
+  - Extract evaluation criteria and requirements from the opportunity
+  - Tailor application to address each criterion with evidence
+  - Evaluate completeness, authenticity, and differentiation
+  - Output tailored application
+version: 1
+name: Application Tailoring Pipeline
+description: Tailor applications for accelerators (YC, Techstars), grants, partnership proposals, and freelance/consulting opportunities by extracting requirements, optimizing for each criterion, and evaluating for completeness and differentiation.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+execution_policy:
+  profile_id: application_tailoring
+  summary: Evidence-based application tailoring
+  description: Extract opportunity criteria, tailor application with concrete evidence, and evaluate for completeness and differentiation.
+  tags:
+    - evidence_first
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: "Paste your application draft and the requirements/criteria for the opportunity (accelerator, grant, partnership, etc.)"
+  - id: parser-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Extract from the opportunity requirements:
+        1) Explicit evaluation criteria and their relative weight
+        2) Required sections or questions to answer
+        3) Implicit signals of what reviewers value (read between the lines)
+        4) Common rejection reasons for this type of opportunity
+        Structure as a checklist the tailor can work against.
+  - id: tailor-1
+    type: skill
+    position:
+      x: 640
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Tailor the application to address every requirement and criterion identified.
+        For each criterion: ensure the application provides concrete evidence, not claims.
+        Highlight differentiators clearly. Remove generic filler.
+        Keep the applicant's authentic voice — do not fabricate achievements or experience.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 960
+      y: 200
+    config:
+      criteria: "Score 1-10: all requirements addressed with concrete evidence, no fabrication or exaggeration, differentiators are clear and specific, tone is authentic not generic, application would stand out to a reviewer."
+      threshold: 8
+      maxRetries: 2
+      retryFrom: tailor-1
+  - id: output-1
+    type: output
+    position:
+      x: 1280
+      y: 200
+    config:
+      title: Tailored Application
+edges:
+  - id: e-input-parser
+    source: input-1
+    target: parser-1
+    type: default
+  - id: e-parser-tailor
+    source: parser-1
+    target: tailor-1
+    type: default
+  - id: e-tailor-eval
+    source: tailor-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: tailor-1
+    type: fail

@@ -33,6 +33,8 @@ describe("artifact-store", () => {
     const result = await persistArtifactsFromRun({
       projectPath: projectDir,
       workspace: workspaceDir,
+      factoryId: "factory:delivery-foundation",
+      factoryLabel: "Delivery Factory",
       caseId: "case:delivery-foundation:abc123",
       caseLabel: "Shape project",
       sourceArtifactIds: ["artifact-0"],
@@ -52,11 +54,13 @@ describe("artifact-store", () => {
     const storedArtifacts = await listProjectArtifacts(projectDir)
     expect(storedArtifacts).toHaveLength(2)
     expect(storedArtifacts.map((artifact) => artifact.title).sort()).toEqual(["Project Brief", "Roadmap"])
+    expect(storedArtifacts[0]?.factoryId).toBe("factory:delivery-foundation")
     expect(storedArtifacts[0]?.caseId).toBe("case:delivery-foundation:abc123")
     expect(storedArtifacts[0]?.sourceArtifactIds).toEqual(["artifact-0"])
 
     const markdown = await readFile(result.artifacts[0]!.contentPath, "utf-8")
     expect(markdown).toContain("# Project Brief")
+    expect(markdown).toContain("Factory: Delivery Factory")
     expect(markdown).toContain("Case: Shape project")
     expect(markdown).toContain("Structured project shape.")
   })

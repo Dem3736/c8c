@@ -416,8 +416,11 @@ export async function assembleInputWithAttachments(
   const sections = await Promise.all(
     attachments.map(async (attachment) => {
       if (attachment.kind === "file") {
+        if (!selectedProject) {
+          return `## Attached File: ${attachment.name}\n\n[Cannot read file: no project selected]`
+        }
         try {
-          const result = await api.readFileContent(attachment.path, selectedProject!)
+          const result = await api.readFileContent(attachment.path, selectedProject)
           return `## Attached File: ${attachment.name}\nPath: ${attachment.path}\n\`\`\`\n${result.content}${result.truncated ? "\n[truncated]" : ""}\n\`\`\``
         } catch {
           return `## Attached File: ${attachment.name}\n\n[Could not read file]`

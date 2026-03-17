@@ -8,8 +8,12 @@ output: Personalized cold email sequences with buyer-response simulation
 steps:
   - Build company context and generate pain hypotheses
   - Craft email templates from pain points
-  - Generate personalized emails and simulate buyer response
-  - Evaluate email quality
+  - Generate personalized emails and follow-up sequences
+  - Simulate buyer response and evaluate email quality
+  - Founder approves final outreach before sending
+execution_policy:
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Cold Outreach Pipeline
 description: Build company context, generate pain hypotheses, craft email templates, generate personalized emails,
@@ -58,10 +62,24 @@ nodes:
     config:
       skillRef: gtm/email-generation
       prompt: Generate 5 personalized cold emails using the template. Each should feel hand-written, not templated.
+  - id: followup-1
+    type: skill
+    position:
+      x: 1520
+      y: 200
+    config:
+      skillRef: gtm/email-generation
+      prompt: >-
+        For each generated email, write a 3-step follow-up sequence:
+        - Follow-up 1 (Day 3): Short, adds new value angle, no guilt-tripping.
+        - Follow-up 2 (Day 7): Different medium or angle, references specific pain point.
+        - Follow-up 3 (Day 14): Breakup email, graceful close, leaves door open.
+        Rules: Each follow-up must stand alone (recipient may not have read previous).
+        No "just following up" or "bumping this". Each adds new information or angle.
   - id: simulator-1
     type: skill
     position:
-      x: 1500
+      x: 1840
       y: 200
     config:
       skillRef: gtm/email-response-simulation
@@ -69,7 +87,7 @@ nodes:
   - id: evaluator-1
     type: evaluator
     position:
-      x: 1800
+      x: 2160
       y: 200
     config:
       criteria: "Score 1-10: personalization depth (not just name-swaps), pain relevance (does it hit real problems?), CTA
@@ -77,10 +95,20 @@ nodes:
       threshold: 7
       maxRetries: 2
       retryFrom: email-prompt-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 2480
+      y: 200
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: output-1
     type: output
     position:
-      x: 2100
+      x: 2800
       y: 200
     config: {}
 edges:
@@ -100,19 +128,27 @@ edges:
     source: email-prompt-1
     target: email-gen-1
     type: default
-  - id: e-emailgen-simulator
+  - id: e-emailgen-followup
     source: email-gen-1
+    target: followup-1
+    type: default
+  - id: e-followup-simulator
+    source: followup-1
     target: simulator-1
     type: default
   - id: e-simulator-evaluator
     source: simulator-1
     target: evaluator-1
     type: default
-  - id: e-evaluator-output
+  - id: e-evaluator-approval
     source: evaluator-1
-    target: output-1
+    target: approval-1
     type: pass
   - id: e-evaluator-emailprompt
     source: evaluator-1
     target: email-prompt-1
     type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

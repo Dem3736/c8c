@@ -7,9 +7,13 @@ input: Product or feature brief
 output: Strategy report plus marketing artifacts (positioning, messaging, content ideas)
 steps:
   - Develop product strategy and positioning
+  - Founder approves the strategy before downstream artifacts are generated
   - Generate comprehensive strategy report
   - Create marketing artifacts from the strategy
   - Evaluate quality and iterate if needed
+execution_policy:
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Content Pipeline
 description: Develop product strategy, generate comprehensive report, create marketing artifacts, evaluate quality
@@ -33,10 +37,20 @@ nodes:
       skillRef: strategist
       prompt: "Develop a product strategy based on the input. Cover: positioning, key differentiators, target audience
         messaging, feature prioritization, and go-to-market approach."
+  - id: approval-1
+    type: approval
+    position:
+      x: 620
+      y: 200
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: report-1
     type: skill
     position:
-      x: 600
+      x: 940
       y: 200
     config:
       skillRef: report-generator
@@ -45,7 +59,7 @@ nodes:
   - id: marketing-1
     type: skill
     position:
-      x: 900
+      x: 1260
       y: 200
     config:
       skillRef: marketing-generator
@@ -54,7 +68,7 @@ nodes:
   - id: evaluator-1
     type: evaluator
     position:
-      x: 1200
+      x: 1580
       y: 200
     config:
       criteria: "Score 1-10 on: strategic coherence (does everything align?), market grounding (based on real data?),
@@ -65,7 +79,7 @@ nodes:
   - id: output-1
     type: output
     position:
-      x: 1500
+      x: 1900
       y: 200
     config: {}
 edges:
@@ -73,8 +87,12 @@ edges:
     source: input-1
     target: strategist-1
     type: default
-  - id: e-strategist-report
+  - id: e-strategist-approval
     source: strategist-1
+    target: approval-1
+    type: default
+  - id: e-approval-report
+    source: approval-1
     target: report-1
     type: default
   - id: e-report-marketing

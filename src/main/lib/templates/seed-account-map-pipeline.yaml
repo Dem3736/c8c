@@ -10,6 +10,11 @@ steps:
   - Build a candidate account universe and reject vague search angles before enrichment.
   - Add only the research columns needed to prove fit, timing, and hook quality.
   - Tier every account and explain why it belongs in this campaign or why it should wait.
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Seed Account Map Pipeline
 description: Starting from real customers that already bought, build a target-account universe, enrich it with only the signals that matter, and explain in operator language why each account belongs in the next campaign
@@ -99,7 +104,7 @@ nodes:
         Rules:
         - Prefer lookalike search when the seed domains are strong.
         - Use semantic search or discovery only where it adds net-new relevant coverage.
-        - Target roughly 200-500 accounts unless the user asked for a different range.
+        - Target roughly 50-150 accounts (configurable via input) unless the user asked for a different range.
         - Preserve which hypothesis or seed win produced each company.
         - Deduplicate by domain and remove all DNC domains.
         - Keep a short note on why each account made the cut.

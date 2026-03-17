@@ -50,6 +50,7 @@ execution_policy:
   notes:
     - Prefer tasks that can be completed and verified independently.
     - Define validation before execution starts.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "Delivery Factory: Plan Phase"
 description: Convert shaped project context into a concrete phase plan and validation contract before implementation begins.

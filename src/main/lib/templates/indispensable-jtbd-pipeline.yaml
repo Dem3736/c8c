@@ -9,7 +9,11 @@ steps:
   - Extract structured job stories from raw material
   - Map segments and score opportunities
   - Distill to core job, segment, and value delta
+  - Founder approves the chosen segment and strategic focus before sharpening
   - Sharpen positioning and clarify messaging
+execution_policy:
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Indispensable JTBD Pipeline
 description: Extract jobs from raw product data, segment users, score opportunities, distill to
@@ -70,10 +74,20 @@ nodes:
         identify the ONE primary job, ONE key segment, and ONE value delta. Cut everything that
         doesn't serve this core. Output a clear, concise strategy statement that a team could
         align around in 30 seconds."
+  - id: approval-1
+    type: approval
+    position:
+      x: 1250
+      y: 200
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: sharpen-1
     type: skill
     position:
-      x: 1250
+      x: 1500
       y: 200
     config:
       skillRef: indispensable/sharpen
@@ -85,7 +99,7 @@ nodes:
   - id: clarify-1
     type: skill
     position:
-      x: 1500
+      x: 1750
       y: 200
     config:
       skillRef: indispensable/clarify
@@ -96,7 +110,7 @@ nodes:
   - id: evaluator-1
     type: evaluator
     position:
-      x: 1750
+      x: 2000
       y: 200
     config:
       criteria: "Evaluate the JTBD pipeline output across 6 dimensions (score 1-10 each):
@@ -113,7 +127,7 @@ nodes:
   - id: output-1
     type: output
     position:
-      x: 2000
+      x: 2250
       y: 200
     config: {}
 edges:
@@ -133,8 +147,12 @@ edges:
     source: score-1
     target: distill-1
     type: default
-  - id: e-distill-sharpen
+  - id: e-distill-approval
     source: distill-1
+    target: approval-1
+    type: default
+  - id: e-approval-sharpen
+    source: approval-1
     target: sharpen-1
     type: default
   - id: e-sharpen-clarify

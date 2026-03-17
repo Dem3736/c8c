@@ -2,13 +2,16 @@ id: delivery-shape-project
 stage: strategy
 emoji: "\U0001F9ED"
 headline: Turn a repo or idea into a build-ready project shape
-how: Turn the available context into a project brief, requirements, and roadmap before anyone starts execution.
+how: Turn the available context into a project brief, requirements, and roadmap, then run a review pass for consistency and assumptions before routing through an approval gate.
 input: A project brief, feature request, or repo context
 output: Project brief, requirements, and roadmap ready for phase planning
 use_when: You need to turn a messy idea or repo context into a clear project shape before planning implementation.
 steps:
   - Analyze project context, constraints, and goals
-  - Produce a project brief, requirements spec, and roadmap
+  - Review for internal consistency, hidden assumptions, and scope realism
+  - Evaluate quality of brief, requirements, and roadmap
+  - Founder approval before finalizing
+  - Output approved project shape
 pack:
   id: delivery-foundation
   label: Delivery Factory
@@ -42,6 +45,7 @@ execution_policy:
   notes:
     - Keep assumptions explicit.
     - Separate requirements from implementation guesses.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "Delivery Factory: Shape Project"
 description: Convert available context into a project brief, requirements, and roadmap that can drive downstream planning.
@@ -68,14 +72,48 @@ nodes:
       skillRef: researcher
       prompt: >-
         Turn this input into three explicit artifacts in one structured response:
-        1) Project Brief,
-        2) Requirements Spec,
-        3) Roadmap.
+        1) Project Brief — problem, scope, goals, constraints, assumptions.
+        2) Requirements Spec — functional and non-functional, each testable.
+        3) Roadmap — phases, milestones, sequencing realistic for a solo operator with AI tools.
         Keep each section clearly labeled. Make assumptions visible, call out constraints, and separate facts from unknowns.
+  - id: reviewer-1
+    type: skill
+    position:
+      x: 640
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Review the project brief, requirements, and roadmap for:
+        1) Internal consistency — do the three artifacts agree with each other?
+        2) Hidden assumptions — what is being taken for granted?
+        3) Testability — can each requirement actually be verified?
+        4) Scope realism — is this achievable by one person with AI tools?
+        Surface issues as a structured review, not vague concerns.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 960
+      y: 200
+    config:
+      criteria: "Score 1-10: brief is specific not generic, requirements are testable not vague, roadmap is realistic for a solo operator with AI agents, assumptions are explicitly surfaced, no contradictions between artifacts."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: shaper-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1280
+      y: 200
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: output-1
     type: output
     position:
-      x: 640
+      x: 1600
       y: 200
     config:
       title: Project Brief, Requirements, and Roadmap
@@ -84,7 +122,23 @@ edges:
     source: input-1
     target: shaper-1
     type: default
-  - id: e-shaper-output
+  - id: e-shaper-reviewer
     source: shaper-1
+    target: reviewer-1
+    type: default
+  - id: e-reviewer-eval
+    source: reviewer-1
+    target: eval-1
+    type: default
+  - id: e-eval-approval
+    source: eval-1
+    target: approval-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: shaper-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
     target: output-1
     type: default

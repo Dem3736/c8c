@@ -1,0 +1,141 @@
+id: content-distribution-bundle
+stage: content
+emoji: "\U0001F4E6"
+headline: Package an approved draft into a reusable distribution bundle
+how: Analyze the source content, split by target channels, adapt per platform with native tone and format, then evaluate quality across all variants before output.
+input: Approved draft and QA report
+output: Distribution bundle with final copy variants and publishing notes
+use_when: A draft has already passed review and you want a reusable bundle for publishing, scheduling, or repurposing.
+steps:
+  - Analyze source content to extract key ideas, hooks, and quotable moments
+  - Split into platform-specific adaptation tasks based on target channels
+  - Adapt content per platform with native tone, format, and CTA
+  - Merge all variants into a single bundle with headers and posting recommendations
+  - Evaluate variant quality for platform-native language, CTA presence, and message consistency
+pack:
+  id: content-factory-alpha
+  label: Content Factory
+  journey_stage: operate
+contract_in:
+  - kind: draft
+    title: Draft Post
+    description: The approved draft that should be bundled for delivery.
+    required: true
+  - kind: qa_report
+    title: QA Report
+    description: The review context that should influence the final bundle.
+    required: true
+contract_out:
+  - kind: distribution_bundle
+    title: Distribution Bundle
+    description: Final copy variants, publishing notes, and packaging metadata ready for downstream delivery.
+execution_policy:
+  profile_id: content_distribution_bundle
+  summary: Publish-ready packaging
+  description: Bundle the approved draft into reusable delivery assets rather than keeping it as a single text blob.
+  tags:
+    - publish_gate
+    - consistency_checks
+    - variant_exploration
+  notes:
+    - Keep variants close to the approved draft, not freshly improvised.
+    - Preserve any publish or distribution notes the operator will need later.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Content Factory: Distribution Bundle"
+description: Package an approved draft into a reusable distribution bundle with publish-ready variants and notes.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 20
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the QA-reviewed content and specify target distribution channels.
+  - id: analyzer-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: marketing/Content Creator
+      prompt: >-
+        Analyze this content. Extract key ideas, main argument, supporting data, and quotable moments.
+        Identify the core message and the most compelling hooks for each target channel.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 640
+      y: 200
+    config:
+      strategy: "Split into platform-specific content adaptation tasks based on the channels specified in the input. Each task should be a self-contained rewriting brief for that platform."
+  - id: channel-writer-1
+    type: skill
+    position:
+      x: 960
+      y: 200
+    config:
+      skillRef: marketing/Social Media Strategist
+      prompt: >-
+        Adapt the content for this specific platform. Match the platform's native tone, format constraints,
+        and best practices. Make it feel native to the platform, not just reformatted. Include a clear CTA.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1280
+      y: 200
+    config:
+      strategy: concatenate
+      prompt: Compile all platform versions with clear headers. Include character counts and posting recommendations for each.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1600
+      y: 200
+    config:
+      criteria: "Score 1-10: each variant is platform-native (not copy-pasted between channels), CTA present in each, core message consistent across variants, no AI slop language."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
+  - id: output-1
+    type: output
+    position:
+      x: 1920
+      y: 200
+    config:
+      title: Distribution-Ready Content Variants
+edges:
+  - id: e-input-analyzer
+    source: input-1
+    target: analyzer-1
+    type: default
+  - id: e-analyzer-splitter
+    source: analyzer-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-writer
+    source: splitter-1
+    target: channel-writer-1
+    type: default
+  - id: e-writer-merger
+    source: channel-writer-1
+    target: merger-1
+    type: default
+  - id: e-merger-eval
+    source: merger-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: splitter-1
+    type: fail

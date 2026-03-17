@@ -403,12 +403,12 @@ function StepUnderstandWorkflow({
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
           <Bot size={20} className="text-foreground" />
         </div>
-        <h2 className="text-title-md text-foreground">A workflow is input → plugin skills → output</h2>
+        <h2 className="text-title-md text-foreground">A workflow is input → steps → result</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
-        Start with an input, add one or more skill steps, then review the result.
-        Plugin packs are the fastest way to bring those executable steps into the app.
-        The fastest way to create that flow is to describe the task to the Agent.
+        Start with an input, add one or more workflow steps, then review the result.
+        Templates are the fastest way to get moving, and the Agent can draft the first version
+        for you when you want to describe the job in plain language.
       </p>
 
       <div className="grid gap-2 sm:grid-cols-3">
@@ -417,12 +417,12 @@ function StepUnderstandWorkflow({
           <p className="text-body-sm text-foreground mt-1">Text, URL, or a project folder.</p>
         </div>
         <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
-          <div className="ui-meta-label text-muted-foreground">2. Plugin skills</div>
-          <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or request approval from installed packs.</p>
+          <div className="ui-meta-label text-muted-foreground">2. Workflow steps</div>
+          <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or ask for approval as the flow runs.</p>
         </div>
         <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
-          <div className="ui-meta-label text-muted-foreground">3. Output</div>
-          <p className="text-body-sm text-foreground mt-1">Inspect logs, results, and rerun from the step that failed.</p>
+          <div className="ui-meta-label text-muted-foreground">3. Result</div>
+          <p className="text-body-sm text-foreground mt-1">Inspect logs, review the output, and rerun from the step that needs attention.</p>
         </div>
       </div>
 
@@ -450,7 +450,7 @@ function StepUnderstandWorkflow({
         Start with the Agent if you want c8c to assemble the first draft for you.
       </p>
       <p className="ui-meta-text text-muted-foreground">
-        Need more building blocks later? Open Plugins to install marketplaces and enable pipeline packs.
+        Need more building blocks later? Open Plugins to install more skills.
       </p>
       <p className="ui-meta-text text-muted-foreground">
         <code className="inline-code ui-meta-text">&#8984;Enter</code> to run

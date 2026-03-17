@@ -26,11 +26,20 @@ interface SyncExecutionControllerArgs {
   selectedProject: string | null
 }
 
+interface BufferedWorkflowEvents {
+  events: WorkflowEvent[]
+  lastUpdatedAt: number
+}
+
+const BUFFERED_EVENT_TTL_MS = 60_000
+const MAX_BUFFERED_RUNS = 100
+const MAX_BUFFERED_EVENTS_PER_RUN = 500
+
 export class WorkflowExecutionController {
   private workflowExecutionStates: Record<string, WorkflowExecutionState> = {}
   private selectedProject: string | null = null
   private readonly runWorkflowKeys = new Map<string, string>()
-  private readonly bufferedEvents = new Map<string, WorkflowEvent[]>()
+  private readonly bufferedEvents = new Map<string, BufferedWorkflowEvents>()
   private readonly previousExecutionSnapshots = new Map<string, WorkflowExecutionState>()
   private readonly workflowSnapshots = new Map<string, Workflow>()
   private listRunsRequestId = 0
@@ -106,7 +115,7 @@ export class WorkflowExecutionController {
       runId: startedRunId,
     }))
 
-    const bufferedEvents = this.bufferedEvents.get(startedRunId) ?? []
+    const bufferedEvents = this.bufferedEvents.get(startedRunId)?.events ?? []
     this.bufferedEvents.delete(startedRunId)
     for (const event of bufferedEvents) {
       this.processWorkflowEvent(event)
@@ -152,9 +161,7 @@ export class WorkflowExecutionController {
   processWorkflowEvent(event: WorkflowEvent) {
     const workflowKey = this.resolveWorkflowKeyForRun(event.runId)
     if (!workflowKey) {
-      const buffered = this.bufferedEvents.get(event.runId) ?? []
-      buffered.push(event)
-      this.bufferedEvents.set(event.runId, buffered)
+      this.bufferWorkflowEvent(event)
       return
     }
 
@@ -209,7 +216,10 @@ export class WorkflowExecutionController {
     const matchingWorkflowEntry = Object.entries(this.workflowExecutionStates)
       .find(([, state]) => state.runId === runId)
     if (!matchingWorkflowEntry) {
-      return mappedWorkflowKey ?? null
+      if (mappedWorkflowKey) {
+        this.runWorkflowKeys.delete(runId)
+      }
+      return null
     }
 
     const [resolvedWorkflowKey] = matchingWorkflowEntry
@@ -218,6 +228,35 @@ export class WorkflowExecutionController {
     }
     this.runWorkflowKeys.set(runId, resolvedWorkflowKey)
     return resolvedWorkflowKey
+  }
+
+  private bufferWorkflowEvent(event: WorkflowEvent) {
+    this.pruneBufferedEvents()
+
+    const existing = this.bufferedEvents.get(event.runId)
+    const events = existing ? [...existing.events] : []
+    if (events.length >= MAX_BUFFERED_EVENTS_PER_RUN) {
+      events.shift()
+    }
+    events.push(event)
+    this.bufferedEvents.set(event.runId, {
+      events,
+      lastUpdatedAt: Date.now(),
+    })
+
+    while (this.bufferedEvents.size > MAX_BUFFERED_RUNS) {
+      const oldestRunId = this.bufferedEvents.keys().next().value
+      if (!oldestRunId) break
+      this.bufferedEvents.delete(oldestRunId)
+    }
+  }
+
+  private pruneBufferedEvents(now = Date.now()) {
+    for (const [runId, buffered] of this.bufferedEvents.entries()) {
+      if (now - buffered.lastUpdatedAt > BUFFERED_EVENT_TTL_MS) {
+        this.bufferedEvents.delete(runId)
+      }
+    }
   }
 
   private moveTrackedWorkflowKey(fromKey: string, toKey: string) {

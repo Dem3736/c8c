@@ -1,0 +1,184 @@
+id: ai-cmo-x-engine
+stage: content
+emoji: "\U0001F426"
+headline: Create an approval-gated X posting queue from product context
+how: Extracts voice and proof, generates multiple X angles, drafts a queue of posts, evaluates the whole batch, and holds it for review
+input: Website, launch context, product update, or upstream AI CMO strategy pack
+output: X posting queue with angle labels, hooks, CTAs, and posting notes ready for review
+use_when: You want a product-specific X motion with real angles and review gates, not a generic viral-thread generator.
+steps:
+  - Extract voice, proof points, audience tension, and claims to avoid
+  - Create multiple X post assignments across different angles
+  - Draft a queue of posts or short threads with posting notes
+  - Evaluate the batch, then require approval before use
+pack:
+  id: ai-cmo
+  label: AI CMO
+  journey_stage: execute
+contract_in:
+  - kind: angle_map
+    title: Angle Map
+    description: Helpful messaging angles from the AI CMO planning pass.
+    required: false
+  - kind: editorial_calendar
+    title: Editorial Calendar
+    description: Helpful sequencing context for the X queue.
+    required: false
+contract_out:
+  - kind: draft
+    title: X Posting Queue
+    description: A reviewed queue of posts or short threads with hooks, bodies, and light CTAs.
+  - kind: distribution_bundle
+    title: X Posting Notes
+    description: Posting cadence, optional media cues, and reply-seeding notes for each asset.
+execution_policy:
+  profile_id: ai_cmo_x
+  summary: Variant exploration with voice control
+  description: Explore multiple X angles, but keep the voice product-specific and the claims believable.
+  tags:
+    - variant_exploration
+    - no_slop
+    - critique_loops
+    - publish_gate
+  notes:
+    - Hooks should earn attention with specificity, not gimmicks.
+    - Keep CTAs light unless the proof genuinely supports them.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "AI CMO: X Engine"
+description: Generate a product-specific X posting queue with multiple angles, evaluation, and an explicit review gate.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste the launch context, product update, or strategy output you want to turn into X posts.
+  - id: context-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      prompt: >-
+        Extract the X writing context for this product:
+        - audience
+        - brand or founder voice
+        - strongest proof points
+        - tension or pain worth discussing
+        - risky claims to avoid
+        - reasonable CTA intensity
+        Return a short context memo that keeps the writing honest and specific.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 560
+      y: 220
+    config:
+      strategy: >-
+        Create 5 self-contained X post assignments. Use distinct angles such as:
+        founder insight, user pain observation, product proof, sharp opinion, and practical takeaway.
+        Each assignment must specify:
+        - angle label
+        - target format (single post or short thread)
+        - emotional temperature
+        - proof to reference
+        - CTA style
+      maxBranches: 5
+  - id: writer-1
+    type: skill
+    position:
+      x: 840
+      y: 220
+    config:
+      prompt: >-
+        Write one X post or short thread for this assignment.
+        Requirements:
+        - first line must earn attention
+        - include concrete detail or proof
+        - no generic motivational framing
+        - no fake virality bait
+        - CTA only if it feels earned
+        Include a one-line posting note after each asset.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1120
+      y: 220
+    config:
+      strategy: concatenate
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1400
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on:
+        1) hook strength,
+        2) specificity and proof,
+        3) voice consistency,
+        4) angle diversity across the queue,
+        5) reply and share potential without sounding like AI slop.
+        Fail if the posts feel interchangeable or overhyped.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: context-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1680
+      y: 220
+    config:
+      message: Review the X queue before posting or scheduling it.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1960
+      y: 220
+    config:
+      title: X Posting Queue
+edges:
+  - id: e-input-context
+    source: input-1
+    target: context-1
+    type: default
+  - id: e-context-splitter
+    source: context-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-writer
+    source: splitter-1
+    target: writer-1
+    type: default
+  - id: e-writer-merger
+    source: writer-1
+    target: merger-1
+    type: default
+  - id: e-merger-evaluator
+    source: merger-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-approval
+    source: evaluator-1
+    target: approval-1
+    type: pass
+  - id: e-evaluator-context
+    source: evaluator-1
+    target: context-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

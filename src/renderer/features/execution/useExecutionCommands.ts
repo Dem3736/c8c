@@ -10,10 +10,12 @@ import {
 } from "@/lib/workflow-execution"
 import type { InputAttachment, PermissionMode, ProviderId, RunResult, Workflow } from "@shared/types"
 import {
+  DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
   prepareWorkflowForExecution,
   resolveContinuationWorkflow,
   resolveExecutionInput,
   resolveExecutionStartResult,
+  withIpcTimeout,
 } from "./commands"
 import type { WorkflowExecutionController } from "./controller"
 
@@ -90,12 +92,16 @@ export function useExecutionCommands({
     setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
 
     try {
-      const result = await window.api.runChain(
-        workflowForExecution,
-        { type: resolvedInput.type, value: assembledValue },
-        selectedProject ?? undefined,
-        selectedWorkflowPath ?? undefined,
-        webSearchBackend,
+      const result = await withIpcTimeout(
+        window.api.runChain(
+          workflowForExecution,
+          { type: resolvedInput.type, value: assembledValue },
+          selectedProject ?? undefined,
+          selectedWorkflowPath ?? undefined,
+          webSearchBackend,
+        ),
+        DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
+        "Run start timed out. Check the main process and try again.",
       )
 
       const { startedRunId, errorMessage } = resolveExecutionStartResult(
@@ -150,7 +156,11 @@ export function useExecutionCommands({
     }
 
     try {
-      const cancelled = await window.api.cancelRun(runId)
+      const cancelled = await withIpcTimeout(
+        window.api.cancelRun(runId),
+        DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
+        "Run cancel timed out. Check the main process and try again.",
+      )
       if (!cancelled) {
         toast.error("Could not cancel run")
         recordExecutionError("Could not cancel run")
@@ -192,13 +202,17 @@ export function useExecutionCommands({
     )
 
     try {
-      const result = await window.api.rerunFrom(
-        fromNodeId,
-        workflowForExecution,
-        rerunWorkspace,
-        selectedProject ?? undefined,
-        selectedWorkflowPath ?? undefined,
-        webSearchBackend,
+      const result = await withIpcTimeout(
+        window.api.rerunFrom(
+          fromNodeId,
+          workflowForExecution,
+          rerunWorkspace,
+          selectedProject ?? undefined,
+          selectedWorkflowPath ?? undefined,
+          webSearchBackend,
+        ),
+        DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
+        "Restart timed out. Check the main process and try again.",
       )
 
       const { startedRunId, errorMessage } = resolveExecutionStartResult(result, "")
@@ -260,9 +274,6 @@ export function useExecutionCommands({
       return false
     }
 
-    setCurrentWorkflow(workflowForRun)
-    setSelectedWorkflowPath(workflowPathForRun)
-
     const workflowKey = controller.beginExecution(workflowForRun, workflowPathForRun, selectedProject ?? null)
     setActiveExecutionProvider(workflowForRun.defaults?.provider || defaultProvider)
     controller.updateExecutionForKey(workflowKey, (previous) => ({
@@ -276,12 +287,16 @@ export function useExecutionCommands({
     )
 
     try {
-      const result = await window.api.continueRun(
-        workflowForExecution,
-        runToContinue.workspace,
-        selectedProject ?? undefined,
-        workflowPathForRun ?? undefined,
-        webSearchBackend,
+      const result = await withIpcTimeout(
+        window.api.continueRun(
+          workflowForExecution,
+          runToContinue.workspace,
+          selectedProject ?? undefined,
+          workflowPathForRun ?? undefined,
+          webSearchBackend,
+        ),
+        DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
+        "Continue run timed out. Check the main process and try again.",
       )
 
       const { startedRunId, errorMessage } = resolveExecutionStartResult(
@@ -290,6 +305,8 @@ export function useExecutionCommands({
       )
 
       if (startedRunId) {
+        setCurrentWorkflow(workflowForRun)
+        setSelectedWorkflowPath(workflowPathForRun)
         controller.finishStartWithRunId(startedRunId, workflowKey)
         return true
       }
@@ -339,10 +356,6 @@ export function useExecutionCommands({
         workflow,
         selectedWorkflowPath,
         (workflowPath) => window.api.loadWorkflow(workflowPath),
-        (loadedWorkflow, workflowPath) => {
-          setCurrentWorkflow(loadedWorkflow)
-          setSelectedWorkflowPath(workflowPath)
-        },
       )
       workflowForRun = resolvedContinuation.workflowForRun
       workflowPathForRun = resolvedContinuation.workflowPathForRun
@@ -368,8 +381,6 @@ export function useExecutionCommands({
     recordExecutionError,
     runStatus,
     selectedWorkflowPath,
-    setCurrentWorkflow,
-    setSelectedWorkflowPath,
     workflow,
   ])
 

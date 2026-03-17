@@ -3,6 +3,18 @@ import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { moveChatHistory, loadChatHistory, saveChatHistory, createConversation } from "./chat-storage"
+import type { Workflow } from "@shared/types"
+
+function createWorkflow(name: string): Workflow {
+  return {
+    version: 1,
+    name,
+    description: "",
+    defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
+    nodes: [],
+    edges: [],
+  }
+}
 
 describe("chat-storage", () => {
   let dir: string
@@ -75,5 +87,16 @@ describe("chat-storage", () => {
 
     const destination = await loadChatHistory(toWorkflowPath)
     expect(destination?.messages[0]?.content).toBe("keep me")
+  })
+
+  it("persists the latest workflow snapshot with chat history", async () => {
+    const workflowPath = join(dir, "stateful.chain")
+    const conversation = createConversation(workflowPath)
+    conversation.latestWorkflow = createWorkflow("Recovered")
+
+    await saveChatHistory(workflowPath, conversation)
+
+    const restored = await loadChatHistory(workflowPath)
+    expect(restored?.latestWorkflow).toEqual(conversation.latestWorkflow)
   })
 })

@@ -10,6 +10,11 @@ steps:
   - Map audience awareness stages
   - Sharpen messaging for each stage
   - Generate and amplify awareness-matched headlines
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Irresistible Resonance Pipeline
 description: Extract signal from product data, strip noise, map audience awareness, sharpen messaging,

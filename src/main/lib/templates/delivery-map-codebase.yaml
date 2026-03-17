@@ -28,6 +28,7 @@ execution_policy:
     - evidence_first
   notes:
     - Ground the map in the repository, not assumptions.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "Delivery Factory: Map Codebase"
 description: Inspect an existing repository and turn it into a practical orientation map for downstream planning.

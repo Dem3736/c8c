@@ -43,19 +43,64 @@ export function useProjectSidebarData({
   const [globalWorkflows, setGlobalWorkflows] = useState<WorkflowFile[]>([])
 
   useEffect(() => {
-    window.api.listProjects().then(setProjects)
-    window.api.getSelectedProject().then((projectPath) => {
-      if (!projectPath) return
-      setSelectedProject(projectPath)
+    let cancelled = false
+
+    void window.api.listProjects().then((projects) => {
+      if (cancelled) return
+      setProjects(projects)
+    }).catch((error) => {
+      if (cancelled) return
+      setProjects([])
+      toast.error("Could not load projects", {
+        description: String(error),
+      })
     })
+
+    void window.api.getSelectedProject().then((projectPath) => {
+      if (cancelled || !projectPath) return
+      setSelectedProject(projectPath)
+    }).catch((error) => {
+      if (cancelled) return
+      toast.error("Could not restore the selected project", {
+        description: String(error),
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [setProjects, setSelectedProject])
 
   useEffect(() => {
     if (selectedProject) {
-      window.api.listProjectWorkflows(selectedProject).then(setWorkflows)
-      window.api.scanSkills(selectedProject).then(setSkills)
-      window.api.setSelectedProject(selectedProject)
-      return
+      let cancelled = false
+
+      void Promise.all([
+        window.api.listProjectWorkflows(selectedProject),
+        window.api.scanSkills(selectedProject),
+      ]).then(([workflows, skills]) => {
+        if (cancelled) return
+        setWorkflows(workflows)
+        setSkills(skills)
+      }).catch((error) => {
+        if (cancelled) return
+        setWorkflows([])
+        setSkills([])
+        toast.error("Could not load project data", {
+          description: String(error),
+        })
+      })
+
+      void window.api.setSelectedProject(selectedProject).catch((error) => {
+        if (cancelled) return
+        toast.error("Could not persist the selected project", {
+          description: String(error),
+        })
+      })
+
+      return () => {
+        cancelled = true
+      }
     }
 
     setWorkflows([])
@@ -110,12 +155,21 @@ export function useProjectSidebarData({
   }, [setExpandedProjects])
 
   useEffect(() => {
+    let cancelled = false
+
     for (const path of expandedProjects) {
       if (path === selectedProject) continue
       if (projectWorkflowsCache[path]) continue
-      window.api.listProjectWorkflows(path).then((wfs) => {
+      void window.api.listProjectWorkflows(path).then((wfs) => {
+        if (cancelled) return
         setProjectWorkflowsCache((prev) => ({ ...prev, [path]: wfs }))
+      }).catch(() => {
+        // Ignore background prefetch failures; the active project effect surfaces foreground errors.
       })
+    }
+
+    return () => {
+      cancelled = true
     }
   }, [expandedProjects, projectWorkflowsCache, selectedProject])
 

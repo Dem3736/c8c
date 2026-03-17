@@ -70,7 +70,7 @@ nodes:
         and anomaly detection thoroughness."
       threshold: 7
       maxRetries: 2
-      retryFrom: organizer-1
+      retryFrom: pdf-1
   - id: output-1
     type: output
     position:
@@ -102,7 +102,12 @@ edges:
     source: evaluator-1
     target: output-1
     type: pass
-  - id: e-evaluator-organizer
+  - id: e-evaluator-pdf
     source: evaluator-1
-    target: organizer-1
+    target: pdf-1
     type: fail
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders using AI agents
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

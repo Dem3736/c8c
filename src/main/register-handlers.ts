@@ -13,6 +13,7 @@ import {
 import { registerChatHandlers } from "./ipc/chat"
 import { registerMcpHandlers } from "./ipc/mcp"
 import { registerFilesHandlers } from "./ipc/files"
+import { registerFactoryHandlers } from "./ipc/factory"
 
 export function registerMainHandlers(
   getMainWindow: () => BrowserWindow | null,
@@ -31,6 +32,7 @@ export function registerMainHandlers(
     ["chat", registerChatHandlers],
     ["mcp", registerMcpHandlers],
     ["files", registerFilesHandlers],
+    ["factory", registerFactoryHandlers],
   ] as const
 
   for (const [name, register] of handlers) {

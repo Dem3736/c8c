@@ -405,6 +405,13 @@ export type KnownArtifactKind =
   | "phase_plan"
   | "validation_contract"
   | "verification_report"
+  | "audience_offer_brief"
+  | "curriculum_map"
+  | "lesson_system"
+  | "launch_asset_bundle"
+  | "trend_digest"
+  | "idea_backlog"
+  | "editorial_calendar"
   | "angle_map"
   | "content_brief"
   | "outline"
@@ -436,6 +443,8 @@ export interface ArtifactRecord {
   kind: ArtifactKind
   title: string
   description?: string
+  factoryId?: string
+  factoryLabel?: string
   caseId?: string
   caseLabel?: string
   sourceArtifactIds?: string[]
@@ -456,6 +465,8 @@ export interface ArtifactRecord {
 export interface PersistArtifactsFromRunRequest {
   projectPath: string
   workspace: string
+  factoryId?: string
+  factoryLabel?: string
   caseId?: string
   caseLabel?: string
   sourceArtifactIds?: string[]
@@ -468,6 +479,113 @@ export interface PersistArtifactsFromRunRequest {
 
 export interface PersistArtifactsFromRunResult {
   artifacts: ArtifactRecord[]
+}
+
+export interface FactoryOutcomeDefinition {
+  title?: string
+  statement?: string
+  successSignal?: string
+  timeHorizon?: string
+  windowStart?: string
+  windowEnd?: string
+  targetCount?: number | null
+  targetUnit?: string
+  audience?: string
+  constraints?: string[]
+}
+
+export interface FactoryRecipeDefinition {
+  summary?: string
+  packIds?: string[]
+  stageOrder?: string[]
+  artifactContracts?: string[]
+  qualityPolicy?: string[]
+  strategistCheckpoints?: string[]
+  caseGenerationRules?: string[]
+}
+
+export interface ProjectFactoryDefinition {
+  id: string
+  modeId?: ResultModeId
+  label: string
+  outcome?: FactoryOutcomeDefinition
+  recipe?: FactoryRecipeDefinition
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectFactoryBlueprint {
+  version: 2
+  projectPath: string
+  factories: ProjectFactoryDefinition[]
+  selectedFactoryId?: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SaveProjectFactoryBlueprintInput {
+  projectPath: string
+  blueprint: {
+    factories: Array<{
+      id?: string
+      label?: string
+      outcome?: FactoryOutcomeDefinition
+      recipe?: FactoryRecipeDefinition
+    }>
+    selectedFactoryId?: string | null
+  }
+}
+
+export interface FactoryPlannedCase {
+  id: string
+  factoryId: string
+  title: string
+  summary?: string
+  prompt?: string
+  sourceArtifactId?: string
+  sourceArtifactTitle?: string
+  templateId?: string
+  scheduledFor?: string
+  position?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectFactoryState {
+  version: 1
+  projectPath: string
+  plannedCases: FactoryPlannedCase[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SpawnFactoryCasesFromArtifactInput {
+  projectPath: string
+  factoryId: string
+  artifactId: string
+  templateId?: string
+}
+
+export interface SpawnFactoryCasesFromArtifactResult {
+  state: ProjectFactoryState
+  plannedCases: FactoryPlannedCase[]
+}
+
+export type ResultModeId =
+  | "development"
+  | "content"
+  | "courses"
+  | (string & {})
+
+export interface ResultModeDefinition {
+  id: ResultModeId
+  label: string
+  emoji: string
+  summary: string
+  useFor: string
+  youProvide: string
+  youGetFirst: string
+  userRole: string
 }
 
 export type WorkflowTemplateJourneyStage =
@@ -947,6 +1065,7 @@ export interface ChatConversation {
   version: 1
   workflowPath: string
   messages: ChatMessage[]
+  latestWorkflow?: Workflow | null
   createdAt: number
   updatedAt: number
 }
@@ -971,6 +1090,7 @@ export interface ChatSessionSnapshot {
   sessionId: string
   status: ChatSessionStatus
   activeToolName: string | null
+  workflow: Workflow | null
   messages: ChatSessionMessage[]
   updatedAt: number
 }

@@ -46,6 +46,7 @@ execution_policy:
   notes:
     - Separate observed evidence from assumptions.
     - Call out what still needs a human decision.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "Delivery Factory: Research Phase"
 description: Turn scoped delivery context into a research pack that can strengthen the next phase plan.

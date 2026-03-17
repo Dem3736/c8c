@@ -22,6 +22,7 @@ import {
   inputAttachmentsAtom,
   inputValueAtom,
   mainViewAtom,
+  selectedFactoryIdAtom,
   selectedProjectAtom,
   selectedFactoryCaseIdAtom,
   selectedWorkflowPathAtom,
@@ -64,6 +65,7 @@ function buildArtifactSearchText(
 export function ArtifactsPage() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [, setMainView] = useAtom(mainViewAtom)
+  const [selectedFactoryId] = useAtom(selectedFactoryIdAtom)
   const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflow] = useAtom(currentWorkflowAtom)
@@ -132,15 +134,44 @@ export function ArtifactsPage() {
     }
   }, [])
 
+  const templateById = useMemo(
+    () => new Map(templates.map((template) => [template.id, template])),
+    [templates],
+  )
+
+  const artifactFactoryKey = useCallback((artifact: ArtifactRecord) => {
+    if (artifact.factoryId) return artifact.factoryId
+    const template = artifact.templateId ? templateById.get(artifact.templateId) : undefined
+    return template?.pack?.id ? `pack:${template.pack.id}` : "project:legacy"
+  }, [templateById])
+
+  const factoryScopeArtifacts = useMemo(
+    () => selectedFactoryId
+      ? artifacts.filter((artifact) => artifactFactoryKey(artifact) === selectedFactoryId)
+      : artifacts,
+    [artifactFactoryKey, artifacts, selectedFactoryId],
+  )
+
+  const selectedFactoryLabel = useMemo(() => {
+    if (!selectedFactoryId) return null
+    const direct = factoryScopeArtifacts.find((artifact) => artifact.factoryLabel)?.factoryLabel
+    if (direct) return direct
+    if (selectedFactoryId.startsWith("pack:")) {
+      const packId = selectedFactoryId.replace(/^pack:/, "")
+      return templates.find((template) => template.pack?.id === packId)?.pack?.label || "Factory"
+    }
+    return "Factory"
+  }, [factoryScopeArtifacts, selectedFactoryId, templates])
+
   const artifactKinds = useMemo(() => {
-    return Array.from(new Set(artifacts.map((artifact) => artifact.kind))).sort((left, right) =>
+    return Array.from(new Set(factoryScopeArtifacts.map((artifact) => artifact.kind))).sort((left, right) =>
       formatArtifactContractLabel(left).localeCompare(formatArtifactContractLabel(right)),
     )
-  }, [artifacts])
+  }, [factoryScopeArtifacts])
 
   const artifactsByCaseKey = useMemo(() => {
     const next = new Map<string, ArtifactRecord[]>()
-    for (const artifact of artifacts) {
+    for (const artifact of factoryScopeArtifacts) {
       const caseKey = deriveArtifactCaseKey(artifact)
       const existing = next.get(caseKey)
       if (existing) {
@@ -150,7 +181,7 @@ export function ArtifactsPage() {
       }
     }
     return next
-  }, [artifacts])
+  }, [factoryScopeArtifacts])
 
   const caseOptions = useMemo(() => {
     return Array.from(artifactsByCaseKey.entries())
@@ -179,8 +210,8 @@ export function ArtifactsPage() {
   }, [caseOptions, selectedCaseId, setSelectedCaseId])
 
   const scopeArtifacts = useMemo(
-    () => (selectedCaseId ? (artifactsByCaseKey.get(selectedCaseId) || []) : artifacts),
-    [artifacts, artifactsByCaseKey, selectedCaseId],
+    () => (selectedCaseId ? (artifactsByCaseKey.get(selectedCaseId) || []) : factoryScopeArtifacts),
+    [artifactsByCaseKey, factoryScopeArtifacts, selectedCaseId],
   )
 
   const compatibleTemplates = useMemo(() => {
@@ -191,7 +222,7 @@ export function ArtifactsPage() {
 
   const matchingTemplatesByArtifactId = useMemo(() => {
     const next = new Map<string, WorkflowTemplate[]>()
-    for (const artifact of artifacts) {
+    for (const artifact of factoryScopeArtifacts) {
       const artifactScope = selectedCaseId
         ? scopeArtifacts
         : (artifactsByCaseKey.get(deriveArtifactCaseKey(artifact)) || [artifact])
@@ -202,7 +233,7 @@ export function ArtifactsPage() {
       next.set(artifact.id, matchingTemplates)
     }
     return next
-  }, [artifacts, artifactsByCaseKey, compatibleTemplates, scopeArtifacts, selectedCaseId])
+  }, [artifactsByCaseKey, compatibleTemplates, factoryScopeArtifacts, scopeArtifacts, selectedCaseId])
 
   const filteredArtifacts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -240,6 +271,12 @@ export function ArtifactsPage() {
         template,
         webSearchBackend,
         artifacts: selectArtifactsForTemplateContracts(template.contractIn, sourceArtifacts),
+        factory: selectedFactoryId && selectedFactoryLabel
+          ? {
+            id: selectedFactoryId,
+            label: selectedFactoryLabel,
+          }
+          : null,
       })
 
       setWorkflows(launch.refreshedWorkflows)
@@ -294,6 +331,8 @@ export function ArtifactsPage() {
         subtitle={
           selectedCaseOption
             ? `Reusable outputs for ${selectedCaseOption.label}. Stay in one case and open the next stage without rebuilding context in the terminal.`
+            : selectedFactoryLabel
+              ? `Reusable outputs for ${selectedFactoryLabel}. Stay inside one factory while you review artifacts and launch the next stage.`
             : `Reusable project outputs for ${projectFolderName(selectedProject)}. Use them to open the next stage without rebuilding context in the terminal.`
         }
         actions={(
@@ -372,10 +411,23 @@ export function ArtifactsPage() {
       />
 
       <section className="space-y-4" aria-busy={artifactsLoading || templatesLoading}>
+        {selectedFactoryLabel && !selectedCaseOption ? (
+          <ScopeBanner
+            eyebrow="Path scope"
+            description={`Showing outputs for ${selectedFactoryLabel}. Go back to Factory when you need a different outcome or path.`}
+            actions={(
+              <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
+                <Rocket size={14} />
+                Back to factory
+              </Button>
+            )}
+          />
+        ) : null}
+
         {selectedCaseOption ? (
           <ScopeBanner
             eyebrow="Case scope"
-            description={`Showing ${selectedCaseOption.count} artifact${selectedCaseOption.count === 1 ? "" : "s"} for ${selectedCaseOption.label}.`}
+            description={`Showing ${selectedCaseOption.count} artifact${selectedCaseOption.count === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`}
             actions={(
               <>
                 <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
@@ -391,10 +443,10 @@ export function ArtifactsPage() {
         ) : null}
 
         <SectionHeading
-          title="Project artifact library"
+          title={selectedFactoryLabel ? `${selectedFactoryLabel} outputs` : "Project outputs"}
           meta={compatibleTemplates.length > 0 ? (
             <span className="ui-meta-text text-muted-foreground">
-              {compatibleTemplates.length} runnable next stage{compatibleTemplates.length === 1 ? "" : "s"}
+              {compatibleTemplates.length} ready next step{compatibleTemplates.length === 1 ? "" : "s"}
             </span>
           ) : null}
         />
@@ -413,8 +465,10 @@ export function ArtifactsPage() {
           </div>
         ) : filteredArtifacts.length === 0 ? (
           <div className="rounded-xl surface-panel px-4 py-8 text-body-sm text-muted-foreground">
-            {artifacts.length === 0
-              ? "No artifacts saved yet. Run a delivery pack stage to create reusable outputs."
+            {factoryScopeArtifacts.length === 0
+              ? selectedFactoryLabel
+                ? `No outputs have been saved for ${selectedFactoryLabel} yet. Run the first step to create reusable outputs.`
+                : "No outputs saved yet. Run a first step to create reusable outputs."
               : "No artifacts match this filter."}
           </div>
         ) : (

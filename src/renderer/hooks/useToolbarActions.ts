@@ -126,7 +126,22 @@ export function useToolbarActions({
     const workflowTitle = normalizeWorkflowTitle(workflow.name || "") || deriveTitleFromPath(workflowPath)
     try {
       const targetPath = await ensureWorkflowNameSync(workflowPath)
-      await window.api.saveWorkflow(targetPath, workflow)
+      const savedPath = await window.api.saveWorkflow(targetPath, workflow)
+      if (savedPath !== targetPath) {
+        moveWorkflowExecutionState({
+          fromKey: toWorkflowExecutionKey(targetPath),
+          toKey: toWorkflowExecutionKey(savedPath),
+        })
+        moveWorkflowTemplateContext({
+          fromKey: toWorkflowExecutionKey(targetPath),
+          toKey: toWorkflowExecutionKey(savedPath),
+        })
+        setSelectedWorkflowPath(savedPath)
+        if (selectedProject) {
+          const wfs = await window.api.listProjectWorkflows(selectedProject)
+          setWorkflows(wfs)
+        }
+      }
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       toast.success(`Workflow saved: ${workflowTitle}`)
       return true
@@ -140,7 +155,7 @@ export function useToolbarActions({
       showPersistentError(errorMessage(error, "Failed to save workflow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, ensureWorkflowNameSync, setWorkflowSavedSnapshot, workflow, workflowPath])
+  }, [addNotification, deriveTitleFromPath, ensureWorkflowNameSync, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
 
   const saveAs = useCallback(async () => {
     try {

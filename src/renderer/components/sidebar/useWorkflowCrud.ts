@@ -284,8 +284,9 @@ export function useWorkflowCrud({
       return
     }
 
+    let renamedPath: string
     try {
-      const renamedPath = await window.api.renameWorkflow(workflow.path, nextName)
+      renamedPath = await window.api.renameWorkflow(workflow.path, nextName)
       moveWorkflowExecutionState({
         fromKey: toWorkflowExecutionKey(workflow.path),
         toKey: toWorkflowExecutionKey(renamedPath),
@@ -294,11 +295,6 @@ export function useWorkflowCrud({
         fromKey: toWorkflowExecutionKey(workflow.path),
         toKey: toWorkflowExecutionKey(renamedPath),
       })
-
-      if (selectedProject) {
-        const refreshed = await window.api.listProjectWorkflows(selectedProject)
-        setWorkflows(refreshed)
-      }
 
       if (selectedWorkflowPath === workflow.path) {
         setSelectedWorkflowPath(renamedPath)
@@ -311,6 +307,18 @@ export function useWorkflowCrud({
       toast.success(`Workflow renamed: ${nextName}`)
     } catch (error) {
       toast.error(`Failed to rename workflow: ${String(error)}`)
+      return
+    }
+
+    if (selectedProject) {
+      try {
+        const refreshed = await window.api.listProjectWorkflows(selectedProject)
+        setWorkflows(refreshed)
+      } catch (error) {
+        toast.error("Workflow renamed but sidebar refresh failed", {
+          description: String(error),
+        })
+      }
     }
   }
 
@@ -366,6 +374,11 @@ export function useWorkflowCrud({
         } else {
           setProjectWorkflowsCache((prev) => ({ ...prev, [projectPath]: refreshed }))
         }
+      }
+
+      if (!(await confirmDiscard("open duplicated workflow", workflowDirty))) {
+        toast.success("Workflow duplicated")
+        return
       }
 
       const loadedWorkflow = await window.api.loadWorkflow(newPath)

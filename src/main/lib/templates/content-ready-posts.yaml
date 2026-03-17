@@ -1,0 +1,118 @@
+id: content-ready-posts
+stage: content
+emoji: "\U0001F4DD"
+headline: Turn a post calendar into ready-to-publish posts
+how: Draft the posts from the plan, apply voice/quality discipline, and hand back publish-ready copy.
+input: Post calendar, ToV constraints, and brand rules
+output: Ready posts bundle prepared for review or publishing
+use_when: You already have a concrete post calendar and want the actual posts written with strong quality control.
+steps:
+  - Draft the planned posts from the calendar
+  - Evaluate them for voice, specificity, and no-slop quality
+  - Hold a human review gate before final output
+pack:
+  id: content-factory-alpha
+  label: Content Factory
+  journey_stage: execute
+contract_in:
+  - kind: editorial_calendar
+    title: Post Calendar
+    description: Concrete post slots that should be turned into ready-to-publish copy.
+    required: true
+contract_out:
+  - kind: distribution_bundle
+    title: Ready Posts
+    description: Final post bundle ready for publishing or scheduling.
+execution_policy:
+  profile_id: content_ready_posts
+  summary: Voice-locked no-slop drafting
+  description: Generate publish-ready posts from a plan while keeping tone, specificity, and quality gates visible.
+  tags:
+    - voice_locked
+    - no_slop
+    - critique_loops
+    - publish_gate
+  notes:
+    - Posts should feel specific and current, not generic AI filler.
+    - Keep format consistent with the intended publishing channel.
+    - Require a human checkpoint before calling the bundle done.
+version: 1
+name: "Content Factory: Ready Posts"
+description: Turn a post calendar into ready-to-publish posts with visible quality control.
+defaults:
+  model: sonnet
+  maxTurns: 150
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the post calendar, tone of voice, style rules, and any constraints for the final posts.
+  - id: drafter-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: writer
+      prompt: >-
+        Draft the final posts from the Post Calendar. For each planned slot produce:
+        1) the final post copy,
+        2) a short hook label,
+        3) why this version fits the planned angle,
+        4) any optional publishing note.
+        Keep the posts crisp, specific, and aligned with the requested tone of voice.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: posts are specific and not generic, tone is consistent, no repeated hooks, output is publish-ready for the stated channel."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: drafter-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 960
+      y: 200
+    config:
+      message: Review the ready posts bundle before this factory stage is considered done.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1280
+      y: 200
+    config:
+      title: Ready Posts
+edges:
+  - id: e-input-drafter
+    source: input-1
+    target: drafter-1
+    type: default
+  - id: e-drafter-eval
+    source: drafter-1
+    target: eval-1
+    type: default
+  - id: e-eval-approval
+    source: eval-1
+    target: approval-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: drafter-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

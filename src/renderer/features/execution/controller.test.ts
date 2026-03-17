@@ -216,4 +216,49 @@ describe("WorkflowExecutionController", () => {
       }),
     )
   })
+
+  it("drops stale run-key mappings until the current run id is registered", () => {
+    const { controller } = createHarness()
+    const workflowKey = controller.beginExecution(createWorkflow(), "/tmp/original.chain", "/tmp/project")
+    controller.finishStartWithRunId("run-1", workflowKey)
+    controller.cancelExecution(workflowKey, "run-1")
+
+    ;(controller as unknown as {
+      runWorkflowKeys: Map<string, string>
+      bufferedEvents: Map<string, { events: unknown[] }>
+    }).runWorkflowKeys.set("run-1", workflowKey)
+
+    controller.processWorkflowEvent({
+      type: "node-start",
+      runId: "run-1",
+      nodeId: "input",
+    })
+
+    const internals = controller as unknown as {
+      runWorkflowKeys: Map<string, string>
+      bufferedEvents: Map<string, { events: unknown[] }>
+    }
+    expect(internals.runWorkflowKeys.has("run-1")).toBe(false)
+    expect(internals.bufferedEvents.get("run-1")?.events).toHaveLength(1)
+  })
+
+  it("caps buffered events per run to avoid unbounded growth", () => {
+    const { controller } = createHarness()
+
+    for (let index = 0; index < 550; index += 1) {
+      controller.processWorkflowEvent({
+        type: "node-start",
+        runId: "run-buffered",
+        nodeId: `node-${index}`,
+      })
+    }
+
+    const internals = controller as unknown as {
+      bufferedEvents: Map<string, { events: Array<{ nodeId: string }> }>
+    }
+    const buffered = internals.bufferedEvents.get("run-buffered")
+    expect(buffered?.events).toHaveLength(500)
+    expect(buffered?.events[0]?.nodeId).toBe("node-50")
+    expect(buffered?.events.at(-1)?.nodeId).toBe("node-549")
+  })
 })

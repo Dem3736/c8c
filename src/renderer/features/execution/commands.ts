@@ -14,6 +14,8 @@ export interface ResolvedContinuationWorkflow {
   workflowPathForRun: string | null
 }
 
+export const DEFAULT_EXECUTION_IPC_TIMEOUT_MS = 30_000
+
 function isResearchLikeWorkflow(workflow: {
   name: string
   description?: string
@@ -97,12 +99,31 @@ export function resolveExecutionStartResult(
   }
 }
 
+export function withIpcTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
+  message = `IPC request timed out after ${timeoutMs}ms`,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutHandle = globalThis.setTimeout(() => {
+      reject(new Error(message))
+    }, timeoutMs)
+
+    promise.then((value) => {
+      globalThis.clearTimeout(timeoutHandle)
+      resolve(value)
+    }).catch((error) => {
+      globalThis.clearTimeout(timeoutHandle)
+      reject(error)
+    })
+  })
+}
+
 export async function resolveContinuationWorkflow(
   runToContinue: RunResult,
   workflow: Workflow,
   selectedWorkflowPath: string | null,
   loadWorkflow: (path: string) => Promise<Workflow>,
-  onWorkflowLoaded: (workflow: Workflow, workflowPath: string) => void,
 ): Promise<ResolvedContinuationWorkflow> {
   if (!runToContinue.workflowPath) {
     return {
@@ -112,7 +133,6 @@ export async function resolveContinuationWorkflow(
   }
 
   const workflowForRun = await loadWorkflow(runToContinue.workflowPath)
-  onWorkflowLoaded(workflowForRun, runToContinue.workflowPath)
 
   return {
     workflowForRun,

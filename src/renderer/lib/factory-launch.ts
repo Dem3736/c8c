@@ -1,10 +1,11 @@
-import type { ArtifactRecord, InputAttachment, WorkflowFile, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, InputAttachment, ProjectFactoryDefinition, WorkflowFile, WorkflowTemplate } from "@shared/types"
 import type { WebSearchBackend } from "@/lib/web-search-backend"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import {
   buildArtifactAttachmentSeedInput,
   buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
+  type WorkflowTemplateCaseOverride,
 } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 
@@ -13,11 +14,17 @@ export async function prepareTemplateStageLaunch({
   template,
   webSearchBackend,
   artifacts,
+  factory = null,
+  caseOverride = null,
+  inputSeedPrefix = null,
 }: {
   projectPath: string
   template: WorkflowTemplate
   webSearchBackend: WebSearchBackend
   artifacts: ArtifactRecord[]
+  factory?: Pick<ProjectFactoryDefinition, "id" | "label"> | null
+  caseOverride?: WorkflowTemplateCaseOverride | null
+  inputSeedPrefix?: string | null
 }): Promise<{
   filePath: string
   loadedWorkflow: WorkflowTemplate["workflow"]
@@ -44,12 +51,17 @@ export async function prepareTemplateStageLaunch({
     workflow: loadedWorkflow,
   }
 
+  const baseInputSeed = buildArtifactAttachmentSeedInput(artifactAttachments)
+  const inputSeed = inputSeedPrefix?.trim()
+    ? `${inputSeedPrefix.trim()}\n\n---\n\n${baseInputSeed}`
+    : baseInputSeed
+
   return {
     filePath,
     loadedWorkflow,
     refreshedWorkflows,
     artifactAttachments,
-    inputSeed: buildArtifactAttachmentSeedInput(artifactAttachments),
+    inputSeed,
     entryState: buildTemplateWorkflowEntryState({
       template: hydratedTemplate,
       workflowPath: filePath,
@@ -58,6 +70,8 @@ export async function prepareTemplateStageLaunch({
       template: hydratedTemplate,
       workflowPath: filePath,
       sourceArtifacts: artifacts,
+      factory,
+      caseOverride,
     }),
     savedSnapshot: workflowSnapshot(loadedWorkflow),
   }

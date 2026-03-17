@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -34,6 +34,40 @@ describe("buildProviderExtraArgs", () => {
     expect(buildClaudeExtraArgs("/tmp/.mcp.json")).toEqual(
       buildProviderExtraArgs("claude", "/tmp/.mcp.json"),
     )
+  })
+
+  it("reuses cached codex MCP overrides after a prepared config is written", async () => {
+    listApprovedPluginMcpServersMock.mockResolvedValue([])
+    const root = await mkdtemp(join(tmpdir(), "mcp-config-cache-test-"))
+    const project = join(root, "project")
+    const workspace = join(root, "workspace")
+    await mkdir(project, { recursive: true })
+    await mkdir(workspace, { recursive: true })
+
+    await writeFile(
+      join(project, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          github: {
+            command: "node",
+            args: ["./server.js"],
+          },
+        },
+      }),
+      "utf-8",
+    )
+
+    const path = await prepareWorkspaceMcpConfig(workspace, project, "builtin")
+    expect(path).toBeTruthy()
+
+    await rm(path!, { force: true })
+
+    expect(buildProviderExtraArgs("codex", path!)).toEqual([
+      "-c",
+      'mcp_servers."github".command="node"',
+      "-c",
+      'mcp_servers."github".args=["./server.js"]',
+    ])
   })
 })
 

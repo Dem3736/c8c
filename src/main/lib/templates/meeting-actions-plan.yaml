@@ -9,6 +9,7 @@ steps:
   - Analyze meeting transcript and extract action items
   - Prioritize and plan each action item in parallel
   - Compile into a project planning document
+  - Evaluate completeness, deduplication, and owner assignment quality
 version: 1
 name: Meeting → Actions → Plan
 description: Analyze meeting transcript, extract action items, prioritize and plan each in parallel, compile into a project document
@@ -54,7 +55,7 @@ nodes:
       y: 200
     config:
       skillRef: project-management/Senior Project Manager
-      prompt: "For this action item: estimate effort, assign priority (P0-P3), suggest owner based on meeting context, define
+      prompt: "For this action item: estimate effort, assign priority (P0-P3), determine if task is for founder personally or can be delegated to AI agent/automation, define
         acceptance criteria, and set a deadline."
   - id: merger-1
     type: merger
@@ -64,10 +65,20 @@ nodes:
     config:
       strategy: concatenate
       prompt: Compile all action items into a structured project plan. Sort by priority, group by owner, include timeline.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1820
+      y: 200
+    config:
+      criteria: "Score 1-10: all action items from transcript captured, no duplicates, each has deadline and priority, owner assignment distinguishes founder-personal tasks from AI-delegatable tasks."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: analyzer-1
   - id: docx-1
     type: skill
     position:
-      x: 1800
+      x: 2140
       y: 200
     config:
       skillRef: anthropic/docx
@@ -76,7 +87,7 @@ nodes:
   - id: output-1
     type: output
     position:
-      x: 2100
+      x: 2460
       y: 200
     config: {}
 edges:
@@ -100,11 +111,24 @@ edges:
     source: pm-1
     target: merger-1
     type: default
-  - id: e-merger-docx
+  - id: e-merger-eval
     source: merger-1
-    target: docx-1
+    target: eval-1
     type: default
+  - id: e-eval-docx
+    source: eval-1
+    target: docx-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: analyzer-1
+    type: fail
   - id: e-docx-output
     source: docx-1
     target: output-1
     type: default
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders using AI agents
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

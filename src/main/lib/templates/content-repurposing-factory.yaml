@@ -67,7 +67,7 @@ nodes:
         actionability (clear CTAs), and engagement potential."
       threshold: 7
       maxRetries: 2
-      retryFrom: analyzer-1
+      retryFrom: splitter-1
   - id: output-1
     type: output
     position:
@@ -99,7 +99,12 @@ edges:
     source: evaluator-1
     target: output-1
     type: pass
-  - id: e-evaluator-analyzer
+  - id: e-evaluator-splitter
     source: evaluator-1
-    target: analyzer-1
+    target: splitter-1
     type: fail
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders using AI agents
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

@@ -27,15 +27,13 @@ import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
+import { STAGE_META } from "@/lib/template-stages"
 import {
   buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
   deriveTemplateExecutionDisciplineLabels,
-  deriveTemplateJourneyStageLabel,
-  deriveTemplatePackStagePath,
   deriveTemplateUseWhen,
-  formatArtifactContractLabel,
 } from "@/lib/workflow-entry"
 import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
@@ -87,16 +85,15 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
   const selected = templates.find((t) => t.id === selectedId)
   const selectedOptionId = selectedId ? `template-option-${selectedId}` : undefined
-  const selectedPackStageLabel = selected ? deriveTemplateJourneyStageLabel(selected) : null
   const selectedDisciplineLabels = selected ? deriveTemplateExecutionDisciplineLabels(selected) : []
-  const selectedPackStages = selected?.pack
-    ? deriveTemplatePackStagePath(templates, selected.pack.id)
-    : []
-  const selectedRecommendedNext = selected
-    ? (selected.pack?.recommendedNext || [])
-      .map((id) => templates.find((candidate) => candidate.id === id)?.name)
-      .filter((name): name is string => Boolean(name))
-    : []
+  const selectedStageLabel = selected ? STAGE_META[selected.stage].label : null
+  const selectedSourceKind = selected ? getTemplateSourceKind(selected) : null
+  const selectedSourceLabel = selected ? getTemplateSourceLabel(selected) : null
+  const selectedExecutionSummary = selected
+    ? selected.executionPolicy?.summary?.trim()
+      || (selectedDisciplineLabels.length > 0 ? selectedDisciplineLabels.join(", ") : null)
+    : null
+  const selectedExecutionDescription = selected?.executionPolicy?.description?.trim() || null
 
   const closeBrowser = useCallback(() => {
     setOpen(false)
@@ -193,9 +190,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     >
       <CanvasDialogContent size="xl" className="max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
         <CanvasDialogHeader className="surface-depth-header">
-          <DialogTitle>Choose a starting point</DialogTitle>
+          <DialogTitle>Choose a template</DialogTitle>
           <DialogDescription className="sr-only">
-            Browse ready-to-run flows, preview their fit, and apply one to the current workflow.
+            Browse ready-to-run workflow templates, preview their fit, and apply one to the current workflow.
           </DialogDescription>
         </CanvasDialogHeader>
 
@@ -238,6 +235,8 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             )}
             {templates.map((template) => {
               const isSelected = selectedId === template.id
+              const sourceKind = getTemplateSourceKind(template)
+
               return (
                 <Button
                   type="button"
@@ -265,20 +264,16 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                       <p className="ui-meta-text mt-1">
                         {deriveTemplateCardCopy(template)}
                       </p>
-                      {(template.pack || template.executionPolicy?.tags?.length) && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {template.pack && (
-                            <Badge variant="outline" size="compact">
-                              {template.pack.label}
-                            </Badge>
-                          )}
-                          {template.pack?.entrypoint && (
-                            <Badge variant="info" size="compact">
-                              Start here
-                            </Badge>
-                          )}
-                        </div>
-                      )}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline" size="compact">
+                          {STAGE_META[template.stage].label}
+                        </Badge>
+                        {(sourceKind === "plugin" || sourceKind === "user") && (
+                          <Badge variant="secondary" size="compact">
+                            {getTemplateSourceLabel(template)}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </Button>
@@ -301,10 +296,17 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     <Badge size="compact" variant="secondary">
                       {getTemplateSourceLabel(selected)}
                     </Badge>
+                    {selectedStageLabel ? (
+                      <Badge size="compact" variant="outline">
+                        {selectedStageLabel}
+                      </Badge>
+                    ) : null}
                   </div>
-                  <p className="ui-meta-text mt-1">
-                    {selected.description}
-                  </p>
+                  {selected.description ? (
+                    <p className="ui-meta-text mt-1">
+                      {selected.description}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
@@ -320,72 +322,32 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     <span className="ui-meta-label text-muted-foreground">You get</span>
                     <p className="text-body-sm">{selected.output}</p>
                   </div>
-                  {selected.pack && (
-                    <div>
-                      <span className="ui-meta-label text-muted-foreground">Factory pack</span>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <Badge variant="outline" size="compact">{selected.pack.label}</Badge>
-                        {selectedPackStageLabel ? <Badge variant="secondary" size="compact">{selectedPackStageLabel}</Badge> : null}
-                        {selected.pack.entrypoint ? <Badge variant="info" size="compact">Start here</Badge> : null}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {selectedPackStages.length > 0 && (
+                {(selectedExecutionSummary || selectedExecutionDescription) && (
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Stages included</span>
-                    <p className="text-body-sm text-foreground">{selectedPackStages.join(" -> ")}</p>
-                  </div>
-                )}
-
-                {selected.contractIn?.length ? (
-                  <div>
-                    <span className="ui-meta-label text-muted-foreground">Requires</span>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {selected.contractIn.map((contract) => (
-                        <Badge key={`${selected.id}-in-${contract.kind}-${contract.title || ""}`} variant="outline" size="compact">
-                          {formatArtifactContractLabel(contract)}
-                          {contract.required === false ? " (optional)" : ""}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {selected.contractOut?.length ? (
-                  <div>
-                    <span className="ui-meta-label text-muted-foreground">Produces</span>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {selected.contractOut.map((contract) => (
-                        <Badge key={`${selected.id}-out-${contract.kind}-${contract.title || ""}`} variant="secondary" size="compact">
-                          {formatArtifactContractLabel(contract)}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {selectedDisciplineLabels.length > 0 && (
-                  <div>
-                    <span className="ui-meta-label text-muted-foreground">Execution discipline</span>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {selectedDisciplineLabels.map((label) => (
-                        <Badge key={`${selected.id}-discipline-${label}`} variant="info" size="compact">
-                          {label}
-                        </Badge>
-                      ))}
-                    </div>
-                    {selected.executionPolicy?.description ? (
-                      <p className="mt-2 text-body-sm text-muted-foreground">{selected.executionPolicy.description}</p>
+                    <span className="ui-meta-label text-muted-foreground">Working style</span>
+                    {selectedExecutionSummary ? (
+                      <p className="text-body-sm text-foreground">{selectedExecutionSummary}</p>
+                    ) : null}
+                    {selectedExecutionDescription && selectedExecutionDescription !== selectedExecutionSummary ? (
+                      <p className="mt-2 text-body-sm text-muted-foreground">{selectedExecutionDescription}</p>
                     ) : null}
                   </div>
                 )}
 
-                {selectedRecommendedNext.length > 0 && (
+                <div>
+                  <span className="ui-meta-label text-muted-foreground">Why this flow fits</span>
+                  <p className="text-body-sm text-muted-foreground">{selected.how}</p>
+                </div>
+
+                {(selectedSourceKind === "plugin" || selectedSourceKind === "user") && (
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Next</span>
-                    <p className="text-body-sm text-foreground">{selectedRecommendedNext.join(" -> ")}</p>
+                    <span className="ui-meta-label text-muted-foreground">Source</span>
+                    <p className="text-body-sm text-foreground">
+                      {selectedSourceLabel}
+                      {selected.marketplaceName ? ` via ${selected.marketplaceName}` : ""}
+                    </p>
                   </div>
                 )}
 
@@ -399,12 +361,6 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     ))}
                   </ol>
                 </details>
-                {getTemplateSourceKind(selected) === "plugin" && (
-                  <div>
-                    <span className="ui-meta-label text-muted-foreground">Marketplace</span>
-                    <p className="text-body-sm">{selected.marketplaceName || "plugin marketplace"}</p>
-                  </div>
-                )}
               </div>
             )}
           </div>

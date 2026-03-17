@@ -11,6 +11,11 @@ steps:
   - Apply infostyle rules — remove buzzwords, enforce positive rules
   - Polish for consistency, number deduplication, and flow
   - Run quality-gate evaluation loop
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Copy Quality Pipeline
 description: Run existing text through infostyle + slop-check passes to produce clean, fact-based copy with evaluator retry

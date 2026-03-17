@@ -10,6 +10,11 @@ steps:
   - Normalize, harden, and clarify the implementation
   - Optimize performance and polish details
   - Run quality-gate evaluation loop
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Impeccable UI Pipeline
 description: Audit a frontend feature, then systematically normalize, harden, clarify, optimize, and polish it with

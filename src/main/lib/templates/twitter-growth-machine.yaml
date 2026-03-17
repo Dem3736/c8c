@@ -9,6 +9,10 @@ steps:
   - Research trending topics in your niche
   - Generate multiple tweet angles in parallel
   - Optimize each for the algorithm and select the best
+  - Founder approves the final tweet batch before posting
+execution_policy:
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Twitter Growth Machine
 description: Research trending topics, generate multiple tweet angles, optimize each for algorithm, select the best,
@@ -69,11 +73,21 @@ nodes:
         authenticity (not generic AI slop), and engagement potential."
       threshold: 8
       maxRetries: 2
-      retryFrom: researcher-1
+      retryFrom: splitter-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1800
+      y: 200
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: output-1
     type: output
     position:
-      x: 1800
+      x: 2120
       y: 200
     config: {}
 edges:
@@ -97,11 +111,15 @@ edges:
     source: merger-1
     target: evaluator-1
     type: default
-  - id: e-evaluator-output
+  - id: e-evaluator-approval
     source: evaluator-1
-    target: output-1
+    target: approval-1
     type: pass
-  - id: e-evaluator-researcher
+  - id: e-evaluator-splitter
     source: evaluator-1
-    target: researcher-1
+    target: splitter-1
     type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

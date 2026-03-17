@@ -34,7 +34,6 @@ import {
   Sparkles,
   Factory,
   LayoutTemplate,
-  FileStack,
   Inbox,
   Settings,
   Pencil,
@@ -363,20 +362,6 @@ export function ProjectSidebar({
         />
 
         <SidebarNavItem
-          icon={Sparkles}
-          label="Plugins"
-          active={mainView === "skills"}
-          onClick={() => setMainView("skills")}
-        />
-
-        <SidebarNavItem
-          icon={Factory}
-          label="Factory"
-          active={mainView === "factory"}
-          onClick={() => setMainView("factory")}
-        />
-
-        <SidebarNavItem
           icon={LayoutTemplate}
           label="Templates"
           active={mainView === "templates"}
@@ -384,10 +369,10 @@ export function ProjectSidebar({
         />
 
         <SidebarNavItem
-          icon={FileStack}
-          label="Artifacts"
-          active={mainView === "artifacts"}
-          onClick={() => setMainView("artifacts")}
+          icon={Sparkles}
+          label="Plugins"
+          active={mainView === "skills"}
+          onClick={() => setMainView("skills")}
         />
 
         <SidebarNavItem
@@ -400,6 +385,13 @@ export function ProjectSidebar({
               {unreadInboxCount > 99 ? "99+" : unreadInboxCount}
             </span>
           ) : null}
+        />
+
+        <SidebarNavItem
+          icon={Factory}
+          label="Factory"
+          active={mainView === "factory"}
+          onClick={() => setMainView("factory")}
         />
       </div>
 

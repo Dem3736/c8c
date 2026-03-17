@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -401,8 +401,11 @@ export function SkillsPage() {
   const [previewPlugin, setPreviewPlugin] = useState<InstalledPlugin | null>(null)
   const [acknowledgeBrokenRefs, setAcknowledgeBrokenRefs] = useState(false)
   const [selectedSkill, setSelectedSkill] = useState<DiscoveredSkill | null>(null)
+  const refreshRequestIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
+    const requestId = refreshRequestIdRef.current + 1
+    refreshRequestIdRef.current = requestId
     setRefreshing(true)
     try {
       const [loadedLibraries, loadedMarketplaces, loadedPlugins, loadedPluginMcpServers, scanned] = await Promise.all([
@@ -412,14 +415,17 @@ export function SkillsPage() {
         window.api.mcpListPluginServers(),
         selectedProject ? window.api.scanSkills(selectedProject) : Promise.resolve([] as DiscoveredSkill[]),
       ])
+      if (refreshRequestIdRef.current !== requestId) return
       setLibraries(loadedLibraries)
       setMarketplaces(loadedMarketplaces)
       setPlugins(loadedPlugins)
       setPluginMcpServers(loadedPluginMcpServers)
       setSkills(scanned)
     } catch (error) {
+      if (refreshRequestIdRef.current !== requestId) return
       toast.error(`Failed to refresh skills: ${String(error)}`)
     } finally {
+      if (refreshRequestIdRef.current !== requestId) return
       setRefreshing(false)
     }
   }, [selectedProject, setLibraries, setSkills])

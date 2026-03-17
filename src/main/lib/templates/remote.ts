@@ -16,9 +16,7 @@ const VALID_STAGES: WorkflowTemplateStage[] = [
   "operations",
 ]
 
-export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowTemplate> {
-  const url = `${HUB_BASE_URL}${templateId}.yaml`
-
+async function fetchTemplateFromUrl(url: string, notFoundMessage: string): Promise<WorkflowTemplate> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
@@ -31,7 +29,7 @@ export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowT
 
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error("Template not found on hub")
+      throw new Error(notFoundMessage)
     }
     throw new Error(`Network error (${response.status})`)
   }
@@ -72,4 +70,12 @@ export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowT
   }
 
   return parseTemplate(body)
+}
+
+export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowTemplate> {
+  return fetchTemplateFromUrl(`${HUB_BASE_URL}${templateId}.yaml`, "Template not found on hub")
+}
+
+export async function fetchRemoteTemplateByUrl(url: string): Promise<WorkflowTemplate> {
+  return fetchTemplateFromUrl(url, "Template not found")
 }

@@ -1,0 +1,99 @@
+id: courses-audience-offer
+stage: strategy
+emoji: "\U0001F3AF"
+headline: Turn expertise into a clear audience and offer brief
+how: Clarify who the course is for, what transformation it promises, and how the offer should be framed before building curriculum.
+input: Expertise notes, audience context, offer ideas, and any constraints on format or positioning
+output: Audience and offer brief with a sharp promise, audience definition, and positioning direction
+use_when: You want to shape a course or workshop from real expertise instead of jumping straight into lesson drafting.
+steps:
+  - Identify the most relevant audience, pains, and desired transformation
+  - Turn the raw notes into a clear audience and offer brief
+  - Evaluate clarity, specificity, and strategic fit before downstream curriculum work
+pack:
+  id: courses-factory-alpha
+  label: Courses Factory
+  journey_stage: intake
+  entrypoint: true
+  recommended_next:
+    - courses-curriculum-map
+contract_out:
+  - kind: audience_offer_brief
+    title: Audience & Offer Brief
+    description: Audience definition, transformation promise, and positioning direction for the course.
+execution_policy:
+  profile_id: courses_audience_offer
+  summary: Audience-first positioning
+  description: Define the audience and promise before investing in curriculum and lesson drafting.
+  tags:
+    - evidence_first
+    - human_gate_required
+  notes:
+    - Keep the promise specific and outcome-based.
+    - Avoid broad "for everyone" positioning.
+version: 1
+name: "Courses Factory: Audience & Offer"
+description: Shape the audience and promise for a course, workshop, or expertise product before planning curriculum.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste your expertise notes, audience ideas, transformation promise, and any offer context.
+  - id: strategist-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: strategist
+      prompt: >-
+        Create an Audience & Offer Brief for this course or workshop. Include:
+        1) primary audience,
+        2) current pain or stuck point,
+        3) transformation promise,
+        4) why this offer matters now,
+        5) positioning guidance for the product.
+        Keep it concrete and commercially usable.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: audience is specific, promise is concrete, positioning is differentiated, and the brief is usable for curriculum planning."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: strategist-1
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Audience & Offer Brief
+edges:
+  - id: e-input-strategist
+    source: input-1
+    target: strategist-1
+    type: default
+  - id: e-strategist-eval
+    source: strategist-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: strategist-1
+    type: fail

@@ -1068,7 +1068,7 @@ export function OutputPanel({
                 <div className={cn("rounded-lg border px-3 py-3", artifactContinuationToneClass)}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="ui-meta-label text-muted-foreground">Factory continuation</div>
+                      <div className="ui-meta-label text-muted-foreground">Continue guided path</div>
                       <div className="mt-1 text-body-sm font-medium text-foreground">
                         {artifactPersistenceStatus === "saving"
                           ? "Saving artifacts for downstream stages..."
@@ -1082,11 +1082,11 @@ export function OutputPanel({
                         </p>
                       ) : nextStageTemplate ? (
                         <p className="mt-1 ui-meta-text text-muted-foreground">
-                          Next stage available: {nextStageTemplate.name}
+                          Next step ready: {nextStageTemplate.name}
                         </p>
                       ) : artifactPersistenceStatus === "saved" ? (
                         <p className="mt-1 ui-meta-text text-muted-foreground">
-                          This run saved its outputs as reusable project artifacts.
+                          This run saved reusable outputs you can use again later.
                         </p>
                       ) : null}
                     </div>
@@ -1099,7 +1099,7 @@ export function OutputPanel({
                           onClick={onOpenArtifacts}
                         >
                           <FolderTree size={12} />
-                          Open artifacts
+                          View outputs
                         </Button>
                       )}
                       {nextStageTemplate && onRunNextStage && (
@@ -1113,7 +1113,7 @@ export function OutputPanel({
                           disabled={artifactPersistenceStatus !== "saved" || nextStagePending}
                         >
                           <ArrowRight size={12} />
-                          {nextStagePending ? "Opening next stage..." : "Run next stage"}
+                          {nextStagePending ? "Opening next step..." : "Open next step"}
                         </Button>
                       )}
                     </div>

@@ -140,6 +140,44 @@ describe("workflow-entry factory helpers", () => {
     expect(context.caseLabel).toBe("Project Brief")
   })
 
+  it("lets planned item cases override the inherited parent case identity", () => {
+    const template = createTemplate()
+    const context = buildTemplateRunContext({
+      template,
+      workflowPath: "/tmp/plan-phase.chain",
+      sourceArtifacts: [
+        {
+          id: "artifact-1",
+          kind: "editorial_calendar",
+          title: "Editorial Calendar",
+          factoryId: "factory:content-engine",
+          caseId: "case:content-engine:calendar",
+          caseLabel: "Editorial Calendar",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-1",
+          relativePath: ".c8c/artifacts/run-1-editorial-calendar.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-1-editorial-calendar.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-1-editorial-calendar.json",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      factory: {
+        id: "factory:content-engine",
+        label: "Content Engine",
+      },
+      caseOverride: {
+        caseId: "case:content-engine:planned:post-1",
+        caseLabel: "Post 1",
+      },
+    })
+
+    expect(context.factoryId).toBe("factory:content-engine")
+    expect(context.caseId).toBe("case:content-engine:planned:post-1")
+    expect(context.caseLabel).toBe("Post 1")
+  })
+
   it("builds seed copy for artifact-driven stages", () => {
     expect(buildArtifactAttachmentSeedInput([])).toContain("Add the context")
     expect(buildArtifactAttachmentSeedInput([

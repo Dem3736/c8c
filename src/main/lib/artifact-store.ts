@@ -69,6 +69,12 @@ function buildArtifactMarkdown(
   if (record.caseId) {
     headerLines.push(`Case ID: \`${record.caseId}\``)
   }
+  if (record.factoryLabel) {
+    headerLines.push(`Factory: ${record.factoryLabel}`)
+  }
+  if (record.factoryId) {
+    headerLines.push(`Factory ID: \`${record.factoryId}\``)
+  }
 
   if (record.workflowName) {
     headerLines.push(`Workflow: ${record.workflowName}`)
@@ -168,6 +174,8 @@ export async function persistArtifactsFromRun(
       kind: contract.kind,
       title,
       description: contract.description,
+      factoryId: input.factoryId || existing?.factoryId,
+      factoryLabel: input.factoryLabel || existing?.factoryLabel,
       caseId: input.caseId || existing?.caseId,
       caseLabel: input.caseLabel || existing?.caseLabel,
       sourceArtifactIds: input.sourceArtifactIds || existing?.sourceArtifactIds,
@@ -226,6 +234,8 @@ export async function listProjectArtifacts(projectPath: string): Promise<Artifac
             kind: parsed.kind,
             title: parsed.title,
             description: parsed.description,
+            factoryId: typeof parsed.factoryId === "string" ? parsed.factoryId : undefined,
+            factoryLabel: typeof parsed.factoryLabel === "string" ? parsed.factoryLabel : undefined,
             caseId: typeof parsed.caseId === "string" ? parsed.caseId : undefined,
             caseLabel: typeof parsed.caseLabel === "string" ? parsed.caseLabel : undefined,
             sourceArtifactIds: Array.isArray(parsed.sourceArtifactIds)

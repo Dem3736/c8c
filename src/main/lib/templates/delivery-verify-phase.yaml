@@ -2,13 +2,15 @@ id: delivery-verify-phase
 stage: operations
 emoji: "\U0001F9EA"
 headline: Verify a finished phase against its plan before calling it done
-how: Turn the implemented outcome into a verification report, then require an explicit review gate before the phase is considered complete.
+how: Run automated checks first, then compare implemented outcome against the phase plan in a verification report, evaluate report quality, and require explicit human approval before completion.
 input: Implementation notes, evidence, or links that should be checked against the phase plan
 output: Approved verification report with findings, gaps, and completion decision
 use_when: A phase has been implemented and you want a visible verification pass before declaring it complete.
 steps:
-  - Compare the delivered work against the phase plan and validation contract
-  - Require an explicit review decision before the verification report is finalized
+  - Run automated checks (tests, types, lint) and report raw results
+  - Compare delivered work against the phase plan and validation contract
+  - Evaluate verification report quality and evidence
+  - Require explicit founder review before finalizing
 pack:
   id: delivery-foundation
   label: Delivery Factory
@@ -41,6 +43,7 @@ execution_policy:
   notes:
     - Verification should name gaps, not just celebrate completion.
     - The final report is only complete after human review.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "Delivery Factory: Verify Phase"
 description: Check the delivered outcome against the phase plan and validation contract, then finalize an approved verification report.
@@ -58,10 +61,20 @@ nodes:
       inputType: text
       required: true
       placeholder: Paste implementation notes, test evidence, or review context for the phase you want verified.
-  - id: verifier-1
+  - id: checker-1
     type: skill
     position:
       x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Run available automated checks (test suite, type check, lint) and report results as structured facts.
+        Do not interpret — just report what passed, what failed, and what was skipped.
+  - id: verifier-1
+    type: skill
+    position:
+      x: 640
       y: 200
     config:
       skillRef: researcher
@@ -74,33 +87,55 @@ nodes:
         4) unresolved risks,
         5) recommended disposition: ready to close, needs follow-up, or blocked.
         Keep the report concise, explicit, and reviewable.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 960
+      y: 200
+    config:
+      criteria: "Score 1-10: report references concrete test results not just text claims, all verification criteria addressed, issues prioritized by severity."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: verifier-1
   - id: approval-1
     type: approval
     position:
-      x: 640
+      x: 1280
       y: 200
     config:
       message: Approve the verification report before this phase is marked ready to close.
       show_content: true
       allow_edit: true
       timeout_minutes: 120
-      timeout_action: skip
+      timeout_action: auto_reject
   - id: output-1
     type: output
     position:
-      x: 960
+      x: 1600
       y: 200
     config:
       title: Verification Report
 edges:
-  - id: e-input-verifier
+  - id: e-input-checker
     source: input-1
+    target: checker-1
+    type: default
+  - id: e-checker-verifier
+    source: checker-1
     target: verifier-1
     type: default
-  - id: e-verifier-approval
+  - id: e-verifier-eval
     source: verifier-1
-    target: approval-1
+    target: eval-1
     type: default
+  - id: e-eval-approval
+    source: eval-1
+    target: approval-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: verifier-1
+    type: fail
   - id: e-approval-output
     source: approval-1
     target: output-1

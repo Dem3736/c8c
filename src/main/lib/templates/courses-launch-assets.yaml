@@ -1,0 +1,117 @@
+id: courses-launch-assets
+stage: content
+emoji: "\U0001F680"
+headline: Turn the lesson system into launch-ready assets
+how: Use the lesson system to create the offer framing and launch assets needed to present the course clearly.
+input: Lesson system, positioning notes, and any launch or distribution constraints
+output: Launch asset bundle ready for review and publishing
+use_when: You have the lesson system and need launch-ready assets, offer framing, and final packaging.
+steps:
+  - Turn the lesson system into launch-ready assets and offer framing
+  - Evaluate clarity, consistency, and launch usefulness
+  - Hold a human review gate before finalizing the bundle
+pack:
+  id: courses-factory-alpha
+  label: Courses Factory
+  journey_stage: verify
+contract_in:
+  - kind: lesson_system
+    title: Lesson System
+    description: Lesson structure and learning progression ready for launch packaging.
+    required: true
+contract_out:
+  - kind: launch_asset_bundle
+    title: Launch Assets
+    description: Offer framing and launch assets ready for publishing or review.
+execution_policy:
+  profile_id: courses_launch_assets
+  summary: Human-reviewed launch packaging
+  description: Package the course for launch, then stop for a final human checkpoint before considering the stage done.
+  tags:
+    - review_gates
+    - human_gate_required
+    - publish_gate
+  notes:
+    - Assets should stay aligned with the audience promise.
+    - Keep the final framing specific and commercially usable.
+version: 1
+name: "Courses Factory: Launch Assets"
+description: Turn the lesson system into launch-ready assets with a visible human review gate.
+defaults:
+  model: sonnet
+  maxTurns: 150
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the lesson system plus any positioning, launch, and channel constraints for the final assets.
+  - id: packager-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: writer
+      prompt: >-
+        Build a Launch Asset Bundle from the Lesson System. Include:
+        1) offer framing,
+        2) launch message or page outline,
+        3) key selling points,
+        4) sample lesson highlights,
+        5) any supporting launch assets needed for rollout.
+        Keep the output clear, concrete, and ready for final review.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: launch assets are coherent, aligned to the promise, commercially useful, and clear enough for real publishing."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: packager-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 960
+      y: 200
+    config:
+      message: Review the launch asset bundle before the course factory is marked complete.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1280
+      y: 200
+    config:
+      title: Launch Assets
+edges:
+  - id: e-input-packager
+    source: input-1
+    target: packager-1
+    type: default
+  - id: e-packager-eval
+    source: packager-1
+    target: eval-1
+    type: default
+  - id: e-eval-approval
+    source: eval-1
+    target: approval-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: packager-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

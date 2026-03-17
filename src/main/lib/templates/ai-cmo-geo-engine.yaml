@@ -1,0 +1,172 @@
+id: ai-cmo-geo-engine
+stage: content
+emoji: "\U0001F310"
+headline: Build answer-ready assets for AI search and answer engines
+how: Maps buyer questions and entities, creates a GEO answer brief, drafts answer-ready site assets, and adds a human publish gate
+input: Website, product brief, FAQ notes, or upstream AI CMO strategy pack
+output: GEO answer brief, answer-pack draft, and fact/citation checklist ready for review
+use_when: You want the CMO motion to optimize for AI answers and overviews, not just classic search rankings.
+steps:
+  - Map the buyer questions, entity facts, comparison surfaces, and missing evidence
+  - Create a GEO brief with direct answers, objections, comparisons, and citation needs
+  - Draft site-ready FAQ and answer blocks optimized for quotability and factual density
+  - Evaluate for answerability, specificity, and source readiness before review
+pack:
+  id: ai-cmo
+  label: AI CMO
+  journey_stage: execute
+contract_in:
+  - kind: angle_map
+    title: Angle Map
+    description: Helpful positioning and proof hooks from the AI CMO planning pass.
+    required: false
+contract_out:
+  - kind: content_brief
+    title: GEO Answer Brief
+    description: Direct-answer questions, comparison angles, fact gaps, and citation requirements for AI answer surfaces.
+  - kind: draft
+    title: GEO Answer Pack
+    description: Publishable FAQ, definition, comparison, and proof blocks ready for editing and deployment.
+  - kind: qa_report
+    title: Fact and Citation Checklist
+    description: Remaining proof gaps, freshness risks, and citation needs before publishing.
+execution_policy:
+  profile_id: ai_cmo_geo
+  summary: Quotable, fact-dense answer optimization
+  description: Produce assets that AI systems can quote or summarize cleanly by prioritizing direct answers, stable facts, and explicit proof.
+  tags:
+    - evidence_first
+    - no_slop
+    - critique_loops
+    - publish_gate
+  notes:
+    - Favor direct answers over clever copy.
+    - Mark facts that need citations instead of inventing authority.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "AI CMO: GEO Engine"
+description: Turn product context into AI-answer-friendly briefs and answer-ready website assets with explicit fact and citation checks.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 35
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste the site, FAQ notes, or product brief you want to optimize for AI answer surfaces.
+  - id: mapper-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      prompt: >-
+        Build the GEO source map for this product. Return:
+        1) an entity map (company, product, category, alternatives, features, proof, exclusions),
+        2) 12-20 buyer questions people may ask in AI tools or AI overviews,
+        3) comparison and objection themes,
+        4) facts that need citations or clearer wording,
+        5) missing proof that limits answer quality.
+        Keep it specific and grounded in the source material.
+  - id: brief-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      prompt: >-
+        Create a GEO answer brief. For the highest-value questions include:
+        - direct answer
+        - supporting explanation
+        - comparison angle if relevant
+        - objection handling
+        - quoteable snippet
+        - fact table rows
+        - suggested schema or FAQ structure
+        - citation or proof requirement
+        Also include a short fact-and-freshness checklist.
+  - id: draft-1
+    type: skill
+    position:
+      x: 840
+      y: 220
+    config:
+      prompt: >-
+        Turn the GEO answer brief into a publishable answer pack for the website. Include:
+        - FAQ section
+        - definition/explainer block
+        - comparison block
+        - proof snippets
+        - concise fact table
+        - notes on where citations or examples must be inserted
+        Write in clear, direct language that can be quoted cleanly by AI systems.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1120
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on:
+        1) direct answer quality,
+        2) factual density,
+        3) quotability,
+        4) usefulness of comparisons and objections,
+        5) clarity of citation and freshness needs.
+        Fail if the pack reads like generic content instead of answer-ready knowledge.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: brief-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1400
+      y: 220
+    config:
+      message: Review the GEO brief and answer pack before using it on the site.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1680
+      y: 220
+    config:
+      title: GEO Answer Brief and Draft
+edges:
+  - id: e-input-mapper
+    source: input-1
+    target: mapper-1
+    type: default
+  - id: e-mapper-brief
+    source: mapper-1
+    target: brief-1
+    type: default
+  - id: e-brief-draft
+    source: brief-1
+    target: draft-1
+    type: default
+  - id: e-draft-evaluator
+    source: draft-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-approval
+    source: evaluator-1
+    target: approval-1
+    type: pass
+  - id: e-evaluator-brief
+    source: evaluator-1
+    target: brief-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

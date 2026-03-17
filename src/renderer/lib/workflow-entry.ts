@@ -4,6 +4,7 @@ import type {
   InputAttachment,
   InputNodeConfig,
   OutputNodeConfig,
+  ProjectFactoryDefinition,
   Workflow,
   WorkflowExecutionPolicyProfile,
   WorkflowTemplatePackMetadata,
@@ -35,6 +36,8 @@ export interface WorkflowTemplateRunContext {
   workflowPath: string | null
   workflowName: string
   source: Extract<WorkflowEntrySource, "template" | "template_customize">
+  factoryId?: string
+  factoryLabel?: string
   caseId?: string
   caseLabel?: string
   sourceArtifactIds?: string[]
@@ -42,6 +45,11 @@ export interface WorkflowTemplateRunContext {
   contractIn?: ArtifactContract[]
   contractOut?: ArtifactContract[]
   executionPolicy?: WorkflowExecutionPolicyProfile
+}
+
+export interface WorkflowTemplateCaseOverride {
+  caseId: string
+  caseLabel?: string
 }
 
 const DEFAULT_INPUT_PLACEHOLDER = "Enter your input text, paste a URL, or describe what to process..."
@@ -80,7 +88,60 @@ export function deriveArtifactCaseKey(artifact: Pick<ArtifactRecord, "caseId" | 
   return `legacy:${artifact.workflowPath || artifact.runId}`
 }
 
-function deriveCaseIdentity(template: WorkflowTemplate, sourceArtifacts?: ArtifactRecord[]) {
+function factorySeed(factoryId: string) {
+  return factoryId
+    .replace(/^(factory|pack):/i, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    || "factory"
+}
+
+function deriveFactoryIdentity(
+  template: WorkflowTemplate,
+  sourceArtifacts?: ArtifactRecord[],
+  factory?: Pick<ProjectFactoryDefinition, "id" | "label"> | null,
+) {
+  const sourcedFactory = sourceArtifacts?.find((artifact) => typeof artifact.factoryId === "string" && artifact.factoryId.trim().length > 0)
+  if (sourcedFactory?.factoryId) {
+    return {
+      factoryId: sourcedFactory.factoryId,
+      factoryLabel: sourcedFactory.factoryLabel || factory?.label || template.pack?.label || template.name,
+    }
+  }
+
+  if (factory?.id) {
+    return {
+      factoryId: factory.id,
+      factoryLabel: factory.label || template.pack?.label || template.name,
+    }
+  }
+
+  if (template.pack?.id) {
+    return {
+      factoryId: `pack:${template.pack.id}`,
+      factoryLabel: template.pack.label || template.name,
+    }
+  }
+
+  return {
+    factoryId: undefined,
+    factoryLabel: undefined,
+  }
+}
+
+function deriveCaseIdentity(
+  template: WorkflowTemplate,
+  sourceArtifacts?: ArtifactRecord[],
+  factory?: Pick<ProjectFactoryDefinition, "id" | "label"> | null,
+  caseOverride?: WorkflowTemplateCaseOverride | null,
+) {
+  if (caseOverride?.caseId) {
+    return {
+      caseId: caseOverride.caseId,
+      caseLabel: caseOverride.caseLabel || template.name,
+    }
+  }
+
   const firstArtifactWithCase = sourceArtifacts?.find((artifact) => typeof artifact.caseId === "string" && artifact.caseId.trim().length > 0)
   if (firstArtifactWithCase?.caseId) {
     return {
@@ -89,9 +150,10 @@ function deriveCaseIdentity(template: WorkflowTemplate, sourceArtifacts?: Artifa
     }
   }
 
-  if (template.pack) {
+  const { factoryId } = deriveFactoryIdentity(template, sourceArtifacts, factory)
+  if (factoryId) {
     return {
-      caseId: createFactoryCaseId(template.pack.id || template.id),
+      caseId: createFactoryCaseId(factorySeed(factoryId)),
       caseLabel: template.name,
     }
   }
@@ -347,19 +409,26 @@ export function buildTemplateRunContext({
   workflowPath,
   source = "template",
   sourceArtifacts = [],
+  factory = null,
+  caseOverride = null,
 }: {
   template: WorkflowTemplate
   workflowPath: string | null
   source?: Extract<WorkflowEntrySource, "template" | "template_customize">
   sourceArtifacts?: ArtifactRecord[]
+  factory?: Pick<ProjectFactoryDefinition, "id" | "label"> | null
+  caseOverride?: WorkflowTemplateCaseOverride | null
 }): WorkflowTemplateRunContext {
-  const { caseId, caseLabel } = deriveCaseIdentity(template, sourceArtifacts)
+  const { factoryId, factoryLabel } = deriveFactoryIdentity(template, sourceArtifacts, factory)
+  const { caseId, caseLabel } = deriveCaseIdentity(template, sourceArtifacts, factory, caseOverride)
   return {
     templateId: template.id,
     templateName: template.name,
     workflowPath,
     workflowName: template.workflow.name || template.name,
     source,
+    factoryId,
+    factoryLabel,
     caseId,
     caseLabel,
     sourceArtifactIds: sourceArtifacts.map((artifact) => artifact.id),

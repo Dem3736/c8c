@@ -10,6 +10,11 @@ steps:
   - Generate grounded segment hypotheses based on context analysis
   - Research each segment in parallel with signal grounding
   - Score and filter segments through quality gate
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 2
 name: Segment Research with Quality Gate
 description: Analyzes input context, generates grounded segment hypotheses, researches each in parallel, scores and filters by quality gate
@@ -72,6 +77,7 @@ nodes:
         - Include at least one non-obvious or edge-case segment
         - If context analysis found existing audience signals, use them as starting points but go deeper
         - Be specific: "bootstrapped SaaS founders pre-PMF" > "founders"
+        - For each segment, assess whether a solo founder can realistically reach and serve this segment without a sales team.
       maxBranches: 8
   - id: skill-2
     type: skill

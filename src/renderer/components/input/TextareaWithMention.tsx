@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, forwardRef, useCallback } from "react"
 import { useAtom } from "jotai"
+import { toast } from "sonner"
 import { selectedProjectAtom } from "@/lib/store"
 import { Textarea } from "@/components/ui/textarea"
 import { AtMentionDropdown } from "@/components/input/AtMentionDropdown"
@@ -43,18 +44,32 @@ export const TextareaWithMention = forwardRef<
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!mentionActive || !selectedProject) return
+    if (!mentionActive || !selectedProject) {
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
     setLoading(true)
     window.api
       .listProjectFiles(selectedProject)
       .then((result) => {
+        if (cancelled) return
         setFiles(result)
         setLoading(false)
       })
-      .catch(() => {
+      .catch((error) => {
+        if (cancelled) return
         setFiles([])
         setLoading(false)
+        toast.error("Could not load project files", {
+          description: String(error),
+        })
       })
+
+    return () => {
+      cancelled = true
+    }
   }, [mentionActive, selectedProject])
 
   const filtered = useMemo(() => {

@@ -9,6 +9,7 @@ steps:
   - Decompose topic into 4-6 research lenses with key questions
   - Fan out parallel investigation per lens
   - Synthesize findings into a comprehensive report
+  - Evaluate evidence quality, disconfirming coverage, and source specificity
 version: 1
 name: Deep Research
 description: Plan a topic via multi-angle decomposition and KAC, investigate each aspect in parallel, synthesize into a
@@ -65,10 +66,20 @@ nodes:
       prompt: Synthesize all research findings into a comprehensive, well-structured report. Include an executive summary, key
         findings per aspect, KAC outcomes (which assumptions held or failed), cross-cutting themes, and actionable
         conclusions.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1570
+      y: 200
+    config:
+      criteria: "Score 1-10: concrete evidence per aspect researched, no speculative conclusions presented as facts, disconfirming evidence included where relevant, sources are specific not vague."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
   - id: output-1
     type: output
     position:
-      x: 1500
+      x: 1890
       y: 200
     config: {}
 edges:
@@ -88,7 +99,20 @@ edges:
     source: researcher-1
     target: merger-1
     type: default
-  - id: e-merger-output
+  - id: e-merger-eval
     source: merger-1
-    target: output-1
+    target: eval-1
     type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: splitter-1
+    type: fail
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders using AI agents
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

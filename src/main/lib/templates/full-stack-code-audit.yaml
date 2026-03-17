@@ -9,6 +9,11 @@ steps:
   - Split codebase into audit areas (security, quality, architecture, tests)
   - Review each area in parallel
   - Synthesize findings into a prioritized audit report
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Full-Stack Code Audit
 description: Split codebase into audit areas, review security/quality/architecture/tests in parallel, synthesize
@@ -63,14 +68,13 @@ nodes:
       threshold: 7
       maxRetries: 2
       retryFrom: splitter-1
-  - id: pptx-1
+  - id: report-1
     type: skill
     position:
       x: 1500
       y: 200
     config:
-      skillRef: anthropic/pptx
-      prompt: "Create an audit report presentation: overall health score slide, findings by category, top 10 critical issues,
+      prompt: "Output as structured markdown with clear sections, not a presentation. Include: overall health score, findings by category, top 10 critical issues,
         and remediation roadmap with estimated effort."
   - id: output-1
     type: output
@@ -95,15 +99,15 @@ edges:
     source: merger-1
     target: evaluator-1
     type: default
-  - id: e-evaluator-pptx
+  - id: e-evaluator-report
     source: evaluator-1
-    target: pptx-1
+    target: report-1
     type: pass
   - id: e-evaluator-splitter
     source: evaluator-1
     target: splitter-1
     type: fail
-  - id: e-pptx-output
-    source: pptx-1
+  - id: e-report-output
+    source: report-1
     target: output-1
     type: default

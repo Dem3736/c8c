@@ -10,6 +10,11 @@ steps:
   - Fan out repo-wide CTO audit tracks by optimization lens
   - Merge findings into one prioritized optimization report
   - Run a report quality gate before output
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: CTO Optimise Audit
 description: Map the system, audit the entire project in parallel through CTO optimization lenses, and produce one
@@ -95,7 +100,7 @@ nodes:
         - System health scorecard by lens
         - Most important risks and constraints
         - Highest-leverage optimization opportunities
-        - Recommended roadmap: 30 / 60 / 90 days
+        - Categorize recommendations: what to automate with AI now / what needs manual founder decision / what to defer until product-market fit
         - Effort vs impact matrix
         - File, module, and workflow hotspots
 

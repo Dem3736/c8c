@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue } from "jotai"
 import {
   AlertTriangle,
@@ -24,6 +24,7 @@ import {
   currentWorkflowAtom,
   inboxNotificationsAtom,
   mainViewAtom,
+  selectedFactoryIdAtom,
   selectedProjectAtom,
   selectedFactoryCaseIdAtom,
   selectedInboxTaskKeyAtom,
@@ -130,6 +131,8 @@ interface CaseOption {
   id: string
   label: string
   updatedAt: number
+  factoryId?: string | null
+  factoryLabel?: string | null
 }
 
 function taskStageKey(task: Pick<HumanTaskSummary, "workflowPath" | "nodeId"> | Pick<HumanTaskSnapshot, "workflowPath" | "nodeId">): string | null {
@@ -150,6 +153,7 @@ function deriveTaskStageMeta(workflow: Workflow, nodeId: string): TaskStageMeta 
 export function NotificationsPage() {
   const [notifications] = useAtom(inboxNotificationsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [selectedFactoryId] = useAtom(selectedFactoryIdAtom)
   const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
@@ -172,26 +176,36 @@ export function NotificationsPage() {
   const [taskLoading, setTaskLoading] = useState(false)
   const [taskSubmitting, setTaskSubmitting] = useState(false)
   const [taskStageMetaByKey, setTaskStageMetaByKey] = useState<Record<string, TaskStageMeta>>({})
+  const humanTasksRequestIdRef = useRef(0)
+  const artifactsRequestIdRef = useRef(0)
+  const selectedTaskRequestIdRef = useRef(0)
 
   useEffect(() => {
     markAllRead()
   }, [markAllRead])
 
   const refreshHumanTasks = useCallback(async () => {
+    const requestId = humanTasksRequestIdRef.current + 1
+    humanTasksRequestIdRef.current = requestId
     setHumanTasksLoading(true)
     setHumanTasksError(null)
     try {
       const tasks = await window.api.listHumanTasks(selectedProject || undefined)
+      if (humanTasksRequestIdRef.current !== requestId) return
       setHumanTasks(tasks)
     } catch (error) {
+      if (humanTasksRequestIdRef.current !== requestId) return
       setHumanTasksError(error instanceof Error ? error.message : String(error))
       setHumanTasks([])
     } finally {
+      if (humanTasksRequestIdRef.current !== requestId) return
       setHumanTasksLoading(false)
     }
   }, [selectedProject])
 
   const refreshArtifacts = useCallback(async () => {
+    const requestId = artifactsRequestIdRef.current + 1
+    artifactsRequestIdRef.current = requestId
     if (!selectedProject) {
       setArtifacts([])
       setArtifactsLoading(false)
@@ -199,10 +213,14 @@ export function NotificationsPage() {
     }
     setArtifactsLoading(true)
     try {
-      setArtifacts(await window.api.listProjectArtifacts(selectedProject))
+      const nextArtifacts = await window.api.listProjectArtifacts(selectedProject)
+      if (artifactsRequestIdRef.current !== requestId) return
+      setArtifacts(nextArtifacts)
     } catch {
+      if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
     } finally {
+      if (artifactsRequestIdRef.current !== requestId) return
       setArtifactsLoading(false)
     }
   }, [selectedProject])
@@ -218,29 +236,49 @@ export function NotificationsPage() {
     const caseByWorkflowPath = new Map<string, string>()
     const caseByRunId = new Map<string, string>()
     const caseMetaById = new Map<string, CaseOption>()
-    const rememberCase = (id: string, label: string, updatedAt: number) => {
+    const rememberCase = (
+      id: string,
+      label: string,
+      updatedAt: number,
+      factoryId?: string | null,
+      factoryLabel?: string | null,
+    ) => {
       const existing = caseMetaById.get(id)
       if (existing) {
         caseMetaById.set(id, {
           id,
           label: existing.label || label,
           updatedAt: Math.max(existing.updatedAt, updatedAt),
+          factoryId: existing.factoryId || factoryId,
+          factoryLabel: existing.factoryLabel || factoryLabel,
         })
         return
       }
-      caseMetaById.set(id, { id, label, updatedAt })
+      caseMetaById.set(id, { id, label, updatedAt, factoryId, factoryLabel })
     }
 
     for (const artifact of artifacts) {
       const caseId = deriveArtifactCaseKey(artifact)
-      rememberCase(caseId, artifact.caseLabel || artifact.workflowName || artifact.title || "Case", artifact.updatedAt)
+      rememberCase(
+        caseId,
+        artifact.caseLabel || artifact.workflowName || artifact.title || "Case",
+        artifact.updatedAt,
+        artifact.factoryId,
+        artifact.factoryLabel,
+      )
       if (artifact.workflowPath) caseByWorkflowPath.set(artifact.workflowPath, caseId)
       caseByRunId.set(artifact.runId, caseId)
     }
 
     for (const [workflowKey, context] of Object.entries(workflowTemplateContexts)) {
       if (!context.caseId) continue
-      rememberCase(context.caseId, context.caseLabel || context.workflowName || context.templateName || "Case", 0)
+      rememberCase(
+        context.caseId,
+        context.caseLabel || context.workflowName || context.templateName || "Case",
+        0,
+        context.factoryId,
+        context.factoryLabel,
+      )
       if (context.workflowPath) {
         caseByWorkflowPath.set(context.workflowPath, context.caseId)
       } else if (workflowKey !== "__draft__") {
@@ -254,6 +292,20 @@ export function NotificationsPage() {
       caseOptions: Array.from(caseMetaById.values()).sort((left, right) => right.updatedAt - left.updatedAt),
     }
   }, [artifacts, workflowTemplateContexts])
+
+  const visibleCaseOptions = useMemo(
+    () => selectedFactoryId
+      ? caseScope.caseOptions.filter((entry) => entry.factoryId === selectedFactoryId)
+      : caseScope.caseOptions,
+    [caseScope.caseOptions, selectedFactoryId],
+  )
+
+  const selectedFactoryLabel = useMemo(() => {
+    if (!selectedFactoryId) return null
+    return visibleCaseOptions[0]?.factoryLabel
+      || artifacts.find((artifact) => artifact.factoryId === selectedFactoryId)?.factoryLabel
+      || (selectedFactoryId.startsWith("pack:") ? selectedFactoryId.replace(/^pack:/, "") : "Factory")
+  }, [artifacts, selectedFactoryId, visibleCaseOptions])
 
   const caseIdByTaskKey = useMemo(() => {
     const next = new Map<string, string>()
@@ -272,14 +324,30 @@ export function NotificationsPage() {
   )
 
   const visibleHumanTasks = useMemo(() => {
-    if (!selectedCaseId) return humanTasks
-    return humanTasks.filter((task) => caseIdByTaskKey.get(taskSelectionKey(task)) === selectedCaseId)
-  }, [caseIdByTaskKey, humanTasks, selectedCaseId])
+    return humanTasks.filter((task) => {
+      const taskCaseId = caseIdByTaskKey.get(taskSelectionKey(task)) || null
+      if (selectedFactoryId) {
+        const taskCase = caseScope.caseOptions.find((entry) => entry.id === taskCaseId)
+        if (!taskCase || taskCase.factoryId !== selectedFactoryId) return false
+      }
+      if (selectedCaseId) {
+        return taskCaseId === selectedCaseId
+      }
+      return true
+    })
+  }, [caseIdByTaskKey, caseScope.caseOptions, humanTasks, selectedCaseId, selectedFactoryId])
 
   const selectedCaseOption = useMemo(
-    () => caseScope.caseOptions.find((entry) => entry.id === selectedCaseId) || null,
-    [caseScope.caseOptions, selectedCaseId],
+    () => visibleCaseOptions.find((entry) => entry.id === selectedCaseId) || null,
+    [selectedCaseId, visibleCaseOptions],
   )
+
+  useEffect(() => {
+    if (!selectedCaseId) return
+    if (!visibleCaseOptions.some((entry) => entry.id === selectedCaseId)) {
+      setSelectedCaseId(null)
+    }
+  }, [selectedCaseId, setSelectedCaseId, visibleCaseOptions])
 
   useEffect(() => {
     if (selectedTaskId && visibleHumanTasks.some((task) => taskSelectionKey(task) === selectedTaskId)) {
@@ -293,21 +361,37 @@ export function NotificationsPage() {
       ? visibleHumanTasks.find((task) => taskSelectionKey(task) === selectedTaskId) || null
       : null
     if (!summary) {
+      selectedTaskRequestIdRef.current += 1
       setSelectedTask(null)
       setTaskAnswers({})
+      setTaskLoading(false)
       return
     }
+
+    const requestId = selectedTaskRequestIdRef.current + 1
+    selectedTaskRequestIdRef.current = requestId
+    let cancelled = false
+
+    setSelectedTask(null)
+    setTaskAnswers({})
     setTaskLoading(true)
     void window.api.loadHumanTask(summary.taskId, summary.workspace).then((task) => {
+      if (cancelled || selectedTaskRequestIdRef.current !== requestId) return
       setSelectedTask(task)
       setTaskAnswers(buildInitialHumanTaskAnswers(task))
     }).catch((error) => {
+      if (cancelled || selectedTaskRequestIdRef.current !== requestId) return
       setHumanTasksError(error instanceof Error ? error.message : String(error))
       setSelectedTask(null)
       setTaskAnswers({})
     }).finally(() => {
+      if (cancelled || selectedTaskRequestIdRef.current !== requestId) return
       setTaskLoading(false)
     })
+
+    return () => {
+      cancelled = true
+    }
   }, [selectedTaskId, visibleHumanTasks])
 
   useEffect(() => {
@@ -482,7 +566,9 @@ export function NotificationsPage() {
         subtitle={
           selectedCaseOption
             ? `Review open gates for ${selectedCaseOption.label} and keep up with important workflow, batch, agent, and system events.`
-            : "Review open workflow tasks and keep up with important workflow, batch, agent, and system events."
+            : selectedFactoryLabel
+              ? `Review open gates for ${selectedFactoryLabel} and keep up with important workflow, batch, agent, and system events.`
+              : "Review open workflow tasks and keep up with important workflow, batch, agent, and system events."
         }
         actions={(
           <>
@@ -539,15 +625,32 @@ export function NotificationsPage() {
         )}
       />
 
-      {(selectedCaseOption || caseScope.caseOptions.length > 1) && (
+      {(selectedFactoryLabel || selectedCaseOption || visibleCaseOptions.length > 1) && (
         <section className="rounded-xl surface-panel p-4 space-y-3">
+          {selectedFactoryLabel && !selectedCaseOption ? (
+            <ScopeBanner
+              eyebrow="Path scope"
+              description={
+                artifactsLoading
+                  ? "Resolving factory scope..."
+                  : `Showing ${openHumanTaskCount} open review gate${openHumanTaskCount === 1 ? "" : "s"} for ${selectedFactoryLabel}.`
+              }
+              actions={(
+                <Button type="button" variant="outline" size="sm" onClick={() => setMainView("factory")}>
+                  <ArrowUpRight size={14} />
+                  Back to factory
+                </Button>
+              )}
+            />
+          ) : null}
+
           {selectedCaseOption ? (
             <ScopeBanner
               eyebrow="Case scope"
               description={
                 artifactsLoading
                   ? "Resolving case lineage..."
-                  : `Showing ${openHumanTaskCount} open gate${openHumanTaskCount === 1 ? "" : "s"} for ${selectedCaseOption.label}.`
+                  : `Showing ${openHumanTaskCount} open gate${openHumanTaskCount === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`
               }
               actions={(
                 <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedCaseId(null)}>
@@ -557,7 +660,7 @@ export function NotificationsPage() {
             />
           ) : null}
 
-          {caseScope.caseOptions.length > 1 && (
+          {visibleCaseOptions.length > 1 && (
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -567,7 +670,7 @@ export function NotificationsPage() {
               >
                 All cases
               </Button>
-              {caseScope.caseOptions.slice(0, 6).map((entry) => (
+              {visibleCaseOptions.slice(0, 6).map((entry) => (
                 <Button
                   key={entry.id}
                   type="button"

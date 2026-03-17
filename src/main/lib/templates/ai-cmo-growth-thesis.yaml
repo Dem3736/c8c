@@ -1,0 +1,159 @@
+id: ai-cmo-growth-thesis
+stage: strategy
+emoji: "\U0001F4C8"
+headline: Turn a website or product brief into a channel-by-channel growth thesis
+how: Extracts the offer and audience, builds a practical growth thesis across key channels, then turns it into an operator-ready 14-day plan with evaluation
+input: Website URL, landing page copy, or product brief
+output: Growth thesis, channel opportunity map, angle map, and 14-day editorial/distribution calendar
+use_when: You want a single entrypoint that decides where an AI CMO should focus before drafting channel assets.
+steps:
+  - Extract the offer, ICP, proof points, and conversion constraints from the source material
+  - Build a growth thesis for SEO, GEO, X, Reddit, and Hacker News with clear priorities and risks
+  - Convert the thesis into an angle map, editorial calendar, and KPI scoreboard
+  - Evaluate the plan for specificity and execution readiness
+pack:
+  id: ai-cmo
+  label: AI CMO
+  journey_stage: intake
+  entrypoint: true
+  recommended_next:
+    - ai-cmo-seo-engine
+    - ai-cmo-geo-engine
+    - ai-cmo-x-engine
+    - ai-cmo-reddit-engine
+    - ai-cmo-hacker-news-engine
+contract_out:
+  - kind: trend_digest
+    title: Channel Opportunity Map
+    description: Prioritized growth opportunities, risks, and why-now signals across the main acquisition channels.
+  - kind: angle_map
+    title: Angle Map
+    description: Channel-specific messaging angles, proof hooks, and audience tensions worth testing.
+  - kind: editorial_calendar
+    title: 14-Day Editorial Calendar
+    description: A practical two-week publishing and distribution schedule tied to explicit KPIs.
+execution_policy:
+  profile_id: ai_cmo_intake
+  summary: Evidence-first channel planning
+  description: Start by understanding the product and audience, then commit only to channels that have believable distribution logic.
+  tags:
+    - evidence_first
+    - critique_loops
+    - consistency_checks
+  notes:
+    - Say where not to invest time yet.
+    - Prefer specific channel bets over broad marketing advice.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "AI CMO: Growth Thesis"
+description: Build a practical multi-channel growth thesis and short-run operating plan from a website or product brief.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste a website URL, homepage copy, or a product brief with audience and goals.
+  - id: audit-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      prompt: >-
+        Read the source material and extract the operator context an AI CMO needs. Return a concise memo covering:
+        1) product and category,
+        2) who it is for,
+        3) the buyer trigger or job to be done,
+        4) strongest believable proof points,
+        5) differentiators,
+        6) conversion goal,
+        7) risky claims or channel mismatches,
+        8) missing evidence that will limit growth.
+        Be concrete and skeptical.
+  - id: strategist-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      prompt: >-
+        Build a 14-day AI CMO growth thesis for this product. Evaluate SEO, GEO, X, Reddit, and Hacker News.
+        For each channel include:
+        - target audience slice
+        - best angle
+        - best asset type
+        - why it could work now
+        - primary risk
+        - one or two experiments
+        - explicit recommendation: prioritize, test later, or skip
+        Rank the channels and explain the reasoning.
+  - id: planner-1
+    type: skill
+    position:
+      x: 840
+      y: 220
+    config:
+      prompt: >-
+        Convert the growth thesis into an operator-ready package with four sections:
+        1) Channel Opportunity Map
+        2) Angle Map with 3-5 strong angles per viable channel
+        3) 14-Day Editorial and Distribution Calendar
+        4) KPI Scoreboard with leading indicators, lagging indicators, and kill criteria
+        Keep it concise, specific, and ready to hand off to channel execution templates.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1120
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on:
+        1) specificity of channel logic,
+        2) realism of prioritization,
+        3) usefulness of the angle map,
+        4) execution readiness of the 14-day calendar,
+        5) clarity of KPIs and kill criteria.
+        Fail if the output sounds generic, spreads effort too thin, or lacks believable proof and constraints.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: strategist-1
+  - id: output-1
+    type: output
+    position:
+      x: 1400
+      y: 220
+    config:
+      title: Growth Thesis and 14-Day Plan
+edges:
+  - id: e-input-audit
+    source: input-1
+    target: audit-1
+    type: default
+  - id: e-audit-strategist
+    source: audit-1
+    target: strategist-1
+    type: default
+  - id: e-strategist-planner
+    source: strategist-1
+    target: planner-1
+    type: default
+  - id: e-planner-evaluator
+    source: planner-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-strategist
+    source: evaluator-1
+    target: strategist-1
+    type: fail

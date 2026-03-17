@@ -1,18 +1,19 @@
 id: competitor-ad-intelligence
 stage: research
 emoji: "\U0001F4CA"
-headline: Decode competitor advertising strategies
-how: Splits competitors, extracts ad strategies in parallel, synthesizes findings, and develops counter-positioning
-input: A list of competitors or a market to analyze
-output: Competitive intelligence report with counter-positioning recommendations
+headline: Decode competitor ads and build your counter-strategy
+how: Structures your context, fans out per-competitor research, synthesizes gaps, evaluates evidence quality, then builds an actionable counter-positioning plan
+input: Your product, budget, current channels, and 3-5 competitors to analyze
+output: Competitive ad landscape analysis with counter-positioning strategy and ready-to-test ad concepts
 steps:
-  - Split competitors into parallel research tracks
-  - Extract ad strategies and messaging patterns
-  - Synthesize findings and develop counter-positioning
+  - Extract and structure your product context, budget, and competitor list
+  - Fan out per-competitor ad strategy research in parallel
+  - Synthesize competitive landscape and identify gaps
+  - Evaluate evidence quality and budget-appropriateness
+  - Build counter-positioning strategy with ready-to-test ad concepts
 version: 1
 name: Competitor Ad Intelligence
-description: Split competitors, extract ad strategies in parallel, synthesize findings, develop counter-positioning,
-  create presentation
+description: Structure context, research competitor ads in parallel, synthesize gaps, evaluate evidence, build counter-positioning strategy with actionable ad concepts
 defaults:
   model: sonnet
   maxTurns: 120
@@ -23,59 +24,93 @@ nodes:
     position:
       x: 0
       y: 200
-    config: {}
+    config:
+      inputType: text
+      required: true
+      placeholder: "Describe your product, budget, current channels, and list 3-5 competitors to analyze."
+  - id: context-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        From the input, extract and structure:
+        1) Your product positioning and key differentiators
+        2) Monthly ad budget and constraints (assume under $1K if not specified)
+        3) Current channels and what's working/not working
+        4) Competitor list with known positioning
   - id: splitter-1
     type: splitter
     position:
-      x: 300
+      x: 640
       y: 200
     config:
-      strategy: Split input into individual competitor companies to analyze. Each should be one company URL or name.
+      strategy: "Split into per-competitor analysis tasks. Each task should research one competitor's ad strategy, messaging, channels, and spend patterns."
   - id: extractor-1
     type: skill
     position:
-      x: 600
+      x: 960
       y: 200
     config:
-      skillRef: composio/competitive-ads-extractor
-      prompt: "Extract and analyze this competitor's ads: messaging, problems they target, creative approaches, CTAs, and
-        positioning."
+      skillRef: researcher
+      prompt: >-
+        Research this competitor's advertising strategy. Find:
+        1) Active ad channels and formats
+        2) Key messaging themes and angles
+        3) Landing page patterns and CTAs
+        4) Estimated spend level and frequency
+        5) Strengths and gaps in their approach
+        Cite specific examples where possible.
   - id: merger-1
     type: merger
     position:
-      x: 900
+      x: 1280
       y: 200
     config:
       strategy: summarize
-      prompt: Synthesize all competitor analyses into a strategic competitive overview. Identify messaging gaps, overused
-        angles, and differentiation opportunities.
+      prompt: >-
+        Synthesize all competitor analyses into a competitive ad landscape overview.
+        Identify: common patterns, gaps no one is exploiting, messaging angles that are overused,
+        and channels that are underserved.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1600
+      y: 200
+    config:
+      criteria: "Score 1-10: concrete ad examples cited (not vague claims), gaps are actionable, strategies are executable on a solo founder budget under $1K/month using self-serve platforms."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: splitter-1
   - id: strategist-1
     type: skill
     position:
-      x: 1200
+      x: 1920
       y: 200
     config:
-      skillRef: marketing/Growth Hacker
-      prompt: Based on the competitive analysis, develop a counter-positioning strategy. Identify underserved angles,
-        messaging opportunities, and campaign ideas that exploit competitor gaps.
-  - id: pptx-1
-    type: skill
-    position:
-      x: 1500
-      y: 200
-    config:
-      skillRef: anthropic/pptx
-      prompt: "Create a competitive intelligence presentation with: executive summary slide, per-competitor breakdown, gap
-        analysis, and recommended strategy."
+      skillRef: researcher
+      prompt: >-
+        Based on the competitive analysis, create an actionable counter-positioning strategy for a solo founder:
+        1) Counter-positioning: how to differentiate in messaging
+        2) Channel strategy: where to focus budget (<$1K/month, self-serve platforms only)
+        3) Three ready-to-test ad concepts with actual copy, targeting suggestions, and expected budget
+        Output as structured markdown. No PowerPoint. No team-dependent recommendations.
   - id: output-1
     type: output
     position:
-      x: 1800
+      x: 2240
       y: 200
-    config: {}
+    config:
+      title: Competitive Ad Intelligence & Counter-Strategy
 edges:
-  - id: e-input-splitter
+  - id: e-input-context
     source: input-1
+    target: context-1
+    type: default
+  - id: e-context-splitter
+    source: context-1
     target: splitter-1
     type: default
   - id: e-splitter-extractor
@@ -86,15 +121,24 @@ edges:
     source: extractor-1
     target: merger-1
     type: default
-  - id: e-merger-strategist
+  - id: e-merger-eval
     source: merger-1
+    target: eval-1
+    type: default
+  - id: e-eval-strategist
+    source: eval-1
     target: strategist-1
-    type: default
-  - id: e-strategist-pptx
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: splitter-1
+    type: fail
+  - id: e-strategist-output
     source: strategist-1
-    target: pptx-1
-    type: default
-  - id: e-pptx-output
-    source: pptx-1
     target: output-1
     type: default
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders with budget under $1K/month
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

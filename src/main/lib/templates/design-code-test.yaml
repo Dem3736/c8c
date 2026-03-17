@@ -9,6 +9,11 @@ steps:
   - Generate frontend component from specification
   - Review code quality against standards
   - Write tests and validate coverage
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Design → Code → Test
 description: Generate frontend component, review code quality, gate on standards, write tests, gate on coverage

@@ -7,9 +7,14 @@ input: Target vertical, what you sell, geography, target roles, proof points, pr
 output: A research-backed outbound pack with target accounts, verified contacts, branch-specific emails, a manual-review queue, and sequencer handoff
 steps:
   - Validate the market pain before building the list or writing the copy.
+  - Founder approves the research hypothesis before committing to list building.
   - Build, enrich, and tier the account list so contact discovery is focused.
   - Find the right people and verify emails before writing outreach.
-  - Generate, stress-test, and hand off sequencer-ready messaging without auto-sending.
+  - Generate emails and follow-up sequences, stress-test the copy.
+  - Founder approves the final outreach pack before sequencer handoff.
+execution_policy:
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: New Vertical to Live Campaign
 description: Enter a new market end to end, from external pain research through list building, contact discovery, branched copy generation, and sequencer handoff
@@ -76,10 +81,20 @@ nodes:
       retryFrom: research-1
       skillRefs:
         - gtm/market-research
+  - id: approval-research
+    type: approval
+    position:
+      x: 960
+      y: 220
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: list-building-1
     type: skill
     position:
-      x: 960
+      x: 1200
       y: 220
     config:
       skillRef: gtm/list-building
@@ -94,7 +109,7 @@ nodes:
   - id: enrichment-design-1
     type: skill
     position:
-      x: 1200
+      x: 1440
       y: 220
     config:
       skillRef: gtm/enrichment-design
@@ -109,7 +124,7 @@ nodes:
   - id: list-enrichment-1
     type: skill
     position:
-      x: 1440
+      x: 1680
       y: 220
     config:
       skillRef: gtm/list-enrichment
@@ -119,7 +134,7 @@ nodes:
   - id: segmentation-1
     type: skill
     position:
-      x: 1680
+      x: 1920
       y: 220
     config:
       skillRef: gtm/list-segmentation
@@ -133,7 +148,7 @@ nodes:
   - id: people-search-1
     type: skill
     position:
-      x: 1920
+      x: 2160
       y: 220
     config:
       skillRef: gtm/people-search
@@ -147,7 +162,7 @@ nodes:
   - id: email-search-1
     type: skill
     position:
-      x: 2160
+      x: 2400
       y: 220
     config:
       skillRef: gtm/email-search
@@ -161,7 +176,7 @@ nodes:
   - id: prompt-builder-1
     type: skill
     position:
-      x: 2400
+      x: 2640
       y: 220
     config:
       skillRef: gtm/email-prompt-building
@@ -178,7 +193,7 @@ nodes:
   - id: splitter-1
     type: splitter
     position:
-      x: 2640
+      x: 2880
       y: 220
     config:
       strategy: |-
@@ -194,7 +209,7 @@ nodes:
   - id: email-generation-1
     type: skill
     position:
-      x: 2880
+      x: 3120
       y: 220
     config:
       skillRef: gtm/email-generation
@@ -206,10 +221,24 @@ nodes:
         - Tier 2 can be templated within the branch, but still row-specific
         - preserve branch labels and row IDs
         - flag under-personalized rows for manual review
+  - id: followup-1
+    type: skill
+    position:
+      x: 3360
+      y: 220
+    config:
+      skillRef: gtm/email-generation
+      prompt: >-
+        For each generated email, write a 3-step follow-up sequence:
+        - Follow-up 1 (Day 3): Short, adds new value angle, no guilt-tripping.
+        - Follow-up 2 (Day 7): Different medium or angle, references specific pain point.
+        - Follow-up 3 (Day 14): Breakup email, graceful close, leaves door open.
+        Rules: Each follow-up must stand alone (recipient may not have read previous).
+        No "just following up" or "bumping this". Each adds new information or angle.
   - id: simulation-1
     type: skill
     position:
-      x: 3120
+      x: 3600
       y: 220
     config:
       skillRef: gtm/email-response-simulation
@@ -223,10 +252,10 @@ nodes:
   - id: merger-1
     type: merger
     position:
-      x: 3360
+      x: 3840
       y: 220
     config:
-      strategy: assemble
+      strategy: summarize
       prompt: |-
         Compile the campaign pack.
 
@@ -238,7 +267,7 @@ nodes:
   - id: final-eval-1
     type: evaluator
     position:
-      x: 3600
+      x: 4080
       y: 220
     config:
       criteria: >-
@@ -255,7 +284,7 @@ nodes:
   - id: campaign-sending-1
     type: skill
     position:
-      x: 3840
+      x: 4320
       y: 220
     config:
       skillRef: gtm/campaign-sending
@@ -268,10 +297,20 @@ nodes:
         - upload only after provider credentials and confirmation are present
         - always present the pre-send checklist
         - never activate the campaign automatically
+  - id: approval-send
+    type: approval
+    position:
+      x: 4560
+      y: 220
+    config:
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
   - id: output-1
     type: output
     position:
-      x: 4080
+      x: 4800
       y: 220
     config:
       title: New Vertical Outbound Campaign
@@ -289,10 +328,14 @@ edges:
     source: research-1
     target: research-eval-1
     type: default
-  - id: e-research-eval-list
+  - id: e-research-eval-approval
     source: research-eval-1
-    target: list-building-1
+    target: approval-research
     type: pass
+  - id: e-approval-research-list
+    source: approval-research
+    target: list-building-1
+    type: default
   - id: e-research-eval-retry
     source: research-eval-1
     target: research-1
@@ -329,8 +372,12 @@ edges:
     source: splitter-1
     target: email-generation-1
     type: default
-  - id: e-emailgen-simulation
+  - id: e-emailgen-followup
     source: email-generation-1
+    target: followup-1
+    type: default
+  - id: e-followup-simulation
+    source: followup-1
     target: simulation-1
     type: default
   - id: e-simulation-merger
@@ -349,7 +396,11 @@ edges:
     source: final-eval-1
     target: prompt-builder-1
     type: fail
-  - id: e-campaign-output
+  - id: e-campaign-approval-send
     source: campaign-sending-1
+    target: approval-send
+    type: default
+  - id: e-approval-send-output
+    source: approval-send
     target: output-1
     type: default

@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest"
 import type { RunResult, Workflow } from "@shared/types"
 import {
+  DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
   prepareWorkflowForExecution,
   resolveContinuationWorkflow,
   resolveExecutionInput,
   resolveExecutionStartResult,
+  withIpcTimeout,
 } from "./commands"
 
 function createWorkflow(): Workflow {
@@ -116,18 +118,15 @@ describe("execution commands helpers", () => {
       name: "Loaded workflow",
     }
     const loadWorkflow = vi.fn().mockResolvedValue(nextWorkflow)
-    const onWorkflowLoaded = vi.fn()
 
     const result = await resolveContinuationWorkflow(
       createRunResult("/tmp/research.chain"),
       createWorkflow(),
       null,
       loadWorkflow,
-      onWorkflowLoaded,
     )
 
     expect(loadWorkflow).toHaveBeenCalledWith("/tmp/research.chain")
-    expect(onWorkflowLoaded).toHaveBeenCalledWith(nextWorkflow, "/tmp/research.chain")
     expect(result).toEqual({
       workflowForRun: nextWorkflow,
       workflowPathForRun: "/tmp/research.chain",
@@ -137,21 +136,39 @@ describe("execution commands helpers", () => {
   it("reuses the current workflow when continuing a run without a workflow path", async () => {
     const workflow = createWorkflow()
     const loadWorkflow = vi.fn()
-    const onWorkflowLoaded = vi.fn()
 
     const result = await resolveContinuationWorkflow(
       createRunResult(),
       workflow,
       "/tmp/current.chain",
       loadWorkflow,
-      onWorkflowLoaded,
     )
 
     expect(loadWorkflow).not.toHaveBeenCalled()
-    expect(onWorkflowLoaded).not.toHaveBeenCalled()
     expect(result).toEqual({
       workflowForRun: workflow,
       workflowPathForRun: "/tmp/current.chain",
     })
+  })
+
+  it("rejects IPC requests that exceed the timeout", async () => {
+    vi.useFakeTimers()
+
+    const pending = new Promise<string>(() => {})
+    const timed = withIpcTimeout(
+      pending,
+      25,
+      "Timed out waiting for main process response.",
+    )
+    const rejection = expect(timed).rejects.toThrow("Timed out waiting for main process response.")
+
+    await vi.advanceTimersByTimeAsync(25)
+
+    await rejection
+    vi.useRealTimers()
+  })
+
+  it("uses the default execution timeout when one is not provided", () => {
+    expect(DEFAULT_EXECUTION_IPC_TIMEOUT_MS).toBe(30_000)
   })
 })

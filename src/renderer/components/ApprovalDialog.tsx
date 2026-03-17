@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAtom } from "jotai"
 import { approvalRequestsAtom } from "@/features/execution"
 import {
@@ -19,9 +19,17 @@ export function ApprovalDialog() {
   const [requests, setRequests] = useAtom(approvalRequestsAtom)
   const [editedContent, setEditedContent] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const mountedRef = useRef(true)
 
   const request = requests[0] ?? null
   const queueCount = requests.length
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (request) {
@@ -50,7 +58,9 @@ export function ApprovalDialog() {
       console.error("[ApprovalDialog] approve failed:", err)
       toast.error("Failed to approve step")
     } finally {
-      setSubmitting(false)
+      if (mountedRef.current) {
+        setSubmitting(false)
+      }
     }
   }
 
@@ -68,7 +78,9 @@ export function ApprovalDialog() {
       console.error("[ApprovalDialog] reject failed:", err)
       toast.error("Failed to stop workflow")
     } finally {
-      setSubmitting(false)
+      if (mountedRef.current) {
+        setSubmitting(false)
+      }
     }
   }
 

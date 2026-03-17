@@ -1,0 +1,102 @@
+id: content-qa-review
+stage: content
+emoji: "\U0001F50D"
+headline: Review a draft for tone, slop, and publish quality before approving it
+how: Critique the draft, then require explicit human approval before the item is considered ready to publish or bundle.
+input: Draft post, ToV notes, and any quality rubric that should be enforced
+output: Approved QA report with edits, risks, and publish recommendation
+use_when: A draft exists and you want a clear review gate before it becomes publish-ready.
+steps:
+  - Evaluate the draft against tone, anti-slop, and clarity rules
+  - Require explicit human approval before the QA result is treated as final
+pack:
+  id: content-factory-alpha
+  label: Content Factory
+  journey_stage: verify
+  recommended_next:
+    - content-distribution-bundle
+contract_in:
+  - kind: draft
+    title: Draft Post
+    description: The draft that should be reviewed before publishing or bundling.
+    required: true
+contract_out:
+  - kind: qa_report
+    title: QA Report
+    description: Approved review summary covering tone, slop, quality, and publish readiness.
+execution_policy:
+  profile_id: content_qa_review
+  summary: Review-gated content QA
+  description: Critique the draft, then require explicit signoff before the post is considered ready.
+  tags:
+    - no_slop
+    - critique_loops
+    - publish_gate
+    - human_gate_required
+  notes:
+    - Name weak spots and repetition explicitly.
+    - Human approval is the intended gate, not an optional extra.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Content Factory: QA Review"
+description: Review a draft post and require explicit approval before calling it ready.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the draft post, tone guidance, and any quality rubric for review.
+  - id: reviewer-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: reviewer
+      prompt: >-
+        Create a QA Report for this content draft. Check:
+        1) tone of voice fit,
+        2) slop risk and generic phrasing,
+        3) clarity and specificity,
+        4) repetition or redundancy,
+        5) whether it is ready to publish.
+        Include concrete edits or warnings. Keep the report concise and reviewable.
+  - id: approval-1
+    type: approval
+    position:
+      x: 640
+      y: 200
+    config:
+      message: Approve the QA report before this draft is treated as publish-ready.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: QA Report
+edges:
+  - id: e-input-reviewer
+    source: input-1
+    target: reviewer-1
+    type: default
+  - id: e-reviewer-approval
+    source: reviewer-1
+    target: approval-1
+    type: default
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

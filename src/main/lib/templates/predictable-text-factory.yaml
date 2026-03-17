@@ -99,7 +99,7 @@ nodes:
         clean or good and requires no manual structural rewrites."
       threshold: 8
       maxRetries: 2
-      retryFrom: planner-1
+      retryFrom: integrator-1
       skillRefs:
         - infostyle
         - slop-check
@@ -146,7 +146,12 @@ edges:
     source: final-evaluator-1
     target: output-1
     type: pass
-  - id: e-final-eval-planner
+  - id: e-final-eval-integrator
     source: final-evaluator-1
-    target: planner-1
+    target: integrator-1
     type: fail
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders using AI agents
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useLayoutEffect, useRef } from "react"
 import { useAtomValue } from "jotai"
 import { toast } from "sonner"
 import { createWorkflowExecutionController } from "./controller"
 import type { WorkflowExecutionController } from "./controller"
+import { DEFAULT_EXECUTION_IPC_TIMEOUT_MS, withIpcTimeout } from "./commands"
 import type { ApprovalRequest, WorkflowExecutionState } from "@/lib/workflow-execution"
 import { workflowTemplateContextsAtom } from "@/lib/store"
 import type { ActiveExecutionSnapshot, RunResult } from "@shared/types"
@@ -28,20 +29,34 @@ export function useExecutionController({
   const controllerRef = useRef<WorkflowExecutionController | null>(null)
   const { addNotification } = useInboxNotifications()
   const workflowTemplateContexts = useAtomValue(workflowTemplateContextsAtom)
+  const commitExecutionStateRef = useRef(commitExecutionState)
+  const updateApprovalRequestsRef = useRef(updateApprovalRequests)
+  const setPastRunsRef = useRef(setPastRuns)
+  const addNotificationRef = useRef(addNotification)
   const workflowTemplateContextsRef = useRef(workflowTemplateContexts)
+  commitExecutionStateRef.current = commitExecutionState
+  updateApprovalRequestsRef.current = updateApprovalRequests
+  setPastRunsRef.current = setPastRuns
+  addNotificationRef.current = addNotification
   workflowTemplateContextsRef.current = workflowTemplateContexts
 
   if (!controllerRef.current) {
     controllerRef.current = createWorkflowExecutionController({
-      commitExecutionState,
-      updateApprovalRequests,
-      setPastRuns,
+      commitExecutionState: (workflowKey, nextState) => {
+        commitExecutionStateRef.current(workflowKey, nextState)
+      },
+      updateApprovalRequests: (update) => {
+        updateApprovalRequestsRef.current(update)
+      },
+      setPastRuns: (runs) => {
+        setPastRunsRef.current(runs)
+      },
       listRuns: (projectPath) => window.api.listRuns(projectPath),
       onRunFailed: (message) => {
         toast.error("Run failed", {
           description: message,
         })
-        addNotification({
+        addNotificationRef.current({
           title: "Run failed",
           description: message,
           level: "error",
@@ -62,7 +77,7 @@ export function useExecutionController({
           || state.reportPath
           || state.workspace
           || undefined
-        addNotification({
+        addNotificationRef.current({
           title,
           description,
           level: state.runOutcome === "completed" ? "success" : state.runOutcome === "cancelled" ? "warning" : "error",
@@ -86,18 +101,24 @@ export function useExecutionController({
           artifactPersistenceError: null,
         }))
 
-        void window.api.persistArtifactsFromRun({
-          projectPath: state.projectPath,
-          workspace: state.workspace,
-          caseId: templateContext.caseId,
-          caseLabel: templateContext.caseLabel,
-          sourceArtifactIds: templateContext.sourceArtifactIds,
-          templateId: templateContext.templateId,
-          templateName: templateContext.templateName,
-          workflowPath: templateContext.workflowPath,
-          workflowName: state.workflowName,
-          contracts: templateContext.contractOut,
-        }).then((result) => {
+        void withIpcTimeout(
+          window.api.persistArtifactsFromRun({
+            projectPath: state.projectPath,
+            workspace: state.workspace,
+            factoryId: templateContext.factoryId,
+            factoryLabel: templateContext.factoryLabel,
+            caseId: templateContext.caseId,
+            caseLabel: templateContext.caseLabel,
+            sourceArtifactIds: templateContext.sourceArtifactIds,
+            templateId: templateContext.templateId,
+            templateName: templateContext.templateName,
+            workflowPath: templateContext.workflowPath,
+            workflowName: state.workflowName,
+            contracts: templateContext.contractOut,
+          }),
+          DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
+          "Artifact persistence timed out. Check the main process and try again.",
+        ).then((result) => {
           controllerRef.current?.updateExecutionForKey(workflowKey, (previous) => ({
             ...previous,
             artifactRecords: result.artifacts,
@@ -111,7 +132,7 @@ export function useExecutionController({
             artifactPersistenceStatus: "error",
             artifactPersistenceError: message,
           }))
-          addNotification({
+          addNotificationRef.current({
             title: `Artifact persistence failed: ${workflowName}`,
             description: message,
             level: "error",
@@ -126,7 +147,10 @@ export function useExecutionController({
   }
 
   const controller = controllerRef.current
-  controller.sync({ workflowExecutionStates, selectedProject })
+
+  useLayoutEffect(() => {
+    controller.sync({ workflowExecutionStates, selectedProject })
+  }, [controller, selectedProject, workflowExecutionStates])
 
   useEffect(() => {
     const unsubscribe = window.api.onWorkflowEvent((event) => {

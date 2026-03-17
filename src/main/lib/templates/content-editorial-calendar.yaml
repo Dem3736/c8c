@@ -1,0 +1,106 @@
+id: content-editorial-calendar
+stage: content
+emoji: "\U0001F4C5"
+headline: Turn the idea backlog into a channel-aware editorial calendar
+how: Sequence the idea backlog into a calendar or publishing plan with spacing, coverage, and quality constraints.
+input: Idea backlog, publishing cadence, and channel constraints
+output: Editorial calendar that can spawn item-level content cases
+use_when: You have enough content ideas and want to turn them into a scheduled production plan instead of drafting ad hoc.
+steps:
+  - Prioritize and sequence ideas into a realistic calendar
+  - Make the calendar ready to spawn item-level content cases
+  - Evaluate calendar quality for realistic cadence, topic spread, and channel coverage before output
+pack:
+  id: content-factory-alpha
+  label: Content Factory
+  journey_stage: plan
+  recommended_next:
+    - content-draft-post
+contract_in:
+  - kind: idea_backlog
+    title: Idea Backlog
+    description: The set of content ideas that should be turned into a production calendar.
+    required: true
+contract_out:
+  - kind: editorial_calendar
+    title: Editorial Calendar
+    description: Scheduled publishing plan with item slots ready for downstream drafting.
+execution_policy:
+  profile_id: content_editorial_calendar
+  summary: Calendar before volume
+  description: Plan publishing coverage before mass-producing individual post drafts.
+  tags:
+    - small_tasks
+    - consistency_checks
+    - channel_aware
+  notes:
+    - Preserve thematic coverage and avoid repetitive clustering.
+    - Make the calendar specific enough to spawn post cases cleanly.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Content Factory: Editorial Calendar"
+description: Turn an idea backlog into a channel-aware editorial calendar that can drive many downstream post cases.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the idea backlog plus cadence, channel, and scheduling constraints.
+  - id: calendar-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: strategist
+      prompt: >-
+        Create an Editorial Calendar from the idea backlog. Include:
+        1) sequence or date slot,
+        2) selected idea,
+        3) hook direction,
+        4) audience or channel nuance,
+        5) why the slot belongs here,
+        6) anything that should vary across adjacent posts.
+        Make the calendar specific enough that each slot can become its own content case later.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: cadence realistic for solo operator, no topic clustering on same day, all specified channels covered, structured table format."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: calendar-1
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Editorial Calendar
+edges:
+  - id: e-input-calendar
+    source: input-1
+    target: calendar-1
+    type: default
+  - id: e-calendar-eval
+    source: calendar-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: calendar-1
+    type: fail

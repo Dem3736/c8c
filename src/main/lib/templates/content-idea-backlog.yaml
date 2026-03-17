@@ -1,0 +1,106 @@
+id: content-idea-backlog
+stage: content
+emoji: "\U0001F4A1"
+headline: Turn the trend digest into a backlog of high-quality post ideas
+how: Convert evidence and themes into concrete content ideas with hooks, angles, and why each idea is worth publishing.
+input: Trend digest, campaign notes, or publishing constraints
+output: Idea backlog with hooks, angles, and post-worthy thesis statements
+use_when: You have an evidence base and need a strong pipeline of ideas before building a calendar or drafting copy.
+steps:
+  - Generate multiple differentiated angles from the trend digest
+  - Convert them into a prioritized backlog of content ideas with hooks and thesis
+  - Evaluate idea quality for diversity, concrete hooks, and effort estimates before output
+pack:
+  id: content-factory-alpha
+  label: Content Factory
+  journey_stage: plan
+  recommended_next:
+    - content-editorial-calendar
+contract_in:
+  - kind: trend_digest
+    title: Trend Digest
+    description: The trend evidence base that should drive idea generation.
+    required: true
+contract_out:
+  - kind: idea_backlog
+    title: Idea Backlog
+    description: Candidate content ideas, hooks, and thesis statements ready for scheduling.
+execution_policy:
+  profile_id: content_idea_backlog
+  summary: Angle exploration before drafting
+  description: Generate multiple viable directions before committing to a calendar or copy.
+  tags:
+    - evidence_first
+    - variant_exploration
+    - consistency_checks
+  notes:
+    - Prefer distinct angles over minor rewrites of the same idea.
+    - Tie ideas back to the trend digest instead of free-associating.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Content Factory: Idea Backlog"
+description: Turn a trend digest into a structured backlog of content ideas with hooks and thesis statements.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the trend digest and any channel or audience constraints.
+  - id: ideation-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: writer
+      prompt: >-
+        Convert the provided Trend Digest into an Idea Backlog. For each idea include:
+        1) working title,
+        2) hook,
+        3) thesis,
+        4) why it matters now,
+        5) target audience fit,
+        6) suggested content format.
+        Produce enough variety that this backlog can seed a larger campaign calendar.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: ideas diverse in angle, each has concrete hook, effort estimated, no generic filler ideas."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: ideation-1
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Idea Backlog
+edges:
+  - id: e-input-ideation
+    source: input-1
+    target: ideation-1
+    type: default
+  - id: e-ideation-eval
+    source: ideation-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: ideation-1
+    type: fail

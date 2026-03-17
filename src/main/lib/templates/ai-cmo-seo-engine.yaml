@@ -1,0 +1,180 @@
+id: ai-cmo-seo-engine
+stage: content
+emoji: "\U0001F50E"
+headline: Research and draft search-first assets for compounding SEO traffic
+how: Finds credible search opportunities, turns the strongest ones into detailed briefs, drafts the flagship asset, and routes it through quality review
+input: Website, product brief, or upstream AI CMO strategy pack
+output: Prioritized SEO brief pack plus a flagship search-first draft ready for review
+use_when: You already know the product and want the SEO leg of the CMO motion to produce concrete assets instead of generic keyword lists.
+steps:
+  - Identify the highest-leverage search opportunities and why they are worth pursuing
+  - Build detailed briefs for the strongest opportunities
+  - Draft the flagship search asset with title, outline, FAQ, and CTA
+  - Evaluate for intent match, differentiation, and publish readiness before review
+pack:
+  id: ai-cmo
+  label: AI CMO
+  journey_stage: execute
+contract_in:
+  - kind: angle_map
+    title: Angle Map
+    description: Helpful channel and messaging angles from the AI CMO planning pass.
+    required: false
+  - kind: editorial_calendar
+    title: Editorial Calendar
+    description: Useful sequencing context for which SEO asset to prioritize first.
+    required: false
+contract_out:
+  - kind: content_brief
+    title: SEO Brief Pack
+    description: Prioritized search opportunities with briefs, outlines, evidence gaps, and CTAs.
+  - kind: draft
+    title: Flagship SEO Draft
+    description: A search-first article or landing page draft ready for editing and publication review.
+execution_policy:
+  profile_id: ai_cmo_seo
+  summary: Search-intent-first drafting
+  description: Start from intent and differentiation, then draft only the highest-leverage SEO asset instead of spraying weak content.
+  tags:
+    - evidence_first
+    - no_slop
+    - critique_loops
+    - publish_gate
+  notes:
+    - Prefer winnable, high-intent queries over vanity volume.
+    - Draft for the user job, not for keyword stuffing.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "AI CMO: SEO Engine"
+description: Generate a practical SEO brief pack and a flagship draft grounded in search intent, proof, and differentiation.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 35
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste the website, product brief, or AI CMO strategy output you want to turn into SEO assets.
+  - id: research-1
+    type: skill
+    position:
+      x: 280
+      y: 220
+    config:
+      prompt: >-
+        Identify 6-10 realistic search opportunities for this product. Cluster them by intent and for each cluster
+        include:
+        - primary query family
+        - user job
+        - funnel stage
+        - likely page type
+        - why this company can win
+        - authority challenge
+        - proof or examples still missing
+        Prioritize practical opportunities, not vanity keywords.
+  - id: briefs-1
+    type: skill
+    position:
+      x: 560
+      y: 220
+    config:
+      prompt: >-
+        Pick the top 3 SEO opportunities and create a brief for each. Every brief must include:
+        - target query cluster
+        - title options
+        - meta description
+        - reader promise
+        - differentiator
+        - section outline
+        - FAQ blocks
+        - internal-link suggestions
+        - CTA
+        - evidence/assets needed
+        - what to avoid
+        Make the briefs strong enough that a writer could draft without asking follow-up questions.
+  - id: draft-1
+    type: skill
+    position:
+      x: 840
+      y: 220
+    config:
+      prompt: >-
+        Using the highest-priority SEO brief, write a flagship draft. Include:
+        - final title
+        - meta description
+        - intro
+        - section headings with draft copy
+        - FAQ section
+        - CTA
+        - explicit placeholders where examples, proof, or screenshots should be inserted
+        Match search intent precisely. Do not write generic filler.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1120
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on:
+        1) intent match,
+        2) differentiation,
+        3) specificity and proof-readiness,
+        4) structural quality of the brief and draft,
+        5) clarity of CTA.
+        Fail if the asset looks like interchangeable SEO content or if the brief is too weak to execute.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: briefs-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1400
+      y: 220
+    config:
+      message: Review the SEO brief pack and flagship draft before using it in production.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: skip
+  - id: output-1
+    type: output
+    position:
+      x: 1680
+      y: 220
+    config:
+      title: SEO Brief Pack and Flagship Draft
+edges:
+  - id: e-input-research
+    source: input-1
+    target: research-1
+    type: default
+  - id: e-research-briefs
+    source: research-1
+    target: briefs-1
+    type: default
+  - id: e-briefs-draft
+    source: briefs-1
+    target: draft-1
+    type: default
+  - id: e-draft-evaluator
+    source: draft-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-approval
+    source: evaluator-1
+    target: approval-1
+    type: pass
+  - id: e-evaluator-briefs
+    source: evaluator-1
+    target: briefs-1
+    type: fail
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default

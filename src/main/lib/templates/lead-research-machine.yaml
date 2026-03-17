@@ -9,6 +9,7 @@ steps:
   - Research the market vertical and identify segments
   - Fan out to find leads per segment in parallel
   - Compile and prioritize the final lead list
+  - Evaluate lead quality, deduplication, and outreach specificity
 version: 1
 name: Lead Research Machine
 description: Research a market vertical, fan out into segments, find leads in parallel, compile a prioritized list
@@ -57,10 +58,20 @@ nodes:
       strategy: summarize
       prompt: Compile all leads into a prioritized list. Group by segment, include research quality scores, and highlight top
         10 highest-potential leads.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1520
+      y: 200
+    config:
+      criteria: "Score 1-10: actionable lead profiles with specific outreach angles, no duplicate leads, each profile has concrete data points not generic descriptions, outreach suggestions are specific to the lead."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: research-1
   - id: output-1
     type: output
     position:
-      x: 1500
+      x: 1840
       y: 200
     config: {}
 edges:
@@ -80,7 +91,20 @@ edges:
     source: lead-finder-1
     target: merger-1
     type: default
-  - id: e-merger-output
+  - id: e-merger-eval
     source: merger-1
-    target: output-1
+    target: eval-1
     type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: research-1
+    type: fail
+execution_policy:
+  profile_id: solo-founder
+  summary: Optimized for solo founders using AI agents
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

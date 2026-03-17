@@ -1,0 +1,103 @@
+id: courses-curriculum-map
+stage: strategy
+emoji: "\U0001F5FA"
+headline: Turn the offer brief into a curriculum map
+how: Use the audience and promise to define the learning sequence before writing lessons.
+input: Audience and offer brief plus any format, depth, and delivery constraints
+output: Curriculum map with modules, sequence, and learning progression
+use_when: You already know the audience and promise and want a structured curriculum before creating lessons.
+steps:
+  - Turn the audience and offer brief into a curriculum map
+  - Define modules, sequence, and what each part should accomplish
+  - Evaluate progression, coherence, and practical scope before lesson planning
+pack:
+  id: courses-factory-alpha
+  label: Courses Factory
+  journey_stage: plan
+  recommended_next:
+    - courses-lesson-system
+contract_in:
+  - kind: audience_offer_brief
+    title: Audience & Offer Brief
+    description: Audience definition and transformation promise for the course.
+    required: true
+contract_out:
+  - kind: curriculum_map
+    title: Curriculum Map
+    description: Course modules and progression ready for lesson planning.
+execution_policy:
+  profile_id: courses_curriculum_map
+  summary: Curriculum before lesson drafting
+  description: Define the sequence and progression before generating specific lessons.
+  tags:
+    - spec_first
+    - consistency_checks
+  notes:
+    - Keep scope realistic for the intended format.
+    - Each module should clearly contribute to the promised transformation.
+version: 1
+name: "Courses Factory: Curriculum Map"
+description: Turn an audience and offer brief into a curriculum map that can guide lesson production.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 25
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the audience and offer brief plus any depth, format, or curriculum constraints.
+  - id: planner-1
+    type: skill
+    position:
+      x: 320
+      y: 200
+    config:
+      skillRef: strategist
+      prompt: >-
+        Build a Curriculum Map from the Audience & Offer Brief. Include:
+        1) modules or milestones,
+        2) what each module teaches,
+        3) the recommended sequence,
+        4) what students should achieve at each step,
+        5) any delivery notes that affect pacing or depth.
+        Make the map concrete enough to feed lesson planning.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 640
+      y: 200
+    config:
+      criteria: "Score 1-10: sequence is coherent, modules are distinct, depth matches the offer, and the map is usable for lesson planning."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: planner-1
+  - id: output-1
+    type: output
+    position:
+      x: 960
+      y: 200
+    config:
+      title: Curriculum Map
+edges:
+  - id: e-input-planner
+    source: input-1
+    target: planner-1
+    type: default
+  - id: e-planner-eval
+    source: planner-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: planner-1
+    type: fail

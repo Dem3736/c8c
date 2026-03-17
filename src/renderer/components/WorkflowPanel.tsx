@@ -294,14 +294,12 @@ function ProjectArtifactsPanel({
   error,
   requiredContracts,
   onOpenArtifact,
-  onOpenArtifactLibrary,
 }: {
   artifacts: ArtifactRecord[]
   loading: boolean
   error: string | null
   requiredContracts?: ArtifactContract[]
   onOpenArtifact: (artifact: ArtifactRecord) => void
-  onOpenArtifactLibrary: () => void
 }) {
   const latestArtifacts = artifacts.slice(0, 6)
   const availableKinds = new Set(artifacts.map((artifact) => artifact.kind))
@@ -315,30 +313,21 @@ function ProjectArtifactsPanel({
     <section className="rounded-lg border border-hairline bg-surface-1/70 px-4 py-3 ui-fade-slide-in">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="section-kicker">Project artifacts</div>
+          <div className="section-kicker">Saved results</div>
           <p className="mt-1 text-body-sm text-muted-foreground">
-            Reusable typed outputs from this project that downstream stages can consume.
+            Saved outputs from this project that compatible workflows can reuse.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center">
           <Badge variant="outline" className="ui-meta-text px-2 py-0">
             {artifacts.length} saved
           </Badge>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2"
-            onClick={onOpenArtifactLibrary}
-          >
-            See all
-          </Button>
         </div>
       </div>
 
       {requiredLabels.length > 0 && (
         <div className="mt-3 space-y-2">
-          <div className="ui-meta-label text-muted-foreground">This stage expects</div>
+          <div className="ui-meta-label text-muted-foreground">This workflow can use</div>
           <div className="flex flex-wrap gap-1.5">
             {requiredLabels.map((item) => (
               <Badge
@@ -359,7 +348,7 @@ function ProjectArtifactsPanel({
         ) : error ? (
           <div role="alert" className="ui-meta-text text-status-danger">{error}</div>
         ) : latestArtifacts.length === 0 ? (
-          <div className="ui-meta-text text-muted-foreground">No project artifacts saved yet.</div>
+          <div className="ui-meta-text text-muted-foreground">No saved results yet.</div>
         ) : (
           <div className="space-y-2">
             {latestArtifacts.map((artifact) => (
@@ -750,7 +739,7 @@ export function WorkflowPanel() {
       setViewMode("list")
       setOutputTabRequest(null)
 
-      toast.success(`Opened next stage: ${nextStageTemplate.name}`)
+      toast.success(`Opened next step: ${nextStageTemplate.name}`)
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
           setInputAttachments(launch.artifactAttachments)
@@ -968,7 +957,6 @@ export function WorkflowPanel() {
                     reviewedRunError={reviewedRunError}
                     onStartNewRun={handleStartNewRun}
                     onOpenInbox={() => setMainView("inbox")}
-                    onOpenArtifacts={() => setMainView("artifacts")}
                   />
                 </SectionErrorBoundary>
               </div>
@@ -1021,7 +1009,6 @@ export function WorkflowPanel() {
                           error={projectArtifactsError}
                           requiredContracts={selectedWorkflowTemplateContext?.contractIn}
                           onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
-                          onOpenArtifactLibrary={() => setMainView("artifacts")}
                         />
                       )}
                     </>
@@ -1038,7 +1025,6 @@ export function WorkflowPanel() {
                           error={projectArtifactsError}
                           requiredContracts={selectedWorkflowTemplateContext?.contractIn}
                           onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
-                          onOpenArtifactLibrary={() => setMainView("artifacts")}
                         />
                       )}
                     </>
@@ -1061,7 +1047,6 @@ export function WorkflowPanel() {
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
-                          onOpenArtifacts={() => setMainView("artifacts")}
                           nextStageTemplate={nextStageTemplate}
                           onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
                           nextStagePending={launchingNextStage}
@@ -1096,7 +1081,6 @@ export function WorkflowPanel() {
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
-                          onOpenArtifacts={() => setMainView("artifacts")}
                           nextStageTemplate={nextStageTemplate}
                           onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
                           nextStagePending={launchingNextStage}

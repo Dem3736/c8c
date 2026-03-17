@@ -30,6 +30,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
   const [chatDraftByWorkflow, setChatDraftByWorkflow] = useAtom(chatDraftByWorkflowAtom)
   const composerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const activeWorkflowDraft = selectedWorkflowPath ? (chatDraftByWorkflow[selectedWorkflowPath] || "") : ""
   const sendShortcutLabel = "Enter"
   const sendShortcutAriaLabel = "Enter"
   const activeProvider = workflow.defaults?.provider || defaultProvider
@@ -44,8 +45,8 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
       setValue("")
       return
     }
-    setValue(chatDraftByWorkflow[selectedWorkflowPath] || "")
-  }, [chatDraftByWorkflow, selectedWorkflowPath])
+    setValue(activeWorkflowDraft)
+  }, [activeWorkflowDraft, selectedWorkflowPath])
 
   useEffect(() => {
     const element = composerRef.current

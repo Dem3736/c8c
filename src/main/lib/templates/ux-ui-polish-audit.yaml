@@ -10,6 +10,11 @@ steps:
   - Fan out repo-wide UX/UI audit tracks by lens
   - Merge findings into one prioritized polish report
   - Run a report quality gate before output
+execution_policy:
+  profile_id: solo_operator
+  summary: Solo founder operational context
+  notes:
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: UX/UI Polish Audit
 description: Map the full product surface, audit the entire project in parallel through UX/UI lenses, and produce

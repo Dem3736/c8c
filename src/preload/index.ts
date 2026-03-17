@@ -11,6 +11,8 @@ import type {
   ChatSessionSnapshot,
   DesktopRuntimeInfo,
   DiscoveredSkill,
+  ProjectFactoryBlueprint,
+  ProjectFactoryState,
   GenerationProgress,
   HumanTaskSnapshot,
   HumanTaskSubmitInput,
@@ -22,6 +24,9 @@ import type {
   McpToolInfo,
   PersistArtifactsFromRunRequest,
   PersistArtifactsFromRunResult,
+  SaveProjectFactoryBlueprintInput,
+  SpawnFactoryCasesFromArtifactInput,
+  SpawnFactoryCasesFromArtifactResult,
   RunResult,
   SkillLibrary,
   UpdateEvent,
@@ -169,6 +174,14 @@ const api: C8cApi = {
     ipcRenderer.invoke("executor:persist-artifacts-from-run", input) as Promise<PersistArtifactsFromRunResult>,
   listProjectArtifacts: (projectPath: string) =>
     ipcRenderer.invoke("executor:list-project-artifacts", projectPath) as Promise<ArtifactRecord[]>,
+  loadProjectFactoryBlueprint: (projectPath: string) =>
+    ipcRenderer.invoke("factory:load-blueprint", projectPath) as Promise<ProjectFactoryBlueprint | null>,
+  saveProjectFactoryBlueprint: (input: SaveProjectFactoryBlueprintInput) =>
+    ipcRenderer.invoke("factory:save-blueprint", input) as Promise<ProjectFactoryBlueprint>,
+  loadProjectFactoryState: (projectPath: string) =>
+    ipcRenderer.invoke("factory:load-state", projectPath) as Promise<ProjectFactoryState>,
+  spawnFactoryCasesFromArtifact: (input: SpawnFactoryCasesFromArtifactInput) =>
+    ipcRenderer.invoke("factory:spawn-cases-from-artifact", input) as Promise<SpawnFactoryCasesFromArtifactResult>,
 
   // Libraries
   listLibraries: () => ipcRenderer.invoke("libraries:list"),

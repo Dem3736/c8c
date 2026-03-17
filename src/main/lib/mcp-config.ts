@@ -22,6 +22,8 @@ interface McpConfig {
   mcpServers: Record<string, McpServerEntry>
 }
 
+const mcpConfigCache = new Map<string, McpConfig>()
+
 export type ClaudeSdkMcpServerConfig =
   | {
       type?: "stdio"
@@ -72,10 +74,16 @@ function normalizeMcpConfig(raw: unknown): McpConfig | null {
 }
 
 async function readMcpConfig(filePath: string): Promise<McpConfig | null> {
+  const cached = mcpConfigCache.get(resolve(filePath))
+  if (cached) return cached
   try {
     const raw = await readFile(filePath, "utf-8")
     const parsed = JSON.parse(raw) as unknown
-    return normalizeMcpConfig(parsed)
+    const normalized = normalizeMcpConfig(parsed)
+    if (normalized) {
+      mcpConfigCache.set(resolve(filePath), normalized)
+    }
+    return normalized
   } catch {
     return null
   }
@@ -198,9 +206,16 @@ function buildCodexMcpOverrides(config: McpConfig): string[] {
 }
 
 function readMcpConfigSync(filePath: string): McpConfig | null {
+  const resolvedPath = resolve(filePath)
+  const cached = mcpConfigCache.get(resolvedPath)
+  if (cached) return cached
   try {
     const raw = readFileSync(filePath, "utf-8")
-    return normalizeMcpConfig(JSON.parse(raw) as unknown)
+    const normalized = normalizeMcpConfig(JSON.parse(raw) as unknown)
+    if (normalized) {
+      mcpConfigCache.set(resolvedPath, normalized)
+    }
+    return normalized
   } catch {
     return null
   }
@@ -217,7 +232,8 @@ export function buildProviderExtraArgs(provider: ProviderId, mcpConfigPath?: str
 
   if (!mcpConfigPath) return []
 
-  const source = existsSync(mcpConfigPath) ? mcpConfigPath : undefined
+  const resolvedPath = resolve(mcpConfigPath)
+  const source = mcpConfigCache.has(resolvedPath) || existsSync(mcpConfigPath) ? mcpConfigPath : undefined
   if (!source) return []
 
   const config = readMcpConfigSync(source)
@@ -227,7 +243,9 @@ export function buildProviderExtraArgs(provider: ProviderId, mcpConfigPath?: str
 export function buildClaudeSdkMcpServers(
   mcpConfigPath?: string,
 ): Record<string, ClaudeSdkMcpServerConfig> {
-  if (!mcpConfigPath || !existsSync(mcpConfigPath)) return {}
+  if (!mcpConfigPath) return {}
+  const resolvedPath = resolve(mcpConfigPath)
+  if (!mcpConfigCache.has(resolvedPath) && !existsSync(mcpConfigPath)) return {}
 
   const config = readMcpConfigSync(mcpConfigPath)
   if (!config) return {}
@@ -325,6 +343,7 @@ export async function prepareWorkspaceMcpConfig(
   const config = await buildRuntimeMcpConfig(projectPath, workspaceMcpPath, backend)
   if (!config) return undefined
   await writeFileAtomic(workspaceMcpPath, JSON.stringify(config, null, 2))
+  mcpConfigCache.set(resolve(workspaceMcpPath), config)
   return workspaceMcpPath
 }
 
@@ -340,9 +359,11 @@ export async function prepareTemporaryMcpConfig(
   const tempDir = await mkdtemp(join(tmpdir(), "c8c-mcp-"))
   const mcpPath = join(tempDir, ".mcp.json")
   await writeFileAtomic(mcpPath, JSON.stringify(config, null, 2))
+  mcpConfigCache.set(resolve(mcpPath), config)
   return {
     path: mcpPath,
     cleanup: async () => {
+      mcpConfigCache.delete(resolve(mcpPath))
       await rm(tempDir, { recursive: true, force: true })
     },
   }

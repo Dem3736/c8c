@@ -1,8 +1,14 @@
 import { app, type BrowserWindow } from "electron"
 import { resolve } from "path"
-import { fetchRemoteTemplate } from "./lib/templates/remote"
+import { fetchRemoteTemplate, fetchRemoteTemplateByUrl } from "./lib/templates/remote"
 
 const TEMPLATE_ID_RE = /^\/([a-zA-Z0-9_-]+)$/
+const TEMPLATE_FILE_RE = /\.ya?ml$/i
+
+interface ParsedTemplateDeepLink {
+  templateId: string
+  templateUrl?: string
+}
 
 export function configureDeepLinkProtocol(): void {
   if (!app.isPackaged && process.argv[1]) {
@@ -17,15 +23,8 @@ export function extractDeepLinkUrl(argv: string[]): string | null {
   return argv.find((arg) => arg.startsWith("c8c://")) || null
 }
 
-export function parseTemplateDeepLink(rawUrl: string): { templateId: string } | null {
-  let parsed: URL
-  try {
-    parsed = new URL(rawUrl)
-  } catch {
-    return null
-  }
-
-  if (parsed.protocol !== "c8c:" || parsed.hostname !== "hub") {
+function parseHubDeepLink(parsed: URL): ParsedTemplateDeepLink | null {
+  if (parsed.hostname !== "hub") {
     return null
   }
 
@@ -35,6 +34,62 @@ export function parseTemplateDeepLink(rawUrl: string): { templateId: string } | 
   }
 
   return { templateId: match[1] }
+}
+
+function deriveTemplateIdFromUrl(url: URL): string | null {
+  const lastSegment = url.pathname.split("/").filter(Boolean).pop()
+  if (!lastSegment) {
+    return null
+  }
+
+  return lastSegment.replace(TEMPLATE_FILE_RE, "") || null
+}
+
+function parseInstallDeepLink(parsed: URL): ParsedTemplateDeepLink | null {
+  if (parsed.hostname !== "install") {
+    return null
+  }
+
+  const rawTemplateUrl = parsed.searchParams.get("url")
+  if (!rawTemplateUrl) {
+    return null
+  }
+
+  let templateUrl: URL
+  try {
+    templateUrl = new URL(rawTemplateUrl)
+  } catch {
+    return null
+  }
+
+  if (templateUrl.protocol !== "https:" || !TEMPLATE_FILE_RE.test(templateUrl.pathname)) {
+    return null
+  }
+
+  const templateId = deriveTemplateIdFromUrl(templateUrl)
+  if (!templateId) {
+    return null
+  }
+
+  return {
+    templateId,
+    templateUrl: templateUrl.toString(),
+  }
+}
+
+export function parseTemplateDeepLink(rawUrl: string): ParsedTemplateDeepLink | null {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== "c8c:") {
+    return null
+  }
+
+  return parseHubDeepLink(parsed) ?? parseInstallDeepLink(parsed)
 }
 
 export async function handleDeepLink(rawUrl: string, window: BrowserWindow | null): Promise<void> {
@@ -50,7 +105,9 @@ export async function handleDeepLink(rawUrl: string, window: BrowserWindow | nul
   }
 
   try {
-    const template = await fetchRemoteTemplate(parsed.templateId)
+    const template = parsed.templateUrl
+      ? await fetchRemoteTemplateByUrl(parsed.templateUrl)
+      : await fetchRemoteTemplate(parsed.templateId)
     window.webContents.send("template:deep-link", template)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
