@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { getBuiltinTemplates } from "./index"
 import { parseTemplate } from "./parse"
 
 describe("parseTemplate", () => {
@@ -105,5 +106,14 @@ describe("parseTemplate", () => {
     expect(template.source).toBe("plugin")
     expect(template.pluginId).toBe("sample-pack")
     expect(template.pack?.journeyStage).toBe("plan")
+  })
+
+  it("keeps gstack squad templates in the built-in catalog", () => {
+    const templateIds = new Set(getBuiltinTemplates().map((template) => template.id))
+
+    expect(templateIds.has("gstack-feature-squad")).toBe(true)
+    expect(templateIds.has("gstack-web-quality-board")).toBe(true)
+    expect(templateIds.has("gstack-preflight-gate")).toBe(true)
+    expect(templateIds.has("gstack-release-room")).toBe(true)
   })
 })

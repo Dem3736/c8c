@@ -376,6 +376,53 @@ describe("workflow-runner evaluator loop", () => {
     expect(runDone.status).toBe("completed")
   })
 
+  it("injects skill file instructions into skill-node prompts", async () => {
+    const prompts: string[] = []
+    mockedReadFile.mockImplementation(async (path: any) => {
+      const target = String(path)
+      if (target === "/tmp/gstack/review/SKILL.md") {
+        return "---\nname: review\ndescription: built-in review\n---\n# Review\nFollow this checklist exactly.\n"
+      }
+      return "improved content"
+    })
+    mockedSpawn.mockImplementation(async (opts: any) => {
+      prompts.push(String(opts.prompt || ""))
+      opts.onStdout?.(
+        Buffer.from(
+          '{"type":"assistant","subtype":"text","content":"Great content"}\n',
+        ),
+      )
+      return { success: true, exitCode: 0, signal: null, killed: false, aborted: false, durationMs: 100 }
+    })
+
+    const workflowWithSkillFile: Workflow = {
+      ...SIMPLE_SKILL_WORKFLOW,
+      nodes: SIMPLE_SKILL_WORKFLOW.nodes.map((node) =>
+        node.id === "skill-1" && node.type === "skill"
+          ? {
+              ...node,
+              config: {
+                ...(node.config as SkillNodeConfig),
+                prompt: "Review the supplied diff.",
+                skillPaths: ["/tmp/gstack/review/SKILL.md"],
+              },
+            }
+          : node,
+      ),
+    }
+
+    const { runWorkflow } = await import("./workflow-runner")
+    await runWorkflow("run-skill-file-context", workflowWithSkillFile, { type: "text", value: "input" }, mockWindow)
+
+    expect(prompts[0]).toContain("Skill instructions:")
+    expect(prompts[0]).toContain("Skill root directory: /tmp/gstack/review")
+    expect(prompts[0]).toContain('Sibling gstack skill pack directory: /tmp/gstack')
+    expect(prompts[0]).toContain('Resolve ".claude/skills/review/..." or "review/..." references under "/tmp/gstack/review".')
+    expect(prompts[0]).toContain("Follow this checklist exactly.")
+    expect(prompts[0]).toContain("Review the supplied diff.")
+    expect((mockedSpawn.mock.calls[0]?.[0] as any)?.addDirs).toEqual(["/tmp/gstack/review"])
+  })
+
   it("keeps best-effort skill output when skill process fails", async () => {
     mockedSpawn.mockImplementation(async (opts: any) => {
       opts.onStdout?.(

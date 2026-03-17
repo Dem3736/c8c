@@ -94,6 +94,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "resources/skills",
+        "to": "skills",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asar": true,

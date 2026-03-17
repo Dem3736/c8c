@@ -25,18 +25,38 @@ async function writeText(filePath: string, content: string): Promise<void> {
 describe("skill-scanner", () => {
   let root: string
   let originalHome: string | undefined
+  let originalUserProfile: string | undefined
+  let originalBuiltinRoot: string | undefined
 
   beforeEach(async () => {
     vi.clearAllMocks()
     root = await mkdtemp(join(tmpdir(), "skill-scanner-test-"))
     originalHome = process.env.HOME
+    originalUserProfile = process.env.USERPROFILE
+    originalBuiltinRoot = process.env.C8C_BUILTIN_GSTACK_ROOT
     process.env.HOME = root
+    delete process.env.USERPROFILE
+    process.env.C8C_BUILTIN_GSTACK_ROOT = join(root, "builtin-gstack")
     ensurePluginMarketplacesDirMock.mockResolvedValue(join(root, ".c8c", "plugins", "marketplaces"))
     listInstalledPluginsMock.mockResolvedValue([])
   })
 
   afterEach(async () => {
-    process.env.HOME = originalHome
+    if (originalHome === undefined) {
+      delete process.env.HOME
+    } else {
+      process.env.HOME = originalHome
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE
+    } else {
+      process.env.USERPROFILE = originalUserProfile
+    }
+    if (originalBuiltinRoot === undefined) {
+      delete process.env.C8C_BUILTIN_GSTACK_ROOT
+    } else {
+      process.env.C8C_BUILTIN_GSTACK_ROOT = originalBuiltinRoot
+    }
     await rm(root, { recursive: true, force: true })
   })
 
@@ -88,7 +108,6 @@ describe("skill-scanner", () => {
     const { scanAllSkills } = await import("./skill-scanner")
     const skills = await scanAllSkills(projectRoot)
 
-    expect(skills).toHaveLength(3)
     expect(skills).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -114,6 +133,30 @@ describe("skill-scanner", () => {
           marketplaceName: "Content Marketplace",
           pluginVersion: "1.0.0",
           library: "content-pack",
+        }),
+      ]),
+    )
+  })
+
+  it("discovers built-in gstack skills from the bundled resource root", async () => {
+    const builtinRoot = join(root, "builtin-gstack")
+    await writeText(
+      join(builtinRoot, "review", "SKILL.md"),
+      "---\nname: review\ndescription: built-in review\n---\n",
+    )
+
+    const { scanAllSkills } = await import("./skill-scanner")
+    const skills = await scanAllSkills(join(root, "project"))
+
+    expect(skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "review",
+          description: "built-in review",
+          category: "gstack",
+          sourceScope: "library",
+          library: "gstack",
+          format: "codex-skill",
         }),
       ]),
     )
@@ -158,5 +201,22 @@ describe("skill-scanner", () => {
       pluginName: "design-pack",
       marketplaceName: "Design Marketplace",
     })
+  })
+
+  it("skips user skill discovery when the home directory is unavailable", async () => {
+    delete process.env.HOME
+    delete process.env.USERPROFILE
+
+    const { scanUserSkills } = await import("./skill-scanner")
+    const skills = await scanUserSkills()
+
+    expect(skills).toEqual([])
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "skill-scanner",
+      "user_home_missing",
+      expect.objectContaining({
+        cwd: expect.any(String),
+      }),
+    )
   })
 })

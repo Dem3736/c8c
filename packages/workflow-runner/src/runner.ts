@@ -1033,13 +1033,61 @@ function stripFrontmatter(content: string): string {
   return content.slice(end + 4).trim()
 }
 
-function createEvaluatorSkillContextResolver(
+function labelFromSkillPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/")
+  if (normalized.endsWith("/SKILL.md")) {
+    return basename(dirname(path))
+  }
+  if (normalized.endsWith(".md")) {
+    return basename(path, ".md")
+  }
+  return basename(path)
+}
+
+function buildSkillPathHint(path: string): string {
+  const skillDir = path.endsWith(".md") ? dirname(path) : path
+  const lines = [
+    `Skill root directory: ${skillDir}`,
+    "Use this real directory for any referenced checklists, templates, scripts, or sibling files.",
+  ]
+
+  const skillName = basename(skillDir)
+  const packDir = dirname(skillDir)
+  if (basename(packDir) === "gstack") {
+    const reviewDir = join(packDir, "review")
+    const qaDir = join(packDir, "qa")
+    const browseDir = join(packDir, "browse")
+    const binDir = join(packDir, "bin")
+    lines.push(
+      `If the instructions mention ".claude/skills/${skillName}", ".claude/skills/gstack/${skillName}", or "~/.claude/skills/gstack/${skillName}", use "${skillDir}" instead.`,
+    )
+    lines.push(
+      `If the instructions mention ".claude/skills/gstack" or "~/.claude/skills/gstack", use "${packDir}" instead.`,
+    )
+    lines.push(`Sibling gstack skill pack directory: ${packDir}`)
+    lines.push(
+      `Resolve ".claude/skills/review/..." or "review/..." references under "${reviewDir}".`,
+    )
+    lines.push(`Resolve "qa/..." references under "${qaDir}".`)
+    lines.push(`Resolve "browse/..." references under "${browseDir}".`)
+    lines.push(`Resolve "bin/..." helper references under "${binDir}".`)
+  }
+
+  return lines.join("\n")
+}
+
+interface ResolvedSkillContext {
+  text: string
+  skillPaths: string[]
+}
+
+function createSkillContextResolver(
   logger: WorkflowLogger,
   workspace: string,
   projectPath: string | undefined,
   scanSkills?: (scanRoot: string) => Promise<DiscoveredSkill[]>,
 ) {
-  const contextCache = new Map<string, string>()
+  const contextCache = new Map<string, ResolvedSkillContext>()
   const skillBodyCache = new Map<string, string>()
   let scannedSkills: DiscoveredSkill[] | null = null
 
@@ -1053,7 +1101,7 @@ function createEvaluatorSkillContextResolver(
     try {
       scannedSkills = await scanSkills(scanRoot)
     } catch (error) {
-      logger.warn("workflow-runner", "evaluator_context_scan_skills_failed", {
+      logger.warn("workflow-runner", "skill_context_scan_skills_failed", {
         scanRoot,
         error: errorMessage(error),
       })
@@ -1072,7 +1120,7 @@ function createEvaluatorSkillContextResolver(
       return body
     } catch (error) {
       if (errorCode(error) !== "ENOENT") {
-        logger.warn("workflow-runner", "evaluator_context_skill_read_failed", {
+        logger.warn("workflow-runner", "skill_context_skill_read_failed", {
           path,
           error: errorMessage(error),
         })
@@ -1082,17 +1130,39 @@ function createEvaluatorSkillContextResolver(
     }
   }
 
-  return async (skillRefs?: string[]): Promise<string> => {
-    if (!skillRefs || skillRefs.length === 0) return ""
-    const refs = skillRefs.map((ref) => ref.trim()).filter(Boolean)
-    if (refs.length === 0) return ""
+  return async (
+    input: {
+      skillRefs?: string[]
+      skillPaths?: string[]
+    },
+  ): Promise<ResolvedSkillContext> => {
+    const refs = (input.skillRefs || []).map((ref) => ref.trim()).filter(Boolean)
+    const skillPaths = (input.skillPaths || []).map((path) => path.trim()).filter(Boolean)
+    if (refs.length === 0 && skillPaths.length === 0) return { text: "", skillPaths: [] }
 
-    const cacheKey = refs.map(normalizeSkillRef).join("|")
+    const cacheKey = [
+      ...refs.map((ref) => `ref:${normalizeSkillRef(ref)}`),
+      ...skillPaths.map((path) => `path:${path}`),
+    ].join("|")
     const cached = contextCache.get(cacheKey)
     if (cached !== undefined) return cached
 
-    const discovered = await ensureScannedSkills()
     const sections: string[] = []
+    const seenPaths = new Set<string>()
+
+    for (const skillPath of skillPaths) {
+      if (seenPaths.has(skillPath)) continue
+      seenPaths.add(skillPath)
+      const body = await readSkillBody(skillPath)
+      const label = labelFromSkillPath(skillPath)
+      if (!body) {
+        sections.push(`### Skill: ${label}\nSkill file was found but could not be read.`)
+        continue
+      }
+      sections.push(`### Skill: ${label}\n${buildSkillPathHint(skillPath)}\n\n${body}`)
+    }
+
+    const discovered = refs.length > 0 ? await ensureScannedSkills() : []
     for (const ref of refs) {
       const normalizedRef = normalizeSkillRef(ref)
       const found = discovered.find((skill) => (
@@ -1104,16 +1174,21 @@ function createEvaluatorSkillContextResolver(
         sections.push(`### Skill: ${ref}\nSkill not found in scanned project/user skills.`)
         continue
       }
+      if (seenPaths.has(found.path)) continue
+      seenPaths.add(found.path)
 
       const body = await readSkillBody(found.path)
       if (!body) {
         sections.push(`### Skill: ${found.category}/${found.name}\nSkill file was found but could not be read.`)
         continue
       }
-      sections.push(`### Skill: ${found.category}/${found.name}\n${body}`)
+      sections.push(`### Skill: ${found.category}/${found.name}\n${buildSkillPathHint(found.path)}\n\n${body}`)
     }
 
-    const context = sections.join("\n\n")
+    const context = {
+      text: sections.join("\n\n"),
+      skillPaths: Array.from(seenPaths),
+    }
     contextCache.set(cacheKey, context)
     return context
   }
@@ -1539,7 +1614,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
     const mcpConfigPath = deps.prepareWorkspaceMcpConfig
       ? await deps.prepareWorkspaceMcpConfig(workspace, projectPath, webSearchBackend)
       : undefined
-    const resolveEvaluatorSkillContext = createEvaluatorSkillContextResolver(
+    const resolveSkillContext = createSkillContextResolver(
       logger,
       workspace,
       projectPath,
@@ -1682,9 +1757,15 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 manifestLines.push(`- outputs/${sanitizeNodeId(upstreamId)}.md  (${label})`)
               }
 
-              const codexSkillContext = nodeProviderId === "codex"
-                ? await resolveEvaluatorSkillContext(skillRef ? [skillRef] : undefined)
-                : ""
+              const skillContext = await resolveSkillContext({
+                skillRefs: skillRef ? [skillRef] : undefined,
+                skillPaths: config.skillPaths,
+              })
+              const additionalSkillDirs = [...new Set(
+                skillContext.skillPaths
+                  .map((path) => (path.endsWith(".md") ? dirname(path) : path))
+                  .filter(Boolean),
+              )]
 
               const prompt = sanitizeInvalidUnicode([
                 `Workspace: ${workspace}`,
@@ -1692,7 +1773,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 "",
                 ...(manifestLines.length > 0 ? ["Available upstream outputs:", ...manifestLines, ""] : []),
                 ...(retryFeedback ? [retryFeedback] : []),
-                ...(codexSkillContext ? ["Skill instructions:", codexSkillContext, ""] : []),
+                ...(skillContext.text ? ["Skill instructions:", skillContext.text, ""] : []),
                 config.prompt,
               ].join("\n"))
               const skillModel = workflow.defaults?.model || getDefaultModelForProvider(nodeProviderId)
@@ -1769,7 +1850,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                   permissionMode: "acceptEdits",
                   executionMode: effectivePermissionMode,
                   mcpConfigPath,
-                  addDirs: config.skillPaths?.map((path) => (path.endsWith(".md") ? dirname(path) : path)),
+                  addDirs: additionalSkillDirs.length > 0 ? additionalSkillDirs : undefined,
                   allowedTools: mergedAllowed.length > 0 ? mergedAllowed : undefined,
                   disallowedTools: mergedDisallowed.length > 0 ? mergedDisallowed : undefined,
                   abortSignal: runtime.controller.signal,
@@ -1852,11 +1933,16 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
               const evalConfig = node.config as EvaluatorNodeConfig
               const logParser = new LogParser()
               let evaluatorStderr = ""
-              const evalSkillContext = await resolveEvaluatorSkillContext(evalConfig.skillRefs)
+              const evalSkillContext = await resolveSkillContext({ skillRefs: evalConfig.skillRefs })
               const evalProviderId = workflowProviderId
               const evalPrompt = sanitizeInvalidUnicode(
-                buildEvaluatorPrompt(evalConfig.criteria, incomingContent, evalSkillContext),
+                buildEvaluatorPrompt(evalConfig.criteria, incomingContent, evalSkillContext.text),
               )
+              const evalAdditionalDirs = [...new Set(
+                evalSkillContext.skillPaths
+                  .map((path) => (path.endsWith(".md") ? dirname(path) : path))
+                  .filter(Boolean),
+              )]
 
               const evalModel = workflow.defaults?.model || getDefaultModelForProvider(evalProviderId)
               const evalSpawnResult = await spawnProviderTracked(
@@ -1870,7 +1956,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                   executionMode: workflow.defaults?.permissionMode,
                   mcpConfigPath,
                   disableBuiltInTools: evalProviderId === "claude",
-                  addDirs: [],
+                  addDirs: evalAdditionalDirs.length > 0 ? evalAdditionalDirs : undefined,
                   abortSignal: runtime.controller.signal,
                   timeout: 120_000,
                 },

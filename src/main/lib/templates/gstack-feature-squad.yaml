@@ -1,0 +1,143 @@
+id: gstack-feature-squad
+stage: strategy
+emoji: "\U0001F9E0"
+headline: Pressure-test a feature through founder and engineering-lead lenses
+how: Reframes a request into the highest-leverage product outcome, turns it into an execution plan for the repo, and quality-gates the resulting brief
+input: Feature brief, repo context, constraints, and any relevant product or technical background
+output: Product direction memo plus engineering execution plan
+use_when: You want a high-rigor shaping pass before implementation starts.
+steps:
+  - Reframe the request into the 10-star product outcome and the right scope
+  - Turn that direction into architecture, failure-mode, and test planning
+  - Evaluate whether the plan is specific enough to execute
+pack:
+  id: gstack-team
+  label: Gstack Team
+  journey_stage: shape
+  entrypoint: true
+  recommended_next:
+    - gstack-preflight-gate
+    - gstack-web-quality-board
+credits:
+  - label: gstack
+    href: https://github.com/garrytan/gstack
+    note: Built around Garry Tan's gstack skill pack.
+contract_out:
+  - kind: requirements_spec
+    title: Product Direction Memo
+    description: The user problem, desired outcome, scope boundaries, and success signals the team should optimize for.
+  - kind: phase_plan
+    title: Engineering Execution Plan
+    description: Architecture, failure modes, test strategy, and rollout sequencing for the proposed feature.
+execution_policy:
+  profile_id: gstack_feature_squad
+  summary: Founder-plus-tech-lead planning
+  description: Start with product taste, then force the idea into explicit architecture, failure modes, and tests.
+  tags:
+    - evidence_first
+    - spec_first
+    - critique_loops
+    - consistency_checks
+  notes:
+    - Do not settle for a literal restatement of the ticket.
+    - Prefer concrete sequencing and explicit tradeoffs over broad advice.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Gstack Team: Feature Squad"
+description: Run a feature brief through gstack's founder and engineering planning roles, then quality-gate the resulting execution plan.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 45
+  permissionMode: plan
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Describe the feature, repo context, constraints, deadlines, and anything already decided.
+  - id: founder-1
+    type: skill
+    position:
+      x: 320
+      y: 220
+    config:
+      skillRef: gstack/plan-ceo-review
+      permissionMode: plan
+      prompt: |-
+        Treat this as a founder-level shaping pass for the current repo and request.
+
+        Produce a concise memo with these sections:
+        - User job and real problem
+        - 10-star product version hiding inside the request
+        - Scope to pursue now vs. what not to build yet
+        - Biggest product and UX risks
+        - Success signals the team should optimize for
+
+        Be opinionated. Do not just restate the ticket.
+  - id: techlead-1
+    type: skill
+    position:
+      x: 680
+      y: 220
+    config:
+      skillRef: gstack/plan-eng-review
+      permissionMode: plan
+      prompt: |-
+        Use the founder memo as the product brief and translate it into an execution plan for this repo.
+
+        Return a technical plan with:
+        - architecture and boundary decisions
+        - data flow or state transition notes
+        - trust boundaries and failure modes
+        - rollout sequence
+        - test matrix
+        - open questions that genuinely block implementation
+
+        Keep it execution-ready rather than exploratory.
+  - id: evaluator-1
+    type: evaluator
+    position:
+      x: 1040
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: (1) product clarity and user-value framing, (2) specificity of architecture and boundaries,
+        (3) explicitness of failure modes and edge cases, (4) usefulness of the rollout order, and (5) completeness of
+        the test matrix. Fail if the plan is generic, hand-wavy, or not grounded in the repo/task.
+      threshold: 8
+      maxRetries: 2
+      retryFrom: techlead-1
+  - id: output-1
+    type: output
+    position:
+      x: 1400
+      y: 220
+    config:
+      title: Feature Squad Plan
+      format: markdown
+edges:
+  - id: e-input-founder
+    source: input-1
+    target: founder-1
+    type: default
+  - id: e-founder-techlead
+    source: founder-1
+    target: techlead-1
+    type: default
+  - id: e-techlead-evaluator
+    source: techlead-1
+    target: evaluator-1
+    type: default
+  - id: e-evaluator-output
+    source: evaluator-1
+    target: output-1
+    type: pass
+  - id: e-evaluator-techlead
+    source: evaluator-1
+    target: techlead-1
+    type: fail

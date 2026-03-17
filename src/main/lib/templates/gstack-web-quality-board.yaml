@@ -1,0 +1,144 @@
+id: gstack-web-quality-board
+stage: code
+emoji: "\U0001F440"
+headline: Run report-only QA and design review against the same web surface
+how: Sends one testing brief into gstack's QA and design-audit roles, then merges both perspectives into a single prioritized quality brief
+input: Repo path, base URL, auth or setup notes, must-cover journeys, and any flows to ignore
+output: Combined QA and design audit with concrete evidence and prioritized fixes
+use_when: You need a no-code-change quality readout before deciding what to fix next.
+steps:
+  - Audit the current surface for functional regressions and runtime issues
+  - Audit the same surface for design quality, hierarchy, and AI-slop tells
+  - Merge both reports into one operator-ready quality brief
+pack:
+  id: gstack-team
+  label: Gstack Team
+  journey_stage: verify
+  recommended_next:
+    - gstack-preflight-gate
+credits:
+  - label: gstack
+    href: https://github.com/garrytan/gstack
+    note: Built around Garry Tan's gstack skill pack.
+contract_out:
+  - kind: qa_report
+    title: Web QA Report
+    description: Functional issues, runtime blockers, and concrete repro evidence for the tested flows.
+  - kind: review_notes
+    title: Design Review Notes
+    description: Design-quality findings, hierarchy issues, AI-slop patterns, and recommended front-end improvements.
+execution_policy:
+  profile_id: gstack_web_quality_board
+  summary: Dual-lens web quality review
+  description: Keep code untouched while combining functional QA evidence with a design-quality audit.
+  tags:
+    - evidence_first
+    - review_gates
+    - no_slop
+  notes:
+    - Prefer concrete repro steps and screenshot-worthy evidence over generic opinions.
+    - Separate runtime blockers from aesthetic/design issues.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Gstack Team: Web Quality Board"
+description: Branch a web QA brief into gstack's report-only QA and design-review roles, then merge the findings.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 60
+  maxParallel: 2
+  permissionMode: edit
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the repo path or URL, startup/access notes, must-cover flows, auth details, and exclusions.
+  - id: qa-1
+    type: skill
+    position:
+      x: 340
+      y: 120
+    config:
+      skillRef: gstack/qa-only
+      permissionMode: edit
+      prompt: |-
+        Treat the input as the testing brief for a report-only QA pass.
+
+        Focus on:
+        - functional breakage and regressions
+        - console/runtime/network issues
+        - blocked or misleading flows
+        - concrete repro steps and evidence
+
+        Do not modify product source code.
+  - id: design-1
+    type: skill
+    position:
+      x: 340
+      y: 320
+    config:
+      skillRef: gstack/plan-design-review
+      permissionMode: plan
+      prompt: |-
+        Treat the same input as a design audit target.
+
+        Focus on the most important user journeys or entry screens available from the brief.
+        Return a design-review report with:
+        - overall design signal
+        - hierarchy and layout issues
+        - AI-slop tells or generic patterns
+        - the most leverageful front-end fixes
+
+        Do not modify source code.
+  - id: merger-1
+    type: merger
+    position:
+      x: 780
+      y: 220
+    config:
+      strategy: summarize
+      prompt: |-
+        Merge the QA report and the design-review report into one web quality brief.
+
+        Structure it as:
+        - Executive Summary
+        - Functional and Runtime Issues
+        - Design and UX Issues
+        - Repeated Patterns Across Both Audits
+        - Recommended Fix Order
+
+        Keep the distinctions clear: runtime and flow defects are not the same as design-quality problems.
+  - id: output-1
+    type: output
+    position:
+      x: 1160
+      y: 220
+    config:
+      title: Web Quality Brief
+      format: markdown
+edges:
+  - id: e-input-qa
+    source: input-1
+    target: qa-1
+    type: default
+  - id: e-input-design
+    source: input-1
+    target: design-1
+    type: default
+  - id: e-qa-merger
+    source: qa-1
+    target: merger-1
+    type: default
+  - id: e-design-merger
+    source: design-1
+    target: merger-1
+    type: default
+  - id: e-merger-output
+    source: merger-1
+    target: output-1
+    type: default

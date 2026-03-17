@@ -1,0 +1,120 @@
+id: gstack-release-room
+stage: operations
+emoji: "\U0001F6A2"
+headline: Refresh docs, pause for approval, then hand the branch to ship
+how: Updates release-facing docs from the current branch, requires a human ship decision, and then runs gstack's ship workflow with that approved context
+input: Release context, target branch or PR framing, docs to refresh, and anything the ship operator must know
+output: Release-room summary covering docs updated, release context approved, and ship outcome
+use_when: You want a final operator flow that makes docs current before invoking a real ship step.
+steps:
+  - Update release-facing docs to match the branch
+  - Pause for a human ship decision with editable release context
+  - Run the ship workflow using the approved context
+pack:
+  id: gstack-team
+  label: Gstack Team
+  journey_stage: operate
+credits:
+  - label: gstack
+    href: https://github.com/garrytan/gstack
+    note: Built around Garry Tan's gstack skill pack.
+contract_out:
+  - kind: decision_record
+    title: Release Decision Record
+    description: The approved release context and the resulting ship outcome for the current branch.
+execution_policy:
+  profile_id: gstack_release_room
+  summary: Human-approved release execution
+  description: Make the docs match reality, pause for a deliberate ship decision, and only then execute the release workflow.
+  tags:
+    - publish_gate
+    - human_gate_required
+    - review_gates
+  notes:
+    - The approval step is the deliberate go or no-go point.
+    - Prefer explicit blockers over optimistic hand-waving.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Gstack Team: Release Room"
+description: Update docs, require human approval, then run gstack ship with the approved release context.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 60
+  permissionMode: edit
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Describe the release, target branch or PR framing, docs that likely changed, and anything ship must include or avoid.
+  - id: docs-1
+    type: skill
+    position:
+      x: 340
+      y: 220
+    config:
+      skillRef: gstack/document-release
+      permissionMode: edit
+      prompt: |-
+        Update release-facing docs so they match the current branch and the supplied release context.
+
+        Prioritize:
+        - README
+        - ARCHITECTURE
+        - CONTRIBUTING
+        - any obviously stale docs referenced by the changed surface
+
+        Keep the docs concise, accurate, and repo-native.
+  - id: approval-1
+    type: approval
+    position:
+      x: 720
+      y: 220
+    config:
+      message: Review the doc updates and release context before handing this branch to ship.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
+  - id: ship-1
+    type: skill
+    position:
+      x: 1100
+      y: 220
+    config:
+      skillRef: gstack/ship
+      permissionMode: edit
+      prompt: |-
+        Use the approved release context to ship the current branch.
+
+        Run the release workflow, keep a concise operator log, and surface blockers explicitly instead of guessing.
+  - id: output-1
+    type: output
+    position:
+      x: 1480
+      y: 220
+    config:
+      title: Release Room Summary
+      format: markdown
+edges:
+  - id: e-input-docs
+    source: input-1
+    target: docs-1
+    type: default
+  - id: e-docs-approval
+    source: docs-1
+    target: approval-1
+    type: default
+  - id: e-approval-ship
+    source: approval-1
+    target: ship-1
+    type: default
+  - id: e-ship-output
+    source: ship-1
+    target: output-1
+    type: default

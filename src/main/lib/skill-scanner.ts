@@ -91,6 +91,20 @@ interface PluginManifest {
   skills?: string
 }
 
+function getProcessResourcesPath(): string | undefined {
+  return (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+}
+
+function builtinGstackRoots(): string[] {
+  const envOverride = normalizeString(process.env.C8C_BUILTIN_GSTACK_ROOT)
+  if (envOverride) return [resolve(envOverride)]
+  const resourcesPath = getProcessResourcesPath()
+  return [
+    resolve(process.cwd(), "resources", "skills", "gstack"),
+    resolve(resourcesPath || "", "skills", "gstack"),
+  ].filter((value): value is string => Boolean(value))
+}
+
 async function scanDirectory(
   baseDir: string,
   type: DiscoveredSkill["type"],
@@ -163,11 +177,13 @@ async function scanCodexSkillDirs(
   options: {
     defaultCategory?: string
     extraFields?: SkillScannerExtraFields
+    exclude?: string[]
   } = {},
 ): Promise<DiscoveredSkill[]> {
   const results: DiscoveredSkill[] = []
   const defaultCategory = options.defaultCategory || "codex"
   const extraFields = options.extraFields || {}
+  const exclude = new Set(options.exclude || [])
 
   async function walk(dir: string, category = ""): Promise<void> {
     let entries
@@ -186,6 +202,7 @@ async function scanCodexSkillDirs(
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
+      if (exclude.has(entry.name)) continue
       const skillDir = join(dir, entry.name)
       const skillFile = join(skillDir, "SKILL.md")
 
@@ -225,6 +242,28 @@ async function scanCodexSkillDirs(
   return results
 }
 
+async function scanBuiltinSkills(): Promise<DiscoveredSkill[]> {
+  const all: DiscoveredSkill[] = []
+  const seenRoots = new Set<string>()
+
+  for (const rootPath of builtinGstackRoots()) {
+    if (!rootPath || seenRoots.has(rootPath)) continue
+    seenRoots.add(rootPath)
+    if (!(await exists(rootPath))) continue
+
+    const skills = await scanCodexSkillDirs(rootPath, "library", {
+      defaultCategory: "gstack",
+      extraFields: {
+        library: "gstack",
+      },
+      exclude: [".git", ".github", "node_modules"],
+    })
+    all.push(...skills)
+  }
+
+  return all
+}
+
 export async function scanSkills(projectPath: string): Promise<DiscoveredSkill[]> {
   const all: DiscoveredSkill[] = []
   const claudeDir = join(projectPath, ".claude")
@@ -241,7 +280,13 @@ export async function scanSkills(projectPath: string): Promise<DiscoveredSkill[]
 }
 
 export async function scanUserSkills(): Promise<DiscoveredSkill[]> {
-  const home = process.env.HOME || process.env.USERPROFILE || ""
+  const home = normalizeString(process.env.HOME) || normalizeString(process.env.USERPROFILE)
+  if (!home) {
+    logWarn("skill-scanner", "user_home_missing", {
+      cwd: process.cwd(),
+    })
+    return []
+  }
   const claudeDir = join(home, ".claude")
   const codexDir = join(home, ".codex", "skills")
   const all: DiscoveredSkill[] = []
@@ -335,11 +380,12 @@ export function mergeDiscoveredSkills(skillGroups: DiscoveredSkill[][]): Discove
 }
 
 export async function scanAllSkills(projectPath: string): Promise<DiscoveredSkill[]> {
-  const [projectSkills, userSkills, pluginSkills] = await Promise.all([
+  const [projectSkills, userSkills, builtinSkills, pluginSkills] = await Promise.all([
     scanSkills(projectPath),
     scanUserSkills(),
+    scanBuiltinSkills(),
     scanPluginSkills(),
   ])
 
-  return mergeDiscoveredSkills([projectSkills, userSkills, pluginSkills])
+  return mergeDiscoveredSkills([projectSkills, userSkills, builtinSkills, pluginSkills])
 }

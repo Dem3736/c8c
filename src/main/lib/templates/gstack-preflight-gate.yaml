@@ -1,0 +1,160 @@
+id: gstack-preflight-gate
+stage: code
+emoji: "\U0001F6A7"
+headline: Review a branch, verify it with QA, and hold a human release gate
+how: Runs gstack review on the current branch, verifies the resulting branch with report-only QA, merges both signals, and pauses for explicit approval
+input: Repo and branch context, local or staging URL, auth or setup notes, and any risky areas that must be checked
+output: Approved preflight brief with code-review findings, QA evidence, and release recommendation
+use_when: You have a branch that feels close to ready and want one gated preflight pass before shipping.
+steps:
+  - Run pre-landing branch review and preserve unresolved asks
+  - Verify the reviewed branch with report-only QA
+  - Merge the review and QA signals into a ship recommendation
+  - Pause for explicit human approval before this branch is treated as release-ready
+pack:
+  id: gstack-team
+  label: Gstack Team
+  journey_stage: verify
+  recommended_next:
+    - gstack-release-room
+credits:
+  - label: gstack
+    href: https://github.com/garrytan/gstack
+    note: Built around Garry Tan's gstack skill pack.
+contract_out:
+  - kind: validation_contract
+    title: Preflight Gate
+    description: The combined code-review and QA decision logic that determines whether the branch is ready to ship.
+  - kind: verification_report
+    title: Preflight Verification Report
+    description: Review findings, QA evidence, unresolved risks, and the human decision recorded at the gate.
+execution_policy:
+  profile_id: gstack_preflight_gate
+  summary: Review-gated branch verification
+  description: Review the branch, verify it in the product surface, and require an explicit human release decision.
+  tags:
+    - review_gates
+    - critique_loops
+    - human_gate_required
+    - isolated_workspace
+  notes:
+    - Preserve any explicit URL, auth, or startup context so QA can reuse it after code review.
+    - Prefer concrete blockers and diffs over generic readiness language.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Gstack Team: Preflight Gate"
+description: Review the branch, run report-only QA on the resulting state, and require human approval before calling it release-ready.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 90
+  permissionMode: edit
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: text
+      required: true
+      placeholder: Describe the branch, risky files or flows, runtime URL, auth/setup notes, and anything that must be checked before release.
+  - id: review-1
+    type: skill
+    position:
+      x: 320
+      y: 220
+    config:
+      skillRef: gstack/review
+      permissionMode: edit
+      prompt: |-
+        Use the current branch diff plus the supplied context to run a pre-landing review.
+
+        At the top of the output, preserve any explicit runtime context from the original brief:
+        - URLs
+        - startup commands
+        - auth or seeded-data notes
+        - must-cover journeys
+
+        Then perform the review, auto-fixing only clearly safe items, and keep unresolved asks visible.
+  - id: qa-1
+    type: skill
+    position:
+      x: 700
+      y: 220
+    config:
+      skillRef: gstack/qa-only
+      permissionMode: edit
+      prompt: |-
+        Using the current branch after the review step, run report-only QA.
+
+        Reuse any URLs, auth notes, startup commands, or must-cover journeys preserved in the upstream review summary.
+        Focus on:
+        - ship blockers
+        - regressions
+        - broken flows
+        - concrete repro steps and evidence
+
+        Do not modify source code.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1080
+      y: 220
+    config:
+      strategy: summarize
+      prompt: |-
+        Merge the code-review summary and the QA report into one preflight brief.
+
+        Structure it as:
+        - Executive Summary
+        - Code Review Findings
+        - QA Findings
+        - Remaining Risks and Unknowns
+        - Recommended Ship Decision
+
+        Call out whether a risk is a code issue, a runtime issue, an environment blocker, or a human decision.
+  - id: approval-1
+    type: approval
+    position:
+      x: 1460
+      y: 220
+    config:
+      message: Review this preflight brief before the branch is treated as release-ready.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 180
+      timeout_action: auto_reject
+  - id: output-1
+    type: output
+    position:
+      x: 1820
+      y: 220
+    config:
+      title: Approved Preflight Brief
+      format: markdown
+edges:
+  - id: e-input-review
+    source: input-1
+    target: review-1
+    type: default
+  - id: e-review-qa
+    source: review-1
+    target: qa-1
+    type: default
+  - id: e-review-merger
+    source: review-1
+    target: merger-1
+    type: default
+  - id: e-qa-merger
+    source: qa-1
+    target: merger-1
+    type: default
+  - id: e-merger-approval
+    source: merger-1
+    target: approval-1
+    type: default
+  - id: e-approval-output
+    source: approval-1
+    target: output-1
+    type: default
