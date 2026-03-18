@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn"
 
 const EDGE_STYLES: Record<string, { stroke: string; strokeWidth: string; strokeDasharray?: string }> = {
   default: { stroke: "hsl(var(--hairline))", strokeWidth: "var(--edge-stroke-width-default)" },
-  pass: { stroke: "hsl(var(--status-success))", strokeWidth: "var(--edge-stroke-width-active)", strokeDasharray: "10 5" },
+  pass: { stroke: "hsl(var(--status-success))", strokeWidth: "var(--edge-stroke-width-active)" },
   fail: { stroke: "hsl(var(--status-danger))", strokeWidth: "var(--edge-stroke-width-active)", strokeDasharray: "6 4" },
 }
 
@@ -53,6 +53,21 @@ function WorkflowEdgeComponent({
 
   return (
     <>
+      {selected && (
+        <BaseEdge
+          id={`${id}-halo`}
+          path={edgePath}
+          interactionWidth={0}
+          className="workflow-edge-selected-halo"
+          style={{
+            stroke: style.stroke,
+            strokeWidth: "var(--edge-halo-width, 8)",
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -60,18 +75,35 @@ function WorkflowEdgeComponent({
         className={cn(
           "workflow-edge-path",
           edgeType === "fail" && isActive && "workflow-edge-fail",
-          edgeType === "pass" && isActive && "workflow-edge-flow",
+          !(selected || isActive) && "workflow-edge-idle",
         )}
         style={{
           stroke: style.stroke,
           strokeWidth: selected ? "var(--edge-stroke-width-active)" : style.strokeWidth,
           strokeDasharray: style.strokeDasharray,
-          opacity: selected ? 1 : "var(--edge-opacity-idle)",
           strokeLinecap: "round",
           strokeLinejoin: "round",
-          filter: selected || isActive ? `drop-shadow(0 0 3px ${style.stroke})` : undefined,
+          filter: isActive
+            ? `drop-shadow(0 0 6px ${style.stroke})`
+            : selected
+              ? `drop-shadow(0 0 3px ${style.stroke})`
+              : undefined,
         }}
       />
+      {isActive && edgeType === "pass" && (
+        <BaseEdge
+          id={`${id}-photon`}
+          path={edgePath}
+          interactionWidth={0}
+          className="workflow-edge-photon"
+          style={{
+            stroke: "hsl(0 0% 100% / 0.76)",
+            strokeWidth: "var(--edge-stroke-width-active)",
+            strokeLinecap: "round",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {showLabel && (
         <EdgeLabelRenderer>
           <div
@@ -81,8 +113,9 @@ function WorkflowEdgeComponent({
               pointerEvents: "none",
             }}
             className={cn(
-              "ui-edge-label ui-status-badge section-kicker ui-transition-colors ui-motion-fast",
+              "ui-edge-label ui-status-badge ui-meta-label ui-transition-colors ui-motion-fast",
               labelClass,
+              selected && "is-selected",
             )}
           >
             {edgeType}

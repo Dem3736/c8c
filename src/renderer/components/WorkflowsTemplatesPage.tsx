@@ -3,7 +3,6 @@ import { useAtom, useSetAtom } from "jotai"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ResultModeCard } from "@/components/ui/result-mode-card"
 import {
   Dialog,
   CanvasDialogBody,
@@ -29,6 +28,7 @@ import {
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   setWorkflowTemplateContextForKeyAtom,
+  templateLibraryContextAtom,
   workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
@@ -38,6 +38,8 @@ import {
 import { runStatusAtom } from "@/features/execution"
 import { toast } from "sonner"
 import {
+  FilePlus2,
+  Loader2,
   Sparkles,
   X,
 } from "lucide-react"
@@ -45,9 +47,16 @@ import { PageHeader, PageShell } from "@/components/ui/page-shell"
 import { CollectionToolbar } from "@/components/ui/collection-toolbar"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
-import { buildTemplateSearchText, templateMatchesLibraryFilter, type TemplateLibraryFilterKey } from "@/lib/template-filters"
+import {
+  buildTemplateSearchText,
+  templateMatchesCategory,
+  templateMatchesLibraryFilter,
+  type TemplateCategoryKey,
+  type TemplateLibraryFilterKey,
+} from "@/lib/template-filters"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
+import { useBlankWorkflowCreation } from "@/hooks/useBlankWorkflowCreation"
 import { STAGE_ORDER, STAGE_META } from "@/lib/template-stages"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 import {
@@ -57,14 +66,14 @@ import {
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateUseWhen,
 } from "@/lib/workflow-entry"
+import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
 import {
-  filterTemplatesForResultMode,
-  getResultMode,
-  RESULT_MODES,
-  type WorkflowResultMode,
-} from "@/lib/result-modes"
+  resolveTemplateLibraryProjectPath,
+  templateLibraryRequiresProjectCreation,
+} from "@/lib/template-library-context"
 import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
+import type { ResultModeId } from "@shared/types"
 
 function TemplateCard({
   template,
@@ -95,7 +104,7 @@ function TemplateCard({
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <Badge variant="outline" size="compact">
-            {STAGE_META[template.stage].label}
+            {STAGE_META[template.stage].shortLabel}
           </Badge>
           {(sourceKind === "plugin" || sourceKind === "user") && (
             <Badge variant="secondary" size="compact">
@@ -106,6 +115,98 @@ function TemplateCard({
       </div>
     </Button>
   )
+}
+
+function normalizeTemplateForWorkflowUse(template: WorkflowTemplate): WorkflowTemplate {
+  const name = getWorkflowTemplateDisplayName(template)
+  if (name === template.name) return template
+  return { ...template, name }
+}
+
+function TemplateCategoryCard({
+  label,
+  summary,
+  count,
+  selected,
+  onSelect,
+}: {
+  label: string
+  summary: string
+  count: number
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="bare"
+      onClick={onSelect}
+      className={`ui-interactive-card-subtle h-full w-full !flex-col !items-start !justify-start rounded-xl px-4 py-4 text-left !whitespace-normal ${
+        selected ? "surface-inset-card ring-2 ring-foreground/15 shadow-inset-highlight" : "surface-panel"
+      }`}
+      aria-pressed={selected}
+    >
+      <div className="flex w-full items-start justify-between gap-3">
+        <div>
+          <h3 className="text-body-md font-semibold text-foreground">{label}</h3>
+          <p className="mt-1 ui-meta-text text-muted-foreground">{count} shown</p>
+        </div>
+        {selected ? (
+          <Badge variant="secondary" size="compact">
+            Selected
+          </Badge>
+        ) : null}
+      </div>
+      <p className="mt-3 text-body-sm text-muted-foreground">{summary}</p>
+    </Button>
+  )
+}
+
+const TEMPLATE_CATEGORY_ORDER: TemplateCategoryKey[] = [
+  "all",
+  "product",
+  "marketing",
+  "content",
+]
+
+const TEMPLATE_CATEGORY_META: Record<TemplateCategoryKey, {
+  label: string
+  summary: string
+  detail: string
+}> = {
+  all: {
+    label: "All templates",
+    summary: "See the whole library first, then narrow it only if that helps.",
+    detail: "Product, Marketing, and Content overlap on purpose, so edge-case workflows stay discoverable.",
+  },
+  product: {
+    label: "Product",
+    summary: "Development, research, design, QA, and ship work.",
+    detail: "Use this for repo mapping, specs, implementation planning, UI polish, and software audits.",
+  },
+  marketing: {
+    label: "Marketing",
+    summary: "Research, positioning, trend, SEO, funnel, and audit workflows.",
+    detail: "This includes segment work, messaging, GTM research, landing-page work, and other growth loops.",
+  },
+  content: {
+    label: "Content",
+    summary: "Texts, publishing systems, course-shaped flows, and launch assets.",
+    detail: "Use this for post pipelines, copy cleanup, editorial systems, curriculum work, and other publish-ready outputs.",
+  },
+}
+
+function deriveCreateModeId(
+  activeCategory: TemplateCategoryKey,
+  fallbackModeId: ResultModeId,
+  selectedTemplate: WorkflowTemplate | null,
+): ResultModeId {
+  if (selectedTemplate?.pack?.id === "courses-factory-alpha") return "courses"
+  if (activeCategory === "product") return "development"
+  if (activeCategory === "marketing") return "content"
+  if (activeCategory === "content") return "courses"
+  return fallbackModeId
 }
 
 function TemplateDetailPanel({
@@ -131,12 +232,12 @@ function TemplateDetailPanel({
     <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
       <header className="border-b border-border px-4 py-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-control-lg w-control-lg shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 text-lg">
+          <div className="surface-inset-card flex h-control-lg w-control-lg shrink-0 items-center justify-center p-0 text-lg">
             <span aria-hidden>{template.emoji}</span>
           </div>
 
           <div className="min-w-0 flex-1">
-            <h3 className="text-body-md font-semibold text-foreground">{template.name}</h3>
+            <h3 className="text-body-md font-semibold text-foreground">{getWorkflowTemplateDisplayName(template)}</h3>
             <p className="ui-meta-text mt-1 text-muted-foreground">{template.headline}</p>
             {template.description && (
               <p className="mt-2 text-body-sm text-muted-foreground">
@@ -151,15 +252,14 @@ function TemplateDetailPanel({
             </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={onClose}
-            className="shrink-0"
+            className="ui-icon-button shrink-0"
             aria-label="Close template details"
           >
             <X size={16} />
-          </Button>
+          </button>
         </div>
       </header>
 
@@ -197,7 +297,7 @@ function TemplateDetailPanel({
             <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
           </div>
 
-          <details className="rounded-lg border border-hairline bg-surface-2/50 px-3 py-3">
+          <details className="rounded-lg surface-soft px-3 py-3">
             <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">
               See the flow structure
             </summary>
@@ -233,9 +333,9 @@ export function WorkflowsTemplatesPage() {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState("")
+  const [activeCategory, setActiveCategory] = useState<TemplateCategoryKey>("all")
   const [activeFilter, setActiveFilter] = useState<TemplateLibraryFilterKey>("all")
-  const [selectedResultModeId, setSelectedResultModeId] = useAtom(selectedResultModeIdAtom)
-  const [showFullLibrary, setShowFullLibrary] = useState(false)
+  const [selectedResultModeId] = useAtom(selectedResultModeIdAtom)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
@@ -243,6 +343,7 @@ export function WorkflowsTemplatesPage() {
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [templateLibraryContext, setTemplateLibraryContext] = useAtom(templateLibraryContextAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
@@ -250,22 +351,26 @@ export function WorkflowsTemplatesPage() {
   const [, setMainView] = useAtom(mainViewAtom)
   const [runStatus] = useAtom(runStatusAtom)
   const [targetProjectPath, setTargetProjectPath] = useState<string | null>(selectedProject)
-  const { unsavedChangesDialog } = useUnsavedChangesDialog()
+  const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const { openWorkflowCreate } = useWorkflowCreateNavigation()
+  const { createBlankWorkflow, creatingBlankWorkflow } = useBlankWorkflowCreation({ confirmDiscard })
   const replaceCurrentBlockedReason = getReplaceCurrentWorkflowBlockedReason(runStatus)
-  const selectedResultMode = useMemo(
-    () => getResultMode(selectedResultModeId),
-    [selectedResultModeId],
+  const preferredProjectPath = useMemo(
+    () => resolveTemplateLibraryProjectPath(projects, selectedProject, templateLibraryContext),
+    [projects, selectedProject, templateLibraryContext],
   )
+  const createInProjectOnly = templateLibraryRequiresProjectCreation(templateLibraryContext)
+
+  useEffect(() => {
+    return () => {
+      setTemplateLibraryContext(null)
+    }
+  }, [setTemplateLibraryContext])
 
   useEffect(() => {
     if (!pendingTemplate) return
-    if (selectedProject && projects.includes(selectedProject)) {
-      setTargetProjectPath(selectedProject)
-      return
-    }
-    setTargetProjectPath(projects[0] ?? null)
-  }, [pendingTemplate, projects, selectedProject])
+    setTargetProjectPath(preferredProjectPath)
+  }, [pendingTemplate, preferredProjectPath])
 
   const loadTemplates = useCallback(async () => {
     setLoading(true)
@@ -289,40 +394,72 @@ export function WorkflowsTemplatesPage() {
     return templates.filter((template) => buildTemplateSearchText(template, getTemplateSourceLabel(template)).includes(q))
   }, [query, templates])
 
-  const modeFilteredTemplates = useMemo(() => (
-    showFullLibrary
-      ? searchFilteredTemplates
-      : filterTemplatesForResultMode(searchFilteredTemplates, selectedResultModeId)
-  ), [searchFilteredTemplates, selectedResultModeId, showFullLibrary])
+  const categoryFilteredTemplates = useMemo(() => (
+    searchFilteredTemplates.filter((template) => templateMatchesCategory(template, activeCategory))
+  ), [activeCategory, searchFilteredTemplates])
+
+  const availableStageFilters = useMemo(() => (
+    STAGE_ORDER
+      .map((stage) => ({
+        stage,
+        count: categoryFilteredTemplates.filter((template) => template.stage === stage).length,
+      }))
+      .filter((entry) => entry.count > 0)
+  ), [categoryFilteredTemplates])
 
   const filteredTemplates = useMemo(() => {
-    return modeFilteredTemplates.filter((template) => templateMatchesLibraryFilter(template, activeFilter))
-  }, [activeFilter, modeFilteredTemplates])
+    return categoryFilteredTemplates.filter((template) => templateMatchesLibraryFilter(template, activeFilter))
+  }, [activeFilter, categoryFilteredTemplates])
 
   const selectedTemplate = useMemo(
     () => filteredTemplates.find((t) => t.id === selectedTemplateId) ?? null,
     [filteredTemplates, selectedTemplateId],
   )
 
-  const hasActiveFilters = activeFilter !== "all" || query.trim().length > 0
+  const categoryCounts = useMemo(() => (
+    Object.fromEntries(
+      TEMPLATE_CATEGORY_ORDER.map((category) => [
+        category,
+        searchFilteredTemplates.filter((template) => templateMatchesCategory(template, category)).length,
+      ]),
+    ) as Record<TemplateCategoryKey, number>
+  ), [searchFilteredTemplates])
+
+  const selectedCategoryMeta = TEMPLATE_CATEGORY_META[activeCategory]
+  const createModeId = useMemo(
+    () => deriveCreateModeId(activeCategory, selectedResultModeId, selectedTemplate),
+    [activeCategory, selectedResultModeId, selectedTemplate],
+  )
+  const hasActiveFilters = activeCategory !== "all" || activeFilter !== "all" || query.trim().length > 0
 
   useEffect(() => {
-    if (selectedTemplateId && filteredTemplates.some((template) => template.id === selectedTemplateId)) return
-    setSelectedTemplateId(filteredTemplates[0]?.id ?? null)
+    if (selectedTemplateId === null) return
+    if (filteredTemplates.some((template) => template.id === selectedTemplateId)) return
+    setSelectedTemplateId(null)
   }, [filteredTemplates, selectedTemplateId])
+
+  useEffect(() => {
+    if (activeFilter === "all") return
+    if (availableStageFilters.some((entry) => entry.stage === activeFilter)) return
+    setActiveFilter("all")
+  }, [activeFilter, availableStageFilters])
 
   const clearFilters = () => {
     setQuery("")
-    setActiveFilter("all")
-  }
-
-  const handleSelectResultMode = (mode: WorkflowResultMode) => {
-    setSelectedResultModeId(mode.id)
-    setShowFullLibrary(false)
+    setActiveCategory("all")
     setActiveFilter("all")
   }
 
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
+    if (createInProjectOnly) {
+      if (!preferredProjectPath) {
+        toast.error("Open or select a project before using a template")
+        return
+      }
+      void doCreateFromTemplate(template, preferredProjectPath)
+      return
+    }
+
     const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
     const replacingCurrent = JSON.stringify(workflow) !== JSON.stringify(nextWorkflow)
     if (replacingCurrent) {
@@ -341,12 +478,13 @@ export function WorkflowsTemplatesPage() {
     }
 
     const previousWorkflow = structuredClone(workflow)
-    const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
+    const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
+    const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
     const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
     setWorkflow(nextWorkflow)
     setWorkflowEntryState(buildTemplateWorkflowEntryState({
       template: {
-        ...template,
+        ...templateForWorkflowUse,
         workflow: nextWorkflow,
       },
       workflowPath: selectedWorkflowPath,
@@ -355,7 +493,7 @@ export function WorkflowsTemplatesPage() {
       key: workflowKey,
       context: buildTemplateRunContext({
         template: {
-          ...template,
+          ...templateForWorkflowUse,
           workflow: nextWorkflow,
         },
         workflowPath: selectedWorkflowPath,
@@ -363,7 +501,7 @@ export function WorkflowsTemplatesPage() {
     })
     setMainView("thread")
     setPendingTemplate(null)
-    toast.success(`"${template.name}" is ready to run`, {
+    toast.success(`"${templateForWorkflowUse.name}" is ready to run`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -376,9 +514,10 @@ export function WorkflowsTemplatesPage() {
   }
 
   const doCreateFromTemplate = async (template: WorkflowTemplate, projectPath: string) => {
-    const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
+    const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
+    const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
     try {
-      const filePath = await window.api.createWorkflow(projectPath, template.name, nextWorkflow)
+      const filePath = await window.api.createWorkflow(projectPath, templateForWorkflowUse.name, nextWorkflow)
       const loadedWorkflow = await window.api.loadWorkflow(filePath)
       const refreshed = await window.api.listProjectWorkflows(projectPath)
       await window.api.recordProjectTemplateUsage(projectPath, template.id).catch(() => undefined)
@@ -389,7 +528,7 @@ export function WorkflowsTemplatesPage() {
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
       setWorkflowEntryState(buildTemplateWorkflowEntryState({
         template: {
-          ...template,
+          ...templateForWorkflowUse,
           workflow: loadedWorkflow,
         },
         workflowPath: filePath,
@@ -398,7 +537,7 @@ export function WorkflowsTemplatesPage() {
         key: toWorkflowExecutionKey(filePath),
         context: buildTemplateRunContext({
           template: {
-            ...template,
+            ...templateForWorkflowUse,
             workflow: loadedWorkflow,
           },
           workflowPath: filePath,
@@ -406,7 +545,7 @@ export function WorkflowsTemplatesPage() {
       })
       setMainView("thread")
       setPendingTemplate(null)
-      toast.success(`"${loadedWorkflow.name || template.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
+      toast.success(`"${loadedWorkflow.name || templateForWorkflowUse.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
     } catch (error) {
       toast.error(`Failed to create workflow: ${String(error)}`)
     }
@@ -419,62 +558,85 @@ export function WorkflowsTemplatesPage() {
           key={template.id}
           template={template}
           isSelected={selectedTemplateId === template.id}
-          onSelect={(t) => setSelectedTemplateId(t.id)}
+          onSelect={(t) => setSelectedTemplateId((current) => (current === t.id ? null : t.id))}
         />
       ))}
     </div>
   )
 
+  const headerActions = (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => void createBlankWorkflow({ projectPath: preferredProjectPath })}
+        disabled={creatingBlankWorkflow}
+      >
+        {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
+        Blank workflow
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => openWorkflowCreate({
+          modeId: createModeId,
+          projectPath: preferredProjectPath,
+          locked: createInProjectOnly,
+        })}
+      >
+        <Sparkles size={14} />
+        Create with agent
+      </Button>
+    </>
+  )
+
   return (
     <PageShell>
       <PageHeader
-        title="Modes and templates"
-        subtitle="Choose the kind of result you want first, then drop into templates if you want a more specific starting point."
+        title="Templates"
+        subtitle="Browse workflow templates for a concrete starting point, or start from blank if you want to build the flow yourself."
+        actions={headerActions}
       />
 
-      <section aria-label="Choose a result mode" className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="space-y-1">
-            <p className="section-kicker">Mode-first entry</p>
-            <h2 className="text-title-lg font-semibold text-foreground">Start from the result you want</h2>
-            <p className="text-body-sm text-muted-foreground">
-              Under the hood these modes map to packs and templates, but the default path should feel like choosing a job to be done.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => openWorkflowCreate({ modeId: selectedResultModeId })}
-            className="shrink-0"
-          >
-            <Sparkles size={14} />
-            Start in {selectedResultMode.label}
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant={showFullLibrary ? "secondary" : "outline"}
-            onClick={() => setShowFullLibrary((prev) => !prev)}
-          >
-            {showFullLibrary ? `Back to ${selectedResultMode.label}` : "Show full library"}
-          </Button>
-          <p className="ui-meta-text text-muted-foreground">
-            {showFullLibrary
-              ? "Advanced path: browsing every template, not just the current result mode."
-              : `Primary path: browsing templates matched to ${selectedResultMode.label}.`}
+      <section aria-label="Template categories" className="overflow-hidden rounded-xl surface-elevated">
+        <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
+          <p className="section-kicker">Template categories</p>
+          <h2 className="mt-1 ui-title-text text-foreground">Browse by category</h2>
+          <p className="mt-2 text-body-sm text-muted-foreground">
+            Categories overlap on purpose. Start broad, then refine by workflow stage only if it helps.
           </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {TEMPLATE_CATEGORY_ORDER.map((category) => {
+              const meta = TEMPLATE_CATEGORY_META[category]
+              return (
+                <TemplateCategoryCard
+                  key={category}
+                  label={meta.label}
+                  summary={meta.summary}
+                  count={categoryCounts[category]}
+                  selected={activeCategory === category}
+                  onSelect={() => setActiveCategory(category)}
+                />
+              )
+            })}
+          </div>
         </div>
-        <div className="grid gap-3 lg:grid-cols-3">
-          {RESULT_MODES.map((mode) => (
-            <ResultModeCard
-              key={mode.id}
-              mode={mode}
-              selected={selectedResultMode.id === mode.id}
-              onSelect={handleSelectResultMode}
-              compact
-            />
-          ))}
+        <div className="px-4 py-4 sm:px-5">
+          <div className="surface-inset-card flex flex-col gap-3 px-3 py-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <p className="ui-meta-label text-muted-foreground">{selectedCategoryMeta.label}</p>
+              <p className="text-body-sm text-foreground">{selectedCategoryMeta.summary}</p>
+              <p className="text-body-sm text-muted-foreground">{selectedCategoryMeta.detail}</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {availableStageFilters.map((entry) => (
+                <Badge key={entry.stage} variant="outline" size="compact">
+                  {STAGE_META[entry.stage].shortLabel}
+                </Badge>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -484,24 +646,13 @@ export function WorkflowsTemplatesPage() {
         onQueryChange={setQuery}
         searchPlaceholder="Search templates"
         searchAriaLabel="Search templates"
-        summary={showFullLibrary
-          ? `${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`
-          : `${filteredTemplates.length} ${selectedResultMode.label.toLowerCase()} template${filteredTemplates.length === 1 ? "" : "s"}`}
-        action={(
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => openWorkflowCreate({ modeId: selectedResultModeId })}
-            className="shrink-0"
-          >
-            <Sparkles size={14} />
-            Create in {selectedResultMode.label}
-          </Button>
-        )}
+        summary={`${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`}
         filters={(
           <>
             <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">
-              {showFullLibrary ? "Refine the full template library" : `Refine ${selectedResultMode.label.toLowerCase()} templates`}
+              {activeCategory === "all"
+                ? "Refine by workflow stage"
+                : `Refine ${selectedCategoryMeta.label.toLowerCase()} templates`}
             </span>
             <Button
               variant={activeFilter === "all" ? "secondary" : "outline"}
@@ -509,17 +660,9 @@ export function WorkflowsTemplatesPage() {
               onClick={() => setActiveFilter("all")}
               aria-pressed={activeFilter === "all"}
             >
-              All
+              All stages
             </Button>
-            <Button
-              variant={activeFilter === "marketing" ? "secondary" : "outline"}
-              size="xs"
-              onClick={() => setActiveFilter("marketing")}
-              aria-pressed={activeFilter === "marketing"}
-            >
-              Marketing
-            </Button>
-            {STAGE_ORDER.map((stage) => (
+            {availableStageFilters.map(({ stage }) => (
               <Button
                 key={stage}
                 variant={activeFilter === stage ? "secondary" : "outline"}
@@ -527,7 +670,7 @@ export function WorkflowsTemplatesPage() {
                 onClick={() => setActiveFilter(stage)}
                 aria-pressed={activeFilter === stage}
               >
-                {STAGE_META[stage].label}
+                {STAGE_META[stage].shortLabel}
               </Button>
             ))}
             {hasActiveFilters && (
@@ -558,9 +701,9 @@ export function WorkflowsTemplatesPage() {
               </div>
             ) : filteredTemplates.length === 0 ? (
               <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
-                {showFullLibrary
-                  ? "No templates match this filter."
-                  : `No ${selectedResultMode.label.toLowerCase()} templates match this filter.`}
+                {activeCategory === "all"
+                  ? "No templates match these filters."
+                  : `No ${selectedCategoryMeta.label.toLowerCase()} templates match these filters.`}
               </div>
             ) : (
               renderTemplateGrid(filteredTemplates)
@@ -584,7 +727,7 @@ export function WorkflowsTemplatesPage() {
           <CanvasDialogHeader>
             <DialogTitle>Use this template</DialogTitle>
             <DialogDescription>
-              &ldquo;{pendingTemplate?.name}&rdquo; is ready to use. Pick whether to open it in the selected project or reuse the current draft.
+              &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready to use. Pick whether to open it in the selected project or reuse the current draft.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody className="space-y-2">

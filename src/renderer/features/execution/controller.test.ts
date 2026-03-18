@@ -99,7 +99,8 @@ function createHarness() {
 describe("WorkflowExecutionController", () => {
   it("buffers workflow events until the started run id is attached", () => {
     const { controller } = createHarness()
-    const workflowKey = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+    const workflowKey = startHandle.workflowKey
 
     controller.processWorkflowEvent({
       type: "node-start",
@@ -109,7 +110,7 @@ describe("WorkflowExecutionController", () => {
 
     expect(controller.getExecutionState(workflowKey).runStatus).toBe("starting")
 
-    controller.finishStartWithRunId("run-1", workflowKey)
+    controller.finishStartWithRunId("run-1", startHandle)
 
     expect(controller.getExecutionState(workflowKey).runId).toBe("run-1")
     expect(controller.getExecutionState(workflowKey).runStatus).toBe("running")
@@ -119,8 +120,9 @@ describe("WorkflowExecutionController", () => {
 
   it("clears approvals and refreshes history when a run completes", async () => {
     const { controller, deps, getApprovalRequests, getPastRuns } = createHarness()
-    const workflowKey = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
-    controller.finishStartWithRunId("run-1", workflowKey)
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+    const workflowKey = startHandle.workflowKey
+    controller.finishStartWithRunId("run-1", startHandle)
 
     controller.processWorkflowEvent({
       type: "approval-requested",
@@ -185,8 +187,9 @@ describe("WorkflowExecutionController", () => {
 
   it("reconciles active run events after the workflow key changes", () => {
     const { controller, deps, getExecutionStates, moveExecutionState } = createHarness()
-    const originalKey = controller.beginExecution(createWorkflow(), "/tmp/original.chain", "/tmp/project")
-    controller.finishStartWithRunId("run-1", originalKey)
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/original.chain", "/tmp/project")
+    const originalKey = startHandle.workflowKey
+    controller.finishStartWithRunId("run-1", startHandle)
 
     const renamedKey = "/tmp/renamed.chain"
     moveExecutionState(originalKey, renamedKey)
@@ -219,8 +222,9 @@ describe("WorkflowExecutionController", () => {
 
   it("drops stale run-key mappings until the current run id is registered", () => {
     const { controller } = createHarness()
-    const workflowKey = controller.beginExecution(createWorkflow(), "/tmp/original.chain", "/tmp/project")
-    controller.finishStartWithRunId("run-1", workflowKey)
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/original.chain", "/tmp/project")
+    const workflowKey = startHandle.workflowKey
+    controller.finishStartWithRunId("run-1", startHandle)
     controller.cancelExecution(workflowKey, "run-1")
 
     ;(controller as unknown as {
@@ -260,5 +264,53 @@ describe("WorkflowExecutionController", () => {
     expect(buffered?.events).toHaveLength(500)
     expect(buffered?.events[0]?.nodeId).toBe("node-50")
     expect(buffered?.events.at(-1)?.nodeId).toBe("node-549")
+  })
+
+  it("rejects late start completion after local cancel before run id attachment", () => {
+    const { controller } = createHarness()
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+
+    controller.cancelExecution(startHandle.workflowKey, null)
+
+    expect(controller.getExecutionState(startHandle.workflowKey).runOutcome).toBe("cancelled")
+    expect(controller.finishStartWithRunId("run-late", startHandle)).toEqual({
+      accepted: false,
+      shouldCancelRun: true,
+    })
+    expect(controller.getExecutionState(startHandle.workflowKey).runStatus).toBe("done")
+    expect(controller.getExecutionState(startHandle.workflowKey).runId).toBeNull()
+  })
+
+  it("ignores stale rollback after a start was locally cancelled", () => {
+    const { controller } = createHarness()
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+
+    controller.cancelExecution(startHandle.workflowKey, null)
+
+    expect(controller.rollbackExecutionStart(startHandle)).toBe(false)
+    expect(controller.getExecutionState(startHandle.workflowKey).runOutcome).toBe("cancelled")
+  })
+
+  it("does not overwrite a settled state when cancel rollback arrives late", () => {
+    const { controller } = createHarness()
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+    controller.finishStartWithRunId("run-1", startHandle)
+
+    controller.updateExecutionForKey(startHandle.workflowKey, (previous) => ({
+      ...previous,
+      runStatus: "cancelling",
+    }))
+
+    controller.processWorkflowEvent({
+      type: "run-done",
+      runId: "run-1",
+      status: "completed",
+      workspace: "/tmp/workspace",
+    })
+
+    controller.rollbackCancellation(startHandle.workflowKey, "running", "run-1")
+
+    expect(controller.getExecutionState(startHandle.workflowKey).runStatus).toBe("done")
+    expect(controller.getExecutionState(startHandle.workflowKey).runOutcome).toBe("completed")
   })
 })

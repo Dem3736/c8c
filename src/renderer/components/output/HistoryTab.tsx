@@ -270,7 +270,7 @@ export function HistoryTab({
           </div>
         )}
 
-        <div className="rounded-lg surface-soft overflow-hidden">
+        <div className="rounded-lg surface-soft overflow-hidden" role="list" aria-label="Past runs">
           {pastRuns.map((run) => {
             const isSelected = selectedHistoryRun?.runId === run.runId
             const canOpenReport = Boolean(run.reportPath)
@@ -283,6 +283,7 @@ export function HistoryTab({
             return (
               <div
                 key={run.runId}
+                role="listitem"
                 className="flex items-center gap-2 border-b border-hairline px-2 py-2 last:border-b-0"
                 onContextMenu={(event) => {
                   event.preventDefault()
@@ -293,7 +294,7 @@ export function HistoryTab({
                 <button
                   type="button"
                   className={cn(
-                    "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left ui-transition-colors ui-motion-fast hover:bg-surface-3/80",
+                    "ui-interactive-card flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left",
                     isSelected && "bg-surface-3/80",
                   )}
                   onClick={() => {
@@ -308,21 +309,16 @@ export function HistoryTab({
                       {formatRunCompletedAt(run, true)} · {formatRunDuration(run)} · {formatRunCost(run)}
                     </div>
                   </div>
-                  <Badge
-                    variant={
-                      run.status === "completed" || run.status === "interrupted" || run.status === "blocked"
-                        ? "outline"
-                        : "destructive"
-                    }
+                  <span
                     className={cn(
-                      "ui-meta-text px-2 py-0 shrink-0",
-                      run.status === "completed" && "text-status-success border-status-success/30 bg-status-success/10",
-                      run.status === "interrupted" && "text-status-warning border-status-warning/30",
-                      run.status === "blocked" && "text-status-warning border-status-warning/30 bg-status-warning/10",
+                      "ui-status-badge ui-meta-text shrink-0",
+                      run.status === "completed" && "ui-status-badge-success",
+                      (run.status === "interrupted" || run.status === "blocked") && "ui-status-badge-warning",
+                      run.status === "failed" && "ui-status-badge-danger",
                     )}
                   >
                     {run.status}
-                  </Badge>
+                  </span>
                 </button>
                 <Button
                   type="button"
@@ -366,19 +362,19 @@ export function HistoryTab({
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2 ui-meta-text">
-              <div className="rounded-md border border-hairline bg-surface-2/60 px-2 py-1.5">
+              <div className="surface-inset-card px-2 py-1.5">
                 <div className="text-muted-foreground">Status</div>
                 <div className="font-medium text-foreground">{selectedHistoryRun.status}</div>
               </div>
-              <div className="rounded-md border border-hairline bg-surface-2/60 px-2 py-1.5">
+              <div className="surface-inset-card px-2 py-1.5">
                 <div className="text-muted-foreground">Duration</div>
                 <div className="font-medium text-foreground">{formatRunDuration(selectedHistoryRun)}</div>
               </div>
-              <div className="rounded-md border border-hairline bg-surface-2/60 px-2 py-1.5">
+              <div className="surface-inset-card px-2 py-1.5">
                 <div className="text-muted-foreground">Total cost</div>
                 <div className="font-medium text-foreground">{formatRunCost(selectedHistoryRun)}</div>
               </div>
-              <div className="rounded-md border border-hairline bg-surface-2/60 px-2 py-1.5">
+              <div className="surface-inset-card px-2 py-1.5">
                 <div className="text-muted-foreground">Run ID</div>
                 <div className={cn("font-mono text-foreground truncate", PREVIEW_MAX_W)} title={selectedHistoryRun.runId}>
                   {selectedHistoryRun.runId}
@@ -393,7 +389,7 @@ export function HistoryTab({
               <div role="alert" className="ui-meta-text text-status-danger">{historyError}</div>
             )}
             {!historyLoading && !historyError && selectedRunDetails?.reportContent && (
-              <div className="rounded-md border border-hairline bg-surface-1/70 p-2">
+              <div className="rounded-md surface-soft p-2">
                 <div className="ui-meta-text text-muted-foreground mb-1">Report preview</div>
                 <div className="max-h-80 overflow-y-auto ui-scroll-region">
                   <div className={MARKDOWN_PROSE_CLASS}>

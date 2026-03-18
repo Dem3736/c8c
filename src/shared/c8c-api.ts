@@ -41,6 +41,15 @@ import type {
   WorkflowInput,
   WorkflowTemplate,
 } from "@shared/types"
+import type { WorkflowConfigIssue } from "./workflow-config-validation"
+
+export interface ExecutionStartError {
+  error: string
+  code?: "validation" | "preflight" | "window" | "scaffold" | "unknown"
+  validationIssues?: WorkflowConfigIssue[]
+}
+
+export type ExecutionStartResult = string | ExecutionStartError | null | undefined
 
 export interface C8cApi {
   listProjects: () => Promise<string[]>
@@ -61,6 +70,7 @@ export interface C8cApi {
   loadWorkflow: (filePath: string) => Promise<Workflow>
   saveWorkflow: (filePath: string, chain: Workflow) => Promise<string>
   saveWorkflowAs: (chain: Workflow, projectPath?: string) => Promise<string | null>
+  exportWorkflowCopy: (chain: Workflow, projectPath?: string) => Promise<string | null>
   openWorkflowFile: () => Promise<{ filePath: string; chain: Workflow } | null>
   createWorkflow: (projectPath: string, name: string, chain: Workflow) => Promise<string>
   renameWorkflow: (filePath: string, nextName: string) => Promise<string>
@@ -111,7 +121,7 @@ export interface C8cApi {
     projectPath?: string,
     workflowPath?: string,
     webSearchBackend?: "builtin" | "exa",
-  ) => Promise<string | { error: string } | null>
+  ) => Promise<ExecutionStartResult>
   cancelRun: (runId: string) => Promise<boolean>
   pauseRun: (runId: string) => Promise<boolean>
   resumeRun: (runId: string) => Promise<boolean>
@@ -122,14 +132,14 @@ export interface C8cApi {
     projectPath?: string,
     workflowPath?: string,
     webSearchBackend?: "builtin" | "exa",
-  ) => Promise<string | { error: string } | null>
+  ) => Promise<ExecutionStartResult>
   continueRun: (
     workflow: Workflow,
     workspace: string,
     projectPath?: string,
     workflowPath?: string,
     webSearchBackend?: "builtin" | "exa",
-  ) => Promise<string | { error: string } | null>
+  ) => Promise<ExecutionStartResult>
   listRuns: (projectPath: string) => Promise<RunResult[]>
   loadRunResult: (workspace: string) => Promise<LoadedRunResult | null>
   openReport: (reportPath: string) => Promise<string>
@@ -163,7 +173,7 @@ export interface C8cApi {
     stopOnFailure: boolean,
     projectPath?: string,
     workflowPath?: string,
-  ) => Promise<string | null>
+  ) => Promise<ExecutionStartResult>
   cancelBatch: (batchId: string) => Promise<boolean>
   onBatchEvent: (callback: (event: BatchEvent) => void) => () => void
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void

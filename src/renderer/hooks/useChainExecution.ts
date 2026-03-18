@@ -2,7 +2,6 @@ import { createContext, createElement, useCallback, useContext, type ReactNode }
 import { useAtom, useSetAtom } from "jotai"
 import {
   currentWorkflowAtom,
-  defaultProviderAtom,
   inputAttachmentsAtom,
   inputValueAtom,
   selectedProjectAtom,
@@ -54,7 +53,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
-  const [defaultProvider] = useAtom(defaultProviderAtom)
   const updateWorkflowExecutionState = useSetAtom(updateWorkflowExecutionStateAtom)
   const setActiveExecutionProvider = useSetAtom(activeExecutionProviderAtom)
 
@@ -72,7 +70,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const { run, cancel, rerunFrom, continueRun, continueWithWorkflow } = useExecutionCommands({
     controller,
-    defaultProvider,
     attachments,
     inputValue,
     runId,

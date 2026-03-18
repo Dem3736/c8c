@@ -29,7 +29,7 @@ export function SidebarNavItem({
       size="sm"
       data-sidebar-item="true"
       className={cn(
-        "w-full justify-start gap-2.5 px-2.5 text-sidebar-item font-normal ui-motion-fast",
+        "w-full justify-start gap-2.5 px-2.5 text-sidebar-item font-normal",
         active
           ? "border-hairline/35 bg-sidebar-active text-foreground hover:bg-sidebar-active hover:text-foreground"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground hover:border-hairline/45",

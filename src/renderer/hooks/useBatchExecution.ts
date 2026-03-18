@@ -10,11 +10,13 @@ import {
   currentWorkflowAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
+  validationErrorsAtom,
 } from "@/lib/store"
 import type { ActiveExecutionSnapshot, BatchEvent } from "@shared/types"
 import type { BatchItemResult, BatchSummary, WorkflowInput } from "@shared/types"
 import { toast } from "sonner"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
+import { groupValidationIssuesByNode, resolveExecutionStartResult } from "@/features/execution/commands"
 
 interface BatchRunOptions {
   preserveExistingItems?: boolean
@@ -69,6 +71,7 @@ export function useBatchExecution() {
   const setBatchItems = useSetAtom(batchItemsAtom)
   const setBatchSummary = useSetAtom(batchSummaryAtom)
   const setBatchProgress = useSetAtom(batchProgressAtom)
+  const setValidationErrors = useSetAtom(validationErrorsAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
@@ -255,7 +258,7 @@ export function useBatchExecution() {
       setBatchId(null)
 
       try {
-        const id = await window.api.runBatch(
+        const result = await window.api.runBatch(
           workflow,
           inputs,
           concurrency,
@@ -263,26 +266,33 @@ export function useBatchExecution() {
           selectedProject ?? undefined,
           selectedWorkflowPath ?? undefined,
         )
-        if (!id) {
+        const { startedRunId, errorMessage, validationIssues } = resolveExecutionStartResult(
+          result,
+          "Failed to start batch run.",
+        )
+        if (!startedRunId) {
           clearBatchTracking()
-          setBatchError("Failed to start batch run.")
+          if (validationIssues.length > 0) {
+            setValidationErrors(groupValidationIssuesByNode(validationIssues))
+          }
+          setBatchError(errorMessage || "Failed to start batch run.")
           setBatchStatus("error")
           setBatchId(null)
           addNotification({
             title: "Batch run failed to start",
-            description: "Failed to start batch run.",
+            description: errorMessage || "Failed to start batch run.",
             level: "error",
             source: "batch",
           })
           return
         }
-        batchIdRef.current = id
-        setBatchId(id)
+        batchIdRef.current = startedRunId
+        setBatchId(startedRunId)
         const bufferedEvents = pendingBatchEventsRef.current
         pendingBatchRef.current = false
         pendingBatchEventsRef.current = []
         for (const event of bufferedEvents) {
-          if (event.batchId === id) {
+          if (event.batchId === startedRunId) {
             processBatchEvent(event)
           }
         }
@@ -310,6 +320,7 @@ export function useBatchExecution() {
       setBatchProgress,
       setBatchStatus,
       setBatchId,
+      setValidationErrors,
       clearBatchTracking,
       processBatchEvent,
       batchStatus,

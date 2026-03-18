@@ -1,6 +1,7 @@
 import { useAtom } from "jotai"
 import { AlertTriangle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/cn"
 import { cliStatusAtom, cliStatusBannerDismissedAtom, mainViewAtom } from "@/lib/store"
 
 export function CliBanner() {
@@ -11,8 +12,12 @@ export function CliBanner() {
   if (dismissed || !cliStatus) return null
 
   let message: string | null = null
+  let toneClass = "text-status-warning"
+  let bannerClass = "ui-alert-warning"
   if (!cliStatus.cliInstalled) {
     message = "Claude CLI not found. Install it to run workflows."
+    toneClass = "text-status-danger"
+    bannerClass = "ui-alert-danger"
   } else if (!cliStatus.loggedIn) {
     message = "Claude CLI not authenticated. Run `claude login` in your terminal."
   }
@@ -20,20 +25,20 @@ export function CliBanner() {
   if (!message) return null
 
   return (
-    <div className="mx-3 mt-3 flex items-center gap-2 ui-alert-warning">
-      <AlertTriangle size={14} className="shrink-0 text-status-warning" />
-      <span className="flex-1 text-body-sm text-status-warning">{message}</span>
+    <div className={cn("mx-3 mt-3 flex items-center gap-2", bannerClass)}>
+      <AlertTriangle size={14} className={cn("shrink-0", toneClass)} />
+      <span className={cn("flex-1 text-body-sm", toneClass)}>{message}</span>
       <Button
         variant="ghost"
         size="sm"
-        className="text-status-warning hover:text-status-warning"
+        className={toneClass}
         onClick={() => setMainView("settings")}
       >
         Open Settings
       </Button>
       <button
         type="button"
-        className="ui-icon-button shrink-0 text-status-warning hover:bg-status-warning/10 hover:text-status-warning"
+        className={cn("ui-icon-button shrink-0", toneClass)}
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
       >

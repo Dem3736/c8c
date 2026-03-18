@@ -154,17 +154,17 @@ export function AppStatusBar() {
             : "failed"
   const runProgressClass = runStatus === "done"
     ? runOutcome === "cancelled" || runOutcome === "interrupted"
-      ? "border-status-warning/40 text-status-warning"
-      : "border-status-success/30 text-status-success"
+      ? "ui-status-badge-warning"
+      : "ui-status-badge-success"
     : runStatus === "error"
-      ? "border-status-danger/30 text-status-danger"
+      ? "ui-status-badge-danger"
       : runStatus === "paused"
-        ? "border-status-warning/40 text-status-warning"
+        ? "ui-status-badge-warning"
         : failedSteps > 0
-          ? "border-status-danger/30 text-status-danger"
+          ? "ui-status-badge-danger"
         : waitingApprovalSteps > 0
-          ? "border-status-warning/40 text-status-warning"
-          : "border-status-info/40 text-status-info"
+          ? "ui-status-badge-warning"
+          : "ui-status-badge-info"
 
   useEffect(() => {
     if (!selectedProject) {
@@ -215,15 +215,15 @@ export function AppStatusBar() {
     <>
       <footer
         aria-label="Application status bar"
-        className="h-control-md shrink-0 border-t border-hairline bg-gradient-to-b from-surface-1/90 to-surface-2/90 backdrop-blur-sm"
+        className="surface-depth-footer h-control-md shrink-0 backdrop-blur-sm"
       >
         <div className="h-full px-6 flex items-center justify-between ui-meta-text text-muted-foreground">
           <div className="flex items-center gap-4">
-            <span className="inline-flex h-control-sm items-center rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
+            <span className="control-badge border border-hairline bg-surface-1/70 text-foreground-subtle">
               {PROVIDER_LABELS[displayedProvider]}
             </span>
             {selectedProject ? (
-              <span className="inline-flex h-control-sm max-w-56 items-center truncate rounded-md border border-hairline bg-surface-1/70 px-2 text-foreground-subtle ui-elevation-inset">
+              <span className="control-badge max-w-56 truncate border border-hairline bg-surface-1/70 text-foreground-subtle">
                 {folderName(selectedProject)}
               </span>
             ) : null}
@@ -235,12 +235,12 @@ export function AppStatusBar() {
                 role="status"
                 aria-live="polite"
                 className={cn(
-                  "inline-flex h-control-sm items-center gap-1.5 rounded-md border bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast",
+                  "ui-status-badge h-control-sm gap-1.5 px-2 ui-elevation-inset",
                   runProgressClass,
                 )}
               >
                 {(runStatus === "running" || runStatus === "starting" || runStatus === "cancelling") && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
-                <span className="font-medium tabular-nums">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
+                <span className="ui-metric-text">Step {Math.min(completedSteps, totalSteps)}/{totalSteps}</span>
                 <span className="text-current/80">{runPhaseLabel}</span>
                 {elapsed && <span className="ui-meta-text text-current/60 tabular-nums">{elapsed}</span>}
               </span>
@@ -263,22 +263,21 @@ export function AppStatusBar() {
               </Button>
             )}
             {selectedProject && (
-              <span className="inline-flex h-control-sm items-center gap-2 rounded-md border border-hairline bg-surface-1/70 px-2 ui-elevation-inset ui-transition-colors ui-motion-fast">
+              <span className="control-badge gap-2 border border-hairline bg-surface-1/70 ui-elevation-inset">
                 <GitBranch size={12} aria-hidden="true" />
                 {branch === undefined ? <span className="opacity-60">Checking git...</span> : (branch ?? "No git branch")}
               </span>
             )}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-control-sm w-control-sm text-muted-foreground hover:text-foreground"
+                <button
+                  type="button"
+                  className="ui-icon-button"
                   onClick={() => setShortcutsDialogOpen(true)}
                   aria-label="Open keyboard shortcuts"
                 >
                   <Keyboard size={13} />
-                </Button>
+                </button>
               </TooltipTrigger>
               <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
             </Tooltip>
@@ -306,10 +305,10 @@ export function AppStatusBar() {
               ].map((shortcut) => (
                 <div
                   key={shortcut.keys}
-                  className="flex items-center justify-between gap-4 rounded-md border border-hairline bg-surface-1/80 px-3 py-2"
+                  className="surface-inset-card flex items-center justify-between gap-4 px-3 py-2"
                 >
                   <span className="text-body-sm text-foreground">{shortcut.label}</span>
-                  <code className="rounded-sm border border-hairline bg-surface-2 px-2 py-0.5 text-body-sm">
+                  <code className="inline-code">
                     {shortcut.keys}
                   </code>
                 </div>

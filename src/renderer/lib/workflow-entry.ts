@@ -36,6 +36,9 @@ export interface WorkflowTemplateRunContext {
   workflowPath: string | null
   workflowName: string
   source: Extract<WorkflowEntrySource, "template" | "template_customize">
+  useWhen?: string
+  inputText?: string
+  outputText?: string
   factoryId?: string
   factoryLabel?: string
   caseId?: string
@@ -113,13 +116,6 @@ function deriveFactoryIdentity(
     return {
       factoryId: factory.id,
       factoryLabel: factory.label || template.pack?.label || template.name,
-    }
-  }
-
-  if (template.pack?.id) {
-    return {
-      factoryId: `pack:${template.pack.id}`,
-      factoryLabel: template.pack.label || template.name,
     }
   }
 
@@ -427,6 +423,9 @@ export function buildTemplateRunContext({
     workflowPath,
     workflowName: template.workflow.name || template.name,
     source,
+    useWhen: deriveTemplateUseWhen(template),
+    inputText: ensureSentence(template.input, "Add the source material this flow should work from."),
+    outputText: ensureSentence(template.output, "A final result ready to review."),
     factoryId,
     factoryLabel,
     caseId,

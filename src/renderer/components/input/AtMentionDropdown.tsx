@@ -2,10 +2,8 @@ import { useRef, useEffect } from "react"
 import { File } from "lucide-react"
 import { cn } from "@/lib/cn"
 import {
-  overlayContentBase,
-  overlayItemBase,
-  overlayItemDisabled,
-  overlayItemTransition,
+  overlayContent,
+  overlayItem,
 } from "@/lib/overlay-styles"
 
 interface AtMentionDropdownProps {
@@ -38,7 +36,7 @@ export function AtMentionDropdown({
 
   return (
     <div
-      className={cn(overlayContentBase, "absolute left-0 right-0 top-full mt-1")}
+      className={cn(overlayContent, "absolute left-0 right-0 top-full mt-1")}
       role="listbox"
       aria-label="File suggestions"
     >
@@ -53,7 +51,7 @@ export function AtMentionDropdown({
         </div>
       )}
       {!loading && files.length > 0 && (
-        <div ref={listRef} className="max-h-[240px] overflow-y-auto py-1">
+        <div ref={listRef} className="max-h-60 overflow-y-auto py-1">
           {files.map((file, i) => {
             const alreadyAdded = existingPaths.has(file.relativePath)
             return (
@@ -66,11 +64,9 @@ export function AtMentionDropdown({
                 data-disabled={alreadyAdded ? "" : undefined}
                 disabled={alreadyAdded}
                 className={cn(
-                  overlayItemBase,
+                  overlayItem,
+                  "ui-interactive-card-subtle",
                   "w-full text-left",
-                  "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                  overlayItemDisabled,
-                  overlayItemTransition,
                 )}
                 onMouseEnter={() => onHighlight(i)}
                 onMouseDown={(e) => {

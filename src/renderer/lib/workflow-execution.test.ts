@@ -334,6 +334,28 @@ describe("workflow execution state", () => {
     expect(nextState.nodeStates.review.status).toBe("skipped")
     expect(nextState.nodeStates.input.status).toBe("completed")
   })
+
+  it("keeps cancelling visible while late node activity arrives", () => {
+    const previousState = {
+      ...createEmptyWorkflowExecutionState(),
+      runStatus: "cancelling" as const,
+      runId: "run-1",
+      nodeStates: {
+        input: { status: "completed" as const, attempts: 1, log: [] },
+        output: { status: "queued" as const, attempts: 0, log: [] },
+      },
+    }
+
+    const transition = reduceWorkflowExecutionEvent(previousState, {
+      type: "node-start",
+      runId: "run-1",
+      nodeId: "output",
+    })
+
+    expect(transition.nextState.runStatus).toBe("cancelling")
+    expect(transition.nextState.activeNodeId).toBe("output")
+    expect(transition.nextState.nodeStates.output.status).toBe("running")
+  })
 })
 
 describe("assembleInputWithAttachments", () => {

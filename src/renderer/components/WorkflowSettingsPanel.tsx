@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Server } from "lucide-react"
+import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 
 function parseOptionalNumber(value: string): number | undefined {
   const trimmed = value.trim()
@@ -27,7 +28,8 @@ function parseOptionalPositiveInt(value: string): number | undefined {
 }
 
 export function WorkflowSettingsPanel() {
-  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [workflow] = useAtom(currentWorkflowAtom)
+  const { setWorkflow } = useWorkflowWithUndo()
   const [mcpServers] = useAtom(mcpServersAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [approvedPluginMcpCount, setApprovedPluginMcpCount] = useState(0)
@@ -63,12 +65,15 @@ export function WorkflowSettingsPanel() {
         ...(prev.defaults || {}),
         ...patch,
       },
-    }))
+    }), { coalesceKey: "workflow-defaults:settings" })
   }
 
   return (
     <section aria-label="Workflow defaults" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
       <h2 className="section-kicker">Workflow Defaults</h2>
+      <p className="max-w-[620px] text-body-sm text-muted-foreground">
+        App-wide provider access lives in Settings, the workflow's provider and model live in the Input step, and any node-specific overrides stay with that step.
+      </p>
 
       <div className="w-full max-w-[620px] surface-inset-card space-y-2">
         <h3 className="section-kicker">Execution Defaults</h3>
@@ -182,7 +187,7 @@ export function WorkflowSettingsPanel() {
       </div>
 
       {/* MCP status indicator */}
-      <div className="w-full max-w-[620px] flex items-center justify-between rounded-lg border border-hairline bg-surface-1/60 px-3 py-2">
+      <div className="surface-soft flex w-full max-w-[620px] items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <Server size={14} className="text-muted-foreground" />
           <span className="text-body-sm text-muted-foreground">
@@ -194,9 +199,9 @@ export function WorkflowSettingsPanel() {
         </div>
         <Button
           variant="link"
-          size="auto"
+          size="bare"
           onClick={() => setMainView("settings")}
-          className="h-auto px-0 text-body-sm text-primary"
+          className="text-body-sm text-primary"
         >
           Manage
         </Button>

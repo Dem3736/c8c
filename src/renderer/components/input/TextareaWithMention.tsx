@@ -186,6 +186,8 @@ export const TextareaWithMention = forwardRef<
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
+        aria-expanded={mentionActive || undefined}
+        aria-autocomplete={mentionActive ? "list" : undefined}
         {...rest}
       />
       {mentionActive && (

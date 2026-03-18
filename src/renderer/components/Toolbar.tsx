@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Ref } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import {
   currentWorkflowAtom,
@@ -15,6 +15,9 @@ import {
   mainViewAtom,
   projectSidebarOpenAtom,
   workflowReviewModeAtom,
+  selectedNodeIdAtom,
+  validationNavigationTargetAtom,
+  viewModeAtom,
 } from "@/lib/store"
 import { runIdAtom, runStatusAtom } from "@/features/execution"
 import {
@@ -25,6 +28,7 @@ import {
   Undo2,
   Redo2,
   ChevronDown,
+  AlertTriangle,
   MessageSquare,
   SlidersHorizontal,
   Layers,
@@ -62,9 +66,12 @@ import { validateWorkflow } from "@/lib/validate-workflow"
 import { useToolbarActions } from "@/hooks/useToolbarActions"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
+import { useBlankWorkflowCreation } from "@/hooks/useBlankWorkflowCreation"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { InputNodeConfig } from "@shared/types"
 import { toast } from "sonner"
+import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
+import { resolveValidationNavigationTarget } from "@/lib/validation-navigation"
 import {
   canUndoAtom,
   canRedoAtom,
@@ -97,9 +104,12 @@ export function Toolbar({
   const [runId] = useAtom(runIdAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [, setMainView] = useAtom(mainViewAtom)
+  const [, setViewMode] = useAtom(viewModeAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const [sidebarOpen] = useAtom(projectSidebarOpenAtom)
   const [workflowReviewMode] = useAtom(workflowReviewModeAtom)
+  const setSelectedNodeId = useSetAtom(selectedNodeIdAtom)
+  const setValidationNavigationTarget = useSetAtom(validationNavigationTargetAtom)
   const setBatchOpen = useSetAtom(batchDialogOpenAtom)
   const [undoStack, setUndoStack] = useAtom(undoStackAtom)
   const [redoStack, setRedoStack] = useAtom(redoStackAtom)
@@ -110,17 +120,19 @@ export function Toolbar({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [templateNameInput, setTemplateNameInput] = useState("")
-  const [saveFlash, setSaveFlash] = useState<"saved" | "imported" | null>(null)
+  const [saveFlash, setSaveFlash] = useState<"saved" | "imported" | "exported" | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [runControlPending, setRunControlPending] = useState<"pause" | "resume" | null>(null)
   const flashTimerRef = useRef<number | null>(null)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const { openWorkflowCreate } = useWorkflowCreateNavigation()
+  const { createBlankWorkflow, creatingBlankWorkflow } = useBlankWorkflowCreation({ confirmDiscard })
   const {
     refreshProjectData,
     deriveTitleFromPath,
     save,
     saveAs,
+    exportCopy,
     openFile,
     renameWorkflow,
     deleteWorkflow,
@@ -200,13 +212,40 @@ export function Toolbar({
   })
   const workflowValidation = validateWorkflow(workflow)
   const hasBlockingErrors = workflowValidation.some((e) => e.severity === "error")
+  const blockingValidationCount = workflowValidation.filter((e) => e.severity === "error").length
+  const warningValidationCount = workflowValidation.filter((e) => e.severity === "warning").length
+  const groupedValidationIssues = useMemo(() => {
+    const groups = new Map<string, { label: string; issues: typeof workflowValidation }>()
+    for (const issue of workflowValidation) {
+      const key = issue.nodeId
+      const existing = groups.get(key)
+      if (existing) {
+        existing.issues.push(issue)
+        continue
+      }
+
+      const label = issue.nodeId === "__workflow__"
+        ? "Workflow defaults"
+        : (() => {
+            const node = workflow.nodes.find((candidate) => candidate.id === issue.nodeId)
+            return node ? getWorkflowNodeLabel(node) : issue.nodeId
+          })()
+
+      groups.set(key, { label, issues: [issue] })
+    }
+    return [...groups.entries()].map(([nodeId, group]) => ({
+      nodeId,
+      label: group.label,
+      issues: group.issues,
+    }))
+  }, [workflow, workflowValidation])
   const canRun = hasSkillNodes && inputValidation.valid && !hasBlockingErrors
   const runDisabledReason = !hasSkillNodes
     ? "Add at least one skill step to run."
     : !inputValidation.valid
       ? (inputValidation.message || "Input is required")
       : hasBlockingErrors
-        ? `${workflowValidation.filter((e) => e.severity === "error").length} validation error(s) — fix before running.`
+        ? `${blockingValidationCount} validation error(s) — fix before running.`
         : null
   const saveDisabledReason = isRunning
     ? "Cannot save while a run is in progress."
@@ -229,6 +268,21 @@ export function Toolbar({
     await onRun(mode)
   }
 
+  const navigateToValidationIssue = useCallback((issue: (typeof workflowValidation)[number]) => {
+    const target = resolveValidationNavigationTarget(workflow, issue)
+    setViewMode(target.viewMode)
+    setSelectedNodeId(target.nodeId)
+    setValidationNavigationTarget(
+      target.fieldId
+        ? {
+            nodeId: target.nodeId,
+            fieldId: target.fieldId,
+            requestId: Date.now(),
+          }
+        : null,
+    )
+  }, [setSelectedNodeId, setValidationNavigationTarget, setViewMode, workflow])
+
   const deleteLabel =
     workflowPath
       ? (workflow.name || "").trim() || deriveTitleFromPath(workflowPath)
@@ -238,7 +292,7 @@ export function Toolbar({
     ? 108
     : 0
 
-  const flashToolbarStatus = useCallback((status: "saved" | "imported") => {
+  const flashToolbarStatus = useCallback((status: "saved" | "imported" | "exported") => {
     setSaveFlash(status)
     if (flashTimerRef.current) {
       window.clearTimeout(flashTimerRef.current)
@@ -291,6 +345,7 @@ export function Toolbar({
         return
       }
       setRunStatus("running")
+      toast.success("Workflow resumed")
     } catch (error) {
       toast.error("Could not resume run", {
         description: String(error),
@@ -311,6 +366,9 @@ export function Toolbar({
         return
       }
       setRunStatus("paused")
+      toast.success("Paused", {
+        description: "The current node will finish before the workflow stops.",
+      })
     } catch (error) {
       toast.error("Could not pause run", {
         description: String(error),
@@ -327,6 +385,11 @@ export function Toolbar({
           flashToolbarStatus("saved")
         }
         return
+      case "export_copy":
+        if (await exportCopy()) {
+          flashToolbarStatus("exported")
+        }
+        return
       case "import":
         if (!(await confirmDiscard("import another workflow", workflowDirty))) {
           return
@@ -341,8 +404,8 @@ export function Toolbar({
       case "templates":
         setMainView("templates")
         return
-      case "factory":
-        setMainView("factory")
+      case "blank":
+        await createBlankWorkflow()
         return
       case "generate":
         openWorkflowCreate()
@@ -369,7 +432,13 @@ export function Toolbar({
         openRenameDialog()
         return
       case "delete":
-        if (workflowPath) setDeleteDialogOpen(true)
+        if (workflowPath) {
+          if (runStatus === "running" || runStatus === "starting" || runStatus === "cancelling" || runStatus === "paused") {
+            toast.error("Stop the workflow before deleting it")
+            return
+          }
+          setDeleteDialogOpen(true)
+        }
         return
       default:
         return
@@ -523,7 +592,7 @@ export function Toolbar({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="w-[168px] justify-between" disabled={isRunning}>
+              <Button variant="outline" size="sm" className="w-[168px] justify-between" disabled={isRunning || creatingBlankWorkflow}>
                 <span className="inline-flex min-w-0 flex-1 items-center gap-2">
                   <SlidersHorizontal size={14} />
                   <span className="truncate">Actions</span>
@@ -531,10 +600,13 @@ export function Toolbar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuGroup>
+                <DropdownMenuGroup>
                 <DropdownMenuLabel>File</DropdownMenuLabel>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("save_as")}>
-                  Save as...
+                  Save workflow as...
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleActionMenu("export_copy")}>
+                  Export workflow copy...
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("save_as_template")}>
                   Save as template
@@ -552,14 +624,14 @@ export function Toolbar({
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Create</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => void handleActionMenu("blank")}>
+                  Blank workflow
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("templates")}>
                   Browse templates
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void handleActionMenu("generate")}>
-                  Create with Agent
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!selectedProject} onSelect={() => void handleActionMenu("factory")}>
-                  Open factory (advanced)
+                  Create with agent
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
@@ -612,7 +684,7 @@ export function Toolbar({
             data-visible={saveFlash ? "true" : "false"}
             className="ui-inline-presence ui-meta-text min-w-[4.25rem] text-status-success"
           >
-            {saveFlash === "saved" ? "Saved" : saveFlash === "imported" ? "Imported" : ""}
+            {saveFlash === "saved" ? "Saved" : saveFlash === "imported" ? "Imported" : saveFlash === "exported" ? "Exported" : ""}
           </div>
 
           <div className="flex-1" />
@@ -682,6 +754,70 @@ export function Toolbar({
               </>
             ) : (
               <div className="flex items-center gap-0.5 rounded-lg control-cluster p-0.5">
+                {workflowValidation.length > 0 && (
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "gap-1.5 rounded-md px-2 text-status-warning hover:bg-status-warning/10 hover:text-status-warning",
+                              hasBlockingErrors && "bg-status-warning/8",
+                            )}
+                            aria-label={`${workflowValidation.length} validation issue${workflowValidation.length === 1 ? "" : "s"}`}
+                          >
+                            <AlertTriangle size={14} />
+                            <span className="text-body-sm font-medium">
+                              {blockingValidationCount > 0 ? blockingValidationCount : warningValidationCount}
+                            </span>
+                            {blockingValidationCount > 0 && warningValidationCount > 0 && (
+                              <span className="ui-meta-text text-muted-foreground">+{warningValidationCount}</span>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {blockingValidationCount > 0
+                          ? `${blockingValidationCount} error(s) and ${warningValidationCount} warning(s)`
+                          : `${warningValidationCount} warning(s)`}
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end" className="w-[360px] max-h-[24rem] overflow-y-auto">
+                      <DropdownMenuLabel>Workflow issues</DropdownMenuLabel>
+                      {groupedValidationIssues.map((group, groupIndex) => (
+                        <div key={group.nodeId}>
+                          {groupIndex > 0 && <DropdownMenuSeparator />}
+                          <DropdownMenuLabel className="ui-meta-label text-muted-foreground">
+                            {group.label}
+                          </DropdownMenuLabel>
+                          {group.issues.map((issue) => (
+                            <DropdownMenuItem
+                              key={`${issue.nodeId}-${issue.field}-${issue.message}`}
+                              onSelect={() => navigateToValidationIssue(issue)}
+                              className="items-start gap-3 py-2"
+                            >
+                              <span
+                                className={cn(
+                                  "mt-1 inline-flex h-2 w-2 shrink-0 rounded-full",
+                                  issue.severity === "error" ? "bg-status-danger" : "bg-status-warning",
+                                )}
+                                aria-hidden="true"
+                              />
+                              <span className="flex min-w-0 flex-col">
+                                <span className="text-body-sm text-foreground">{issue.message}</span>
+                                <span className="ui-meta-text text-muted-foreground">
+                                  {issue.field.replace(/^config\./, "")}
+                                </span>
+                              </span>
+                            </DropdownMenuItem>
+                          ))}
+                        </div>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -810,7 +946,7 @@ export function Toolbar({
           <CanvasDialogHeader>
             <DialogTitle>Delete workflow</DialogTitle>
             <DialogDescription>
-              Delete &ldquo;{deleteLabel}&rdquo;? The workflow file will be permanently removed.
+              Delete &ldquo;{deleteLabel}&rdquo;?{workflowDirty ? ' You have unsaved changes that will be lost.' : ''} The workflow file will be permanently removed.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogFooter>

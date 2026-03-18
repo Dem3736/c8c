@@ -23,6 +23,7 @@ import {
   mainViewAtom,
   desktopRuntimeAtom,
   chatPanelOpenAtom,
+  factoryBetaEnabledAtom,
   workflowDirtyAtom,
   cliStatusAtom,
   firstLaunchAtom,
@@ -35,6 +36,8 @@ import {
   workflowsAtom,
   workflowSavedSnapshotAtom,
   selectedWorkflowPathAtom,
+  selectedFactoryCaseIdAtom,
+  selectedFactoryIdAtom,
   providerSettingsAtom,
   providerAvailabilityAtom,
   providerAuthStatusAtom,
@@ -127,9 +130,10 @@ function SidebarVisibilityToggle({
 
 const MainView = memo(function MainView() {
   const [mainView] = useAtom(mainViewAtom)
+  const factoryBetaEnabled = useAtomValue(factoryBetaEnabledAtom)
 
   if (mainView === "onboarding") return <OnboardingWizard />
-  if (mainView === "factory") return <FactoryPage />
+  if (mainView === "factory") return factoryBetaEnabled ? <FactoryPage /> : <WorkflowPanel />
   if (mainView === "workflow_create") return <WorkflowCreatePage />
   if (mainView === "skills") return <SkillsPage />
   if (mainView === "templates") return <WorkflowsTemplatesPage />
@@ -150,11 +154,14 @@ const AppShell = memo(function AppShell() {
   const [deepLinkTemplate, setDeepLinkTemplate] = useAtom(deepLinkPendingTemplateAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
+  const [factoryBetaEnabled] = useAtom(factoryBetaEnabledAtom)
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const setSelectedFactoryId = useSetAtom(selectedFactoryIdAtom)
+  const setSelectedFactoryCaseId = useSetAtom(selectedFactoryCaseIdAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [, setProviderSettings] = useAtom(providerSettingsAtom)
   const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
@@ -184,6 +191,15 @@ const AppShell = memo(function AppShell() {
       setMainView("onboarding")
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (factoryBetaEnabled) return
+    setSelectedFactoryId(null)
+    setSelectedFactoryCaseId(null)
+    if (mainView === "factory") {
+      setMainView("thread")
+    }
+  }, [factoryBetaEnabled, mainView, setMainView, setSelectedFactoryCaseId, setSelectedFactoryId])
 
   useEffect(() => {
     document.documentElement.dataset.platform = desktopRuntime.platform

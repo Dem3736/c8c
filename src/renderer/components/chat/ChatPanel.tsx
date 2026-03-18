@@ -82,7 +82,7 @@ export function ChatPanel({
     <div
       className={cn(
         "relative flex h-full flex-col border-l border-hairline bg-surface-1 shrink-0 ui-motion-standard transition-[opacity,transform] will-change-transform",
-        collapsed && "translate-x-2 opacity-0 pointer-events-none",
+        collapsed && "translate-x-4 opacity-0 pointer-events-none",
       )}
       style={{ width: panelWidth }}
     >
@@ -100,7 +100,6 @@ export function ChatPanel({
         className={cn(
           "absolute left-0 top-0 h-full z-10 ui-resize-handle",
           collapsed && "pointer-events-none",
-          resizing && "bg-primary/30",
         )}
         data-resizing={resizing}
       />

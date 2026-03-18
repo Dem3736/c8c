@@ -96,7 +96,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
     <div className="border-t border-hairline p-3 bg-surface-1">
       <div
         ref={composerRef}
-        className="overflow-hidden rounded-lg surface-elevated transition-[border-color,box-shadow] ui-motion-fast focus-within:border-ring/60 focus-within:ring-[3px] focus-within:ring-ring/20"
+        className="overflow-hidden rounded-lg surface-elevated ui-transition-surface focus-within:border-ring/60 focus-within:ring focus-within:ring-ring/20"
       >
         <div className="relative">
           <AutosizeTextarea
@@ -122,17 +122,15 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
           />
           <div className="absolute right-3 bottom-3">
             {isStreaming ? (
-              <Button
+              <button
                 type="button"
                 onClick={onCancel}
                 aria-label="Cancel generation"
                 title="Cancel (Esc)"
-                variant="ghost"
-                size="icon"
-                className="h-control-lg w-control-lg rounded-full bg-status-danger/10 text-status-danger hover:bg-status-danger/20 hover:text-status-danger active:bg-status-danger/25"
+                className="ui-icon-button h-control-lg w-control-lg rounded-full surface-danger-soft text-status-danger ui-fade-slide-in"
               >
                 <Square size={14} aria-hidden="true" />
-              </Button>
+              </button>
             ) : (
               <Button
                 type="button"
@@ -140,13 +138,8 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
                 disabled={!value.trim() || isStreaming}
                 aria-label="Send message"
                 title={`Send (${sendShortcutLabel})`}
-                className={cn(
-                  "h-control-lg w-control-lg rounded-full ui-transition-colors ui-motion-fast",
-                  value.trim() && !isStreaming
-                    ? "bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/85"
-                    : "bg-surface-3 text-muted-foreground/70 cursor-not-allowed",
-                )}
-                variant="ghost"
+                className="h-control-lg w-control-lg rounded-full"
+                variant="send"
                 size="icon"
               >
                 <Send size={16} aria-hidden="true" />
@@ -156,7 +149,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
         </div>
         <div
           className={cn(
-            "border-t border-hairline/70 px-4 py-3",
+            "border-t border-border/50 px-4 py-3",
             isCompact
               ? "flex flex-col items-start gap-2"
               : "flex items-center justify-between gap-3",
@@ -176,8 +169,8 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
             className={cn(
               "border-0 bg-surface-2/90 shadow-none",
               isCompact
-                ? "h-control-md w-[132px] rounded-md"
-                : "h-control-lg w-[190px] rounded-md",
+                ? "h-control-md w-32 rounded-md"
+                : "h-control-lg w-48 rounded-md",
             )}
           />
           <p

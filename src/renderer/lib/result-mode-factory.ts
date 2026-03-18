@@ -66,13 +66,13 @@ function extractTargetDefinition(values: string[]) {
 
 function factoryLabelForMode(mode: WorkflowResultMode, values: ResultModeConfigValues, existingFactory?: ProjectFactoryDefinition | null) {
   if (mode.id === "development") {
-    return firstFilled(values.project_goal, existingFactory?.label, existingFactory?.outcome?.title, "Development Factory")
+    return firstFilled(values.project_goal, existingFactory?.label, existingFactory?.outcome?.title, "Product Factory")
   }
   if (mode.id === "content") {
-    return firstFilled(values.content_goal, existingFactory?.label, existingFactory?.outcome?.title, "Content Factory")
+    return firstFilled(values.content_goal, existingFactory?.label, existingFactory?.outcome?.title, "Marketing Factory")
   }
   if (mode.id === "courses") {
-    return firstFilled(values.course_outcome, existingFactory?.label, existingFactory?.outcome?.title, "Courses Factory")
+    return firstFilled(values.course_outcome, existingFactory?.label, existingFactory?.outcome?.title, "Content Factory")
   }
   return firstFilled(existingFactory?.label, existingFactory?.outcome?.title, `${mode.label} Factory`)
 }
@@ -120,33 +120,33 @@ function buildStrategistCheckpoints(mode: WorkflowResultMode, values: ResultMode
     return existingFactory.recipe.strategistCheckpoints
   }
   if (mode.id === "content") {
-    return ["Approve campaign direction", "Approve sample post quality"]
+    return ["Approve audience and angle", "Approve sample asset quality"]
   }
   if (mode.id === "courses") {
-    return ["Approve audience and promise", "Approve sample lesson quality"]
+    return ["Approve voice and structure", "Approve sample asset quality"]
   }
   return ["Approve scope and direction", "Approve quality before wider execution"]
 }
 
 function defaultQualityPolicy(mode: WorkflowResultMode) {
   if (mode.id === "content") {
-    return ["Evidence-first ideation", "Voice-locked no-slop drafting", "Human publish gate"]
+    return ["Evidence-first market research", "Angle before asset production", "Human review before scaling"]
   }
   if (mode.id === "courses") {
-    return ["Audience-first positioning", "Curriculum before lesson drafting", "Human launch review gate"]
+    return ["Voice-locked drafting", "Structure before scale", "Human publish or launch gate"]
   }
   return ["Spec-first delivery", "Visible verification before complete", "Sparse human review gates"]
 }
 
 function defaultCaseGenerationRule(mode: WorkflowResultMode) {
-  if (mode.id === "content") return "Post calendar -> drafting cases"
-  if (mode.id === "courses") return "Curriculum map -> lesson production cases"
+  if (mode.id === "content") return "Research brief -> campaign or asset cases"
+  if (mode.id === "courses") return "Content plan -> production cases"
   return "Plan -> implementation cases"
 }
 
 function defaultSuccessSignal(mode: WorkflowResultMode) {
-  if (mode.id === "content") return "A concrete post plan or ready posts that meet the stated quality bar."
-  if (mode.id === "courses") return "A curriculum, lesson system, and launch assets ready for human review."
+  if (mode.id === "content") return "A grounded market angle, campaign plan, or asset pack that is ready for review."
+  if (mode.id === "courses") return "A publishable content system or lesson asset set that is ready for human review."
   return "A plan or implementation path that meets the requested quality bar."
 }
 

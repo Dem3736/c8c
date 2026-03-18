@@ -106,15 +106,15 @@ function outcomeLabel(entry: DashboardEntry): string {
 
 function outcomeClasses(entry: DashboardEntry): string {
   if (entry.runStatus === "paused" || entry.approvalCount > 0) {
-    return "border-status-warning/30 bg-status-warning/10 text-status-warning"
+    return "ui-status-badge-warning"
   }
   if (entry.runStatus === "starting" || entry.runStatus === "running" || entry.runStatus === "cancelling") {
-    return "border-status-info/30 bg-status-info/10 text-status-info"
+    return "ui-status-badge-info"
   }
   if (entry.runOutcome === "failed" || entry.runOutcome === "interrupted" || entry.lastError) {
-    return "border-status-danger/30 bg-status-danger/10 text-status-danger"
+    return "ui-status-badge-danger"
   }
-  return "border-status-success/30 bg-status-success/10 text-status-success"
+  return "ui-status-badge-success"
 }
 
 function outcomeIcon(entry: DashboardEntry) {
@@ -438,14 +438,14 @@ export function MultiRunDashboard() {
           </CanvasDialogHeader>
 
           <CanvasDialogBody className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-0 p-0">
-            <div className="border-b border-hairline lg:border-b-0 lg:border-r bg-surface-1/40 min-h-[240px] lg:min-h-0">
+            <div className="border-b border-hairline lg:border-b-0 lg:border-r bg-surface-1/40 min-h-[240px] lg:min-h-0 flex flex-col">
               <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
                 <div>
                   <p className="text-body-sm font-medium text-foreground">Session runs</p>
                   <p className="ui-meta-text text-muted-foreground">{entriesWithHistory.length} tracked</p>
                 </div>
               </div>
-              <div className="ui-scroll-region max-h-[30vh] lg:max-h-none lg:h-full overflow-y-auto p-2">
+              <div className="ui-scroll-region min-h-0 max-h-[320px] overflow-y-auto p-2 lg:max-h-none lg:flex-1">
                 {entriesWithHistory.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-hairline bg-surface-1/70 p-4 text-body-sm text-muted-foreground">
                     No active or recent runs in this session yet.
@@ -473,10 +473,10 @@ export function MultiRunDashboard() {
                               {folderName(entry.projectPath)}
                             </p>
                           </div>
-                          <Badge variant="outline" className={cn("shrink-0 gap-1 border", outcomeClasses(entry))}>
+                          <span className={cn("ui-status-badge shrink-0 ui-meta-text", outcomeClasses(entry))}>
                             {outcomeIcon(entry)}
                             {outcomeLabel(entry)}
-                          </Badge>
+                          </span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
                           <span className="tabular-nums">
@@ -551,7 +551,7 @@ export function MultiRunDashboard() {
 
                   <div className="ui-scroll-region flex-1 overflow-y-auto px-5 py-4 space-y-4">
                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
+                      <div className="rounded-lg surface-soft p-3">
                         <p className="ui-meta-text text-muted-foreground">Status</p>
                         <div className="mt-2 flex items-center gap-2 text-body-sm font-medium text-foreground">
                           {outcomeIcon(selectedEntry)}
@@ -561,7 +561,7 @@ export function MultiRunDashboard() {
                           Updated {formatDateTime(selectedEntry.lastUpdatedAt)}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
+                      <div className="rounded-lg surface-soft p-3">
                         <p className="ui-meta-text text-muted-foreground">Progress</p>
                         <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
                           Step {Math.min(selectedEntry.progress.completedSteps, selectedEntry.progress.totalSteps)}/{selectedEntry.progress.totalSteps || 0}
@@ -569,12 +569,15 @@ export function MultiRunDashboard() {
                         {selectedEntry.progress.totalSteps > 0 && (
                           <div className="sidebar-progress-track mt-2">
                             <div
-                              className="sidebar-progress-bar"
+                              className={cn(
+                                "sidebar-progress-bar",
+                                selectedEntry.progress.failedSteps > 0
+                                  ? "bg-status-danger"
+                                  : "bg-primary/70",
+                                selectedEntry.runStatus === "running" && "ui-running-pulse",
+                              )}
                               style={{
                                 width: `${Math.min(100, (selectedEntry.progress.completedSteps / selectedEntry.progress.totalSteps) * 100)}%`,
-                                background: selectedEntry.progress.failedSteps > 0
-                                  ? "hsl(var(--status-danger))"
-                                  : "hsl(var(--primary) / 0.72)",
                               }}
                             />
                           </div>
@@ -583,7 +586,7 @@ export function MultiRunDashboard() {
                           {selectedEntry.progress.runningSteps} running, {selectedEntry.progress.failedSteps} failed, {selectedEntry.progress.waitingApprovalSteps} waiting approval
                         </p>
                       </div>
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
+                      <div className="rounded-lg surface-soft p-3">
                         <p className="ui-meta-text text-muted-foreground">Runtime</p>
                         <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
                           {formatDurationMs(selectedEntryDuration)}
@@ -592,7 +595,7 @@ export function MultiRunDashboard() {
                           Started {formatDateTime(selectedEntry.runStartedAt)}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-3 ui-elevation-base">
+                      <div className="rounded-lg surface-soft p-3">
                         <p className="ui-meta-text text-muted-foreground">Usage</p>
                         <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
                           {selectedEntryCost.totalCost > 0 ? `$${selectedEntryCost.totalCost.toFixed(2)}` : "No cost yet"}
@@ -604,7 +607,7 @@ export function MultiRunDashboard() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr,0.8fr]">
-                      <div className="rounded-lg border border-hairline bg-surface-1/70 p-4 ui-elevation-base">
+                      <div className="rounded-lg surface-soft p-4">
                         <div className="flex items-center gap-2">
                           <WorkflowIcon size={15} className="text-muted-foreground" />
                           <h4 className="text-body-sm font-medium text-foreground">Execution details</h4>
@@ -679,7 +682,7 @@ export function MultiRunDashboard() {
                       </div>
 
                       <div className="space-y-4">
-                        <div className="rounded-lg border border-hairline bg-surface-1/70 p-4 ui-elevation-base">
+                        <div className="rounded-lg surface-soft p-4">
                           <h4 className="text-body-sm font-medium text-foreground">Artifacts</h4>
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
@@ -703,10 +706,10 @@ export function MultiRunDashboard() {
                           </div>
                         </div>
 
-                        <div className="rounded-lg border border-hairline bg-surface-1/70 p-4 ui-elevation-base">
+                        <div className="rounded-lg surface-soft p-4">
                           <h4 className="text-body-sm font-medium text-foreground">Result preview</h4>
                           {selectedEntry.finalContent.trim() ? (
-                            <pre className="mt-3 max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-hairline bg-surface-2/70 p-3 text-body-sm text-foreground">
+                            <pre className="surface-inset-card mt-3 max-h-[320px] overflow-auto whitespace-pre-wrap break-words p-3 text-body-sm text-foreground">
                               {selectedEntry.finalContent}
                             </pre>
                           ) : (

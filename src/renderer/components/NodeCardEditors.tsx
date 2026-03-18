@@ -106,7 +106,7 @@ export function ToolArrayEditor({
               <span className="font-mono">{tool}</span>
               <button
                 type="button"
-                className="rounded-sm p-0.5 hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+                className="ui-icon-button h-4 w-4 rounded-sm"
                 onClick={() => removeValue(tool)}
                 aria-label={`Remove ${tool}`}
               >
@@ -190,7 +190,7 @@ export function RuntimePolicyEditor({
   }
 
   return (
-    <details className="ui-disclosure rounded-md border border-hairline bg-surface-1/80">
+    <details className="ui-disclosure rounded-md surface-soft">
       <summary className="cursor-pointer list-none px-2 py-2 ui-meta-label text-muted-foreground hover:text-foreground ui-transition-colors ui-motion-fast">
         Runtime Policy (Advanced)
       </summary>
@@ -214,7 +214,7 @@ export function RuntimePolicyEditor({
           </Select>
         </div>
 
-        <div className="flex items-center justify-between rounded-md border border-hairline bg-surface-2/50 px-2 py-1.5">
+        <div className="surface-inset-card flex items-center justify-between px-2 py-1.5">
           <Label htmlFor={`runtime-retry-${nodeId}`} className="ui-meta-text text-muted-foreground">Retry on fail</Label>
           <Switch
             id={`runtime-retry-${nodeId}`}
@@ -230,7 +230,7 @@ export function RuntimePolicyEditor({
         </div>
 
         {retryEnabled && (
-          <div className="space-y-2 rounded-md border border-hairline bg-surface-2/40 px-2 py-2">
+          <div className="surface-inset-card space-y-2 px-2 py-2">
             <div className="flex items-center gap-3">
               <Label htmlFor={`runtime-max-tries-${nodeId}`} className="ui-meta-text text-muted-foreground">Max tries</Label>
               <Input
@@ -307,7 +307,7 @@ export function InputNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: InputNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div className="flex items-center gap-3">
         <Label htmlFor={`input-type-${nodeId}`} className="ui-meta-text text-muted-foreground">Input Type</Label>
         <Select
@@ -328,7 +328,7 @@ export function InputNodeEditor({ nodeId, config, onConfigChange }: {
         </Select>
       </div>
 
-      <div className="flex items-center justify-between rounded-md border border-hairline bg-surface-1/80 px-2 py-2">
+      <div className="surface-inset-card flex items-center justify-between px-2 py-2">
         <Label htmlFor={`input-required-${nodeId}`} className="ui-meta-text text-muted-foreground">
           Input required
         </Label>
@@ -339,6 +339,22 @@ export function InputNodeEditor({ nodeId, config, onConfigChange }: {
           aria-label="Toggle input required"
         />
       </div>
+
+      {config.required === false && (
+        <div>
+          <Label htmlFor={`input-default-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
+            Default value
+          </Label>
+          <TextareaWithMention
+            id={`input-default-${nodeId}`}
+            value={config.defaultValue || ""}
+            onChange={(e) => onConfigChange({ ...config, defaultValue: e.target.value })}
+            rows={3}
+            className="min-h-20 resize-y font-mono text-body-sm"
+            placeholder="Used when input is empty and the node is optional."
+          />
+        </div>
+      )}
 
       <div>
         <Label htmlFor={`input-placeholder-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
@@ -353,20 +369,6 @@ export function InputNodeEditor({ nodeId, config, onConfigChange }: {
           className="h-control-md text-body-sm"
         />
       </div>
-
-      <div>
-        <Label htmlFor={`input-default-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
-          Default value
-        </Label>
-        <TextareaWithMention
-          id={`input-default-${nodeId}`}
-          value={config.defaultValue || ""}
-          onChange={(e) => onConfigChange({ ...config, defaultValue: e.target.value })}
-          rows={3}
-          className="min-h-[72px] resize-y font-mono text-body-sm"
-          placeholder="Used when input is empty and the node is optional."
-        />
-      </div>
     </div>
   )
 }
@@ -377,7 +379,7 @@ export function OutputNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: OutputNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div>
         <Label htmlFor={`output-title-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Output title
@@ -418,7 +420,7 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: SkillNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div>
         <Label htmlFor={`skill-ref-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Skill reference
@@ -485,12 +487,12 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
           value={config.prompt || ""}
           onChange={(e) => onConfigChange({ ...config, prompt: e.target.value })}
           rows={4}
-          className="min-h-[96px] resize-y font-mono text-body-sm"
+          className="min-h-24 resize-y font-mono text-body-sm"
           placeholder="Enter prompt for this skill..."
         />
       </div>
 
-      <div className="rounded-md border border-hairline bg-surface-1/80 px-2 py-2 space-y-2">
+      <div className="surface-inset-card px-2 py-2 space-y-2">
         <p className="ui-meta-label text-muted-foreground">Tool Access</p>
         <McpToolPicker
           nodeId={`${nodeId}-allowed`}
@@ -519,7 +521,7 @@ export function EvaluatorNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: EvaluatorNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div>
         <Label htmlFor={`criteria-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">Criteria</Label>
         <TextareaWithMention
@@ -527,7 +529,7 @@ export function EvaluatorNodeEditor({ nodeId, config, onConfigChange }: {
           value={config.criteria || ""}
           onChange={(e) => onConfigChange({ ...config, criteria: e.target.value })}
           rows={3}
-          className="min-h-[84px] resize-y font-mono text-body-sm"
+          className="min-h-20 resize-y font-mono text-body-sm"
           placeholder="Score 1-10 on clarity, engagement, CTA strength..."
         />
       </div>
@@ -570,7 +572,7 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: SplitterNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div>
         <Label htmlFor={`split-strategy-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">Decomposition Strategy</Label>
         <TextareaWithMention
@@ -578,7 +580,7 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
           value={config.strategy || ""}
           onChange={(e) => onConfigChange({ ...config, strategy: e.target.value })}
           rows={2}
-          className="min-h-[72px] resize-y font-mono text-body-sm"
+          className="min-h-20 resize-y font-mono text-body-sm"
           placeholder="e.g. Split by page section, Split by topic..."
         />
         <p className="mt-1 ui-meta-text text-muted-foreground">
@@ -612,7 +614,7 @@ export function MergerNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: MergerNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div className="flex items-center gap-3">
         <Label htmlFor={`merger-strategy-${nodeId}`} className="ui-meta-text text-muted-foreground">Strategy</Label>
         <Select
@@ -642,7 +644,7 @@ export function MergerNodeEditor({ nodeId, config, onConfigChange }: {
             value={config.prompt || ""}
             onChange={(e) => onConfigChange({ ...config, prompt: e.target.value })}
             rows={2}
-            className="min-h-[72px] resize-y font-mono text-body-sm"
+            className="min-h-20 resize-y font-mono text-body-sm"
             placeholder="How to combine the results..."
           />
         </div>
@@ -659,7 +661,11 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
   onConfigChange: (config: ApprovalNodeConfig) => void
 }) {
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
+      <p className="ui-meta-text text-muted-foreground">
+        Pauses the workflow and asks you to review before continuing.
+      </p>
+
       <div>
         <Label htmlFor={`approval-message-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
           Message
@@ -669,34 +675,89 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
           value={config.message || ""}
           onChange={(e) => onConfigChange({ ...config, message: e.target.value })}
           rows={3}
-          className="min-h-[72px] resize-y font-mono text-body-sm"
+          className="min-h-20 resize-y font-mono text-body-sm"
           placeholder="Optional instructions shown to the reviewer..."
         />
       </div>
-      <div className="space-y-2 rounded-md border border-hairline bg-surface-1/80 px-2 py-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor={`approval-show-content-${nodeId}`} className="ui-meta-text text-muted-foreground">
-            Show content for review
-          </Label>
-          <Switch
-            id={`approval-show-content-${nodeId}`}
-            checked={config.show_content}
-            onCheckedChange={(checked) => onConfigChange({ ...config, show_content: checked })}
-            aria-label="Toggle content visibility in approval dialog"
-          />
+      <div className="surface-inset-card space-y-2 px-2 py-2">
+        <div className="space-y-0.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor={`approval-show-content-${nodeId}`} className="ui-meta-text text-muted-foreground">
+              Show content for review
+            </Label>
+            <Switch
+              id={`approval-show-content-${nodeId}`}
+              checked={config.show_content}
+              onCheckedChange={(checked) => onConfigChange({ ...config, show_content: checked })}
+              aria-label="Toggle content visibility in approval dialog"
+            />
+          </div>
+          <p className="ui-meta-text text-muted-foreground">Display the previous step's output in the approval dialog</p>
         </div>
-        <div className="flex items-center justify-between">
-          <Label htmlFor={`approval-allow-edit-${nodeId}`} className="ui-meta-text text-muted-foreground">
-            Allow content edits
-          </Label>
-          <Switch
-            id={`approval-allow-edit-${nodeId}`}
-            checked={config.allow_edit}
-            onCheckedChange={(checked) => onConfigChange({ ...config, allow_edit: checked })}
-            aria-label="Toggle editing before approval"
-          />
+        <div className="space-y-0.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor={`approval-allow-edit-${nodeId}`} className="ui-meta-text text-muted-foreground">
+              Allow content edits
+            </Label>
+            <Switch
+              id={`approval-allow-edit-${nodeId}`}
+              checked={config.allow_edit}
+              onCheckedChange={(checked) => onConfigChange({ ...config, allow_edit: checked })}
+              aria-label="Toggle editing before approval"
+            />
+          </div>
+          <p className="ui-meta-text text-muted-foreground">Let the reviewer modify the content before approving</p>
         </div>
       </div>
+
+      <div className="surface-inset-card space-y-2 px-2 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor={`approval-timeout-${nodeId}`} className="ui-meta-text text-muted-foreground">
+            Timeout (minutes)
+          </Label>
+          <Input
+            id={`approval-timeout-${nodeId}`}
+            type="number"
+            min={1}
+            value={config.timeout_minutes ?? ""}
+            onChange={(e) => {
+              const v = e.target.value === "" ? undefined : parseInt(e.target.value, 10)
+              onConfigChange({ ...config, timeout_minutes: v && !isNaN(v) ? v : undefined })
+            }}
+            placeholder="None"
+            className="w-20 h-control-sm text-body-sm text-right"
+          />
+        </div>
+        {config.timeout_minutes != null && config.timeout_minutes > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor={`approval-timeout-action-${nodeId}`} className="ui-meta-text text-muted-foreground">
+              On timeout
+            </Label>
+            <Select
+              value={config.timeout_action || "auto_reject"}
+              onValueChange={(v) => onConfigChange({ ...config, timeout_action: v as ApprovalNodeConfig["timeout_action"] })}
+            >
+              <SelectTrigger id={`approval-timeout-action-${nodeId}`} className="w-36 h-control-sm text-body-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto_approve">Auto-approve</SelectItem>
+                <SelectItem value="auto_reject">Auto-reject</SelectItem>
+                <SelectItem value="skip">Skip node</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <p className="ui-meta-text text-muted-foreground">
+          {config.timeout_minutes != null && config.timeout_minutes > 0
+            ? "If no one responds in time, the timeout action runs automatically."
+            : "No timeout — the workflow will wait indefinitely for approval."}
+        </p>
+      </div>
+
+      <p className="ui-meta-text text-muted-foreground">
+        Rejecting at this gate will stop the entire workflow run.
+      </p>
 
       <RuntimePolicyEditor nodeId={nodeId} config={config} onConfigChange={onConfigChange as (next: RuntimeConfigurableNodeConfig) => void} />
     </div>
@@ -730,7 +791,7 @@ export function HumanNodeEditor({ nodeId, config, onConfigChange }: {
   }
 
   return (
-    <div className="ui-fade-slide-in px-3 pb-3 border-t border-hairline pt-2.5 space-y-2 bg-surface-1/80">
+    <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <div className="flex items-center gap-3">
         <Label htmlFor={`human-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Mode</Label>
         <Select
@@ -792,13 +853,13 @@ export function HumanNodeEditor({ nodeId, config, onConfigChange }: {
           value={request.instructions || ""}
           onChange={(event) => updateRequest({ instructions: event.target.value })}
           rows={3}
-          className="min-h-[72px] resize-y font-mono text-body-sm"
+          className="min-h-20 resize-y font-mono text-body-sm"
           placeholder="Explain what information is needed before the flow continues."
         />
       </div>
 
       {config.requestSource === "static" && config.mode === "form" && (
-        <div className="space-y-2 rounded-md border border-hairline bg-surface-1/80 px-2 py-2">
+        <div className="surface-inset-card space-y-2 px-2 py-2">
           <div>
             <Label htmlFor={`human-field-label-${nodeId}`} className="ui-meta-text text-muted-foreground mb-1 block">
               Primary Field Label
@@ -845,7 +906,7 @@ export function HumanNodeEditor({ nodeId, config, onConfigChange }: {
         </div>
       )}
 
-      <div className="space-y-2 rounded-md border border-hairline bg-surface-1/80 px-2 py-2">
+      <div className="surface-inset-card space-y-2 px-2 py-2">
         <div className="flex items-center justify-between">
           <Label htmlFor={`human-allow-revisions-${nodeId}`} className="ui-meta-text text-muted-foreground">
             Allow revisions

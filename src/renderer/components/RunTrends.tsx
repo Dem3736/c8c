@@ -173,8 +173,8 @@ export function RunCompare({
     <div className="space-y-2">
       <div className="grid grid-cols-3 gap-1 ui-meta-text">
         <div className="text-muted-foreground" />
-        <div className="text-center font-medium">Run A</div>
-        <div className="text-center font-medium">Run B</div>
+        <div className="ui-body-text-medium text-center">Run A</div>
+        <div className="ui-body-text-medium text-center">Run B</div>
       </div>
       <CompareRow
         label="Cost"
@@ -235,8 +235,8 @@ function CompareRow({
   return (
     <div className="grid grid-cols-3 gap-1 ui-meta-text items-center">
       <div className="text-muted-foreground truncate" title={labelTitle ?? label}>{label}</div>
-      <div className="text-center font-mono">{valueA}</div>
-      <div className="text-center font-mono flex items-center justify-center gap-1">
+      <div className="ui-metric-text text-center">{valueA}</div>
+      <div className="ui-metric-text flex items-center justify-center gap-1 text-center">
         {valueB}
         {diff != null && diff !== 0 && (
           <span

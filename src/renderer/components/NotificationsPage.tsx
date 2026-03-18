@@ -22,6 +22,7 @@ import { ScopeBanner } from "@/components/ui/scope-banner"
 import { Textarea } from "@/components/ui/textarea"
 import {
   currentWorkflowAtom,
+  factoryBetaEnabledAtom,
   inboxNotificationsAtom,
   mainViewAtom,
   selectedFactoryIdAtom,
@@ -43,26 +44,26 @@ import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { selectedPastRunAtom } from "@/features/execution"
 import type { ArtifactRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult, Workflow } from "@shared/types"
 
-const LEVEL_META: Record<InboxNotification["level"], { icon: typeof CheckCircle2; tone: string; badge: string }> = {
+const LEVEL_META: Record<InboxNotification["level"], { icon: typeof CheckCircle2; tone: string; badgeClass: string }> = {
   info: {
     icon: Clock3,
-    tone: "text-muted-foreground",
-    badge: "border-hairline text-muted-foreground",
+    tone: "text-status-info",
+    badgeClass: "ui-status-badge-info",
   },
   success: {
     icon: CheckCircle2,
     tone: "text-status-success",
-    badge: "border-status-success/30 text-status-success",
+    badgeClass: "ui-status-badge-success",
   },
   warning: {
     icon: AlertTriangle,
     tone: "text-status-warning",
-    badge: "border-status-warning/30 text-status-warning",
+    badgeClass: "ui-status-badge-warning",
   },
   error: {
     icon: AlertTriangle,
     tone: "text-status-danger",
-    badge: "border-status-danger/30 text-status-danger",
+    badgeClass: "ui-status-badge-danger",
   },
 }
 
@@ -153,6 +154,7 @@ function deriveTaskStageMeta(workflow: Workflow, nodeId: string): TaskStageMeta 
 export function NotificationsPage() {
   const [notifications] = useAtom(inboxNotificationsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [factoryBetaEnabled] = useAtom(factoryBetaEnabledAtom)
   const [selectedFactoryId] = useAtom(selectedFactoryIdAtom)
   const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
   const [, setMainView] = useAtom(mainViewAtom)
@@ -447,12 +449,18 @@ export function NotificationsPage() {
   const selectedTaskStageMeta = selectedTask ? taskStageMetaByKey[taskStageKey(selectedTask) || ""] || null : null
   const selectedTaskPrimaryField = primaryTaskFieldLabel(selectedTask)
 
-  const handleOpenWorkflow = async () => {
-    if (!selectedTask?.workflowPath) return
-    const workflow = await window.api.loadWorkflow(selectedTask.workflowPath)
+  const openWorkflowPath = useCallback(async (workflowPath: string) => {
+    const workflow = await window.api.loadWorkflow(workflowPath)
     setWorkflow(workflow)
     setWorkflowSavedSnapshot(workflowSnapshot(workflow))
-    setSelectedWorkflowPath(selectedTask.workflowPath)
+    setSelectedWorkflowPath(workflowPath)
+    setSelectedPastRun(null)
+    setMainView("thread")
+  }, [setMainView, setSelectedPastRun, setSelectedWorkflowPath, setWorkflow, setWorkflowSavedSnapshot])
+
+  const handleOpenWorkflow = async () => {
+    if (!selectedTask?.workflowPath) return
+    await openWorkflowPath(selectedTask.workflowPath)
     setSelectedPastRun({
       runId: selectedTask.sourceRunId,
       status: "blocked",
@@ -463,7 +471,14 @@ export function NotificationsPage() {
       reportPath: "",
       workspace: selectedTask.workspace,
     })
-    setMainView("thread")
+  }
+
+  const handleNotificationAction = async (notification: InboxNotification) => {
+    if (!notification.action) return
+    if (notification.action.kind === "open_workflow") {
+      await openWorkflowPath(notification.action.workflowPath)
+      markRead(notification.id)
+    }
   }
 
   const handleTaskFieldChange = (field: HumanTaskField, value: unknown) => {
@@ -572,7 +587,7 @@ export function NotificationsPage() {
         }
         actions={(
           <>
-            {selectedCaseId && (
+            {selectedCaseId && factoryBetaEnabled && (
               <Button
                 type="button"
                 variant="outline"
@@ -635,12 +650,12 @@ export function NotificationsPage() {
                   ? "Resolving factory scope..."
                   : `Showing ${openHumanTaskCount} open review gate${openHumanTaskCount === 1 ? "" : "s"} for ${selectedFactoryLabel}.`
               }
-              actions={(
+              actions={factoryBetaEnabled ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => setMainView("factory")}>
                   <ArrowUpRight size={14} />
                   Back to factory
                 </Button>
-              )}
+              ) : undefined}
             />
           ) : null}
 
@@ -690,7 +705,7 @@ export function NotificationsPage() {
         <SectionHeading
           title="Needs your input"
           meta={(
-            <span className="rounded-md border border-hairline bg-surface-2/70 px-2 py-0.5 ui-meta-text text-muted-foreground">
+            <span className="control-badge border border-hairline bg-surface-2/70 ui-meta-text text-muted-foreground">
               {humanTasksLoading ? "Loading..." : `${openHumanTaskCount} open`}
             </span>
           )}
@@ -713,13 +728,15 @@ export function NotificationsPage() {
             </p>
             <p className="mt-1 text-body-sm text-muted-foreground">
               {selectedCaseOption
-                ? "Switch to all cases or continue this case in Factory if you want to move it forward."
+                ? (factoryBetaEnabled
+                    ? "Switch to all cases or continue this case in Factory if you want to move it forward."
+                    : "Switch to all cases or continue the related workflow if you want to move it forward.")
                 : "Flows that need structured answers or review gates will appear here."}
             </p>
           </article>
         ) : (
           <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="overflow-hidden rounded-lg border border-hairline bg-surface-2/40">
+            <div className="overflow-hidden rounded-lg surface-soft">
               {visibleHumanTasks.map((task) => {
                 const stageMeta = taskStageMetaByKey[taskStageKey(task) || ""] || null
                 const taskCaseId = caseIdByTaskKey.get(taskSelectionKey(task)) || null
@@ -768,7 +785,7 @@ export function NotificationsPage() {
               })}
             </div>
 
-            <article className="rounded-lg border border-hairline bg-surface-2/35 px-5 py-4">
+            <article className="rounded-lg surface-soft px-5 py-4">
               {taskLoading ? (
                 <div className="flex min-h-[260px] items-center justify-center text-muted-foreground">
                   <Loader2 size={18} className="mr-2 animate-spin" />
@@ -821,7 +838,7 @@ export function NotificationsPage() {
                   </div>
 
                   {selectedTask.summary && (
-                    <div className="rounded-lg border border-hairline bg-surface-1/80 px-3 py-2 text-body-sm text-muted-foreground whitespace-pre-wrap">
+                    <div className="rounded-lg surface-soft px-3 py-2 text-body-sm text-muted-foreground whitespace-pre-wrap">
                       {selectedTask.summary}
                     </div>
                   )}
@@ -832,7 +849,7 @@ export function NotificationsPage() {
 
                       if (field.type === "boolean") {
                         return (
-                          <div key={field.id} className="flex items-start justify-between gap-4 rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
+                          <div key={field.id} className="surface-inset-card flex items-start justify-between gap-4 p-3">
                             <div className="min-w-0">
                               <p className="text-body-sm font-medium text-foreground">{field.label}</p>
                               {field.description && (
@@ -870,7 +887,7 @@ export function NotificationsPage() {
                         return (
                           <div key={field.id} className="space-y-2">
                             <label className="ui-meta-text text-muted-foreground">{field.label}</label>
-                            <div className="space-y-2 rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
+                            <div className="surface-inset-card space-y-2 p-3">
                               {(field.options || []).map((option) => {
                                 const checked = selectedValues.includes(option.value)
                                 return (
@@ -967,7 +984,7 @@ export function NotificationsPage() {
         <SectionHeading
           title="Recent events"
           meta={(
-            <span className="rounded-md border border-hairline bg-surface-2/70 px-2 py-0.5 ui-meta-text text-muted-foreground">
+            <span className="control-badge border border-hairline bg-surface-2/70 ui-meta-text text-muted-foreground">
               {notifications.length} total · {unreadCount} unread
             </span>
           )}
@@ -1002,7 +1019,7 @@ export function NotificationsPage() {
             </p>
           </article>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-hairline bg-surface-2/35">
+          <div className="overflow-hidden rounded-lg surface-soft">
             {visibleNotifications.map((notification) => {
               const levelMeta = LEVEL_META[notification.level]
               const LevelIcon = levelMeta.icon
@@ -1023,9 +1040,9 @@ export function NotificationsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-body-md font-semibold text-foreground">{notification.title}</h2>
-                        <Badge variant="outline" className={levelMeta.badge}>
+                        <span className={cn("ui-status-badge ui-meta-text", levelMeta.badgeClass)}>
                           {SOURCE_LABELS[notification.source]}
-                        </Badge>
+                        </span>
                         {!notification.read && (
                           <Badge variant="secondary" size="pill">Unread</Badge>
                         )}
@@ -1041,17 +1058,30 @@ export function NotificationsPage() {
                       )}
                     </div>
 
-                    {!notification.read && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => markRead(notification.id)}
-                      >
-                        <Check size={14} />
-                        Mark read
-                      </Button>
-                    )}
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      {notification.action && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { void handleNotificationAction(notification) }}
+                        >
+                          <ArrowUpRight size={14} />
+                          {notification.action.label || "Open"}
+                        </Button>
+                      )}
+                      {!notification.read && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => markRead(notification.id)}
+                        >
+                          <Check size={14} />
+                          Mark read
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </article>
               )

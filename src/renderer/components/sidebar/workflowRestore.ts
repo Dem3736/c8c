@@ -26,5 +26,6 @@ export async function restoreSelectedWorkflowIfNeeded({
   loadWorkflow,
 }: RestoreSelectedWorkflowIfNeededArgs): Promise<Workflow | null> {
   if (!shouldRestoreSelectedWorkflow(selectedWorkflowPath, currentWorkflow)) return null
-  return loadWorkflow(selectedWorkflowPath!)
+  if (!selectedWorkflowPath) return null
+  return loadWorkflow(selectedWorkflowPath)
 }

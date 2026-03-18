@@ -16,6 +16,7 @@ import {
 import type {
   ApprovalNodeConfig,
   HumanNodeConfig,
+  InputNodeConfig,
   Workflow,
   WorkflowNode,
   WorkflowEdge,
@@ -28,6 +29,7 @@ import type {
 } from "@shared/types"
 import { type Node, type Edge, MarkerType } from "@xyflow/react"
 import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
+import { formatCost, formatTokens } from "@/components/output/OutputSections"
 import { NODE_LABELS } from "@/lib/node-ui-config"
 
 const NODE_WIDTH = 232
@@ -52,6 +54,14 @@ export interface CanvasNodeData {
   isTerminal: boolean
   hasValidationErrors?: boolean
   permissionModeOverride?: "plan" | "edit"
+  metricsLine?: string
+  metricsDetail?: {
+    tokens_in: number
+    tokens_out: number
+    cost_usd: number
+    latency_ms: number
+    model_id?: string
+  }
   [key: string]: unknown
 }
 
@@ -114,7 +124,7 @@ export function computeLayout(
 
     if (meta) {
       // Runtime branch node — show subtask key
-      label = "skillRef" in node.config ? (node.config as SkillNodeConfig).skillRef : label
+      label = "skillRef" in node.config ? (node.config as SkillNodeConfig).skillRef || label : label
       subtitle = `Branch ${meta.branchIndex + 1}/${meta.totalBranches} · ${meta.subtaskKey}`
     } else if (node.type === "skill" && "skillRef" in node.config) {
       const cfg = node.config as SkillNodeConfig
@@ -142,22 +152,45 @@ export function computeLayout(
       subtitle = cfg.mode === "approval"
         ? "Human approval gate"
         : cfg.staticRequest?.instructions || "Structured human input"
+    } else if (node.type === "input") {
+      const cfg = node.config as InputNodeConfig
+      const typeParts: string[] = []
+      if (cfg.inputType && cfg.inputType !== "auto") {
+        typeParts.push(cfg.inputType === "url" ? "URL" : cfg.inputType.charAt(0).toUpperCase() + cfg.inputType.slice(1))
+      }
+      if (cfg.required === false) typeParts.push("optional")
+      if (typeParts.length > 0) {
+        label = `Input (${typeParts.join(", ")})`
+      }
+      subtitle = cfg.placeholder || (cfg.defaultValue ? "Has default value" : "")
     }
 
-    // Append metrics to subtitle when node has completed
+    // Build metrics line and detail for separate rendering on canvas node
+    let metricsLine: string | undefined
+    let metricsDetail: CanvasNodeData["metricsDetail"] | undefined
     if (state?.metrics) {
       const m = state.metrics
       const parts: string[] = []
       const totalTokens = m.tokens_in + m.tokens_out
       if (totalTokens > 0) {
-        parts.push(totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}k tokens` : `${totalTokens} tokens`)
+        parts.push(`${formatTokens(totalTokens)} tokens`)
       }
       if (m.cost_usd > 0) {
-        parts.push(m.cost_usd < 0.01 ? `<$0.01` : `$${m.cost_usd.toFixed(2)}`)
+        parts.push(formatCost(m.cost_usd))
+      }
+      if (state.startedAt && state.completedAt) {
+        const dur = (state.completedAt - state.startedAt) / 1000
+        parts.push(`${dur.toFixed(1)}s`)
       }
       if (parts.length > 0) {
-        const metricsSummary = parts.join(" · ")
-        subtitle = subtitle ? `${subtitle} · ${metricsSummary}` : metricsSummary
+        metricsLine = parts.join(" · ")
+      }
+      metricsDetail = {
+        tokens_in: m.tokens_in,
+        tokens_out: m.tokens_out,
+        cost_usd: m.cost_usd,
+        latency_ms: m.latency_ms,
+        model_id: state.meta?.model_id,
       }
     }
 
@@ -180,6 +213,8 @@ export function computeLayout(
         permissionModeOverride: node.type === "skill"
           ? (node.config as SkillNodeConfig).permissionMode
           : undefined,
+        metricsLine,
+        metricsDetail,
       },
     }
   })

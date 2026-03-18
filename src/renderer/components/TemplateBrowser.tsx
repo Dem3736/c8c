@@ -196,7 +196,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
           </DialogDescription>
         </CanvasDialogHeader>
 
-        <CanvasDialogBody className="grid grid-cols-1 lg:grid-cols-[1.4fr,1fr] gap-3 flex-1 pt-4 min-h-0 bg-surface-1/30">
+        <CanvasDialogBody className="grid grid-cols-1 lg:grid-cols-[1.4fr,1fr] gap-3 flex-1 min-h-0 pt-4 surface-soft">
           <div
             role="listbox"
             aria-label="Workflow templates"
@@ -210,10 +210,10 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             )}
             {!isLoading && loadError && (
               <div className="rounded-lg surface-danger-soft px-4 py-4 text-center">
-                <div className="mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-full bg-status-danger/10 text-status-danger">
+                <div className="ui-status-halo-danger mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-full">
                   <AlertTriangle size={18} />
                 </div>
-                <p className="mt-3 text-body-md font-medium text-foreground">Could not load templates</p>
+                <p className="mt-3 ui-body-text-medium text-foreground">Could not load templates</p>
                 <p className="mt-1 text-body-sm text-status-danger">{loadError}</p>
                 <Button
                   type="button"
@@ -247,9 +247,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   variant="ghost"
                   size="auto"
                   className={cn(
-                    "h-auto w-full justify-start rounded-md border border-hairline bg-surface-1 p-3 text-left whitespace-normal hover:bg-surface-3 ui-transition-colors ui-motion-fast ui-elevation-inset",
+                    "ui-interactive-card h-auto w-full justify-start rounded-md surface-soft p-3 text-left whitespace-normal",
                     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
-                    isSelected && "ring-2 ring-foreground/20 bg-surface-3",
+                    isSelected && "surface-inset-card ring-2 ring-foreground/20 shadow-inset-highlight",
                   )}
                   onClick={() => setSelectedId(template.id)}
                   onDoubleClick={() => {
@@ -260,7 +260,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   <div className="flex items-start gap-3">
                     <span className="text-lg mt-0.5 flex-shrink-0" aria-hidden>{template.emoji}</span>
                     <div className="flex-1 min-w-0">
-                      <span className="text-body-md font-medium truncate block">{template.headline}</span>
+                      <span className="ui-body-text-medium block truncate">{template.headline}</span>
                       <p className="ui-meta-text mt-1">
                         {deriveTemplateCardCopy(template)}
                       </p>
@@ -281,7 +281,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             })}
           </div>
 
-          <div className="rounded-lg surface-soft p-3 overflow-y-auto ui-scroll-region min-h-[180px]">
+          <div className="rounded-lg surface-soft min-h-44 overflow-y-auto p-3 ui-scroll-region">
             {!selected ? (
               <p className="text-body-md text-muted-foreground">
                 {loadError
@@ -292,7 +292,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
               <div className="space-y-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-body-md font-medium">{selected.name}</h4>
+                    <h4 className="ui-body-text-medium">{selected.name}</h4>
                     <Badge size="compact" variant="secondary">
                       {getTemplateSourceLabel(selected)}
                     </Badge>
@@ -351,7 +351,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </div>
                 )}
 
-                <details className="rounded-lg border border-hairline bg-surface-1/70 px-3 py-3">
+                <details className="rounded-lg surface-soft px-3 py-3">
                   <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">
                     See the flow structure
                   </summary>
@@ -384,7 +384,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             </div>
           </div>
         ) : (
-          <CanvasDialogFooter className="bg-surface-1/60">
+          <CanvasDialogFooter className="surface-panel">
             <Button variant="outline" onClick={closeBrowser}>
               Cancel
             </Button>

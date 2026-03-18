@@ -65,7 +65,7 @@ function IconActionButton({ className, label, title, ...props }: IconActionButto
       size="icon-xs"
       aria-label={label}
       title={title ?? label}
-      className={cn("shrink-0 text-muted-foreground hover:text-foreground", className)}
+      className={cn("ui-icon-button shrink-0", className)}
       {...props}
     />
   )
@@ -129,7 +129,7 @@ function McpServerRow({
   return (
     <div className="group">
       {/* Main compact row */}
-      <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-surface-2/50 -mx-2">
+      <div className="ui-interactive-card-subtle -mx-2 flex items-center gap-2 rounded-md px-2 py-1.5">
         <IconActionButton
           onClick={() => setExpanded(!expanded)}
           label={expanded ? `Collapse ${server.name}` : `Expand ${server.name}`}
@@ -137,13 +137,13 @@ function McpServerRow({
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               expanded && "rotate-90",
             )}
           />
         </IconActionButton>
 
-        <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>
+        <span className={cn("ui-body-text-medium truncate", server.disabled && "text-muted-foreground line-through")}>
           {server.name}
         </span>
 
@@ -156,11 +156,14 @@ function McpServerRow({
         </span>
 
         {testState.result && (
-          <span className="shrink-0">
-            {testState.result.healthy
-              ? <Check size={12} className="text-status-success" />
-              : <AlertCircle size={12} className="text-status-danger" />
-            }
+          <span
+            className={cn(
+              "ui-status-badge shrink-0",
+              testState.result.healthy ? "ui-status-badge-success" : "ui-status-badge-danger",
+            )}
+          >
+            {testState.result.healthy ? <Check size={12} /> : <AlertCircle size={12} />}
+            {testState.result.healthy ? "Healthy" : "Failed"}
           </span>
         )}
 
@@ -186,7 +189,7 @@ function McpServerRow({
             onClick={() => onRemove(server)}
             label={`Remove ${server.name}`}
             title="Remove"
-            className="hover:bg-status-danger/20 hover:text-status-danger"
+            className="ui-icon-button-danger"
           >
             <Trash2 size={12} />
           </IconActionButton>
@@ -359,7 +362,7 @@ function McpServerFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="w-[520px]">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
           <DialogDescription>
@@ -449,7 +452,7 @@ function McpServerFormDialog({
               onChange={(e) => update("env", e.target.value)}
               placeholder={"EXA_API_KEY=your-key\nOTHER_VAR=value"}
               rows={3}
-              className="min-h-[5.25rem] font-mono"
+              className="min-h-20 font-mono"
             />
           </div>
 
@@ -533,14 +536,14 @@ function ServerGroupSection({
         <ChevronRight
           size={12}
           className={cn(
-            "text-muted-foreground transition-transform ui-motion-fast",
+            "ui-chevron text-muted-foreground",
             groupOpen && "rotate-90",
           )}
         />
         <span className="section-kicker">{group.label}</span>
         <Badge variant="outline" size="compact" className="text-muted-foreground">{group.servers.length}</Badge>
         {group.projectPath && (
-          <span className="ui-meta-text text-muted-foreground truncate max-w-[250px] ml-1">{group.projectPath}</span>
+          <span className="ui-meta-text ml-1 max-w-64 truncate text-muted-foreground">{group.projectPath}</span>
         )}
       </Button>
 
@@ -613,7 +616,7 @@ function PluginMcpServerRow({
 
   return (
     <div className="group">
-      <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-surface-2/50 -mx-2">
+      <div className="ui-interactive-card-subtle -mx-2 flex items-center gap-2 rounded-md px-2 py-1.5">
         <IconActionButton
           onClick={() => setExpanded(!expanded)}
           label={expanded ? `Collapse ${server.name}` : `Expand ${server.name}`}
@@ -621,13 +624,13 @@ function PluginMcpServerRow({
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               expanded && "rotate-90",
             )}
           />
         </IconActionButton>
 
-        <span className={`text-body-sm font-medium truncate ${server.disabled ? "text-muted-foreground line-through" : ""}`}>
+        <span className={cn("ui-body-text-medium truncate", server.disabled && "text-muted-foreground line-through")}>
           {server.name}
         </span>
 
@@ -635,9 +638,14 @@ function PluginMcpServerRow({
           {server.type}
         </Badge>
 
-        <Badge variant={server.approved ? "default" : "outline"} size="compact" className="shrink-0">
-          {server.approved ? "approved" : "blocked"}
-        </Badge>
+        <span
+          className={cn(
+            "ui-status-badge shrink-0",
+            server.approved ? "ui-status-badge-success" : "ui-status-badge-warning",
+          )}
+        >
+          {server.approved ? "Approved" : "Blocked"}
+        </span>
 
         <span className="ui-meta-text text-muted-foreground truncate hidden sm:inline">
           {transportSummary}
@@ -823,7 +831,7 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
       />
 
       {provider === "codex" && (
-        <article className="rounded-lg border border-status-warning/20 bg-status-warning/10 px-4 py-3">
+        <article className="rounded-lg surface-warning-soft px-4 py-3">
           <p className="text-body-sm text-status-warning">
             This panel shows only Codex global MCP servers.
           </p>
@@ -836,7 +844,7 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
       {!hasAnyServers && !loading && (
         <article className="rounded-lg surface-panel p-6">
           <div className="ui-empty-state">
-            <Server size={24} className="text-muted-foreground/60" />
+            <Server size={24} className="text-muted-foreground" />
             <p className="text-body-sm text-muted-foreground mt-2">
               No MCP servers configured. Add a server to extend the active provider with external tools.
             </p>

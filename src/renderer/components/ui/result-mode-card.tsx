@@ -23,12 +23,19 @@ export function ResultModeCard({
       onClick={() => onSelect(mode)}
       className={cn(
         "ui-interactive-card-subtle w-full rounded-xl surface-panel text-left !whitespace-normal",
-        "px-4 py-4 !items-start !justify-start",
+        compact ? "px-3 py-3 !items-start !justify-start" : "px-4 py-4 !items-start !justify-start",
         selected && "ring-2 ring-foreground/20 bg-surface-3",
       )}
     >
       <div className="flex w-full items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-hairline bg-surface-2/80 text-xl shadow-inset-highlight-subtle">
+        <div
+          className={cn(
+            "shrink-0 rounded-lg border border-hairline bg-surface-2/80 shadow-inset-highlight-subtle",
+            compact
+              ? "flex h-9 w-9 items-center justify-center text-lg"
+              : "flex h-11 w-11 items-center justify-center text-xl",
+          )}
+        >
           <span aria-hidden>{mode.emoji}</span>
         </div>
         <div className="min-w-0 flex-1 space-y-1">
@@ -40,28 +47,36 @@ export function ResultModeCard({
               </span>
             ) : null}
           </div>
-          <p className="text-body-sm text-foreground">{mode.summary}</p>
+          <p className={cn("text-body-sm text-foreground", compact && "line-clamp-2 text-muted-foreground")}>
+            {mode.summary}
+          </p>
         </div>
       </div>
 
-      <div className={cn("mt-4 grid w-full gap-3", compact ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-4")}>
-        <div className="space-y-1">
-          <p className="ui-meta-label text-muted-foreground">Use this for</p>
-          <p className="text-body-sm text-muted-foreground">{mode.useFor}</p>
+      {compact ? (
+        <div className="mt-3 w-full">
+          <p className="line-clamp-2 text-body-sm text-muted-foreground">{mode.youGetFirst}</p>
         </div>
-        <div className="space-y-1">
-          <p className="ui-meta-label text-muted-foreground">You provide</p>
-          <p className="text-body-sm text-muted-foreground">{mode.youProvide}</p>
+      ) : (
+        <div className={cn("mt-4 grid w-full gap-3", "grid-cols-1 md:grid-cols-2 xl:grid-cols-4")}>
+          <div className="space-y-1">
+            <p className="ui-meta-label text-muted-foreground">Use this for</p>
+            <p className="text-body-sm text-muted-foreground">{mode.useFor}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="ui-meta-label text-muted-foreground">You provide</p>
+            <p className="text-body-sm text-muted-foreground">{mode.youProvide}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="ui-meta-label text-muted-foreground">You get first</p>
+            <p className="text-body-sm text-muted-foreground">{mode.youGetFirst}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="ui-meta-label text-muted-foreground">Your role</p>
+            <p className="text-body-sm text-muted-foreground">{mode.userRole}</p>
+          </div>
         </div>
-        <div className="space-y-1">
-          <p className="ui-meta-label text-muted-foreground">You get first</p>
-          <p className="text-body-sm text-muted-foreground">{mode.youGetFirst}</p>
-        </div>
-        <div className="space-y-1">
-          <p className="ui-meta-label text-muted-foreground">Your role</p>
-          <p className="text-body-sm text-muted-foreground">{mode.userRole}</p>
-        </div>
-      </div>
+      )}
     </Button>
   )
 }

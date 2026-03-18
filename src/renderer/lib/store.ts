@@ -1,6 +1,7 @@
 import { atom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
 import { SIDEBAR_DEFAULT_WIDTH } from "@/lib/sidebar-layout"
+import type { TemplateLibraryContextState } from "./template-library-context"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { toWorkflowExecutionKey } from "./workflow-execution"
@@ -152,6 +153,12 @@ export interface ValidationError {
   severity: "error" | "warning"
 }
 export const validationErrorsAtom = atom<Record<string, ValidationError[]>>({})
+export interface ValidationNavigationTarget {
+  nodeId: string | null
+  fieldId: string
+  requestId: number
+}
+export const validationNavigationTargetAtom = atom<ValidationNavigationTarget | null>(null)
 
 // Input
 export const inputValueAtom = atom("")
@@ -161,8 +168,11 @@ export const selectedNodeIdAtom = atom<string | null>(null)
 // Desktop runtime
 export const desktopRuntimeAtom = atom<DesktopRuntimeInfo>(defaultDesktopRuntime())
 
-// Canvas manual positions (overrides Dagre layout)
-export const canvasManualPositionsAtom = atom<Record<string, { x: number; y: number }>>({})
+// Canvas manual positions — derived from workflow.canvasLayout for persistence and undo support.
+// Read-only: write via currentWorkflowAtom.canvasLayout instead.
+export const canvasManualPositionsAtom = atom<Record<string, { x: number; y: number }>>(
+  (get) => get(currentWorkflowAtom).canvasLayout ?? {},
+)
 
 // Global execution defaults (applied to new/generated workflows)
 export const globalExecutionDefaultsAtom = atomWithStorage<{
@@ -201,6 +211,11 @@ export const providerAuthStatusAtom = atom<Record<ProviderId, ProviderAuthStatus
 })
 export const activeExecutionProviderAtom = atom<ProviderId>("claude")
 
+export const factoryBetaEnabledAtom = atomWithStorage<boolean>(
+  "c8c:factory-beta-enabled",
+  false,
+)
+
 // Research web-search backend preference
 export const webSearchBackendAtom = atomWithStorage<WebSearchBackend>(
   "c8c:web-search-backend",
@@ -213,8 +228,21 @@ export const cliStatusBannerDismissedAtom = atom(false)
 
 // View mode
 export type ViewMode = "list" | "canvas" | "settings"
-export const viewModeAtom = atom<ViewMode>("list")
+export const viewModeAtom = atomWithStorage<ViewMode>("c8c:view-mode", "list")
+export type FlowSurfaceMode = "outline" | "edit"
+export const flowSurfaceModeAtom = atomWithStorage<FlowSurfaceMode>("c8c:flow-surface-mode", "edit")
 export const workflowReviewModeAtom = atom(false)
+export type WorkflowOpenStatus = "idle" | "loading" | "error"
+export interface WorkflowOpenState {
+  status: WorkflowOpenStatus
+  targetPath: string | null
+  message: string | null
+}
+export const workflowOpenStateAtom = atom<WorkflowOpenState>({
+  status: "idle",
+  targetPath: null,
+  message: null,
+})
 
 // First launch / onboarding
 export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
@@ -255,12 +283,19 @@ export const selectedInboxTaskKeyAtom = atomWithStorage<string | null>(
 export type InboxNotificationLevel = "info" | "success" | "warning" | "error"
 export type InboxNotificationSource = "workflow" | "batch" | "agent" | "system"
 
+export interface InboxNotificationAction {
+  kind: "open_workflow"
+  workflowPath: string
+  label?: string
+}
+
 export interface InboxNotification {
   id: string
   title: string
   description?: string
   level: InboxNotificationLevel
   source: InboxNotificationSource
+  action?: InboxNotificationAction
   createdAt: number
   read: boolean
 }
@@ -349,6 +384,7 @@ export const workflowCreateContextAtom = atom<{
   projectPath: null,
   locked: false,
 })
+export const templateLibraryContextAtom = atom<TemplateLibraryContextState | null>(null)
 export const selectedResultModeIdAtom = atomWithStorage<ResultModeId>(
   "c8c:selected-result-mode-id",
   "development",

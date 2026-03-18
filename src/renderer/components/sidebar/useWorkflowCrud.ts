@@ -3,11 +3,13 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react"
+import { useSetAtom } from "jotai"
 import type { MainView } from "@/lib/store"
 import type { Workflow, WorkflowFile } from "@shared/types"
 import { toast } from "sonner"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { workflowOpenStateAtom } from "@/lib/store"
 import { toWorkflowExecutionKey } from "@/features/execution"
 
 interface UseWorkflowCrudParams {
@@ -85,6 +87,7 @@ export function useWorkflowCrud({
   onProjectAdd,
   onWorkflowCreate,
 }: UseWorkflowCrudParams) {
+  const setWorkflowOpenState = useSetAtom(workflowOpenStateAtom)
   const [pendingRenameWorkflow, setPendingRenameWorkflow] = useState<WorkflowFile | null>(null)
   const [renameInput, setRenameInput] = useState("")
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<WorkflowFile | null>(null)
@@ -163,8 +166,20 @@ export function useWorkflowCrud({
     }
 
     setMainView("thread")
+    const loadingToastId = toast.loading("Opening workflow...")
+    setWorkflowOpenState({
+      status: "loading",
+      targetPath: workflow.path,
+      message: null,
+    })
     try {
       const loadedWorkflow = await window.api.loadWorkflow(workflow.path)
+      toast.dismiss(loadingToastId)
+      setWorkflowOpenState({
+        status: "idle",
+        targetPath: null,
+        message: null,
+      })
       applyLoadedWorkflow(
         workflow.path,
         loadedWorkflow,
@@ -173,6 +188,12 @@ export function useWorkflowCrud({
         setWorkflowSavedSnapshot,
       )
     } catch (error) {
+      toast.dismiss(loadingToastId)
+      setWorkflowOpenState({
+        status: "error",
+        targetPath: workflow.path,
+        message: String(error),
+      })
       toast.error(`Failed to open workflow: ${String(error)}`)
     }
   }
@@ -247,8 +268,20 @@ export function useWorkflowCrud({
     }
 
     setMainView("thread")
+    const loadingToastId = toast.loading("Opening workflow...")
+    setWorkflowOpenState({
+      status: "loading",
+      targetPath: workflow.path,
+      message: null,
+    })
     try {
       const loadedWorkflow = await window.api.loadWorkflow(workflow.path)
+      toast.dismiss(loadingToastId)
+      setWorkflowOpenState({
+        status: "idle",
+        targetPath: null,
+        message: null,
+      })
       applyLoadedWorkflow(
         workflow.path,
         loadedWorkflow,
@@ -257,6 +290,12 @@ export function useWorkflowCrud({
         setWorkflowSavedSnapshot,
       )
     } catch (error) {
+      toast.dismiss(loadingToastId)
+      setWorkflowOpenState({
+        status: "error",
+        targetPath: workflow.path,
+        message: String(error),
+      })
       toast.error(`Failed to open workflow: ${String(error)}`)
     }
   }

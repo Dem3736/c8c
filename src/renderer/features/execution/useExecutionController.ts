@@ -65,6 +65,7 @@ export function useExecutionController({
       },
       onRunFinished: ({ workflowKey, state }) => {
         if (state.runOutcome === "failed") return
+        const templateContext = workflowTemplateContextsRef.current[workflowKey]
         const workflowName = state.workflowName || "Workflow"
         const title = state.runOutcome === "completed"
           ? `Run completed: ${workflowName}`
@@ -73,18 +74,25 @@ export function useExecutionController({
             : state.runOutcome === "interrupted"
               ? `Run interrupted: ${workflowName}`
               : `Run finished: ${workflowName}`
-        const description = state.lastError
-          || state.reportPath
-          || state.workspace
-          || undefined
+        const description = state.runOutcome === "completed"
+          ? templateContext?.pack?.recommendedNext?.length
+            ? "Saved outputs are ready. Open the workflow to continue the guided path."
+            : "Open the workflow to review the result and saved outputs."
+          : state.lastError || state.workspace || undefined
         addNotificationRef.current({
           title,
           description,
           level: state.runOutcome === "completed" ? "success" : state.runOutcome === "cancelled" ? "warning" : "error",
           source: "workflow",
+          action: state.runWorkflowPath
+            ? {
+                kind: "open_workflow",
+                workflowPath: state.runWorkflowPath,
+                label: state.runOutcome === "completed" ? "Open workflow" : "Inspect workflow",
+              }
+            : undefined,
         })
 
-        const templateContext = workflowTemplateContextsRef.current[workflowKey]
         if (
           state.runOutcome !== "completed"
           || !state.projectPath

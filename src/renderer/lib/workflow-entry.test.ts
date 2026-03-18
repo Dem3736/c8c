@@ -42,7 +42,7 @@ function createTemplate(): WorkflowTemplate {
 }
 
 describe("workflow-entry factory helpers", () => {
-  it("builds a reusable template run context", () => {
+  it("builds a reusable template run context without factory scope by default", () => {
     const template = createTemplate()
     const context = buildTemplateRunContext({
       template,
@@ -52,7 +52,8 @@ describe("workflow-entry factory helpers", () => {
     expect(context.templateId).toBe("delivery-plan-phase")
     expect(context.pack?.id).toBe("delivery-foundation")
     expect(context.contractOut?.[0]?.kind).toBe("phase_plan")
-    expect(context.caseId).toMatch(/^case:delivery-foundation:/)
+    expect(context.factoryId).toBeUndefined()
+    expect(context.caseId).toBeUndefined()
   })
 
   it("checks required contracts and selects matching artifacts", () => {
@@ -108,8 +109,24 @@ describe("workflow-entry factory helpers", () => {
       workflowPath: "/tmp/plan-phase.chain",
       sourceArtifacts: artifacts,
     })
-    expect(context.caseId).toMatch(/^case:delivery-foundation:/)
+    expect(context.factoryId).toBeUndefined()
+    expect(context.caseId).toBeUndefined()
     expect(context.sourceArtifactIds).toEqual(["artifact-1", "artifact-1b", "artifact-2"])
+  })
+
+  it("creates factory and case identity only when workflow launch is explicitly factory-scoped", () => {
+    const template = createTemplate()
+    const context = buildTemplateRunContext({
+      template,
+      workflowPath: "/tmp/plan-phase.chain",
+      factory: {
+        id: "factory:delivery-foundation",
+        label: "Delivery Factory",
+      },
+    })
+
+    expect(context.factoryId).toBe("factory:delivery-foundation")
+    expect(context.caseId).toMatch(/^case:delivery-foundation:/)
   })
 
   it("inherits case identity from source artifacts when available", () => {

@@ -345,6 +345,11 @@
   border-bottom: 1px solid hsl(var(--hairline));
 }
 
+.surface-depth-footer {
+  background: linear-gradient(to top, hsl(var(--surface-2) / 0.9), hsl(var(--surface-1) / 0.9));
+  border-top: 1px solid hsl(var(--hairline));
+}
+
 .shadow-inset-highlight {
   box-shadow: inset 0 1px 0 var(--inset-highlight);
 }
@@ -604,8 +609,10 @@
   height: 100%;
   border-radius: 9999px;
   transition:
-    width var(--motion-base) var(--ease-standard),
-    background-color var(--motion-fast) var(--ease-standard);
+    width var(--motion-slow) var(--ease-emphasis),
+    background-color var(--motion-fast) var(--ease-emphasis),
+    opacity var(--motion-fast) var(--ease-emphasis);
+  will-change: width;
 }
 
 .ui-disclosure > summary::-webkit-details-marker {
@@ -672,6 +679,12 @@
 
 .ui-pressable:active {
   transform: translateY(var(--motion-press-shift)) scale(var(--motion-press-scale));
+}
+
+.ui-chevron {
+  transform-origin: center;
+  transition: transform var(--motion-base) var(--ease-emphasis);
+  will-change: transform;
 }
 
 .ui-alert-info {
@@ -783,6 +796,15 @@
   box-shadow: none;
 }
 
+.ui-icon-button-danger {
+  color: hsl(var(--status-danger));
+}
+
+.ui-icon-button-danger:hover {
+  background: hsl(var(--status-danger) / 0.1);
+  color: hsl(var(--status-danger));
+}
+
 .ui-slider {
   appearance: none;
   background: transparent;
@@ -879,6 +901,17 @@
 .surface-info-soft {
   border: 1px solid hsl(var(--status-info) / 0.2);
   background: hsl(var(--status-info) / 0.1);
+}
+
+.surface-success-soft {
+  border: 1px solid hsl(var(--status-success) / 0.2);
+  background: hsl(var(--status-success) / 0.1);
+}
+
+.ui-status-halo-danger {
+  border: 1px solid hsl(var(--status-danger) / 0.2);
+  background: hsl(var(--status-danger) / 0.1);
+  color: hsl(var(--status-danger));
 }
 
 .surface-warning-soft {
@@ -978,7 +1011,11 @@
   height: 100%;
   border-radius: 9999px;
   background: hsl(var(--primary));
-  transition: width var(--motion-base) var(--ease-standard);
+  transition:
+    width var(--motion-slow) var(--ease-emphasis),
+    background-color var(--motion-fast) var(--ease-emphasis),
+    opacity var(--motion-fast) var(--ease-emphasis);
+  will-change: width;
 }
 
 .ui-elevation-inset {
@@ -1093,6 +1130,41 @@
     0 0 0 1px hsl(var(--hairline) / 0.26),
     0 6px 14px hsl(var(--foreground) / 0.08);
   animation: edge-label-enter var(--motion-base) var(--ease-emphasis);
+  transition:
+    transform var(--motion-fast) var(--ease-emphasis),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.ui-edge-label.is-selected {
+  transform: scale(1.07);
+  box-shadow:
+    0 0 0 2px hsl(var(--ring) / 0.15),
+    0 0 0 1px hsl(var(--hairline) / 0.26),
+    0 8px 18px hsl(var(--foreground) / 0.12);
+}
+
+.ui-crossfade-stack {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+}
+
+.ui-crossfade-stack > * {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--motion-fast) var(--ease-emphasis),
+    transform var(--motion-fast) var(--ease-emphasis);
+}
+
+.ui-crossfade-stack > [data-active="false"] {
+  opacity: 0;
+  transform: translateY(1px) scale(0.78);
+  pointer-events: none;
+}
+
+.ui-crossfade-stack > [data-active="true"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .workflow-edge-path {
@@ -1101,6 +1173,15 @@
     stroke-width var(--motion-fast) var(--ease-standard),
     stroke var(--motion-fast) var(--ease-standard),
     filter var(--motion-fast) var(--ease-standard);
+}
+
+/* Idle opacity — hover brightens to full for discoverable interactivity */
+.workflow-edge-idle {
+  opacity: var(--edge-opacity-idle);
+}
+
+.react-flow__edge:hover .workflow-edge-idle {
+  opacity: 1;
 }
 
 .node-status-running {
@@ -1129,6 +1210,21 @@
   animation: ui-fade-slide-in var(--motion-base) var(--ease-emphasis);
 }
 
+@keyframes ui-fade-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.ui-fade-slide-out {
+  animation: ui-fade-slide-out var(--motion-base) var(--ease-emphasis) forwards;
+}
+
 @keyframes ui-fade-slide-in-trailing {
   from {
     opacity: 0;
@@ -1142,6 +1238,51 @@
 
 .ui-fade-slide-in-trailing {
   animation: ui-fade-slide-in-trailing var(--motion-base) var(--ease-emphasis);
+}
+
+@keyframes ui-fade-slide-out-trailing {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(calc(var(--motion-reveal-distance) * 1.5));
+  }
+}
+
+.ui-fade-slide-out-trailing {
+  animation: ui-fade-slide-out-trailing var(--motion-base) var(--ease-emphasis) forwards;
+}
+
+/* Attachment chips — entrance via @starting-style (Chromium ≥ 117 / Electron ≥ 29).
+   The chip transitions in on first paint, no JS needed. Exit uses ui-fade-slide-out. */
+.ui-attachment-chip {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-emphasis);
+}
+
+@starting-style {
+  .ui-attachment-chip {
+    opacity: 0;
+    transform: scale(0.82) translateY(4px);
+  }
+}
+
+@keyframes ui-running-pulse {
+  0%, 100% {
+    opacity: 0.88;
+    filter: saturate(1);
+  }
+  50% {
+    opacity: 1;
+    filter: saturate(1.12);
+  }
+}
+
+.ui-running-pulse {
+  animation: ui-running-pulse 1.6s var(--ease-emphasis) infinite;
 }
 
 @keyframes ui-status-beacon-ping {
@@ -1262,6 +1403,52 @@
   transform: scale(0.992);
 }
 
+/* Drag lift — nodes feel physically picked up while dragging */
+.workflow-canvas .react-flow__node-dragging .ui-interactive-card {
+  transform: translateY(-4px) scale(1.018) !important;
+  box-shadow: var(--elevation-overlay), 0 18px 44px hsl(var(--foreground) / 0.13) !important;
+  border-color: hsl(var(--hairline)) !important;
+}
+
+/* Node entrance — nodes materialize with scale+fade on mount (initial load + add) */
+.workflow-canvas .react-flow__node {
+  animation: canvas-node-enter var(--motion-base) var(--ease-emphasis) both;
+}
+
+@keyframes canvas-node-enter {
+  from {
+    opacity: 0;
+    scale: 0.93;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Connection handle scale on hover — handles feel tactile and grabbable */
+.node-handle-dot {
+  transition:
+    transform var(--motion-fast) var(--ease-emphasis),
+    background-color var(--motion-fast) var(--ease-standard) !important;
+}
+
+.node-handle-dot:hover {
+  transform: scale(1.45) !important;
+}
+
+/* Node completion pulse — brief scale pop when execution finishes */
+.node-status-completed {
+  border-color: hsl(var(--status-success) / 0.6);
+  animation: node-complete-pulse var(--motion-slow) var(--ease-emphasis) both;
+}
+
+@keyframes node-complete-pulse {
+  0%   { scale: 1; }
+  38%  { scale: 1.024; }
+  100% { scale: 1; }
+}
+
 @keyframes workflow-edge-dash {
   to {
     stroke-dashoffset: -20;
@@ -1285,12 +1472,78 @@
   }
 }
 
+/* One-shot ignition flash — edge visibly activates when execution reaches it */
+@keyframes workflow-edge-ignite {
+  0%   { opacity: 0.15; }
+  40%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+
 .workflow-edge-fail {
-  animation: workflow-edge-dash 1.35s linear infinite;
+  animation:
+    workflow-edge-dash 1.35s linear infinite,
+    workflow-edge-ignite 0.5s var(--ease-emphasis) both;
 }
 
 .workflow-edge-flow {
   animation: workflow-edge-flow 1.5s linear infinite;
+}
+
+/* Photon overlay for active pass edges — bright segments stream along a solid green base */
+@keyframes workflow-edge-photon-flow {
+  to { stroke-dashoffset: -165; }
+}
+
+.workflow-edge-photon {
+  stroke-dasharray: 15 150;
+  animation: workflow-edge-photon-flow 2s linear infinite;
+}
+
+
+/* Fix #1: Handle discoverability — subtle breathing glow makes handles visible as interactive */
+@keyframes handle-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px hsl(var(--hairline) / 0.24), 0 0 0 3px hsl(var(--primary) / 0); }
+  50% { box-shadow: 0 0 0 1px hsl(var(--hairline) / 0.24), 0 0 0 3px hsl(var(--primary) / 0.12); }
+}
+
+.workflow-canvas .node-handle-dot {
+  animation: handle-breathe 3s var(--ease-standard) infinite;
+}
+
+.workflow-canvas .node-handle-dot:hover {
+  animation: none;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.35), 0 0 6px hsl(var(--primary) / 0.15) !important;
+}
+
+/* Fix #2: Valid drop target highlighting during connection drag */
+.react-flow__handle-valid.node-handle-dot {
+  transform: scale(1.7) !important;
+  background-color: hsl(var(--primary)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.25), 0 0 10px hsl(var(--primary) / 0.2) !important;
+  animation: none !important;
+}
+
+/* Fix #4: Edge draw-in animation — edges materialize with a quick fade on creation */
+@keyframes workflow-edge-enter {
+  from {
+    opacity: 0;
+    stroke-width: 0;
+  }
+  to {
+    opacity: var(--edge-opacity-idle);
+    stroke-width: inherit;
+  }
+}
+
+.workflow-edge-path {
+  animation: workflow-edge-enter var(--motion-base) var(--ease-emphasis) both;
+}
+
+/* Fix #5: Selection halo on selected edges — unmistakable selection indicator */
+.workflow-edge-selected-halo {
+  pointer-events: none;
+  opacity: 0.18;
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1298,6 +1551,21 @@
     animation: none;
   }
   .workflow-edge-flow {
+    animation: none;
+  }
+  .workflow-edge-photon {
+    display: none;
+  }
+  .workflow-canvas .react-flow__node {
+    animation: none;
+  }
+  .node-status-completed {
+    animation: none;
+  }
+  .workflow-canvas .node-handle-dot {
+    animation: none;
+  }
+  .workflow-edge-path {
     animation: none;
   }
 }

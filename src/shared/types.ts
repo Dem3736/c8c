@@ -313,6 +313,7 @@ export interface Workflow {
   defaults?: WorkflowDefaults
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
+  canvasLayout?: Record<string, NodePosition>
 }
 
 export interface WorkflowFile {
@@ -528,9 +529,12 @@ export interface SaveProjectFactoryBlueprintInput {
   blueprint: {
     factories: Array<{
       id?: string
+      modeId?: ResultModeId
       label?: string
       outcome?: FactoryOutcomeDefinition
       recipe?: FactoryRecipeDefinition
+      createdAt?: number
+      updatedAt?: number
     }>
     selectedFactoryId?: string | null
   }
@@ -839,6 +843,7 @@ export type WorkflowEvent =
       runtimeMeta: WorkflowRuntimeMeta
       nodes: WorkflowNode[]
       edges: WorkflowEdge[]
+  canvasLayout?: Record<string, NodePosition>
     }
   | { type: "approval-requested"; runId: string; nodeId: string; content: string; message?: string; allowEdit: boolean }
   | { type: "human-task-created"; runId: string; nodeId: string; taskId: string; title: string }

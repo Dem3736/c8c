@@ -3,7 +3,6 @@ import {
   ArrowRight,
   FileText,
   History,
-  Copy,
   Download,
   FolderTree,
   RotateCcw,
@@ -38,6 +37,7 @@ import ReactMarkdown, { type Components as MarkdownComponents } from "react-mark
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
 import { toast } from "sonner"
+import { CopyButton } from "@/components/ui/copy-button"
 import { isRunInFlight } from "@/lib/workflow-execution"
 
 const PREVIEW_MAX_W = "max-w-52" as const
@@ -175,13 +175,11 @@ export function OutputPanel({
     artifactPersistenceError,
   } = useOutputPanel()
   const [activeTab, setActiveTab] = useState("nodes")
-  const [copiedResult, setCopiedResult] = useState(false)
   const [resultReadyPulse, setResultReadyPulse] = useState(false)
   const [outputContextMenu, setOutputContextMenu] = useState<
     | { x: number, y: number, scope: "result" }
     | null
   >(null)
-  const copyResetTimerRef = useRef<number | null>(null)
   const resultPulseTimerRef = useRef<number | null>(null)
   const resultSignalShownRef = useRef(false)
   const previousRunStatusRef = useRef(runStatus)
@@ -467,10 +465,10 @@ export function OutputPanel({
     || Boolean(nextStageTemplate)
   )
   const artifactContinuationToneClass = artifactPersistenceStatus === "error"
-    ? "border-status-danger/20 bg-status-danger/8"
+    ? "surface-danger-soft"
     : artifactPersistenceStatus === "saved"
-      ? "border-status-success/20 bg-status-success/8"
-      : "border-hairline bg-surface-2/50"
+      ? "surface-success-soft"
+      : "surface-inset-card"
 
   const openNodeDetails = useCallback((nodeId: string) => {
     setInspectedNodeId(nodeId)
@@ -483,17 +481,11 @@ export function OutputPanel({
     if (!canCopyResult) return
     try {
       await navigator.clipboard.writeText(displayedResultContent)
-      setCopiedResult(true)
-      if (copyResetTimerRef.current) {
-        window.clearTimeout(copyResetTimerRef.current)
-      }
-      copyResetTimerRef.current = window.setTimeout(() => setCopiedResult(false), 1600)
     } catch (error) {
       console.error("[OutputPanel] copy result failed:", error)
       toast.error("Could not copy result", {
         description: String(error),
       })
-      setCopiedResult(false)
     }
   }, [canCopyResult, displayedResultContent])
 
@@ -574,9 +566,6 @@ export function OutputPanel({
 
   useEffect(() => {
     return () => {
-      if (copyResetTimerRef.current) {
-        window.clearTimeout(copyResetTimerRef.current)
-      }
       if (resultPulseTimerRef.current) {
         window.clearTimeout(resultPulseTimerRef.current)
       }
@@ -658,7 +647,7 @@ export function OutputPanel({
           </div>
         </div>
         {showBlockedReviewStrip && (
-          <div className="rounded-lg border border-status-warning/20 bg-status-warning/8 px-3 py-2.5">
+          <div className="rounded-lg surface-warning-soft px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="ui-meta-label text-status-warning">Run is blocked</div>
@@ -692,7 +681,7 @@ export function OutputPanel({
           </div>
         )}
 
-        <TabsContent value="nodes" className="mt-0">
+        <TabsContent value="nodes" className="mt-0 ui-fade-slide-in">
           {showIdleState ? (
             <div className="rounded-lg surface-soft p-4">
               <div className="space-y-2">
@@ -720,7 +709,7 @@ export function OutputPanel({
               </div>
             </div>
           ) : (
-            <>
+            <div className="space-y-2">
               {reviewingRunHistory && (
                 <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -745,7 +734,7 @@ export function OutputPanel({
                 </div>
               )}
               {reviewingRunHistory && !reviewedRunLoading && reviewedRunError && (
-                <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
+                <div role="alert" className="rounded-lg surface-danger-soft px-3 py-2 ui-meta-text text-status-danger">
                   {reviewedRunError}
                 </div>
               )}
@@ -838,27 +827,39 @@ export function OutputPanel({
                             className={cn(
                               "mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ui-meta-text",
                               stoppedLiveRun
-                                ? "border border-status-warning/20 bg-status-warning/8 text-status-warning"
-                                : "border border-status-success/20 bg-status-success/8 text-status-success",
+                                ? "surface-warning-soft text-status-warning"
+                                : "surface-success-soft text-status-success",
                             )}
                           >
                             <span>
                               {stoppedLiveRun
                                 ? "Run stopped. Start a new run when you are ready."
-                                : "Run complete. You can inspect the result now."}
+                                : nextStageTemplate
+                                  ? `Run complete. Next step ready: ${nextStageTemplate.name}.`
+                                  : artifactPersistenceStatus === "saving"
+                                    ? "Run complete. Saving outputs for the next guided step..."
+                                    : "Run complete. You can inspect the result now."}
                             </span>
                             <div className="flex flex-wrap items-center gap-2">
+                              {nextStageTemplate && onRunNextStage && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    void Promise.resolve(onRunNextStage())
+                                  }}
+                                  disabled={artifactPersistenceStatus === "saving" || nextStagePending}
+                                >
+                                  <ArrowRight size={12} />
+                                  {nextStagePending ? "Opening next step..." : "Open next step"}
+                                </Button>
+                              )}
                               {hasResult && (
                                 <Button
                                   type="button"
-                                  variant="ghost"
+                                  variant="outline"
                                   size="sm"
-                                  className={cn(
-                                    "h-7 px-2",
-                                    stoppedLiveRun
-                                      ? "text-status-warning hover:bg-status-warning/10 hover:text-status-warning"
-                                      : "text-status-success hover:bg-status-success/10 hover:text-status-success",
-                                  )}
                                   onClick={() => setActiveTab("result")}
                                 >
                                   View result
@@ -867,14 +868,8 @@ export function OutputPanel({
                               {canStartFreshRun && (
                                 <Button
                                   type="button"
-                                  variant="ghost"
+                                  variant="outline"
                                   size="sm"
-                                  className={cn(
-                                    "h-7 px-2",
-                                    stoppedLiveRun
-                                      ? "text-status-warning hover:bg-status-warning/10 hover:text-status-warning"
-                                      : "text-status-success hover:bg-status-success/10 hover:text-status-success",
-                                  )}
                                   onClick={onStartNewRun}
                                 >
                                   New run
@@ -891,7 +886,7 @@ export function OutputPanel({
                         <div className="ui-collapsible-inner">
                           <div
                             role="alert"
-                            className="mt-2 space-y-1 rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger"
+                            className="mt-2 space-y-1 rounded-lg surface-danger-soft px-3 py-2 ui-meta-text text-status-danger"
                           >
                             <div className="font-medium text-status-danger">Run needs attention</div>
                             {Object.entries(displayNodeStates)
@@ -912,11 +907,11 @@ export function OutputPanel({
                   )}
                 </>
               )}
-            </>
+            </div>
           )}
         </TabsContent>
 
-        <TabsContent value="log" className="mt-2">
+        <TabsContent value="log" className="mt-2 ui-fade-slide-in">
           {showIdleState ? (
             <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
               Activity details will appear here after you start a run.
@@ -929,7 +924,7 @@ export function OutputPanel({
                 </div>
               )}
               {reviewingRunHistory && !reviewedRunLoading && reviewedRunError && (
-                <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
+                <div role="alert" className="rounded-lg surface-danger-soft px-3 py-2 ui-meta-text text-status-danger">
                   {reviewedRunError}
                 </div>
               )}
@@ -984,7 +979,7 @@ export function OutputPanel({
           )}
         </TabsContent>
 
-        <TabsContent value="result" className="mt-2">
+        <TabsContent value="result" className="mt-2 ui-fade-slide-in">
           {hasResult ? (
             <div
               className="space-y-2"
@@ -1060,12 +1055,12 @@ export function OutputPanel({
                 </div>
               )}
               {reviewingRunHistory && !reviewedRunLoading && reviewedRunError && (
-                <div role="alert" className="rounded-lg border border-status-danger/20 bg-status-danger/8 px-3 py-2 ui-meta-text text-status-danger">
+                <div role="alert" className="rounded-lg surface-danger-soft px-3 py-2 ui-meta-text text-status-danger">
                   {reviewedRunError}
                 </div>
               )}
               {showArtifactContinuation && (
-                <div className={cn("rounded-lg border px-3 py-3", artifactContinuationToneClass)}>
+                <div className={cn("rounded-lg px-3 py-3", artifactContinuationToneClass)}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="ui-meta-label text-muted-foreground">Continue guided path</div>
@@ -1110,7 +1105,7 @@ export function OutputPanel({
                           onClick={() => {
                             void Promise.resolve(onRunNextStage())
                           }}
-                          disabled={artifactPersistenceStatus !== "saved" || nextStagePending}
+                          disabled={artifactPersistenceStatus === "saving" || nextStagePending}
                         >
                           <ArrowRight size={12} />
                           {nextStagePending ? "Opening next step..." : "Open next step"}
@@ -1151,16 +1146,19 @@ export function OutputPanel({
                     </span>
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleCopyResult()}
+                <CopyButton
+                  text={displayedResultContent}
+                  idleLabel="Copy Result"
+                  copiedLabel="Copied"
+                  idleAriaLabel="Copy result"
                   disabled={!canCopyResult}
-                >
-                  <Copy size={12} />
-                  {copiedResult ? "Copied" : "Copy Result"}
-                </Button>
+                  onCopyError={(error) => {
+                    console.error("[OutputPanel] copy result failed:", error)
+                    toast.error("Could not copy result", {
+                      description: String(error),
+                    })
+                  }}
+                />
                 <Button
                   type="button"
                   variant="outline"
@@ -1202,7 +1200,7 @@ export function OutputPanel({
           )}
         </TabsContent>
 
-        <TabsContent value="history" className="mt-2">
+        <TabsContent value="history" className="mt-2 ui-fade-slide-in">
           <HistoryTab
             pastRuns={pastRuns}
             runStatus={runStatus}

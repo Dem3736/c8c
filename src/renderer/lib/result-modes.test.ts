@@ -52,16 +52,15 @@ describe("result-modes", () => {
     })
 
     expect(templateMatchesResultMode(template, "development")).toBe(true)
-    expect(templateMatchesResultMode(template, "content")).toBe(false)
   })
 
-  it("matches content factory templates to content mode", () => {
+  it("matches AI CMO templates to the marketing mode", () => {
     const template = createTemplate({
-      id: "content-ready-posts",
+      id: "ai-cmo-seo-engine",
       stage: "content",
       pack: {
-        id: "content-factory-alpha",
-        label: "Content Factory",
+        id: "ai-cmo",
+        label: "AI CMO",
         journeyStage: "execute",
       },
     })
@@ -91,7 +90,7 @@ describe("result-modes", () => {
     ])
   })
 
-  it("prioritizes high-confidence mode matches first", () => {
+  it("prioritizes high-confidence content matches first", () => {
     const templates = [
       createTemplate({
         id: "landing-page-generator",
@@ -109,7 +108,7 @@ describe("result-modes", () => {
       }),
     ]
 
-    expect(prioritizeTemplatesForResultMode(templates, "content").map((template) => template.id)).toEqual([
+    expect(prioritizeTemplatesForResultMode(templates, "courses").map((template) => template.id)).toEqual([
       "content-ready-posts",
       "landing-page-generator",
     ])

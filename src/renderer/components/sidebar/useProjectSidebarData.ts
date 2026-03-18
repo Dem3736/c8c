@@ -4,10 +4,12 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react"
+import { useSetAtom } from "jotai"
 import type { DiscoveredSkill, Workflow, WorkflowFile } from "@shared/types"
 import { toast } from "sonner"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { workflowOpenStateAtom } from "@/lib/store"
 import { restoreSelectedWorkflowIfNeeded, shouldRestoreSelectedWorkflow } from "./workflowRestore"
 
 interface UseProjectSidebarDataParams {
@@ -39,6 +41,7 @@ export function useProjectSidebarData({
   setCurrentWorkflow,
   setWorkflowSavedSnapshot,
 }: UseProjectSidebarDataParams) {
+  const setWorkflowOpenState = useSetAtom(workflowOpenStateAtom)
   const [projectWorkflowsCache, setProjectWorkflowsCache] = useState<Record<string, WorkflowFile[]>>({})
   const [globalWorkflows, setGlobalWorkflows] = useState<WorkflowFile[]>([])
 
@@ -115,6 +118,11 @@ export function useProjectSidebarData({
     if (!shouldRestoreSelectedWorkflow(selectedWorkflowPath, currentWorkflow)) return
 
     let cancelled = false
+    setWorkflowOpenState({
+      status: "loading",
+      targetPath: selectedWorkflowPath,
+      message: null,
+    })
 
     void restoreSelectedWorkflowIfNeeded({
       selectedWorkflowPath,
@@ -122,10 +130,20 @@ export function useProjectSidebarData({
       loadWorkflow: (workflowPath) => window.api.loadWorkflow(workflowPath),
     }).then((loadedWorkflow) => {
       if (cancelled || !loadedWorkflow) return
+      setWorkflowOpenState({
+        status: "idle",
+        targetPath: null,
+        message: null,
+      })
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
     }).catch((error) => {
       if (cancelled) return
+      setWorkflowOpenState({
+        status: "error",
+        targetPath: selectedWorkflowPath,
+        message: String(error),
+      })
       setSelectedWorkflowPath(null)
       const emptyWorkflow = createEmptyWorkflow()
       setCurrentWorkflow(emptyWorkflow)
@@ -144,6 +162,7 @@ export function useProjectSidebarData({
     setCurrentWorkflow,
     setSelectedWorkflowPath,
     setWorkflowSavedSnapshot,
+    setWorkflowOpenState,
   ])
 
   useEffect(() => {

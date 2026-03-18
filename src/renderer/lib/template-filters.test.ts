@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 import type { WorkflowTemplate } from "@shared/types"
 import {
   buildTemplateSearchText,
+  isContentTemplate,
   isMarketingTemplate,
+  isProductTemplate,
+  templateMatchesCategory,
   templateMatchesLibraryFilter,
 } from "./template-filters"
 
@@ -29,36 +32,39 @@ function createTemplate(overrides: Partial<WorkflowTemplate> = {}): WorkflowTemp
 }
 
 describe("template-filters", () => {
-  it("treats AI CMO and content factory packs as marketing templates", () => {
+  it("classifies delivery templates under product", () => {
     const template = createTemplate({
-      id: "ai-cmo-growth-thesis",
+      id: "delivery-map-codebase",
       stage: "strategy",
       pack: {
-        id: "ai-cmo",
-        label: "AI CMO",
+        id: "delivery-foundation",
+        label: "Delivery Factory",
         journeyStage: "intake",
       },
     })
 
-    expect(isMarketingTemplate(template)).toBe(true)
-    expect(templateMatchesLibraryFilter(template, "marketing")).toBe(true)
+    expect(isProductTemplate(template)).toBe(true)
+    expect(templateMatchesCategory(template, "product")).toBe(true)
+    expect(templateMatchesLibraryFilter(template, "strategy")).toBe(true)
   })
 
-  it("detects GTM and marketing skill-based templates", () => {
+  it("keeps segment research discoverable in marketing", () => {
     const template = createTemplate({
-      id: "cold-outreach-pipeline",
-      stage: "outreach",
+      id: "segment-research-gate",
+      stage: "research",
+      name: "Segment Research with Quality Gate",
+      description: "Validate market segments with evidence and audience research.",
       workflow: {
         version: 1,
-        name: "Cold Outreach Pipeline",
+        name: "Segment Research with Quality Gate",
         nodes: [
           {
             id: "skill-1",
             type: "skill",
             position: { x: 0, y: 0 },
             config: {
-              skillRef: "gtm/email-generation",
-              prompt: "Write emails",
+              skillRef: "segment-researcher",
+              prompt: "Research segments",
             },
           },
         ],
@@ -67,25 +73,28 @@ describe("template-filters", () => {
     })
 
     expect(isMarketingTemplate(template)).toBe(true)
+    expect(templateMatchesCategory(template, "marketing")).toBe(true)
     expect(buildTemplateSearchText(template)).toContain("marketing")
   })
 
-  it("does not mark non-marketing technical templates as marketing", () => {
+  it("allows overlap between product and marketing where the workflow is design-audit heavy", () => {
     const template = createTemplate({
-      id: "full-stack-code-audit",
+      id: "ux-ui-polish-audit",
       stage: "code",
-      name: "Full Stack Code Audit",
+      name: "UX/UI Polish Audit",
+      description: "Audit UX and UI quality across a project.",
+      headline: "Audit UX/UI polish across the whole project",
       workflow: {
         version: 1,
-        name: "Full Stack Code Audit",
+        name: "UX/UI Polish Audit",
         nodes: [
           {
             id: "skill-1",
             type: "skill",
             position: { x: 0, y: 0 },
             config: {
-              skillRef: "dev/code-reviewer",
-              prompt: "Audit code",
+              skillRef: "design/design-review",
+              prompt: "Audit design quality",
             },
           },
         ],
@@ -93,8 +102,26 @@ describe("template-filters", () => {
       },
     })
 
-    expect(isMarketingTemplate(template)).toBe(false)
-    expect(templateMatchesLibraryFilter(template, "marketing")).toBe(false)
+    expect(isProductTemplate(template)).toBe(true)
+    expect(isMarketingTemplate(template)).toBe(true)
+    expect(templateMatchesCategory(template, "product")).toBe(true)
+    expect(templateMatchesCategory(template, "marketing")).toBe(true)
     expect(templateMatchesLibraryFilter(template, "code")).toBe(true)
+  })
+
+  it("treats course workflows as content", () => {
+    const template = createTemplate({
+      id: "courses-curriculum-map",
+      stage: "strategy",
+      pack: {
+        id: "courses-factory-alpha",
+        label: "Courses Factory",
+        journeyStage: "shape",
+      },
+    })
+
+    expect(isContentTemplate(template)).toBe(true)
+    expect(templateMatchesCategory(template, "content")).toBe(true)
+    expect(templateMatchesCategory(template, "product")).toBe(false)
   })
 })

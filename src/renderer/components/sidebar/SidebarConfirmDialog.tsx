@@ -30,8 +30,15 @@ export function SidebarConfirmDialog({
 }: SidebarConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <CanvasDialogContent showCloseButton={false}>
-        <CanvasDialogHeader>
+      <CanvasDialogContent
+        showCloseButton={false}
+        onInteractOutside={(event) => {
+          if (confirmVariant === "destructive") {
+            event.preventDefault()
+          }
+        }}
+      >
+        <CanvasDialogHeader className={confirmVariant === "destructive" ? "surface-danger-soft" : undefined}>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </CanvasDialogHeader>
@@ -39,7 +46,14 @@ export function SidebarConfirmDialog({
           <DialogClose asChild>
             <Button variant="ghost" size="sm">Cancel</Button>
           </DialogClose>
-          <Button variant={confirmVariant} size="sm" onClick={onConfirm}>
+          <Button
+            variant={confirmVariant}
+            size="sm"
+            onClick={() => {
+              onConfirm()
+              onOpenChange(false)
+            }}
+          >
             {confirmLabel}
           </Button>
         </CanvasDialogFooter>

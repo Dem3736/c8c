@@ -116,16 +116,16 @@ export function RunPicker({ open, onOpenChange }: RunPickerProps) {
             {filtered.map((run) => {
               const alreadyAdded = existingRunIds.has(run.runId)
               return (
-                <Button
-                  type="button"
-                  key={run.runId}
+                      <Button
+                        type="button"
+                        key={run.runId}
                   onClick={() => handleSelect(run)}
                   disabled={alreadyAdded}
-                  aria-label={`Attach output from ${run.workflowName}`}
-                  variant="ghost"
-                  size="auto"
-                  className="h-auto w-full justify-start items-center gap-3 rounded-md border border-transparent px-2 py-2 text-left whitespace-normal ui-transition-surface ui-motion-fast hover:border-hairline hover:bg-surface-3/80 disabled:opacity-40"
-                >
+                        aria-label={`Attach output from ${run.workflowName}`}
+                        variant="ghost"
+                        size="auto"
+                        className="ui-interactive-card-subtle h-auto w-full justify-start items-center gap-3 rounded-md px-2 py-2 text-left whitespace-normal disabled:opacity-40"
+                      >
                   <History
                     size={14}
                     aria-hidden="true"
@@ -136,19 +136,24 @@ export function RunPicker({ open, onOpenChange }: RunPickerProps) {
                       <span className="text-body-sm font-medium truncate">
                         {run.workflowName}
                       </span>
-                      <Badge variant="outline" className="px-2 py-0">
-                        {run.runId.slice(0, 8)}
-                      </Badge>
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 ui-meta-text text-muted-foreground">
-                      <span>{formatRelativeDate(run.startedAt)}</span>
-                      {run.totalCost != null && <span>{formatCost(run.totalCost)}</span>}
-                    </div>
-                  </div>
-                  {alreadyAdded && (
-                    <span className="ui-meta-text text-muted-foreground">Added</span>
-                  )}
-                </Button>
+                            <span className="control-badge control-badge-compact border border-border bg-surface-1/70 ui-meta-text text-muted-foreground">
+                              {run.runId.slice(0, 8)}
+                            </span>
+                            <span className="ui-status-badge ui-status-badge-success ui-meta-text">
+                              Completed
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2 ui-meta-text text-muted-foreground">
+                            <span>{formatRelativeDate(run.startedAt)}</span>
+                            {run.totalCost != null && <span>{formatCost(run.totalCost)}</span>}
+                          </div>
+                        </div>
+                        {alreadyAdded && (
+                          <span className="control-badge control-badge-compact border border-status-success/30 bg-status-success/10 ui-meta-text text-status-success">
+                            Added
+                          </span>
+                        )}
+                      </Button>
               )
             })}
           </div>

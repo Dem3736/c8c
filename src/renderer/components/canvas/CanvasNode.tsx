@@ -8,7 +8,10 @@ import {
   AlertTriangle,
   Eye,
   Pencil,
+  Coins,
 } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { formatCost, formatTokens } from "@/components/output/OutputSections"
 import { NODE_ACCENTS, NODE_ICONS, NODE_ICON_TONES, STATUS_STYLES } from "@/lib/node-ui-config"
 
 export type CanvasNodeType = Node<CanvasNodeData>
@@ -107,7 +110,14 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
                 </span>
               )}
               {hasValidationErrors && (
-                <AlertTriangle size={11} className="text-status-danger" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <AlertTriangle size={11} className="text-status-danger" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">This node has validation issues.</TooltipContent>
+                </Tooltip>
               )}
               {data.permissionModeOverride === "plan" && (
                 <span className="inline-flex items-center gap-0.5 rounded-sm border border-hairline px-1 py-0 ui-meta-text text-muted-foreground bg-surface-1/80" title="Plan mode (read-only)">
@@ -129,6 +139,36 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
               <p className="mt-1 truncate ui-meta-text text-muted-foreground" title={data.subtitle}>
                 {data.subtitle}
               </p>
+            )}
+
+            {data.metricsLine && (
+              data.metricsDetail ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className="mt-0.5 flex items-center gap-1 truncate ui-metric-text text-foreground-subtle/80 cursor-default">
+                      <Coins size={10} className="flex-shrink-0 text-status-warning/70" />
+                      {data.metricsLine}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[220px] ui-metric-text">
+                    <div className="flex flex-col gap-0.5">
+                      <span>In: {formatTokens(data.metricsDetail.tokens_in)} · Out: {formatTokens(data.metricsDetail.tokens_out)}</span>
+                      {data.metricsDetail.cost_usd > 0 && <span>Cost: {formatCost(data.metricsDetail.cost_usd)}</span>}
+                      {Number.isFinite(data.metricsDetail.latency_ms) && data.metricsDetail.latency_ms >= 0 && (
+                        <span>Latency: {(data.metricsDetail.latency_ms / 1000).toFixed(1)}s</span>
+                      )}
+                      {data.metricsDetail.model_id && (
+                        <span className="text-muted-foreground/70">{data.metricsDetail.model_id}</span>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <p className="mt-0.5 flex items-center gap-1 truncate ui-metric-text text-foreground-subtle/80">
+                  <Coins size={10} className="flex-shrink-0 text-status-warning/70" />
+                  {data.metricsLine}
+                </p>
+              )
             )}
           </div>
 

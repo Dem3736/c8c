@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import {
   ArrowUpRight,
@@ -19,6 +19,7 @@ import { ScopeBanner } from "@/components/ui/scope-banner"
 import { formatRelativeTime, projectFolderName } from "@/components/sidebar/projectSidebarUtils"
 import {
   currentWorkflowAtom,
+  factoryBetaEnabledAtom,
   inputAttachmentsAtom,
   inputValueAtom,
   mainViewAtom,
@@ -64,6 +65,7 @@ function buildArtifactSearchText(
 
 export function ArtifactsPage() {
   const [selectedProject] = useAtom(selectedProjectAtom)
+  const [factoryBetaEnabled] = useAtom(factoryBetaEnabledAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [selectedFactoryId] = useAtom(selectedFactoryIdAtom)
   const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
@@ -85,9 +87,12 @@ export function ArtifactsPage() {
   const [query, setQuery] = useState("")
   const [kindFilter, setKindFilter] = useState<string>("all")
   const [launchingTemplateId, setLaunchingTemplateId] = useState<string | null>(null)
+  const artifactsRequestIdRef = useRef(0)
 
   const refreshArtifacts = useCallback(async () => {
+    const requestId = ++artifactsRequestIdRef.current
     if (!selectedProject) {
+      if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
       setArtifactsLoading(false)
       setArtifactsError(null)
@@ -98,12 +103,16 @@ export function ArtifactsPage() {
     setArtifactsError(null)
     try {
       const nextArtifacts = await window.api.listProjectArtifacts(selectedProject)
+      if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts(nextArtifacts)
     } catch (error) {
+      if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
       setArtifactsError(error instanceof Error ? error.message : String(error))
     } finally {
-      setArtifactsLoading(false)
+      if (artifactsRequestIdRef.current === requestId) {
+        setArtifactsLoading(false)
+      }
     }
   }, [selectedProject])
 
@@ -337,10 +346,12 @@ export function ArtifactsPage() {
         }
         actions={(
           <>
-            <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
-              <Rocket size={14} />
-              Open factory
-            </Button>
+            {factoryBetaEnabled ? (
+              <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
+                <Rocket size={14} />
+                Open factory
+              </Button>
+            ) : null}
             <Button variant="outline" size="sm" onClick={() => setMainView("templates")}>
               <LayoutTemplate size={14} />
               Browse templates
@@ -415,12 +426,12 @@ export function ArtifactsPage() {
           <ScopeBanner
             eyebrow="Path scope"
             description={`Showing outputs for ${selectedFactoryLabel}. Go back to Factory when you need a different outcome or path.`}
-            actions={(
+            actions={factoryBetaEnabled ? (
               <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
                 <Rocket size={14} />
                 Back to factory
               </Button>
-            )}
+            ) : undefined}
           />
         ) : null}
 
@@ -430,10 +441,12 @@ export function ArtifactsPage() {
             description={`Showing ${selectedCaseOption.count} artifact${selectedCaseOption.count === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`}
             actions={(
               <>
-                <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
-                  <Rocket size={14} />
-                  Back to factory
-                </Button>
+                {factoryBetaEnabled ? (
+                  <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
+                    <Rocket size={14} />
+                    Back to factory
+                  </Button>
+                ) : null}
                 <Button variant="ghost" size="sm" onClick={() => setSelectedCaseId(null)}>
                   Show all cases
                 </Button>
@@ -460,11 +473,11 @@ export function ArtifactsPage() {
             {templatesError}
           </div>
         ) : artifactsLoading || templatesLoading ? (
-          <div className="rounded-xl surface-panel px-4 py-8 text-body-sm text-muted-foreground">
+          <div className="rounded-xl surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
             Loading project artifacts and next stages...
           </div>
         ) : filteredArtifacts.length === 0 ? (
-          <div className="rounded-xl surface-panel px-4 py-8 text-body-sm text-muted-foreground">
+          <div className="rounded-xl surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
             {factoryScopeArtifacts.length === 0
               ? selectedFactoryLabel
                 ? `No outputs have been saved for ${selectedFactoryLabel} yet. Run the first step to create reusable outputs.`
@@ -503,33 +516,32 @@ export function ArtifactsPage() {
                         <span>Updated {formatRelativeTime(artifact.updatedAt)}</span>
                       </div>
                     </div>
-                      <div className="flex items-center gap-2">
-                        {artifactCase ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2.5"
-                            onClick={() => {
-                              setSelectedCaseId(artifactCase.id)
-                              setMainView("factory")
-                            }}
-                          >
-                            <Rocket size={14} />
-                            Case
-                          </Button>
-                        ) : null}
-                        <Button variant="ghost" size="sm" className="h-8 px-2.5" onClick={() => void revealArtifact(artifact)}>
-                          <ArrowUpRight size={14} />
-                          Reveal
+                    <div className="flex items-center gap-2">
+                      {artifactCase && factoryBetaEnabled ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCaseId(artifactCase.id)
+                            setMainView("factory")
+                          }}
+                        >
+                          <Rocket size={14} />
+                          Case
+                        </Button>
+                      ) : null}
+                      <Button variant="ghost" size="sm" onClick={() => void revealArtifact(artifact)}>
+                        <ArrowUpRight size={14} />
+                        Reveal
                       </Button>
-                      <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => void openArtifact(artifact)}>
+                      <Button variant="outline" size="sm" onClick={() => void openArtifact(artifact)}>
                         <FileStack size={14} />
                         Open
                       </Button>
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-hairline bg-surface-2/55 px-3 py-3">
+                  <div className="rounded-lg surface-inset-card px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <div className="ui-meta-label text-muted-foreground">Can start next</div>
@@ -554,11 +566,11 @@ export function ArtifactsPage() {
                           return (
                             <div
                               key={`${artifact.id}-${template.id}`}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hairline bg-surface-1/80 px-3 py-3"
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-lg surface-soft px-3 py-3"
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <div className="text-body-sm font-medium text-foreground">{template.name}</div>
+                                  <div className="ui-body-text-medium text-foreground">{template.name}</div>
                                   {template.pack ? (
                                     <Badge variant="outline" className="ui-meta-text px-2 py-0">
                                       {template.pack.label}

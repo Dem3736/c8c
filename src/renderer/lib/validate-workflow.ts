@@ -3,7 +3,7 @@ import {
   modelLooksCompatible,
   resolveWorkflowProvider,
 } from "@shared/provider-metadata"
-import { validateWorkflowNodeConfigs } from "@shared/workflow-config-validation"
+import { validateWorkflowForExecution } from "@shared/workflow-execution-validation"
 
 export interface ValidationError {
   nodeId: string
@@ -13,7 +13,7 @@ export interface ValidationError {
 }
 
 export function validateWorkflow(workflow: Workflow, defaultProvider: ProviderId = "claude"): ValidationError[] {
-  const errors: ValidationError[] = validateWorkflowNodeConfigs(workflow).map((issue) => ({
+  const errors: ValidationError[] = validateWorkflowForExecution(workflow).map((issue) => ({
     nodeId: issue.nodeId,
     field: issue.field,
     message: issue.message,

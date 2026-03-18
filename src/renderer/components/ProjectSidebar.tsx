@@ -9,10 +9,13 @@ import {
   projectSidebarWidthAtom,
   currentWorkflowAtom,
   skillsAtom,
+  factoryBetaEnabledAtom,
   mainViewAtom,
   clearWorkflowTemplateContextForKeyAtom,
   moveWorkflowTemplateContextAtom,
+  templateLibraryContextAtom,
   workflowDirtyAtom,
+  workflowCreateContextAtom,
   workflowSavedSnapshotAtom,
   unreadInboxCountAtom,
   type WorkflowFile,
@@ -26,6 +29,7 @@ import {
 } from "@/features/execution"
 import { cn } from "@/lib/cn"
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/sidebar-layout"
+import { MOTION_BASE_MS } from "@/lib/tokens"
 import {
   FolderOpen,
   Globe,
@@ -71,6 +75,7 @@ import {
   historicalRunVisual,
   latestRunByWorkflowPath,
   projectFolderName,
+  resolveProjectRowSelectionState,
   workflowHasActiveRunStatus,
 } from "@/components/sidebar/projectSidebarUtils"
 import { useProjectSidebarData } from "@/components/sidebar/useProjectSidebarData"
@@ -110,7 +115,10 @@ export function ProjectSidebar({
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSkills] = useAtom(skillsAtom)
   const [mainView, setMainView] = useAtom(mainViewAtom)
+  const [workflowCreateContext] = useAtom(workflowCreateContextAtom)
+  const [factoryBetaEnabled] = useAtom(factoryBetaEnabledAtom)
   const [unreadInboxCount] = useAtom(unreadInboxCountAtom)
+  const setTemplateLibraryContext = useSetAtom(templateLibraryContextAtom)
   const moveWorkflowExecutionState = useSetAtom(moveWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const moveWorkflowTemplateContext = useSetAtom(moveWorkflowTemplateContextAtom)
@@ -230,7 +238,7 @@ export function ProjectSidebar({
     scrollHideTimerRef.current = window.setTimeout(() => {
       setSidebarScrolling(false)
       scrollHideTimerRef.current = null
-    }, 180)
+    }, MOTION_BASE_MS)
   }
 
   const getWorkflowRunMetrics = (workflowPath: string) => {
@@ -365,7 +373,17 @@ export function ProjectSidebar({
           icon={LayoutTemplate}
           label="Templates"
           active={mainView === "templates"}
-          onClick={() => setMainView("templates")}
+          onClick={() => {
+            if (mainView === "workflow_create") {
+              setTemplateLibraryContext({
+                projectPath: workflowCreateContext.projectPath,
+                createOnly: Boolean(workflowCreateContext.projectPath),
+              })
+            } else {
+              setTemplateLibraryContext(null)
+            }
+            setMainView("templates")
+          }}
         />
 
         <SidebarNavItem
@@ -381,18 +399,21 @@ export function ProjectSidebar({
           active={mainView === "inbox"}
           onClick={() => setMainView("inbox")}
           meta={unreadInboxCount > 0 ? (
-            <span className="ui-meta-text inline-flex min-w-[1.25rem] items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+            <span className="ui-meta-text inline-flex min-w-5 items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
               {unreadInboxCount > 99 ? "99+" : unreadInboxCount}
             </span>
           ) : null}
         />
 
-        <SidebarNavItem
-          icon={Factory}
-          label="Factory"
-          active={mainView === "factory"}
-          onClick={() => setMainView("factory")}
-        />
+        {factoryBetaEnabled ? (
+          <SidebarNavItem
+            icon={Factory}
+            label="Factory (beta)"
+            active={mainView === "factory"}
+            onClick={() => setMainView("factory")}
+          />
+        ) : null}
+
       </div>
 
       {/* Section header */}
@@ -495,6 +516,7 @@ export function ProjectSidebar({
           const projectWorkflows = isSelectedProject
             ? workflows
             : projectWorkflowsCache[projectPath] || []
+          const projectRowSelection = resolveProjectRowSelectionState(projectPath, selectedProject, isExpanded)
 
           return (
             <div key={projectPath} className="sidebar-list-group mt-1 first:mt-0">
@@ -506,13 +528,20 @@ export function ProjectSidebar({
                     "sidebar-project-row ui-pressable text-left text-sidebar-label",
                     isSelectedProject ? "text-foreground" : "text-muted-foreground",
                   )}
-                  onClick={() => toggleProjectExpansion(projectPath)}
+                  onClick={() => {
+                    if (projectRowSelection.shouldSelectProject) {
+                      setSelectedProject(projectPath)
+                    }
+                    if (projectRowSelection.nextExpanded !== isExpanded) {
+                      toggleProjectExpansion(projectPath)
+                    }
+                  }}
                   title={projectPath}
                 >
                   <ChevronRight
                     size={14}
                     className={cn(
-                      "flex-shrink-0 text-muted-foreground transition-transform ui-motion-fast",
+                      "ui-chevron flex-shrink-0 text-muted-foreground",
                       isExpanded && "rotate-90",
                     )}
                   />
@@ -683,7 +712,7 @@ export function ProjectSidebar({
                                 {workflow.name}
                               </span>
                               {isDirty && (
-                                <span className="inline-flex items-center rounded-sm border border-status-warning/40 bg-status-warning/10 px-1 py-0 text-sidebar-meta text-status-warning">
+                                <span className="ui-status-badge ui-status-badge-warning rounded-sm px-1 py-0 text-sidebar-meta">
                                   unsaved
                                 </span>
                               )}
@@ -751,7 +780,11 @@ export function ProjectSidebar({
                               aria-label={`${workflow.name} execution progress`}
                             >
                               <div
-                                className={cn("sidebar-progress-bar", runMetrics.barClass)}
+                                className={cn(
+                                  "sidebar-progress-bar",
+                                  runMetrics.barClass,
+                                  runMetrics.runStatus === "running" && "ui-running-pulse",
+                                )}
                                 style={{ width: `${runMetrics.showProgressTrack ? runMetrics.progress : 0}%` }}
                               />
                             </div>
@@ -913,7 +946,6 @@ export function ProjectSidebar({
         onKeyDown={handleResizeKeyDown}
         className={cn(
           "absolute right-0 top-0 h-full no-drag ui-resize-handle",
-          resizing && "bg-primary/30",
         )}
         data-resizing={resizing}
       />
@@ -954,7 +986,13 @@ export function ProjectSidebar({
           if (!open) setPendingDeleteWorkflow(null)
         }}
         title="Delete workflow"
-        description={`Delete "${pendingDeleteWorkflow?.name || "workflow"}"? The workflow file will be permanently removed.`}
+        description={
+          `Delete "${pendingDeleteWorkflow?.name || "workflow"}"?` +
+          (pendingDeleteWorkflow?.path === selectedWorkflowPath && workflowDirty
+            ? ' You have unsaved changes that will be lost.'
+            : '') +
+          ' The workflow file will be permanently removed.'
+        }
         confirmLabel="Delete"
         onConfirm={() => void commitDeleteWorkflow()}
       />

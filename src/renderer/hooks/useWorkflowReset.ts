@@ -12,7 +12,6 @@ import {
   chatStatusAtom,
   chatUndoStackAtom,
   selectedWorkflowPathAtom,
-  viewModeAtom,
 } from "@/lib/store"
 
 /**
@@ -31,8 +30,6 @@ export function useWorkflowReset() {
   const setBatchItems = useSetAtom(batchItemsAtom)
   const setBatchSummary = useSetAtom(batchSummaryAtom)
   const setBatchProgress = useSetAtom(batchProgressAtom)
-  const setViewMode = useSetAtom(viewModeAtom)
-
   const prevPathRef = useRef(selectedWorkflowPath)
 
   useEffect(() => {
@@ -51,7 +48,6 @@ export function useWorkflowReset() {
       setBatchItems([])
       setBatchSummary(null)
       setBatchProgress({ completed: 0, total: 0, running: 0 })
-      setViewMode("list")
     }
   }, [
     selectedWorkflowPath,
@@ -65,6 +61,5 @@ export function useWorkflowReset() {
     setChatSessionId,
     setChatStatus,
     setChatUndoStack,
-    setViewMode,
   ])
 }

@@ -1,12 +1,13 @@
+import type { ExecutionStartError, ExecutionStartResult } from "@shared/c8c-api"
 import { resolveWorkflowInput } from "@/lib/input-type"
 import { applyWebSearchBackendPreset, type WebSearchBackend } from "@/lib/web-search-backend"
+import type { WorkflowConfigIssue } from "@shared/workflow-config-validation"
 import type { InputNodeConfig, PermissionMode, RunResult, Workflow } from "@shared/types"
-
-export type ExecutionStartResult = string | { error: string } | null | undefined
 
 export interface ResolvedExecutionStart {
   startedRunId: string | null
   errorMessage: string | null
+  validationIssues: WorkflowConfigIssue[]
 }
 
 export interface ResolvedContinuationWorkflow {
@@ -83,20 +84,35 @@ export function resolveExecutionStartResult(
     return {
       startedRunId: result,
       errorMessage: null,
+      validationIssues: [],
     }
   }
 
   if (result && typeof result === "object" && "error" in result) {
+    const structuredResult = result as ExecutionStartError
     return {
       startedRunId: null,
-      errorMessage: result.error,
+      errorMessage: structuredResult.error,
+      validationIssues: structuredResult.validationIssues ?? [],
     }
   }
 
   return {
     startedRunId: null,
     errorMessage: unavailableMessage,
+    validationIssues: [],
   }
+}
+
+export function groupValidationIssuesByNode(
+  issues: WorkflowConfigIssue[],
+): Record<string, WorkflowConfigIssue[]> {
+  const grouped: Record<string, WorkflowConfigIssue[]> = {}
+  for (const issue of issues) {
+    if (!grouped[issue.nodeId]) grouped[issue.nodeId] = []
+    grouped[issue.nodeId].push(issue)
+  }
+  return grouped
 }
 
 export function withIpcTimeout<T>(

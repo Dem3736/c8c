@@ -13,12 +13,13 @@ import {
 import { useBatchExecution } from "@/hooks/useBatchExecution"
 import { cn } from "@/lib/cn"
 import {
+  CanvasDialogBody,
+  CanvasDialogContent,
+  CanvasDialogFooter,
+  CanvasDialogHeader,
   Dialog,
-  DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -33,6 +34,7 @@ import {
   X,
   Loader2,
   Download,
+  ChevronRight,
 } from "lucide-react"
 
 function downloadText(filename: string, content: string, mimeType: string) {
@@ -139,11 +141,6 @@ export function BatchPanel() {
   const isRunning = batchStatus === "running"
   const isDone = batchStatus === "done"
   const isError = batchStatus === "error"
-  const completedInputIndexes = new Set(
-    batchItems
-      .filter((item) => item.status === "completed")
-      .map((item) => item.input_index),
-  )
 
   const handleExportJson = useCallback(() => {
     if (batchItems.length === 0) return
@@ -165,136 +162,143 @@ export function BatchPanel() {
         setOpen(nextOpen)
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region">
-        <DialogHeader>
+      <CanvasDialogContent
+        size="xl"
+        showCloseButton={!isRunning}
+        className="w-[min(100%-2rem,42rem)] max-h-[80vh] flex flex-col p-0 gap-0"
+      >
+        <CanvasDialogHeader className="surface-depth-header border-b border-hairline">
           <DialogTitle>Batch Run</DialogTitle>
           <DialogDescription>
             Run this workflow on multiple inputs. Enter one input per line.
           </DialogDescription>
-        </DialogHeader>
+        </CanvasDialogHeader>
 
-        {!isRunning && !isDone && (
-          <div className="space-y-3">
-            {isError && (
-              <div
-                role="alert"
-                className="ui-alert-danger ui-meta-text text-status-danger"
-              >
-                {batchError || "Batch run failed. Check configuration and try again."}
+        <CanvasDialogBody className="ui-scroll-region flex-1 min-h-0 overflow-y-auto py-4">
+          {!isRunning && !isDone && (
+            <div className="space-y-3 ui-fade-slide-in">
+              {isError && (
+                <div
+                  role="alert"
+                  className="ui-alert-danger ui-meta-text text-status-danger"
+                >
+                  {batchError || "Batch run failed. Check configuration and try again."}
+                </div>
+              )}
+              <Textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && inputs.length > 0) {
+                    event.preventDefault()
+                    handleRun()
+                  }
+                }}
+                placeholder={"Topic 1\nTopic 2\nTopic 3"}
+                rows={8}
+                className="font-mono text-body-sm"
+              />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="batch-concurrency">Concurrency:</Label>
+                  <Input
+                    id="batch-concurrency"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={concurrency}
+                    onChange={(e) => setConcurrency(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                    className="w-16 h-control-sm ui-meta-text"
+                  />
+                </div>
+                <Label htmlFor="batch-stop-on-failure" className="flex items-center gap-1.5 cursor-pointer">
+                  <Checkbox
+                    id="batch-stop-on-failure"
+                    checked={stopOnFailure}
+                    onChange={(e) => setStopOnFailure(e.target.checked)}
+                  />
+                  Stop on first failure
+                </Label>
               </div>
-            )}
-            <Textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && inputs.length > 0) {
-                  event.preventDefault()
-                  handleRun()
-                }
-              }}
-              placeholder={"Topic 1\nTopic 2\nTopic 3"}
-              rows={8}
-              className="font-mono text-body-sm"
-            />
-            <div className="flex items-center gap-4">
+              <div className="ui-meta-text text-muted-foreground">
+                {inputs.length} input{inputs.length !== 1 ? "s" : ""} detected
+              </div>
+              <div className="ui-meta-text text-muted-foreground">
+                Shortcut: press Cmd/Ctrl+Enter to start batch run.
+              </div>
+            </div>
+          )}
+
+          {isRunning && (
+            <div className="space-y-3 ui-fade-slide-in">
+              <div className="flex items-center gap-2 text-body-sm" role="status" aria-live="polite">
+                <Loader2 size={14} className="animate-spin" />
+                <span>
+                  Running: {batchProgress.completed}/{batchProgress.total} completed
+                  {batchProgress.running > 0 && `, ${batchProgress.running} in progress`}
+                </span>
+              </div>
+              <div className="ui-progress-track">
+                <div
+                  className="ui-progress-bar ui-running-pulse"
+                  style={{ width: `${batchProgress.total > 0 ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <BatchInputPreview
+                inputs={inputs}
+                items={batchItems}
+                runningCount={batchProgress.running}
+              />
+              <BatchItemList items={batchItems} inputs={inputs} />
+            </div>
+          )}
+
+          {isDone && !batchSummary && (
+            <div
+              role="status"
+              className="rounded-md border border-hairline bg-surface-2/70 px-3 py-2 ui-meta-text text-muted-foreground"
+            >
+              Batch completed, but summary is unavailable.
+            </div>
+          )}
+
+          {isDone && batchSummary && (
+            <div className="space-y-3 ui-fade-slide-in">
+              <div className="grid grid-cols-3 gap-2">
+                <SummaryCard label="Pass Rate" value={`${(batchSummary.pass_rate * 100).toFixed(0)}%`} staggerIndex={0} />
+                <SummaryCard label="Passed" value={`${batchSummary.passed}/${batchSummary.processed}`} staggerIndex={1} />
+                <SummaryCard label="Failed" value={String(batchSummary.failed)} variant={batchSummary.failed > 0 ? "danger" : "default"} staggerIndex={2} />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <SummaryCard label="Cancelled" value={String(batchSummary.cancelled)} staggerIndex={3} />
+                <SummaryCard label="Mean Cost" value={`$${batchSummary.mean_cost_usd.toFixed(4)}`} staggerIndex={4} />
+                <SummaryCard
+                  label={batchSummary.total !== batchSummary.processed ? `Mean Duration (${batchSummary.processed} processed)` : "Mean Duration"}
+                  value={`${(batchSummary.mean_duration_ms / 1000).toFixed(1)}s`}
+                  staggerIndex={5}
+                />
+              </div>
+              {batchSummary.cancelled > 0 && (
+                <div className="ui-alert-warning ui-meta-text text-status-warning">
+                  Batch was cancelled before all items finished. Completed results are still available below.
+                </div>
+              )}
               <div className="flex items-center gap-2">
-                <Label htmlFor="batch-concurrency">Concurrency:</Label>
-                <Input
-                  id="batch-concurrency"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={concurrency}
-                  onChange={(e) => setConcurrency(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                  className="w-16 h-control-sm ui-meta-text"
-                />
+                <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={batchItems.length === 0}>
+                  <Download size={14} />
+                  Export CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExportJson} disabled={batchItems.length === 0}>
+                  <Download size={14} />
+                  Export JSON
+                </Button>
               </div>
-              <Label htmlFor="batch-stop-on-failure" className="flex items-center gap-1.5 cursor-pointer">
-                <Checkbox
-                  id="batch-stop-on-failure"
-                  checked={stopOnFailure}
-                  onChange={(e) => setStopOnFailure(e.target.checked)}
-                />
-                Stop on first failure
-              </Label>
+              <BatchItemList items={batchItems} inputs={inputs} />
             </div>
-            <div className="ui-meta-text text-muted-foreground">
-              {inputs.length} input{inputs.length !== 1 ? "s" : ""} detected
-            </div>
-            <div className="ui-meta-text text-muted-foreground">
-              Shortcut: press Cmd/Ctrl+Enter to start batch run.
-            </div>
-          </div>
-        )}
+          )}
+        </CanvasDialogBody>
 
-        {isRunning && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-body-sm" role="status" aria-live="polite">
-              <Loader2 size={14} className="animate-spin" />
-              <span>
-                Running: {batchProgress.completed}/{batchProgress.total} completed
-                {batchProgress.running > 0 && `, ${batchProgress.running} in progress`}
-              </span>
-            </div>
-            <div className="ui-progress-track">
-              <div
-                className="ui-progress-bar"
-                style={{ width: `${batchProgress.total > 0 ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }}
-              />
-            </div>
-            <BatchInputPreview
-              inputs={inputs}
-              items={batchItems}
-              runningCount={batchProgress.running}
-            />
-            <BatchItemList items={batchItems} inputs={inputs} />
-          </div>
-        )}
-
-        {isDone && !batchSummary && (
-          <div
-            role="status"
-            className="rounded-md border border-hairline bg-surface-2/70 px-3 py-2 ui-meta-text text-muted-foreground"
-          >
-            Batch completed, but summary is unavailable.
-          </div>
-        )}
-
-        {isDone && batchSummary && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-2">
-              <SummaryCard label="Pass Rate" value={`${(batchSummary.pass_rate * 100).toFixed(0)}%`} />
-              <SummaryCard label="Passed" value={`${batchSummary.passed}/${batchSummary.processed}`} />
-              <SummaryCard label="Failed" value={String(batchSummary.failed)} variant={batchSummary.failed > 0 ? "danger" : "default"} />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <SummaryCard label="Cancelled" value={String(batchSummary.cancelled)} />
-              <SummaryCard label="Mean Cost" value={`$${batchSummary.mean_cost_usd.toFixed(4)}`} />
-              <SummaryCard
-                label={batchSummary.total !== batchSummary.processed ? `Mean Duration (${batchSummary.processed} processed)` : "Mean Duration"}
-                value={`${(batchSummary.mean_duration_ms / 1000).toFixed(1)}s`}
-              />
-            </div>
-            {batchSummary.cancelled > 0 && (
-              <div className="ui-alert-warning ui-meta-text text-status-warning">
-                Batch was cancelled before all items finished. Completed results are still available below.
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={batchItems.length === 0}>
-                <Download size={14} />
-                Export CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportJson} disabled={batchItems.length === 0}>
-                <Download size={14} />
-                Export JSON
-              </Button>
-            </div>
-            <BatchItemList items={batchItems} inputs={inputs} />
-          </div>
-        )}
-
-        <DialogFooter>
+        <CanvasDialogFooter>
           <DialogClose asChild>
             <Button variant="ghost" size="sm" disabled={isRunning}>Close</Button>
           </DialogClose>
@@ -336,8 +340,8 @@ export function BatchPanel() {
               Run {inputs.length} Item{inputs.length !== 1 ? "s" : ""}
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
+        </CanvasDialogFooter>
+      </CanvasDialogContent>
     </Dialog>
   )
 }
@@ -346,13 +350,18 @@ function SummaryCard({
   label,
   value,
   variant = "default",
+  staggerIndex = 0,
 }: {
   label: string
   value: string
   variant?: "default" | "danger"
+  staggerIndex?: number
 }) {
   return (
-    <div className="rounded-md border border-hairline bg-surface-2 px-3 py-2">
+    <div
+      className="rounded-md border border-hairline bg-surface-2 px-3 py-2 ui-fade-slide-in"
+      style={{ animationDelay: `${staggerIndex * 35}ms`, animationFillMode: "both" }}
+    >
       <div className="ui-meta-text text-muted-foreground">{label}</div>
       <div
         className={cn(
@@ -386,11 +395,11 @@ function BatchInputPreview({
     else statusByIndex.set(item.input_index, "running")
   }
 
-  const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-    completed: { bg: "bg-status-success/10", text: "text-status-success", label: "done" },
-    failed: { bg: "bg-status-danger/10", text: "text-status-danger", label: "failed" },
-    running: { bg: "bg-status-info/10", text: "text-status-info", label: "running" },
-    waiting: { bg: "bg-surface-3", text: "text-foreground-subtle", label: "waiting" },
+  const STATUS_STYLE: Record<string, { className: string; label: string }> = {
+    completed: { className: "ui-status-badge-success", label: "done" },
+    failed: { className: "ui-status-badge-danger", label: "failed" },
+    running: { className: "ui-status-badge-info", label: "running" },
+    waiting: { className: "border-hairline bg-surface-3 text-foreground-subtle", label: "waiting" },
   }
 
   return (
@@ -406,9 +415,15 @@ function BatchInputPreview({
           const status = statusByIndex.get(index) || "waiting"
           const style = STATUS_STYLE[status]
           return (
-            <div key={`preview-${index}-${value}`} className="flex items-center gap-2 ui-meta-text">
+            <div key={`preview-${index}-${value}`} className="flex items-center gap-2 ui-meta-text ui-fade-slide-in">
               <span className="text-muted-foreground w-8">#{index + 1}</span>
-              <span className={cn("rounded px-1 py-0 font-mono", style.bg, style.text)}>
+              <span
+                className={cn(
+                  "ui-status-badge font-mono ui-transition-colors",
+                  "[transition-duration:var(--motion-base)] [transition-timing-function:var(--ease-standard)]",
+                  style.className,
+                )}
+              >
                 {style.label}
               </span>
               <span className="truncate text-foreground-subtle">{value}</span>
@@ -436,12 +451,19 @@ function BatchItemList({ items, inputs }: { items: BatchItemResult[]; inputs?: s
           .join(" · ")
         const isExpanded = expandedIndex === item.input_index
         return (
-          <div key={`${item.input_index}-${item.run_id}`}>
+          <div key={`${item.input_index}-${item.run_id}`} className="ui-fade-slide-in">
             <button
               type="button"
               className="w-full flex items-center gap-2 px-3 py-1.5 ui-meta-text hover:bg-surface-2/50 ui-pressable text-left"
               onClick={() => setExpandedIndex(isExpanded ? null : item.input_index)}
             >
+              <ChevronRight
+                size={10}
+                className={cn(
+                  "shrink-0 text-muted-foreground ui-chevron",
+                  isExpanded && "rotate-90",
+                )}
+              />
               <span className="text-muted-foreground w-8">#{item.input_index + 1}</span>
               {item.status === "completed" ? (
                 <Check size={12} className="text-status-success" />
@@ -477,28 +499,30 @@ function BatchItemList({ items, inputs }: { items: BatchItemResult[]; inputs?: s
                 {(item.duration_ms / 1000).toFixed(1)}s
               </span>
             </button>
-            {isExpanded && (
-              <div className="px-3 pb-2 space-y-1.5 border-t border-hairline bg-surface-2/50">
-                {inputs?.[item.input_index] && (
-                  <div className="pt-1.5">
-                    <div className="ui-meta-label text-muted-foreground mb-0.5">Input</div>
-                    <pre className="ui-meta-text font-mono bg-surface-3/50 border border-hairline/40 rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{inputs[item.input_index]}</pre>
-                  </div>
-                )}
-                {item.output && (
-                  <div>
-                    <div className="ui-meta-label text-muted-foreground mb-0.5">Output</div>
-                    <pre className="ui-meta-text font-mono bg-surface-3/50 border border-hairline/40 rounded px-2 py-1 max-h-32 overflow-y-auto whitespace-pre-wrap">{item.output}</pre>
-                  </div>
-                )}
-                {item.error && (
-                  <div>
-                    <div className="ui-meta-label text-status-danger mb-0.5">Error</div>
-                    <pre className="ui-meta-text font-mono bg-status-danger/10 border border-status-danger/20 text-status-danger rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{item.error}</pre>
-                  </div>
-                )}
+            <div className="ui-collapsible" data-open={String(isExpanded)}>
+              <div className="ui-collapsible-inner">
+                <div className="px-3 pb-2 space-y-1.5 border-t border-hairline bg-surface-2/50">
+                  {inputs?.[item.input_index] && (
+                    <div className="pt-1.5">
+                      <div className="ui-meta-label text-muted-foreground mb-0.5">Input</div>
+                      <pre className="ui-meta-text font-mono bg-surface-3/50 border border-hairline/40 rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{inputs[item.input_index]}</pre>
+                    </div>
+                  )}
+                  {item.output && (
+                    <div>
+                      <div className="ui-meta-label text-muted-foreground mb-0.5">Output</div>
+                      <pre className="ui-meta-text font-mono bg-surface-3/50 border border-hairline/40 rounded px-2 py-1 max-h-32 overflow-y-auto whitespace-pre-wrap">{item.output}</pre>
+                    </div>
+                  )}
+                  {item.error && (
+                    <div>
+                      <div className="ui-meta-label text-status-danger mb-0.5">Error</div>
+                      <pre className="ui-meta-text font-mono surface-danger-soft text-status-danger rounded px-2 py-1 max-h-20 overflow-y-auto whitespace-pre-wrap">{item.error}</pre>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )
       })}

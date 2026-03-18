@@ -35,6 +35,8 @@ export function ChatHeader({
   title = "Agent",
 }: ChatHeaderProps) {
   const [confirmClearOpen, setConfirmClearOpen] = useState(false)
+  const canUndoAction = canUndo && status === "idle"
+  const canClearAction = messageCount > 0 && status === "idle"
   const statusLabel = status === "error"
     ? "Error"
     : activeToolName
@@ -46,15 +48,16 @@ export function ChatHeader({
           : null
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline bg-surface-1/90 backdrop-blur-sm">
+    <div className="surface-depth-header flex items-center gap-2 px-3 py-2 backdrop-blur-sm">
       <span className="text-body-sm font-semibold text-foreground flex-1">{title}</span>
 
       {statusLabel && (
         <span
+          key={statusLabel}
           role="status"
           aria-live="polite"
           className={cn(
-            "ui-status-badge ui-meta-text max-w-[170px] truncate",
+            "ui-status-badge ui-meta-text max-w-[170px] truncate ui-fade-slide-in-trailing",
             status === "error"
               ? "ui-status-badge-danger"
               : "ui-status-badge-info",
@@ -80,57 +83,44 @@ export function ChatHeader({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
+          <button
+            type="button"
             onClick={onUndo}
-            disabled={!canUndo || status !== "idle"}
+            disabled={!canUndoAction}
             aria-label="Undo last change"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "ui-transition-colors ui-motion-fast",
-              canUndo && status === "idle"
-                ? "text-muted-foreground hover:text-foreground hover:bg-surface-3"
-                : "text-muted-foreground/70 cursor-not-allowed",
-            )}
+            className="ui-icon-button"
           >
             <Undo2 size={13} />
-          </Button>
+          </button>
         </TooltipTrigger>
         <TooltipContent>Undo last change</TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
+          <button
+            type="button"
             onClick={() => setConfirmClearOpen(true)}
-            disabled={messageCount === 0 || status !== "idle"}
+            disabled={!canClearAction}
             aria-label="Clear Agent history"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "ui-transition-colors ui-motion-fast",
-              messageCount > 0 && status === "idle"
-                ? "text-muted-foreground hover:text-foreground hover:bg-surface-3"
-                : "text-muted-foreground/70 cursor-not-allowed",
-            )}
+            className="ui-icon-button"
           >
             <Trash2 size={13} />
-          </Button>
+          </button>
         </TooltipTrigger>
         <TooltipContent>Clear Agent history</TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Close Agent panel"
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground ui-transition-colors ui-motion-fast hover:text-foreground hover:bg-surface-3"
+            className="ui-icon-button"
           >
             <PanelRightClose size={13} />
-          </Button>
+          </button>
         </TooltipTrigger>
         <TooltipContent>Close Agent panel</TooltipContent>
       </Tooltip>

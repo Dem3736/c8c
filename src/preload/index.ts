@@ -114,6 +114,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("workflows:save", filePath, chain),
   saveWorkflowAs: (chain: Workflow, projectPath?: string) =>
     ipcRenderer.invoke("workflows:save-as", chain, projectPath),
+  exportWorkflowCopy: (chain: Workflow, projectPath?: string) =>
+    ipcRenderer.invoke("workflows:export-copy", chain, projectPath),
   openWorkflowFile: () => ipcRenderer.invoke("workflows:open-file"),
   createWorkflow: (projectPath: string, name: string, chain: Workflow) =>
     ipcRenderer.invoke("workflows:create", projectPath, name, chain),

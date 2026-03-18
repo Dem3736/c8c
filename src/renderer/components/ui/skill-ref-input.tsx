@@ -1,10 +1,11 @@
+import { X } from "lucide-react"
 import { useState, useRef, useEffect, useMemo, useId } from "react"
 import { useAtom } from "jotai"
 import { skillsAtom } from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/cn"
 import { getSkillSourceLabel } from "@/lib/skill-source"
-import { overlayContentBase, overlayItem } from "@/lib/overlay-styles"
+import { overlayContent, overlayItem } from "@/lib/overlay-styles"
 
 interface SkillRefInputProps {
   id?: string
@@ -85,20 +86,34 @@ export function SkillRefInput({ id, value, onChange, placeholder, className }: S
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className={className}
+        className={cn(value && "pr-8", className)}
         autoComplete="off"
         aria-expanded={showListbox}
         aria-controls={listboxId}
         aria-activedescendant={activeOptionId}
         aria-autocomplete="list"
       />
+      {value ? (
+        <button
+          type="button"
+          className="ui-icon-button absolute right-1.5 top-1/2 -translate-y-1/2"
+          aria-label="Clear skill reference"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onChange("")
+            setOpen(false)
+          }}
+        >
+          <X size={12} />
+        </button>
+      ) : null}
       {showListbox && (
         <div
           ref={listRef}
           id={listboxId}
           role="listbox"
           aria-label="Skill suggestions"
-          className={cn(overlayContentBase, "absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto ui-scroll-region")}
+          className={cn(overlayContent, "absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto ui-scroll-region")}
         >
           {suggestions.map((skill, i) => (
             <div
@@ -116,8 +131,8 @@ export function SkillRefInput({ id, value, onChange, placeholder, className }: S
                 selectSuggestion(skill)
               }}
             >
-              <span className="font-mono font-medium">{skill.category}/{skill.name}</span>
-              <span className="ml-2 ui-meta-text text-muted-foreground">{getSkillSourceLabel(skill)}</span>
+              <span className="ui-meta-text font-mono text-foreground">{skill.category}/{skill.name}</span>
+              <span className="ml-2 ui-meta-text">{getSkillSourceLabel(skill)}</span>
             </div>
           ))}
         </div>

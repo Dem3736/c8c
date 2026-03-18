@@ -25,6 +25,7 @@ import {
   Terminal,
   Bot,
 } from "lucide-react"
+import { toast } from "sonner"
 
 const TOTAL_STEPS = 3
 
@@ -62,7 +63,7 @@ export function OnboardingWizard() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-[var(--titlebar-height)]">
       <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
-        <div className="w-full max-w-[520px] space-y-8">
+        <div className="w-full max-w-lg space-y-8">
           {/* Progress indicator */}
           <div className="flex items-center justify-center gap-2">
             {Array.from({ length: TOTAL_STEPS }, (_, i) => (
@@ -204,7 +205,7 @@ function StepCheckCli() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
+        <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
           <Terminal size={20} className="text-foreground" />
         </div>
         <h2 className="text-title-md text-foreground">Check CLI</h2>
@@ -237,8 +238,8 @@ function StepCheckCli() {
             const loginCommand = provider === "claude" ? "claude login" : "codex login"
 
             return (
-              <div key={provider} className="rounded-lg border border-hairline bg-surface-2/60 p-3 space-y-2">
-                <div className="text-body-sm font-medium text-foreground">{PROVIDER_LABELS[provider]}</div>
+              <div key={provider} className="rounded-lg surface-inset-card p-3 space-y-2">
+                <div className="ui-body-text-medium text-foreground">{PROVIDER_LABELS[provider]}</div>
 
                 <div className="flex items-center gap-2 text-body-sm">
                   {available ? (
@@ -339,6 +340,10 @@ function StepOpenProject({
         setAddedPath(result)
         onProjectAdded(result)
       }
+    } catch (error) {
+      toast.error("Could not add project", {
+        description: error instanceof Error ? error.message : String(error),
+      })
     } finally {
       setAdding(false)
     }
@@ -347,7 +352,7 @@ function StepOpenProject({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
+        <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
           <FolderOpen size={20} className="text-foreground" />
         </div>
         <h2 className="text-title-md text-foreground">Open a project</h2>
@@ -400,7 +405,7 @@ function StepUnderstandWorkflow({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-surface-2">
+        <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
           <Bot size={20} className="text-foreground" />
         </div>
         <h2 className="text-title-md text-foreground">A workflow is input → steps → result</h2>
@@ -412,25 +417,25 @@ function StepUnderstandWorkflow({
       </p>
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
-          <div className="ui-meta-label text-muted-foreground">1. Input</div>
+        <div className="rounded-lg surface-inset-card p-3">
+          <div className="ui-meta-label">1. Input</div>
           <p className="text-body-sm text-foreground mt-1">Text, URL, or a project folder.</p>
         </div>
-        <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
-          <div className="ui-meta-label text-muted-foreground">2. Workflow steps</div>
+        <div className="rounded-lg surface-inset-card p-3">
+          <div className="ui-meta-label">2. Workflow steps</div>
           <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or ask for approval as the flow runs.</p>
         </div>
-        <div className="rounded-lg border border-hairline bg-surface-2/60 p-3">
-          <div className="ui-meta-label text-muted-foreground">3. Result</div>
+        <div className="rounded-lg surface-inset-card p-3">
+          <div className="ui-meta-label">3. Result</div>
           <p className="text-body-sm text-foreground mt-1">Inspect logs, review the output, and rerun from the step that needs attention.</p>
         </div>
       </div>
 
-      <div className="rounded-lg bg-surface-2 p-3 space-y-2">
-        <div className="ui-meta-text text-muted-foreground/60 flex items-center gap-1.5">
+      <div className="rounded-lg surface-soft p-3 space-y-2">
+        <div className="ui-meta-text text-muted-foreground flex items-center gap-1.5">
           Agent <code className="inline-code ui-meta-text">&#8984;&#8679;K</code>
         </div>
-        <p className="text-body-sm font-mono text-foreground/80">
+        <p className="text-body-sm font-mono text-foreground">
           {examplePrompt}
         </p>
       </div>

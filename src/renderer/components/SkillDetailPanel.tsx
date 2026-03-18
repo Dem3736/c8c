@@ -99,13 +99,13 @@ export function SkillDetailPanel({
     <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
       <header className="border-b border-border px-4 py-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-control-lg w-control-lg shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2">
+          <div className="surface-inset-card flex h-control-lg w-control-lg shrink-0 items-center justify-center p-0">
             <Wrench size={16} className="text-muted-foreground" />
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-body-md font-semibold text-foreground">{skill.name}</h2>
+              <h2 className="ui-title-text">{skill.name}</h2>
               <Badge variant="outline" size="compact">
                 {skill.type}
               </Badge>
@@ -122,15 +122,14 @@ export function SkillDetailPanel({
               </p>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={onClose}
-            className="shrink-0"
+            className="ui-icon-button shrink-0"
             aria-label="Close detail panel"
           >
             <X size={16} />
-          </Button>
+          </button>
         </div>
       </header>
 
@@ -142,7 +141,7 @@ export function SkillDetailPanel({
                 <div key={label} className="flex items-center gap-2 text-body-sm">
                   <Icon size={14} className="text-muted-foreground shrink-0" />
                   <span className="ui-meta-label">{label}:</span>
-                  <span className="text-foreground font-medium">{value}</span>
+                  <span className="text-body-sm text-foreground font-medium">{value}</span>
                 </div>
               ))}
             </div>
@@ -171,16 +170,14 @@ export function SkillDetailPanel({
           <div className="flex items-center gap-2 text-body-sm">
             <FileText size={14} className="text-muted-foreground shrink-0" />
             <span className="ui-meta-label">File:</span>
-            <Button
+            <button
               type="button"
-              variant="link"
-              size="bare"
-              className="min-w-0 !justify-start font-mono ui-meta-text text-foreground"
+              className="ui-pressable min-w-0 text-left font-mono ui-meta-text text-foreground hover:underline"
               title={skill.path}
               onClick={() => void window.api.showInFinder(skill.path)}
             >
               {skill.path}
-            </Button>
+            </button>
           </div>
           {(sourceKind === "library" || sourceKind === "plugin" || sourceKind === "user") && (
             <div className="flex items-center gap-2 text-body-sm">
@@ -190,7 +187,7 @@ export function SkillDetailPanel({
                 <FolderOpen size={14} className="text-muted-foreground shrink-0" />
               )}
               <span className="ui-meta-label">Source:</span>
-              <span className="text-foreground">{sourceLabel}</span>
+              <span className="text-body-sm text-foreground">{sourceLabel}</span>
             </div>
           )}
         </div>

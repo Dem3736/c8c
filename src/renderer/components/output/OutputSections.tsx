@@ -17,6 +17,7 @@ import {
   FileCode2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 
 const PREVIEW_MAX_W = "max-w-52" as const
 
@@ -72,6 +73,21 @@ function getEntrySearchText(entry: LogEntry): string {
   }
 }
 
+function getLogEntryKey(selectedNodeId: string, entry: LogEntry): string {
+  switch (entry.type) {
+    case "thinking":
+    case "text":
+    case "error":
+      return `${selectedNodeId}-${entry.type}-${entry.timestamp}-${entry.content}`
+    case "tool_use":
+      return `${selectedNodeId}-${entry.type}-${entry.timestamp}-${entry.tool}-${JSON.stringify(entry.input)}`
+    case "tool_result":
+      return `${selectedNodeId}-${entry.type}-${entry.timestamp}-${entry.tool}-${entry.status}-${entry.output}`
+    case "diff":
+      return `${selectedNodeId}-${entry.type}-${entry.timestamp}-${entry.files.join(",")}-${entry.content}`
+  }
+}
+
 function mcpServerLabel(qualifiedName: string): string {
   const match = qualifiedName.match(/^mcp__([^_]+)__/)
   return match ? `MCP: ${match[1]}` : "MCP"
@@ -95,7 +111,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               !collapsed && "rotate-90",
             )}
           />
@@ -136,7 +152,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               !collapsed && "rotate-90",
             )}
           />
@@ -182,7 +198,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               !collapsed && "rotate-90",
             )}
           />
@@ -257,7 +273,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               !collapsed && "rotate-90",
             )}
           />
@@ -299,7 +315,7 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
   return null
 }
 
-function formatTokens(n: number): string {
+export function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
@@ -393,7 +409,7 @@ export function NodesTab({
                 className={cn(
                   status === "completed" && "text-status-success",
                   status === "failed" && "text-status-danger",
-                  status === "running" && "text-foreground animate-spin",
+                  status === "running" && "text-status-info animate-spin",
                   (status === "pending" || status === "queued" || status === "skipped") &&
                     "text-muted-foreground",
                 )}
@@ -412,21 +428,16 @@ export function NodesTab({
                   </div>
                 ) : null}
               </div>
-              <Badge
-                variant={
-                  status === "completed"
-                    ? "outline"
-                    : status === "failed"
-                      ? "destructive"
-                      : "outline"
-                }
+              <span
                 className={cn(
-                  "ui-meta-text px-2 py-0",
-                  status === "completed" && "border-status-success/30 bg-status-success/10 text-status-success",
+                  "ui-meta-text ui-status-badge",
+                  status === "completed" && "ui-status-badge-success",
+                  status === "failed" && "ui-status-badge-danger",
+                  status !== "completed" && status !== "failed" && "border-hairline bg-surface-2 text-muted-foreground",
                 )}
               >
                 {statusLabel}
-              </Badge>
+              </span>
               {canRerun && (status === "completed" || status === "failed") && onRerunFrom && (
                 <button
                   type="button"
@@ -553,12 +564,13 @@ export function LogTab({
               size={14}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
             />
-            <input
-              type="text"
+            <Input
+              type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search log entries..."
-              className="w-full h-control-sm pl-8 pr-8 rounded-md border border-hairline bg-surface-2/60 text-body-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
+              aria-label="Search log entries"
+              className="h-control-sm bg-surface-2/60 pl-8 pr-8 shadow-none"
             />
             {searchQuery && (
               <button
@@ -608,9 +620,9 @@ export function LogTab({
       )}
 
       {/* Scrollable log content */}
-      <div className="max-h-96 overflow-y-auto ui-scroll-region space-y-1">
+      <div className="max-h-[min(24rem,calc(100vh-18rem))] overflow-y-auto ui-scroll-region space-y-1">
         {state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0) && (
-          <div className="flex items-center gap-3 ui-meta-text text-muted-foreground bg-surface-2/50 rounded px-2 py-1.5 mb-1 font-mono">
+          <div className="surface-inset-card mb-1 flex items-center gap-3 p-2 ui-meta-text font-mono text-muted-foreground">
             <span title="Input tokens">In: {formatTokens(state.metrics.tokens_in)}</span>
             <span title="Output tokens">Out: {formatTokens(state.metrics.tokens_out)}</span>
             {state.metrics.cost_usd > 0 && <span title="Estimated cost">{formatCost(state.metrics.cost_usd)}</span>}
@@ -621,7 +633,7 @@ export function LogTab({
           </div>
         )}
         {state?.error && (
-          <div className="ui-meta-text text-status-danger bg-status-danger/10 rounded px-2 py-1 border border-status-danger/20 mb-1">
+          <div className="ui-meta-text surface-danger-soft mb-1 rounded px-2 py-1 text-status-danger">
             <span className="font-medium">{state.errorKind ? ERROR_KIND_LABELS[state.errorKind] || state.errorKind : "Error"}:</span> {state.error}
             {(state.retriesUsed || 0) > 0 && (
               <span className="ml-2 text-status-warning">retry x{state.retriesUsed}</span>
@@ -636,8 +648,8 @@ export function LogTab({
             No entries match the current filters
           </div>
         )}
-        {filteredLog.map((entry, i) => (
-          <LogEntryCard key={`${selectedNodeId}-${entry.type}-${i}`} entry={entry} />
+        {filteredLog.map((entry) => (
+          <LogEntryCard key={getLogEntryKey(selectedNodeId, entry)} entry={entry} />
         ))}
         {selectedNodeId && evalResults[selectedNodeId]?.length > 0 && (
           <div className="border-t border-hairline pt-2 mt-2 space-y-2">
@@ -646,10 +658,10 @@ export function LogTab({
               <div key={er.attempt} className="space-y-1.5">
                 <div
                   className={cn(
-                    "ui-meta-text font-mono px-2 py-1 rounded",
+                    "ui-meta-text font-mono rounded px-2 py-1",
                     er.passed
-                      ? "bg-status-success/10 text-status-success"
-                      : "bg-status-warning/10 text-status-warning",
+                      ? "surface-inset-card text-status-success"
+                      : "surface-danger-soft text-status-warning",
                   )}
                 >
                   Attempt {er.attempt}: {er.score}/10 {er.passed ? "PASS" : "FAIL"} — {er.reason}
@@ -674,7 +686,7 @@ export function LogTab({
                   </div>
                 )}
                 {er.fix_instructions && (
-                  <div className="px-2 py-1.5 ui-meta-text bg-surface-2 border border-hairline rounded">
+                  <div className="surface-inset-card px-2 py-1.5 ui-meta-text">
                     <span className="font-medium text-foreground-subtle">Fix: </span>
                     <span className="text-muted-foreground">{er.fix_instructions}</span>
                   </div>

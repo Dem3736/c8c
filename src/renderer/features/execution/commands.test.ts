@@ -99,16 +99,43 @@ describe("execution commands helpers", () => {
     expect(resolveExecutionStartResult("run-1", "fallback")).toEqual({
       startedRunId: "run-1",
       errorMessage: null,
+      validationIssues: [],
     })
 
     expect(resolveExecutionStartResult({ error: "boom" }, "fallback")).toEqual({
       startedRunId: null,
       errorMessage: "boom",
+      validationIssues: [],
+    })
+
+    expect(resolveExecutionStartResult({
+      error: "2 validation errors — fix them before running.",
+      code: "validation",
+      validationIssues: [
+        {
+          nodeId: "skill-1",
+          field: "config.prompt",
+          message: "Add a prompt or select a skill reference.",
+          severity: "error",
+        },
+      ],
+    }, "fallback")).toEqual({
+      startedRunId: null,
+      errorMessage: "2 validation errors — fix them before running.",
+      validationIssues: [
+        {
+          nodeId: "skill-1",
+          field: "config.prompt",
+          message: "Add a prompt or select a skill reference.",
+          severity: "error",
+        },
+      ],
     })
 
     expect(resolveExecutionStartResult(null, "fallback")).toEqual({
       startedRunId: null,
       errorMessage: "fallback",
+      validationIssues: [],
     })
   })
 

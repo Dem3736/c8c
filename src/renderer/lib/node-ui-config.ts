@@ -27,7 +27,7 @@ export const NODE_LABELS: Record<NodeType, string> = {
   output: "Output",
   skill: "Skill",
   evaluator: "Evaluator",
-  splitter: "Fan-out",
+  splitter: "Split work",
   merger: "Merge",
   approval: "Approval",
   human: "Human",
@@ -57,7 +57,7 @@ export const NODE_ACCENTS: Partial<Record<NodeType, string>> = {
 
 export const STATUS_STYLES: Partial<Record<NodeStatus, string>> = {
   running: "node-status-running",
-  completed: "border-status-success/60",
+  completed: "node-status-completed",
   failed: "border-status-danger/60",
   skipped: "border-status-warning/50",
   waiting_approval: "border-status-warning/60",

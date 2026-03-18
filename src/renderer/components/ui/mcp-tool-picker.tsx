@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { mcpDiscoveredToolsAtom } from "@/lib/store"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/cn"
 import {
@@ -206,10 +205,9 @@ export function McpToolPicker({
           {normalizedValues.map((value) => {
             const display = getDisplayLabel(value)
             return (
-              <Badge
+              <span
                 key={value}
-                variant="outline"
-                className="gap-1 pr-1"
+                className="control-badge control-badge-compact gap-1 border border-border bg-surface-1/70 pr-1 text-body-sm text-foreground"
               >
                 <span className="font-mono">{display.label}</span>
                 {display.server && (
@@ -218,12 +216,12 @@ export function McpToolPicker({
                 <button
                   type="button"
                   onClick={() => removeValue(value)}
-                  className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-sm p-0.5 text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
+                  className="ui-icon-button ml-0.5 size-4 rounded-sm"
                   aria-label={`Remove ${display.label}`}
                 >
                   <X size={10} />
                 </button>
-              </Badge>
+              </span>
             )
           })}
         </div>

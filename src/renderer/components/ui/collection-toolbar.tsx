@@ -29,8 +29,7 @@ export function CollectionToolbar({
         <div className="flex min-w-0 flex-1">
           <div className="relative min-w-0 flex-1 sm:max-w-md">
             <Search
-              size={13}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
               type="search"
@@ -44,7 +43,7 @@ export function CollectionToolbar({
         </div>
 
         {(summary || action) && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="control-cluster flex w-fit max-w-full flex-wrap items-center gap-2 rounded-lg p-1">
             {summary ? (
               <span className="ui-meta-text hidden text-muted-foreground sm:inline">
                 {summary}
@@ -56,7 +55,7 @@ export function CollectionToolbar({
       </div>
 
       {filters ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="control-cluster flex flex-wrap items-center gap-2 rounded-lg p-1">
           {filters}
         </div>
       ) : null}

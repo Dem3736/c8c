@@ -5,6 +5,7 @@ import {
   reduceWorkflowExecutionEvent,
   toWorkflowExecutionKey,
   type ApprovalRequest,
+  type ExecutionRunStatus,
   type WorkflowExecutionState,
 } from "@/lib/workflow-execution"
 import type { ActiveWorkflowRun, RunResult, Workflow, WorkflowEvent } from "@shared/types"
@@ -31,6 +32,21 @@ interface BufferedWorkflowEvents {
   lastUpdatedAt: number
 }
 
+interface PendingExecutionStart {
+  startAttemptId: number
+  cancelled: boolean
+}
+
+export interface ExecutionStartHandle {
+  workflowKey: string
+  startAttemptId: number
+}
+
+export interface FinishExecutionStartResult {
+  accepted: boolean
+  shouldCancelRun: boolean
+}
+
 const BUFFERED_EVENT_TTL_MS = 60_000
 const MAX_BUFFERED_RUNS = 100
 const MAX_BUFFERED_EVENTS_PER_RUN = 500
@@ -42,6 +58,8 @@ export class WorkflowExecutionController {
   private readonly bufferedEvents = new Map<string, BufferedWorkflowEvents>()
   private readonly previousExecutionSnapshots = new Map<string, WorkflowExecutionState>()
   private readonly workflowSnapshots = new Map<string, Workflow>()
+  private readonly pendingStarts = new Map<string, PendingExecutionStart>()
+  private nextStartAttemptId = 0
   private listRunsRequestId = 0
 
   constructor(private readonly deps: WorkflowExecutionControllerDeps) {}
@@ -89,28 +107,66 @@ export class WorkflowExecutionController {
     targetWorkflow: Workflow,
     workflowPathForRun: string | null,
     projectPathForRun: string | null,
-  ) {
+  ): ExecutionStartHandle {
     const workflowKey = toWorkflowExecutionKey(workflowPathForRun)
     const previousState = this.getExecutionState(workflowKey)
+    const startAttemptId = ++this.nextStartAttemptId
+    this.pendingStarts.set(workflowKey, {
+      startAttemptId,
+      cancelled: false,
+    })
     this.previousExecutionSnapshots.set(workflowKey, previousState)
     this.workflowSnapshots.set(workflowKey, structuredClone(targetWorkflow))
     this.updateExecutionForKey(workflowKey, (previous) =>
       createExecutionStartState(previous, targetWorkflow, workflowPathForRun, projectPathForRun),
     )
-    return workflowKey
+    return {
+      workflowKey,
+      startAttemptId,
+    }
   }
 
-  rollbackExecutionStart(workflowKey: string) {
-    const previousState = this.previousExecutionSnapshots.get(workflowKey) ?? createEmptyWorkflowExecutionState()
-    this.previousExecutionSnapshots.delete(workflowKey)
-    this.workflowSnapshots.delete(workflowKey)
-    this.updateExecutionForKey(workflowKey, previousState)
+  rollbackExecutionStart(startHandle: ExecutionStartHandle): boolean {
+    const pendingStart = this.pendingStarts.get(startHandle.workflowKey)
+    if (!pendingStart || pendingStart.startAttemptId !== startHandle.startAttemptId) {
+      return false
+    }
+
+    this.pendingStarts.delete(startHandle.workflowKey)
+    if (pendingStart.cancelled) {
+      return false
+    }
+
+    const previousState = this.previousExecutionSnapshots.get(startHandle.workflowKey) ?? createEmptyWorkflowExecutionState()
+    this.previousExecutionSnapshots.delete(startHandle.workflowKey)
+    this.workflowSnapshots.delete(startHandle.workflowKey)
+    this.updateExecutionForKey(startHandle.workflowKey, previousState)
+    return true
   }
 
-  finishStartWithRunId(startedRunId: string, workflowKey: string) {
-    this.runWorkflowKeys.set(startedRunId, workflowKey)
-    this.previousExecutionSnapshots.delete(workflowKey)
-    this.updateExecutionForKey(workflowKey, (previous) => ({
+  finishStartWithRunId(
+    startedRunId: string,
+    startHandle: ExecutionStartHandle,
+  ): FinishExecutionStartResult {
+    const pendingStart = this.pendingStarts.get(startHandle.workflowKey)
+    if (!pendingStart || pendingStart.startAttemptId !== startHandle.startAttemptId) {
+      return {
+        accepted: false,
+        shouldCancelRun: true,
+      }
+    }
+
+    this.pendingStarts.delete(startHandle.workflowKey)
+    if (pendingStart.cancelled) {
+      return {
+        accepted: false,
+        shouldCancelRun: true,
+      }
+    }
+
+    this.runWorkflowKeys.set(startedRunId, startHandle.workflowKey)
+    this.previousExecutionSnapshots.delete(startHandle.workflowKey)
+    this.updateExecutionForKey(startHandle.workflowKey, (previous) => ({
       ...previous,
       runId: startedRunId,
     }))
@@ -120,10 +176,35 @@ export class WorkflowExecutionController {
     for (const event of bufferedEvents) {
       this.processWorkflowEvent(event)
     }
+
+    return {
+      accepted: true,
+      shouldCancelRun: false,
+    }
+  }
+
+  rollbackCancellation(
+    workflowKey: string,
+    fallbackRunStatus: ExecutionRunStatus,
+    runIdToRestore?: string | null,
+  ) {
+    this.updateExecutionForKey(workflowKey, (previous) => {
+      if (previous.runStatus !== "cancelling") {
+        return previous
+      }
+      if (runIdToRestore && previous.runId && previous.runId !== runIdToRestore) {
+        return previous
+      }
+      return {
+        ...previous,
+        runStatus: fallbackRunStatus,
+      }
+    })
   }
 
   rehydrateActiveRun(snapshot: ActiveWorkflowRun) {
     const workflowKey = toWorkflowExecutionKey(snapshot.workflowPath)
+    this.pendingStarts.delete(workflowKey)
     this.runWorkflowKeys.set(snapshot.runId, workflowKey)
     this.workflowSnapshots.set(workflowKey, {
       version: 1,
@@ -186,6 +267,7 @@ export class WorkflowExecutionController {
 
     if (transition.effects.runFinished) {
       this.deps.onRunFinished?.({ workflowKey, state: transition.nextState })
+      this.pendingStarts.delete(workflowKey)
       this.clearRunTracking(event.runId)
       this.previousExecutionSnapshots.delete(workflowKey)
       this.workflowSnapshots.delete(workflowKey)
@@ -194,6 +276,16 @@ export class WorkflowExecutionController {
   }
 
   cancelExecution(workflowKey: string, runIdToClear: string | null | undefined) {
+    if (!runIdToClear) {
+      const pendingStart = this.pendingStarts.get(workflowKey)
+      if (pendingStart) {
+        this.pendingStarts.set(workflowKey, {
+          ...pendingStart,
+          cancelled: true,
+        })
+      }
+    }
+
     this.clearRunTracking(runIdToClear)
     this.previousExecutionSnapshots.delete(workflowKey)
     this.workflowSnapshots.delete(workflowKey)

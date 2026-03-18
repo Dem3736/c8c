@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAtom, useAtomValue } from "jotai"
 import {
-  currentWorkflowAtom,
   defaultProviderAtom,
   inputValueAtom,
   inputAttachmentsAtom,
@@ -69,6 +68,7 @@ import {
   ApprovalNodeEditor,
   HumanNodeEditor,
 } from "@/components/NodeCardEditors"
+import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 
 export interface RuntimeBranchSummaryPreview {
   id: string
@@ -552,7 +552,7 @@ export function NodeCard({
   runtimeBranchSummary = null,
 }: NodeCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const { workflow, setWorkflow } = useWorkflowWithUndo()
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
   const [attachments, setAttachments] = useAtom(inputAttachmentsAtom)
   const defaultProvider = useAtomValue(defaultProviderAtom)
@@ -689,7 +689,7 @@ export function NodeCard({
         ...(prev.defaults || {}),
         ...patch,
       },
-    }))
+    }), { coalesceKey: "workflow-defaults:node-card" })
   }
 
   if (runtimeMode) {
@@ -786,18 +786,19 @@ export function NodeCard({
                 </Badge>
               )}
               {runtimeFocusLabel && (
-                <Badge
-                  variant="outline"
+                <span
                   className={cn(
-                    "shrink-0 px-1.5 py-0 ui-meta-text",
-                    runtimeFocusKind === "current" && runtimeStatus === "running" && "border-status-info/30 bg-status-info/10 text-status-info",
-                    runtimeFocusKind === "current" && (runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human") && "border-status-warning/30 bg-status-warning/10 text-status-warning",
-                    runtimeFocusKind === "current" && runtimeStatus === "failed" && "border-status-danger/30 bg-status-danger/10 text-status-danger",
-                    runtimeFocusKind === "next" && "border-hairline bg-surface-2 text-foreground",
+                    "shrink-0 ui-meta-text",
+                    runtimeFocusKind === "current" && "ui-status-badge",
+                    runtimeFocusKind === "current" && "border-hairline bg-surface-2 text-foreground",
+                    runtimeFocusKind === "current" && runtimeStatus === "running" && "ui-status-badge-info",
+                    runtimeFocusKind === "current" && (runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human") && "ui-status-badge-warning",
+                    runtimeFocusKind === "current" && runtimeStatus === "failed" && "ui-status-badge-danger",
+                    runtimeFocusKind === "next" && "inline-flex rounded-md border border-hairline bg-surface-2 px-1.5 py-0 text-foreground",
                   )}
                 >
                   {runtimeFocusLabel}
-                </Badge>
+                </span>
               )}
               <Badge
                 variant={runtimeStatusBadgeVariant}
@@ -819,7 +820,7 @@ export function NodeCard({
               )}
             >
               {isSkill ? (
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">
+                <span className="section-kicker text-foreground">
                   {getRuntimeRoleMonogram(runtimeHeading.displayTitle)}
                 </span>
               ) : (
@@ -828,7 +829,7 @@ export function NodeCard({
             </div>
 
             <div className="min-w-0 flex-1 space-y-1.5">
-              <div className="line-clamp-2 text-title-sm font-medium leading-6 text-foreground">
+              <div className="line-clamp-2 text-title-sm text-foreground">
                 {runtimeHeading.displayTitle}
               </div>
               <div className="line-clamp-1 ui-meta-text text-muted-foreground">

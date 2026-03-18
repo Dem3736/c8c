@@ -8,7 +8,7 @@ import {
 } from "./result-mode-factory"
 
 describe("result-mode-factory", () => {
-  it("builds a content factory outcome with parsed targets and saved recipe packs", () => {
+  it("builds a marketing factory outcome with parsed targets and saved recipe packs", () => {
     const mode = getResultMode("content")
     const factory = buildFactoryFromResultMode({
       mode,
@@ -32,8 +32,8 @@ describe("result-mode-factory", () => {
       "Info style",
       "100 posts, all specific and publishable without heavy rewrites",
     ])
-    expect(factory.recipe?.packIds).toEqual(["content-factory-alpha", "ai-cmo"])
-    expect(factory.recipe?.stageOrder).toEqual(["Trend watch", "Post calendar", "Ready posts"])
+    expect(factory.recipe?.packIds).toEqual(["ai-cmo"])
+    expect(factory.recipe?.stageOrder).toEqual(["Research the market", "Choose the angle", "Ship the assets"])
   })
 
   it("reuses an existing matching factory when one is already selected for the mode", () => {
@@ -63,7 +63,7 @@ describe("result-mode-factory", () => {
     expect(reusable?.id).toBe(existing.id)
   })
 
-  it("keeps existing ids and fills default strategist checkpoints for courses", () => {
+  it("keeps existing ids and fills default strategist checkpoints for content", () => {
     const mode = getResultMode("courses")
     const existing = {
       id: "factory:course-launch",
@@ -85,10 +85,10 @@ describe("result-mode-factory", () => {
 
     expect(factory.id).toBe(existing.id)
     expect(factory.modeId).toBe("courses")
-    expect(factory.recipe?.packIds).toEqual(["courses-factory-alpha"])
+    expect(factory.recipe?.packIds).toEqual(["content-factory-alpha", "courses-factory-alpha"])
     expect(factory.recipe?.strategistCheckpoints).toEqual([
-      "Approve audience and promise",
-      "Approve sample lesson quality",
+      "Approve voice and structure",
+      "Approve sample asset quality",
     ])
   })
 

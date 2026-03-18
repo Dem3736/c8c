@@ -5,6 +5,7 @@ import {
   historicalRunVisual,
   latestRunByWorkflowPath,
   projectFolderName,
+  resolveProjectRowSelectionState,
   workflowHasActiveRunStatus,
 } from "./projectSidebarUtils"
 
@@ -30,6 +31,21 @@ describe("projectSidebarUtils", () => {
   it("formats project folder names from paths", () => {
     expect(projectFolderName("/tmp/demo")).toBe("demo")
     expect(projectFolderName("demo")).toBe("demo")
+  })
+
+  it("selects another project before toggling its workflow list", () => {
+    expect(resolveProjectRowSelectionState("/tmp/beta", "/tmp/alpha", false)).toEqual({
+      shouldSelectProject: true,
+      nextExpanded: true,
+    })
+    expect(resolveProjectRowSelectionState("/tmp/beta", "/tmp/alpha", true)).toEqual({
+      shouldSelectProject: true,
+      nextExpanded: true,
+    })
+    expect(resolveProjectRowSelectionState("/tmp/beta", "/tmp/beta", true)).toEqual({
+      shouldSelectProject: false,
+      nextExpanded: false,
+    })
   })
 
   it("formats relative timestamps", () => {

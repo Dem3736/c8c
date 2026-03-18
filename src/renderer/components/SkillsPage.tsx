@@ -1094,10 +1094,7 @@ export function SkillsPage() {
                 return (
                   <div
                     key={`${skill.path}-${skill.name}`}
-                    className={cn(
-                      "flex items-start gap-3 px-3 py-2.5",
-                      isSelected && "bg-surface-2/80 shadow-inset-highlight",
-                    )}
+                    className="flex items-start gap-3 px-3 py-2.5"
                     role="listitem"
                   >
                     <Button
@@ -1107,15 +1104,13 @@ export function SkillsPage() {
                       onClick={() => setSelectedSkill(skill)}
                       aria-pressed={isSelected}
                       className={cn(
-                        "min-w-0 flex-1 !justify-start gap-3 rounded-md border border-transparent text-left !whitespace-normal",
-                        isSelected
-                          ? "hover:bg-transparent"
-                          : "hover:bg-surface-2/60",
+                        "ui-interactive-card min-w-0 flex-1 !justify-start gap-3 rounded-md border border-transparent text-left !whitespace-normal",
+                        isSelected && "surface-inset-card shadow-inset-highlight",
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-body-md font-medium truncate">{skill.name}</span>
+                          <span className="ui-body-text-medium truncate">{skill.name}</span>
                           <Badge variant="outline" size="compact">{skill.type}</Badge>
                           <Badge variant="secondary" size="compact">
                             {getSkillSourceLabel(skill)}
@@ -1314,7 +1309,7 @@ export function SkillsPage() {
 
           <div className="space-y-2">
             {previewLibrary?.installed && previewItems.length > 0 ? (
-              <div className="rounded-md border border-hairline bg-surface-2/60 p-2 max-h-56 overflow-y-auto ui-scroll-region space-y-1">
+              <div className="surface-inset-card max-h-56 space-y-1 overflow-y-auto p-2 ui-scroll-region">
                 {previewItems.slice(0, 20).map((item) => (
                   <div key={item} className="ui-meta-text font-mono text-foreground-subtle">{item}</div>
                 ))}
@@ -1323,7 +1318,7 @@ export function SkillsPage() {
                 )}
               </div>
             ) : previewHints.length > 0 ? (
-              <div className="rounded-md border border-hairline bg-surface-2/60 p-2 space-y-1">
+              <div className="surface-inset-card space-y-1 p-2">
                 {previewHints.map((item) => (
                   <div key={item} className="text-body-sm text-foreground-subtle">{item}</div>
                 ))}
@@ -1374,8 +1369,8 @@ export function SkillsPage() {
 
             {previewPluginSkills.length > 0 && (
               <div className="space-y-1">
-                <p className="text-body-sm font-medium text-foreground">Skills</p>
-                <div className="rounded-md border border-hairline bg-surface-2/60 p-2 max-h-56 overflow-y-auto ui-scroll-region space-y-1">
+                <p className="ui-body-text-medium text-foreground">Skills</p>
+                <div className="surface-inset-card max-h-56 space-y-1 overflow-y-auto p-2 ui-scroll-region">
                   {previewPluginSkills.slice(0, 20).map((item) => (
                     <div key={item} className="ui-meta-text font-mono text-foreground-subtle">{item}</div>
                   ))}
@@ -1388,8 +1383,8 @@ export function SkillsPage() {
 
             {previewPluginMcpServers.length > 0 && (
               <div className="space-y-1">
-                <p className="text-body-sm font-medium text-foreground">MCP packs</p>
-                <div className="rounded-md border border-hairline bg-surface-2/60 p-2 space-y-1">
+                <p className="ui-body-text-medium text-foreground">MCP packs</p>
+                <div className="surface-inset-card space-y-1 p-2">
                   {previewPluginMcpServers.map((serverName) => (
                     <div key={serverName} className="ui-meta-text font-mono text-foreground-subtle">{serverName}</div>
                   ))}

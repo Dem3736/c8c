@@ -104,7 +104,7 @@ export function GenerateWorkflow() {
           </DialogTitle>
         </CanvasDialogHeader>
 
-        <CanvasDialogBody className="space-y-3 pt-4 bg-surface-1/30">
+        <CanvasDialogBody className="space-y-3 pt-4 surface-soft">
           <p className="text-body-md text-muted-foreground">
             Describe the job, the input you will give it, and the result you want back. The agent will prepare a runnable flow you can run or refine.
           </p>
@@ -140,7 +140,7 @@ export function GenerateWorkflow() {
               : "No project skills discovered yet. The agent will still prepare a runnable draft."}
           </div>
 
-          <div className="rounded-lg border border-dashed border-hairline bg-surface-2/40 px-3 py-3">
+          <div className="rounded-lg border border-dashed border-hairline surface-inset-card px-3 py-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="ui-meta-label text-muted-foreground">How to open the draft</p>
@@ -183,7 +183,7 @@ export function GenerateWorkflow() {
           </div>
         </CanvasDialogBody>
 
-        <CanvasDialogFooter className="bg-surface-1/60">
+        <CanvasDialogFooter className="surface-panel">
           <Button
             variant="outline"
             aria-label={generating ? "Cancel generation" : "Cancel"}

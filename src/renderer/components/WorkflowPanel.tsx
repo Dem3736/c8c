@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
+import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 import {
   chatStatusAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
-  currentWorkflowAtom,
   inputAttachmentsAtom,
   inputValueAtom,
   viewModeAtom,
+  flowSurfaceModeAtom,
   chatPanelOpenAtom,
   workflowDirtyAtom,
   mainViewAtom,
@@ -19,15 +20,18 @@ import {
   workflowSavedSnapshotAtom,
   chatPanelWidthAtom,
   workflowReviewModeAtom,
+  workflowOpenStateAtom,
   webSearchBackendAtom,
   workflowsAtom,
 } from "@/lib/store"
 import {
   activeNodeIdAtom,
+  artifactPersistenceStatusAtom,
   artifactRecordsAtom,
   finalContentAtom,
   nodeStatesAtom,
   reportPathAtom,
+  runIdAtom,
   runStartedAtAtom,
   runOutcomeAtom,
   runStatusAtom,
@@ -239,12 +243,12 @@ function RunStrip({
   onOpenResult: () => void
 }) {
   const toneClass = summary.tone === "success"
-    ? "border-status-success/25 text-status-success"
+    ? "ui-status-badge-success"
     : summary.tone === "warning"
-      ? "border-status-warning/30 text-status-warning"
+      ? "ui-status-badge-warning"
       : summary.tone === "danger"
-        ? "border-status-danger/25 text-status-danger"
-        : "border-status-info/25 text-status-info"
+        ? "ui-status-badge-danger"
+        : "ui-status-badge-info"
 
   const progressLabel = summary.totalSteps > 0
     ? `${Math.min(summary.completedSteps, summary.totalSteps)}/${summary.totalSteps} complete`
@@ -259,9 +263,9 @@ function RunStrip({
     <div className="border-b border-hairline bg-surface-1/90">
       <div className="flex w-full flex-wrap items-center gap-2 px-[var(--content-gutter)] py-2">
         <div className="min-w-0 flex flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
-          <Badge variant="outline" className={cn("px-1.5 py-0 ui-meta-text", toneClass)}>
+          <span className={cn("ui-status-badge ui-meta-text", toneClass)}>
             {summary.phaseLabel}
-          </Badge>
+          </span>
           {summary.activeStepLabel && (
             <span className="min-w-0 truncate text-body-sm text-foreground">
               {summary.activeStepLabel}
@@ -383,7 +387,7 @@ function ProjectArtifactsPanel({
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
-  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
   const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
@@ -397,6 +401,7 @@ export function WorkflowPanel() {
   const [selectedWorkflowTemplateContext] = useAtom(selectedWorkflowTemplateContextAtom)
   const [, setWorkflowTemplateContextForKey] = useAtom(setWorkflowTemplateContextForKeyAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
+  const [artifactPersistenceStatus] = useAtom(artifactPersistenceStatusAtom)
   const [artifactRecords] = useAtom(artifactRecordsAtom)
   const [projectArtifacts, setProjectArtifacts] = useState<ArtifactRecord[]>([])
   const [projectArtifactsLoading, setProjectArtifactsLoading] = useState(false)
@@ -404,6 +409,7 @@ export function WorkflowPanel() {
   const [finalContent] = useAtom(finalContentAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [reportPath] = useAtom(reportPathAtom)
+  const [runId] = useAtom(runIdAtom)
   const [runStartedAt] = useAtom(runStartedAtAtom)
   const [runOutcome] = useAtom(runOutcomeAtom)
   const [runStatus] = useAtom(runStatusAtom)
@@ -412,6 +418,7 @@ export function WorkflowPanel() {
   const [pendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [workflowEntryState, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const [, setWorkflowReviewMode] = useAtom(workflowReviewModeAtom)
+  const [workflowOpenState, setWorkflowOpenState] = useAtom(workflowOpenStateAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [workflowPastRuns] = useAtom(workflowHistoryRunsAtom)
@@ -427,8 +434,10 @@ export function WorkflowPanel() {
   const [launchingNextStage, setLaunchingNextStage] = useState(false)
   const [elapsed, setElapsed] = useState("")
   const [outputTabRequest, setOutputTabRequest] = useState<{ tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null>(null)
-  const [flowSurfaceMode, setFlowSurfaceMode] = useState<"outline" | "edit">("outline")
+  const [flowSurfaceMode, setFlowSurfaceMode] = useAtom(flowSurfaceModeAtom)
   const previousRunStatusRef = useRef(runStatus)
+  const completionToastRef = useRef<string | null>(null)
+  const completionSurfaceRef = useRef<string | null>(null)
   const pendingListAutoScrollRef = useRef(false)
   const resetExecution = useExecutionReset({ clearReportPath: true })
 
@@ -438,9 +447,6 @@ export function WorkflowPanel() {
 
   useEffect(() => {
     const previousRunStatus = previousRunStatusRef.current
-    if (previousRunStatus === "idle" && runStatus !== "idle" && viewMode !== "list") {
-      setViewMode("list")
-    }
     if (runStatus === "running" && previousRunStatus !== "running") {
       pendingListAutoScrollRef.current = true
     }
@@ -448,7 +454,20 @@ export function WorkflowPanel() {
       pendingListAutoScrollRef.current = false
     }
     previousRunStatusRef.current = runStatus
-  }, [runStatus, setViewMode, viewMode])
+  }, [runStatus])
+
+  const clearWorkflowOpenState = useCallback(() => {
+    setWorkflowOpenState({
+      status: "idle",
+      targetPath: null,
+      message: null,
+    })
+  }, [setWorkflowOpenState])
+
+  const workflowTitleFromPath = useCallback((path: string | null) => {
+    if (!path) return "workflow"
+    return path.split(/[\\/]/).pop()?.replace(/\.(chain|yaml|yml)$/i, "") || "workflow"
+  }, [])
 
   useEffect(() => {
     if (!runStartedAt || (runStatus !== "running" && runStatus !== "starting" && runStatus !== "cancelling" && runStatus !== "paused")) {
@@ -494,9 +513,8 @@ export function WorkflowPanel() {
 
   useEffect(() => {
     setShowEntryEditor(false)
-    setFlowSurfaceMode("outline")
     setPrepareNewRun(false)
-  }, [selectedWorkflowPath, workflow.name])
+  }, [selectedWorkflowPath])
 
   useEffect(() => {
     if (runStatus !== "idle" && workflowEntryState) {
@@ -645,7 +663,6 @@ export function WorkflowPanel() {
     || reportPath !== null
     || Object.values(nodeStates).some((state) => typeof state.output?.content === "string")
   const showRunStrip = runStatus !== "idle"
-  const showGraphAccess = runStatus === "idle" || viewMode === "canvas"
   const runSummary = useMemo(() => buildRunProgressSummary({
     workflow,
     runtimeNodes,
@@ -659,8 +676,9 @@ export function WorkflowPanel() {
   const listShellClass = isRuntimeFlowView
     ? "w-full px-[var(--content-gutter)] py-4 space-y-3"
     : "ui-content-shell py-3 space-y-3"
+  const reviewFlowHasSnapshot = showIdleReviewMode && !!reviewedRunDetails?.snapshot
 
-  const requestOutputTab = (tab: "nodes" | "log" | "result" | "history", nodeId?: string) => {
+  const requestOutputTab = useCallback((tab: "nodes" | "log" | "result" | "history", nodeId?: string) => {
     setViewMode("list")
     setOutputTabRequest({ tab, nodeId, nonce: Date.now() })
     window.requestAnimationFrame(() => {
@@ -683,17 +701,17 @@ export function WorkflowPanel() {
         outputPanel?.scrollIntoView({ behavior: "smooth", block: "start" })
       })
     })
-  }
+  }, [setViewMode])
 
-  const openActivity = () => {
+  const openActivity = useCallback(() => {
     requestOutputTab("nodes")
-  }
+  }, [requestOutputTab])
 
-  const openResult = () => {
+  const openResult = useCallback(() => {
     requestOutputTab(hasResult ? "result" : "nodes")
-  }
+  }, [hasResult, requestOutputTab])
 
-  const focusInputPanel = () => {
+  const focusInputPanel = useCallback(() => {
     const inputPanel = inputPanelRef.current
     if (!inputPanel) return
     inputPanel.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -701,7 +719,7 @@ export function WorkflowPanel() {
       const focusTarget = inputPanel.querySelector<HTMLElement>("textarea, input, [contenteditable='true']")
       focusTarget?.focus()
     })
-  }
+  }, [])
 
   const handleOpenArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
@@ -711,7 +729,7 @@ export function WorkflowPanel() {
     })
   }
 
-  const handleRunNextStage = async () => {
+  const handleRunNextStage = useCallback(async () => {
     if (!selectedProject || !nextStageTemplate || launchingNextStage) return
 
     setLaunchingNextStage(true)
@@ -725,7 +743,7 @@ export function WorkflowPanel() {
 
       setWorkflows(launch.refreshedWorkflows)
       setSelectedWorkflowPath(launch.filePath)
-      setWorkflow(launch.loadedWorkflow)
+      setWorkflowDirect(launch.loadedWorkflow)
       setWorkflowSavedSnapshot(launch.savedSnapshot)
       setInputValue(launch.inputSeed)
       setWorkflowEntryState(launch.entryState)
@@ -753,7 +771,144 @@ export function WorkflowPanel() {
     } finally {
       setLaunchingNextStage(false)
     }
-  }
+  }, [
+    focusInputPanel,
+    launchingNextStage,
+    nextStageArtifacts,
+    nextStageTemplate,
+    selectedProject,
+    setInputAttachments,
+    setInputValue,
+    setMainView,
+    setOutputTabRequest,
+    setPrepareNewRun,
+    setSelectedWorkflowPath,
+    setViewMode,
+    setWorkflowDirect,
+    setWorkflowEntryState,
+    setWorkflowReviewMode,
+    setWorkflowSavedSnapshot,
+    setWorkflowTemplateContextForKey,
+    setWorkflows,
+    webSearchBackend,
+  ])
+
+  useEffect(() => {
+    if (runOutcome !== "completed") return
+
+    const waitingForArtifactContinuation = Boolean(selectedWorkflowTemplateContext?.contractOut?.length)
+      && artifactPersistenceStatus === "saving"
+    if (waitingForArtifactContinuation) return
+
+    const toastKey = nextStageTemplate
+      ? `${selectedWorkflowPath ?? "__draft__"}:${runId || "completed"}:next:${nextStageTemplate.id}`
+      : `${selectedWorkflowPath ?? "__draft__"}:${runId || "completed"}:result`
+    if (completionToastRef.current === toastKey) return
+    completionToastRef.current = toastKey
+
+    if (nextStageTemplate) {
+      toast.success("Done. Next step ready.", {
+        description: nextStageTemplate.name,
+        action: {
+          label: "Open next step",
+          onClick: () => {
+            void handleRunNextStage()
+          },
+        },
+        duration: 7000,
+      })
+      return
+    }
+
+    toast.success("Run complete", {
+      description: artifactPersistenceStatus === "error"
+        ? "Result is ready, but saving reusable outputs needs attention."
+        : "Result is ready to review.",
+      action: {
+        label: hasResult ? "View result" : "View activity",
+        onClick: () => {
+          if (hasResult) {
+            openResult()
+            return
+          }
+          openActivity()
+        },
+      },
+      duration: 5000,
+    })
+  }, [
+    artifactPersistenceStatus,
+    hasResult,
+    nextStageTemplate,
+    handleRunNextStage,
+    openActivity,
+    openResult,
+    runId,
+    runOutcome,
+    selectedWorkflowPath,
+    selectedWorkflowTemplateContext,
+  ])
+
+  useEffect(() => {
+    if (runStatus !== "done" || runOutcome !== "completed" || !hasResult || viewMode !== "list") {
+      completionSurfaceRef.current = null
+      return
+    }
+    const completionKey = `${selectedWorkflowPath ?? "__draft__"}:${runId || "completed"}`
+    if (completionSurfaceRef.current === completionKey) return
+    completionSurfaceRef.current = completionKey
+    openResult()
+  }, [hasResult, openResult, runId, runOutcome, runStatus, selectedWorkflowPath, viewMode])
+
+  const canvasSurfaceBanner = useMemo(() => {
+    if (viewMode !== "canvas") return null
+
+    if (runStatus === "done" && runOutcome === "completed") {
+      return {
+        surfaceClass: "surface-success-soft",
+        labelClass: "text-status-success",
+        title: "Run complete",
+        description: hasResult ? "Result is ready to review from this flow." : "Activity is ready to review from this flow.",
+        actionLabel: hasResult ? "View result" : "View activity",
+        action: hasResult ? openResult : openActivity,
+      }
+    }
+
+    if (runStatus === "done" && runOutcome === "blocked") {
+      return {
+        surfaceClass: "surface-warning-soft",
+        labelClass: "text-status-warning",
+        title: "Needs review",
+        description: "This run is waiting for approval or human input before it can continue.",
+        actionLabel: "Open activity",
+        action: openActivity,
+      }
+    }
+
+    if (runStatus === "done" && runOutcome === "cancelled") {
+      return {
+        surfaceClass: "surface-warning-soft",
+        labelClass: "text-status-warning",
+        title: "Run cancelled",
+        description: "The workflow stopped before it finished. Open activity to inspect the last completed step.",
+        actionLabel: "Open activity",
+        action: openActivity,
+      }
+    }
+
+    if ((runStatus === "done" && (runOutcome === "failed" || runOutcome === "interrupted")) || runStatus === "error") {
+      return {
+        surfaceClass: "surface-danger-soft",
+        labelClass: "text-status-danger",
+        title: "Run needs attention",
+        description: "The workflow did not finish successfully. Open activity to inspect the failure.",
+        actionLabel: "Open activity",
+        action: openActivity,
+      }
+    }
+
+    return null
+  }, [hasResult, openActivity, openResult, runOutcome, runStatus, viewMode])
 
   const handleStartNewRun = () => {
     if (runStatus !== "idle") {
@@ -804,6 +959,13 @@ export function WorkflowPanel() {
   }
 
   const isFlowEditing = showEntryLanding ? showEntryEditor : flowSurfaceMode === "edit"
+  const chainBuilderMode = runStatus !== "idle"
+    ? "monitor"
+    : reviewFlowHasSnapshot
+      ? "monitor"
+      : isFlowEditing
+        ? "edit"
+        : "outline"
 
   if (!selectedProject && !hasMeaningfulContent) {
     return (
@@ -845,11 +1007,52 @@ export function WorkflowPanel() {
       <div role="region" aria-label="Workflow editor" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
         <Toolbar onRun={run} onCancel={cancel} agentToggleRef={chatPanelToggleRef} />
 
-        <Tabs
-          value={viewMode}
-          onValueChange={(next) => setViewMode(next as "list" | "canvas" | "settings")}
-          className="flex-1 min-h-0 flex flex-col overflow-hidden"
-        >
+        {workflowOpenState.status === "loading" ? (
+          <div className="flex-1 min-h-0 flex items-center justify-center px-[var(--content-gutter)]">
+            <div className="w-full max-w-xl rounded-xl surface-panel p-6 ui-fade-slide-in">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-hairline bg-surface-2 text-status-info ui-elevation-inset">
+                  <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-title-sm text-foreground">
+                    Opening {workflowTitleFromPath(workflowOpenState.targetPath)}
+                  </div>
+                  <p className="mt-1 text-body-sm text-muted-foreground">
+                    Loading the workflow file and restoring its editor state.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {workflowOpenState.status === "error" && (
+              <div className="surface-danger-soft px-[var(--content-gutter)] py-2.5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="ui-meta-label text-status-danger">Could not open workflow</div>
+                    <p className="mt-1 text-body-sm text-status-danger">
+                      Failed to open {workflowTitleFromPath(workflowOpenState.targetPath)}. The previous workflow remains open.
+                    </p>
+                    {workflowOpenState.message && (
+                      <p className="mt-1 ui-meta-text text-status-danger/90">
+                        {workflowOpenState.message}
+                      </p>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={clearWorkflowOpenState}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <Tabs
+              value={viewMode}
+              onValueChange={(next) => setViewMode(next as "list" | "canvas" | "settings")}
+              className="flex-1 min-h-0 flex flex-col overflow-hidden"
+            >
           <div className="border-b border-hairline bg-surface-1">
             <div className={cn("ui-content-gutter flex flex-wrap items-center gap-3", runStatus === "idle" ? "py-2.5" : "py-2")}>
               <div className="flex min-w-[280px] flex-1 items-center gap-2">
@@ -867,7 +1070,7 @@ export function WorkflowPanel() {
                       type="text"
                       value={workflow.name || ""}
                       onChange={(e) =>
-                        setWorkflow((prev) => ({ ...prev, name: e.target.value }))
+                        setWorkflow((prev) => ({ ...prev, name: e.target.value }), { coalesceKey: "workflow-name" })
                       }
                       placeholder="Workflow name"
                       className="h-auto min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-title-md font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
@@ -892,6 +1095,10 @@ export function WorkflowPanel() {
                   <List size={13} aria-hidden="true" className="mr-1.5" />
                   Flow
                 </TabsTrigger>
+                <TabsTrigger value="canvas" className="px-3 py-1">
+                  <LayoutGrid size={13} aria-hidden="true" className="mr-1.5" />
+                  Graph
+                </TabsTrigger>
                 <TabsTrigger value="settings" className="px-3 py-1">
                   <SlidersHorizontal size={13} aria-hidden="true" className="mr-1.5" />
                   Defaults
@@ -905,18 +1112,7 @@ export function WorkflowPanel() {
                     onClick={() => setFlowSurfaceMode((prev) => (prev === "edit" ? "outline" : "edit"))}
                   >
                     <PencilLine size={13} />
-                    {flowSurfaceMode === "edit" ? "Flow map" : "Edit flow"}
-                  </Button>
-                )}
-                {showGraphAccess && (
-                  <Button
-                    variant={viewMode === "canvas" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-control-md shrink-0"
-                    onClick={() => setViewMode(viewMode === "canvas" ? "list" : "canvas")}
-                  >
-                    <LayoutGrid size={13} />
-                    {viewMode === "canvas" ? "Back to flow" : "Advanced graph"}
+                    {flowSurfaceMode === "edit" ? "Preview" : "Edit flow"}
                   </Button>
                 )}
               </div>
@@ -938,7 +1134,32 @@ export function WorkflowPanel() {
             <div className="flex-1 min-h-0 flex overflow-hidden">
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <SectionErrorBoundary sectionName="canvas view">
-                  <CanvasView />
+                  <CanvasView
+                    surfaceBanner={canvasSurfaceBanner ? (
+                      <div className={cn(
+                        "pointer-events-auto inline-flex max-w-[560px] items-center gap-3 rounded-lg px-3 py-2 shadow-sm backdrop-blur",
+                        canvasSurfaceBanner.surfaceClass,
+                      )}
+                      >
+                        <div className="min-w-0">
+                          <p className={cn("ui-meta-label", canvasSurfaceBanner.labelClass)}>
+                            {canvasSurfaceBanner.title}
+                          </p>
+                          <p className="text-body-sm text-foreground">
+                            {canvasSurfaceBanner.description}
+                          </p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={canvasSurfaceBanner.action}
+                        >
+                          {canvasSurfaceBanner.actionLabel}
+                        </Button>
+                      </div>
+                    ) : null}
+                  />
                 </SectionErrorBoundary>
               </div>
               <NodeInspector />
@@ -1029,6 +1250,16 @@ export function WorkflowPanel() {
                       )}
                     </>
                   )}
+                  {(!showEntryLanding || showEntryEditor) && (
+                    <SectionErrorBoundary sectionName="chain builder">
+                      <ChainBuilder
+                        compact
+                        mode={chainBuilderMode}
+                        onStageSelect={focusStageDetails}
+                        reviewSnapshot={showIdleReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
+                      />
+                    </SectionErrorBoundary>
+                  )}
                   {showIdleReviewMode && (
                     <div
                       ref={outputPanelRef}
@@ -1053,16 +1284,6 @@ export function WorkflowPanel() {
                         />
                       </SectionErrorBoundary>
                     </div>
-                  )}
-                  {(!showEntryLanding || showEntryEditor) && (
-                    <SectionErrorBoundary sectionName="chain builder">
-                      <ChainBuilder
-                        compact
-                        mode={runStatus === "idle" ? (isFlowEditing ? "edit" : "outline") : "monitor"}
-                        onStageSelect={focusStageDetails}
-                        reviewSnapshot={showIdleReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
-                      />
-                    </SectionErrorBoundary>
                   )}
                   {(!showEntryLanding || runStatus !== "idle") && !showIdleReviewMode && (
                     <div
@@ -1092,7 +1313,9 @@ export function WorkflowPanel() {
               )}
             </div>
           </TabsContent>
-        </Tabs>
+            </Tabs>
+          </>
+        )}
 
         <BatchPanel />
         <ApprovalDialog />

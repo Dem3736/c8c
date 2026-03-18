@@ -33,7 +33,7 @@ describe("result-mode-config", () => {
       course_outcome: "Launch a workshop",
       audience: "Designers moving into AI",
     })).toEqual([
-      { label: "Course outcome", value: "Launch a workshop" },
+      { label: "Content goal", value: "Launch a workshop" },
       { label: "Audience", value: "Designers moving into AI" },
     ])
   })
@@ -57,7 +57,7 @@ describe("result-mode-config", () => {
       },
     )
 
-    expect(seed).toContain("Content brief:")
+    expect(seed).toContain("Marketing brief:")
     expect(seed).toContain("Generate 10 posts")
     expect(seed).toContain("LinkedIn for AI founders")
     expect(seed).toContain("Focus on recent agent launches.")
@@ -78,7 +78,7 @@ describe("result-mode-config", () => {
       },
     )
 
-    expect(seed).toContain("Build a starter workflow for the Courses mode.")
+    expect(seed).toContain("Build a starter workflow for the Content mode.")
     expect(seed).toContain("First useful result")
   })
 })

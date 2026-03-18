@@ -7,10 +7,11 @@ import {
   inputValueAtom,
   inputAttachmentsAtom,
   providerSettingsAtom,
+  selectedWorkflowTemplateContextAtom,
   selectedWorkflowPathAtom,
 } from "@/lib/store"
 import { resolveWorkflowInput } from "@/lib/input-type"
-import type { InputNodeConfig } from "@shared/types"
+import type { InputNodeConfig, InputAttachment } from "@shared/types"
 import { getDefaultModelForProvider, modelLooksCompatible } from "@shared/provider-metadata"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,9 @@ import { FilePicker } from "@/components/input/FilePicker"
 import { RunPicker } from "@/components/input/RunPicker"
 import { TextAttachmentEditor } from "@/components/input/TextAttachmentEditor"
 import { ProviderModelSelect, ProviderSelect } from "@/components/provider-controls"
+import { formatArtifactContractLabel } from "@/lib/workflow-entry"
+import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
+import { MOTION_BASE_MS } from "@/lib/tokens"
 
 interface InputPanelProps {
   label?: string
@@ -34,9 +38,11 @@ interface InputPanelProps {
 
 export function InputPanel({ label = "Input", compact = false }: InputPanelProps = {}) {
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
-  const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [workflow] = useAtom(currentWorkflowAtom)
+  const { setWorkflow } = useWorkflowWithUndo()
   const defaultProvider = useAtomValue(defaultProviderAtom)
   const providerSettings = useAtomValue(providerSettingsAtom)
+  const selectedWorkflowTemplateContext = useAtomValue(selectedWorkflowTemplateContextAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [attachments, setAttachments] = useAtom(inputAttachmentsAtom)
   const [touched, setTouched] = useState(false)
@@ -44,6 +50,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
   const [runPickerOpen, setRunPickerOpen] = useState(false)
   const [textEditorOpen, setTextEditorOpen] = useState(false)
   const [editingTextIndex, setEditingTextIndex] = useState<number | undefined>(undefined)
+  const [leavingKeys, setLeavingKeys] = useState<Set<string>>(new Set())
 
   const inputNode = workflow.nodes.find((node) => node.type === "input")
   const inputConfig = (inputNode?.config || {}) as InputNodeConfig
@@ -68,14 +75,40 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
   const placeholder =
     inputConfig.placeholder ||
     "Enter your input text, paste a URL, or describe what to process..."
+  const templateContracts = useMemo(
+    () => (selectedWorkflowTemplateContext?.contractIn || []).map((contract) => ({
+      key: `${contract.kind}:${contract.title || ""}:${contract.description || ""}:${contract.required !== false ? "required" : "optional"}`,
+      label: formatArtifactContractLabel(contract),
+      description: contract.description?.trim() || null,
+      optional: contract.required === false,
+    })),
+    [selectedWorkflowTemplateContext],
+  )
+
+  const getAttachmentKey = (att: InputAttachment): string => {
+    if (att.kind === "file") return `file:${att.path}`
+    if (att.kind === "run") return `run:${att.runId}`
+    return `text:${att.label}`
+  }
 
   useEffect(() => {
     setTouched(false)
     setAttachments([])
+    setLeavingKeys(new Set())
   }, [selectedWorkflowPath, setAttachments])
 
   const removeAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index))
+    const key = getAttachmentKey(attachments[index])
+    setLeavingKeys((prev) => new Set([...prev, key]))
+    // Wait for ui-fade-slide-out (--motion-base = 170ms) to finish before removing
+    setTimeout(() => {
+      setAttachments((prev) => prev.filter((a) => getAttachmentKey(a) !== key))
+      setLeavingKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }, MOTION_BASE_MS)
   }
 
   const handleEditText = (index: number) => {
@@ -108,7 +141,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         ...(prev.defaults || {}),
         ...patch,
       },
-    }))
+    }), { coalesceKey: "workflow-defaults:input-panel" })
   }
 
   return (
@@ -122,6 +155,53 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         {label}
       </label>
 
+      {(selectedWorkflowTemplateContext?.useWhen || selectedWorkflowTemplateContext?.inputText || templateContracts.length > 0) && (
+        <div className={cn(
+          "rounded-lg surface-inset-card ui-fade-slide-in",
+          compact ? "space-y-2 px-3 py-2.5" : "space-y-3 px-3 py-3",
+        )}
+        >
+          <div className={cn("grid gap-3", compact ? "md:grid-cols-1" : "md:grid-cols-2")}>
+            {selectedWorkflowTemplateContext?.useWhen && (
+              <div>
+                <p className="ui-meta-label text-muted-foreground">Use this when</p>
+                <p className="mt-1 text-body-sm text-foreground">{selectedWorkflowTemplateContext.useWhen}</p>
+              </div>
+            )}
+            {selectedWorkflowTemplateContext?.inputText && (
+              <div>
+                <p className="ui-meta-label text-muted-foreground">You provide</p>
+                <p className="mt-1 text-body-sm text-foreground">{selectedWorkflowTemplateContext.inputText}</p>
+              </div>
+            )}
+          </div>
+
+          {templateContracts.length > 0 && (
+            <div className="space-y-2">
+              <p className="ui-meta-label text-muted-foreground">Reusable inputs</p>
+              <div className="flex flex-wrap gap-1.5">
+                {templateContracts.map((contract) => (
+                  <Badge key={contract.key} variant="outline" className="ui-meta-text px-2 py-0">
+                    {contract.label}{contract.optional ? " (optional)" : ""}
+                  </Badge>
+                ))}
+              </div>
+              {templateContracts.some((contract) => contract.description) && (
+                <div className="space-y-1">
+                  {templateContracts.map((contract) => (
+                    contract.description ? (
+                      <p key={`${contract.key}-description`} className="ui-meta-text text-muted-foreground">
+                        {contract.label}: {contract.description}
+                      </p>
+                    ) : null
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <TextareaWithMention
         id="workflow-input"
         value={inputValue}
@@ -134,7 +214,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         aria-invalid={showError || undefined}
         aria-describedby={showError ? "input-hint input-error" : "input-hint"}
         className={cn(
-          "resize-y bg-surface-2/90",
+          "resize-y",
           compact ? "min-h-[3.25rem] max-h-[10rem]" : "min-h-[6rem] max-h-[24rem]",
         )}
       />
@@ -145,27 +225,35 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
           <Badge
             key={`${att.kind}-${i}`}
             variant="outline"
-            className="gap-1.5 pl-1.5 pr-1 py-0.5 max-w-[200px] cursor-default"
+            className={cn(
+              "ui-attachment-chip gap-1.5 pl-1.5 pr-1 py-0.5 max-w-[200px] cursor-default",
+              leavingKeys.has(getAttachmentKey(att)) && "ui-fade-slide-out pointer-events-none",
+            )}
           >
             {att.kind === "file" && <File size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
             {att.kind === "run" && <History size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
             {att.kind === "text" && <Type size={12} className="flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
-            <span
-              className="ui-meta-text truncate"
-              title={att.kind === "file" ? att.path : att.kind === "run" ? `${att.workflowName} (${att.runId.slice(0, 8)})` : att.label}
-              onClick={att.kind === "text" ? () => handleEditText(i) : undefined}
-              role={att.kind === "text" ? "button" : undefined}
-              tabIndex={att.kind === "text" ? 0 : undefined}
-              onKeyDown={att.kind === "text" ? (e) => { if (e.key === "Enter" || e.key === " ") handleEditText(i) } : undefined}
-            >
-              {att.kind === "file" && att.name}
-              {att.kind === "run" && att.workflowName}
-              {att.kind === "text" && att.label}
-            </span>
+            {att.kind === "text" ? (
+              <button
+                type="button"
+                className="ui-meta-text min-w-0 truncate border-0 bg-transparent p-0 text-left ui-transition-colors ui-motion-fast hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
+                title={att.label}
+                onClick={() => handleEditText(i)}
+              >
+                {att.label}
+              </button>
+            ) : (
+              <span
+                className="ui-meta-text truncate"
+                title={att.kind === "file" ? att.path : `${att.workflowName} (${att.runId.slice(0, 8)})`}
+              >
+                {att.kind === "file" ? att.name : att.workflowName}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => removeAttachment(i)}
-              className="ml-0.5 rounded-sm p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-3 ui-transition-colors ui-motion-fast"
+              className="ui-icon-button ml-0.5 h-4 w-4 rounded-sm"
               aria-label={`Remove ${att.kind === "file" ? att.name : att.kind === "run" ? att.workflowName : att.label}`}
             >
               <X size={10} aria-hidden="true" />
@@ -236,7 +324,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
             </span>
           )}
           {resolvedInput.usedDefault && (
-            <Badge variant="secondary" size="compact" className="control-badge control-badge-compact rounded-full">Using default value</Badge>
+            <Badge variant="secondary" size="compact" className="control-badge control-badge-compact rounded-full ui-fade-slide-in">Using default value</Badge>
           )}
           <span id="input-hint" className="ui-meta-text text-muted-foreground">
             {compact
@@ -251,7 +339,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
       </div>
 
       {showError && (
-        <p id="input-error" role="alert" className="ui-meta-text text-status-danger">
+        <p id="input-error" role="alert" className="ui-meta-text text-status-danger ui-fade-slide-in">
           {resolvedInput.message}
         </p>
       )}

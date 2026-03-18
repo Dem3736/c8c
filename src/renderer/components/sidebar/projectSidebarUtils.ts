@@ -1,5 +1,26 @@
 import type { RunResult } from "@shared/types"
 
+export function resolveProjectRowSelectionState(
+  projectPath: string,
+  selectedProject: string | null,
+  isExpanded: boolean,
+): {
+  shouldSelectProject: boolean
+  nextExpanded: boolean
+} {
+  if (selectedProject !== projectPath) {
+    return {
+      shouldSelectProject: true,
+      nextExpanded: true,
+    }
+  }
+
+  return {
+    shouldSelectProject: false,
+    nextExpanded: !isExpanded,
+  }
+}
+
 export function historicalRunVisual(status?: string): {
   label: string
   progress: number

@@ -400,7 +400,7 @@ export function ChainBuilder({
       return node.config.skillRef || "Skill"
     }
     if (node.type === "evaluator") return "Evaluator"
-    if (node.type === "splitter") return "Splitter"
+    if (node.type === "splitter") return "Split work"
     if (node.type === "merger") return "Merger"
     if (node.type === "approval") return "Approval"
     if (node.type === "human") return "Human"
@@ -409,9 +409,13 @@ export function ChainBuilder({
     return nodeId
   }
 
-  const selectFirstNewNode = (previous: typeof workflow, next: typeof workflow) => {
+  const getAddedNodes = (previous: typeof workflow, next: typeof workflow) => {
     const previousIds = new Set(previous.nodes.map((node) => node.id))
-    return next.nodes.find((node) => !previousIds.has(node.id))?.id ?? null
+    return next.nodes.filter((node) => !previousIds.has(node.id))
+  }
+
+  const selectFirstNewNode = (previous: typeof workflow, next: typeof workflow) => {
+    return getAddedNodes(previous, next)[0]?.id ?? null
   }
 
   const confirmRemove = (nodeId: string) => {
@@ -456,10 +460,10 @@ export function ChainBuilder({
     nodeId: string,
     config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig | HumanNodeConfig,
   ) => {
-    setWorkflowDirect((prev) => ({
+    setWorkflow((prev) => ({
       ...prev,
       nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, config } as typeof n : n)),
-    }))
+    }), { coalesceKey: `node-config:${nodeId}` })
   }
 
   const addNode = (skill: DiscoveredSkill) => {
@@ -490,12 +494,16 @@ export function ChainBuilder({
     let nextSelectedId: string | null = null
     setWorkflow((prev) => {
       const next = addFanOutPatternToWorkflow(prev)
-      nextSelectedId = selectFirstNewNode(prev, next)
+      const addedNodes = getAddedNodes(prev, next)
+      nextSelectedId = addedNodes.find((node) => node.type === "skill")?.id ?? addedNodes[0]?.id ?? null
       return next
     })
     if (nextSelectedId) {
       setSelectedNode(nextSelectedId)
     }
+    toast.info("Created split -> branch -> merge", {
+      description: "Configure the branch skill to define the parallel work.",
+    })
   }
 
   const addApproval = () => {
@@ -682,7 +690,7 @@ export function ChainBuilder({
 
   return (
     <section
-      aria-label={flowCardMode ? "Flow map" : "Pipeline builder"}
+      aria-label={flowCardMode ? "Flow preview" : "Pipeline builder"}
       className={cn(
         "ui-fade-slide-in surface-panel",
         flowCardMode
@@ -695,10 +703,12 @@ export function ChainBuilder({
       {flowCardMode ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-0.5">
-            <h2 className="section-kicker">{runtimeMode ? "Flow" : "Flow map"}</h2>
+            <h2 className="section-kicker">{runtimeMode ? "Flow" : "Preview"}</h2>
             <p className="ui-meta-text text-muted-foreground">
               {runtimeMode
-                ? "Current and next stages are called out below. Select any stage to inspect its activity."
+                ? reviewSnapshot
+                  ? "Review the saved run stage by stage. Select any stage to inspect its activity."
+                  : "Current and next stages are called out below. Select any stage to inspect its activity."
                 : reviewSnapshot
                   ? "Review the selected saved run from left to right."
                   : "Review the stages from left to right before you run or refine the flow."}
@@ -706,13 +716,13 @@ export function ChainBuilder({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {runtimeMode && monitorCurrentStage && (
-              <Badge
-                variant="outline"
+              <span
                 className={cn(
-                  "ui-meta-text px-2 py-0",
-                  monitorCurrentStage.status === "running" && "border-status-info/30 bg-status-info/10 text-status-info",
-                  (monitorCurrentStage.status === "waiting_approval" || monitorCurrentStage.status === "waiting_human") && "border-status-warning/30 bg-status-warning/10 text-status-warning",
-                  monitorCurrentStage.status === "failed" && "border-status-danger/30 bg-status-danger/10 text-status-danger",
+                  "ui-status-badge ui-meta-text shrink-0",
+                  "border-hairline bg-surface-2 text-foreground",
+                  monitorCurrentStage.status === "running" && "ui-status-badge-info",
+                  (monitorCurrentStage.status === "waiting_approval" || monitorCurrentStage.status === "waiting_human") && "ui-status-badge-warning",
+                  monitorCurrentStage.status === "failed" && "ui-status-badge-danger",
                 )}
               >
                 {monitorCurrentStage.status === "running"
@@ -720,7 +730,7 @@ export function ChainBuilder({
                   : monitorCurrentStage.status === "failed"
                     ? `Needs attention: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`
                     : `Blocked at: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`}
-              </Badge>
+              </span>
             )}
             {runtimeMode && monitorNextStage && (
               <Badge variant="outline" className="ui-meta-text px-2 py-0 border-primary/25 bg-primary/5 text-foreground">
@@ -752,7 +762,7 @@ export function ChainBuilder({
               compact ? "mb-2 py-1.5" : "mb-3 py-2",
             )}
           >
-            Build your chain by adding a Skill first. Evaluator scores output quality, Fan-out creates parallel branches.
+            Build your chain by adding a Skill first. Evaluator checks output quality, and Split work creates parallel branches.
           </div>
         )}
         {flowCardMode ? (
@@ -800,38 +810,62 @@ export function ChainBuilder({
                   className={cn("justify-start bg-surface-1/80", compact ? "w-[170px]" : "w-[196px]")}
                 >
                   <GitFork size={14} />
-                  Add node...
+                  Add step
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Add workflow step</DropdownMenuLabel>
                 <DropdownMenuItem
                   disabled={!hasSkillNodes}
                   onSelect={() => handleInsertBlock("evaluator")}
-                  title="Scores the previous output 1-10. Retries if below threshold."
+                  className="items-start gap-2 py-2"
+                  title={!hasSkillNodes ? "Add at least one skill node before inserting an evaluator." : undefined}
                 >
-                  <BarChart3 size={13} className="mr-2" />
-                  Add Evaluator
+                  <BarChart3 size={13} className="mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-body-sm font-medium text-foreground">Add Evaluator</div>
+                    <div className="ui-meta-text text-muted-foreground">
+                      {hasSkillNodes
+                        ? "Check the previous output and branch or retry when it misses the mark."
+                        : "Requires at least one skill node before it can evaluate anything."}
+                    </div>
+                  </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => handleInsertBlock("fanout")}
-                  title="Splits work into parallel branches, then merges results."
+                  className="items-start gap-2 py-2"
                 >
-                  <GitFork size={13} className="mr-2" />
-                  Add Fan-out (3 nodes)
+                  <GitFork size={13} className="mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-body-sm font-medium text-foreground">Add Split Work</div>
+                    <div className="ui-meta-text text-muted-foreground">
+                      Add a split, branch, and merge scaffold for parallel work.
+                    </div>
+                  </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => handleInsertBlock("human")}
-                  title="Blocks the flow until someone fills in structured answers."
+                  className="items-start gap-2 py-2"
                 >
-                  <Hand size={13} className="mr-2" />
-                  Add Human Input
+                  <Hand size={13} className="mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-body-sm font-medium text-foreground">Add Human Input</div>
+                    <div className="ui-meta-text text-muted-foreground">
+                      Pause the flow until someone provides the missing information.
+                    </div>
+                  </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => handleInsertBlock("approval")}
-                  title="Pauses workflow for your review before continuing."
+                  className="items-start gap-2 py-2"
                 >
-                  <Hand size={13} className="mr-2" />
-                  Add Approval Gate
+                  <Hand size={13} className="mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-body-sm font-medium text-foreground">Add Approval Gate</div>
+                    <div className="ui-meta-text text-muted-foreground">
+                      Stop after a stage so you can review it before the flow continues.
+                    </div>
+                  </div>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -16,10 +16,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
-import { ScopeBanner } from "@/components/ui/scope-banner"
 import { SummaryRail } from "@/components/ui/summary-rail"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { formatRelativeTime, projectFolderName } from "@/components/sidebar/projectSidebarUtils"
+import { cn } from "@/lib/cn"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import {
@@ -178,10 +179,10 @@ function isVisibleProjectExecutionState(state: WorkflowExecutionState, projectPa
 }
 
 function cardToneClass(kind: "info" | "success" | "warning" | "danger") {
-  if (kind === "success") return "border-status-success/25 bg-status-success/8 text-status-success"
-  if (kind === "warning") return "border-status-warning/25 bg-status-warning/8 text-status-warning"
-  if (kind === "danger") return "border-status-danger/25 bg-status-danger/8 text-status-danger"
-  return "border-status-info/25 bg-status-info/8 text-status-info"
+  if (kind === "success") return "ui-status-badge-success"
+  if (kind === "warning") return "ui-status-badge-warning"
+  if (kind === "danger") return "ui-status-badge-danger"
+  return "ui-status-badge-info"
 }
 
 function factoryCaseStatusLabel(status: FactoryCase["status"]) {
@@ -243,13 +244,9 @@ function buildFactoryIdFromLabel(label: string, fallback: string) {
   return slug ? `factory:${slug}` : fallback
 }
 
-function legacyFactoryId(packId?: string) {
-  return packId ? `pack:${packId}` : "project:legacy"
-}
-
 function resolveArtifactFactoryIdentity(
   artifact: ArtifactRecord,
-  templateById: Map<string, WorkflowTemplate>,
+  _templateById: Map<string, WorkflowTemplate>,
 ) {
   if (artifact.factoryId) {
     return {
@@ -258,11 +255,7 @@ function resolveArtifactFactoryIdentity(
     }
   }
 
-  const template = artifact.templateId ? templateById.get(artifact.templateId) : undefined
-  return {
-    id: legacyFactoryId(template?.pack?.id),
-    label: artifact.factoryLabel || template?.pack?.label || "Project factory",
-  }
+  return null
 }
 
 function resolveContextFactoryIdentity(context: WorkflowTemplateRunContext) {
@@ -273,10 +266,7 @@ function resolveContextFactoryIdentity(context: WorkflowTemplateRunContext) {
     }
   }
 
-  return {
-    id: legacyFactoryId(context.pack?.id),
-    label: context.factoryLabel || context.pack?.label || "Project factory",
-  }
+  return null
 }
 
 function createEmptyBlueprintDraft(): FactoryBlueprintDraft {
@@ -432,17 +422,53 @@ function StatCard({
   label,
   value,
   hint,
+  tone = "default",
 }: {
   label: string
   value: string
   hint: string
+  tone?: "default" | "info" | "warning" | "success"
 }) {
   return (
-    <article className="rounded-xl surface-panel px-4 py-4">
+    <article className={cn("rounded-xl border px-4 py-4", {
+      "surface-inset-card": tone === "default",
+      "surface-info-soft": tone === "info",
+      "surface-warning-soft": tone === "warning",
+      "surface-success-soft": tone === "success",
+    })}>
       <div className="ui-meta-label text-muted-foreground">{label}</div>
       <div className="mt-2 text-title-md text-foreground">{value}</div>
-      <div className="mt-1 text-body-sm text-muted-foreground">{hint}</div>
+      <div className="mt-1 line-clamp-2 text-body-sm text-muted-foreground">{hint}</div>
     </article>
+  )
+}
+
+function BadgeGroup({
+  label,
+  items,
+  emptyLabel = "None yet",
+  variant = "secondary",
+}: {
+  label: string
+  items: string[]
+  emptyLabel?: string
+  variant?: "secondary" | "outline" | "warning" | "info" | "success"
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="ui-meta-label text-muted-foreground">{label}</div>
+      {items.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((item) => (
+            <Badge key={`${label}:${item}`} variant={variant} className="ui-meta-text px-2 py-0">
+              {item}
+            </Badge>
+          ))}
+        </div>
+      ) : (
+        <div className="text-body-sm text-muted-foreground">{emptyLabel}</div>
+      )}
+    </div>
   )
 }
 
@@ -484,6 +510,7 @@ export function FactoryPage() {
   const [templatesError, setTemplatesError] = useState<string | null>(null)
   const [launchingTemplateId, setLaunchingTemplateId] = useState<string | null>(null)
   const [draftFactoryId, setDraftFactoryId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"operations" | "setup">("operations")
   const [selectedFactoryId, setSelectedFactoryId] = useAtom(selectedFactoryIdAtom)
   const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
   const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
@@ -728,6 +755,7 @@ export function FactoryPage() {
           } as WorkflowTemplate))
         : null
       const factoryIdentity = resolveArtifactFactoryIdentity(artifact, templateById)
+      if (!factoryIdentity) continue
       const entry = ensureCase(
         caseId,
         artifact.caseLabel || artifact.workflowName || artifact.title,
@@ -751,6 +779,7 @@ export function FactoryPage() {
     for (const [workflowKey, context] of Object.entries(workflowTemplateContexts)) {
       if (!context.caseId) continue
       const factoryIdentity = resolveContextFactoryIdentity(context)
+      if (!factoryIdentity) continue
       const entry = ensureCase(
         context.caseId,
         context.caseLabel || context.workflowName || context.templateName,
@@ -1079,7 +1108,7 @@ export function FactoryPage() {
   const scopedArtifacts = useMemo(
     () => effectiveSelectedFactoryId
       ? artifacts.filter((artifact) => {
-        return resolveArtifactFactoryIdentity(artifact, templateById).id === effectiveSelectedFactoryId
+        return resolveArtifactFactoryIdentity(artifact, templateById)?.id === effectiveSelectedFactoryId
       })
       : artifacts,
     [artifacts, effectiveSelectedFactoryId, templateById],
@@ -1177,10 +1206,12 @@ export function FactoryPage() {
   }, [setMainView, setSelectedCaseId, setSelectedInboxTaskKey])
 
   const nextActions = useMemo<FactoryActionItem[]>(() => {
-    const next = cases.flatMap((entry) => {
+    const next: FactoryActionItem[] = []
+
+    for (const entry of cases) {
       const primaryTask = entry.tasks[0]
       if (primaryTask) {
-        return [{
+        next.push({
           id: `${entry.id}:task:${primaryTask.taskId}`,
           caseId: entry.id,
           caseLabel: entry.label,
@@ -1191,11 +1222,12 @@ export function FactoryPage() {
           tone: "warning" as const,
           task: primaryTask,
           artifacts: entry.artifacts,
-        }]
+        })
+        continue
       }
 
       if (entry.activeRun) {
-        return [{
+        next.push({
           id: `${entry.id}:run:${entry.activeRun.workflowKey}`,
           caseId: entry.id,
           caseLabel: entry.label,
@@ -1206,12 +1238,13 @@ export function FactoryPage() {
           tone: "info" as const,
           run: entry.activeRun,
           artifacts: entry.artifacts,
-        }]
+        })
+        continue
       }
 
       const primaryTemplate = entry.nextTemplates[0]
       if (primaryTemplate) {
-        return [{
+        next.push({
           id: `${entry.id}:template:${primaryTemplate.id}`,
           caseId: entry.id,
           caseLabel: entry.label,
@@ -1224,11 +1257,9 @@ export function FactoryPage() {
           tone: "success" as const,
           template: primaryTemplate,
           artifacts: entry.artifacts,
-        }]
+        })
       }
-
-      return []
-    })
+    }
 
     const priority = (item: FactoryActionItem) => {
       if (item.kind === "review_gate") return 0
@@ -1393,9 +1424,6 @@ export function FactoryPage() {
   ])
   const overviewFields = useMemo(() => {
     const outcomeValue = selectedFactoryDefinition?.outcome?.title?.trim() || selectedFactoryOption?.label || "Factory not defined yet"
-    const outcomeHint = selectedFactoryDefinition?.outcome?.statement?.trim()
-      || selectedFactoryOption?.summary
-      || "Describe the result this factory should produce so the team can tell if it is heading in the right direction."
     const bottleneckValue = scopedHumanTasks.length > 0
       ? `${scopedHumanTasks.length} strategist gate${scopedHumanTasks.length === 1 ? "" : "s"}`
       : scopedActiveRunsCount > 0
@@ -1415,30 +1443,23 @@ export function FactoryPage() {
       {
         label: "Mode",
         value: formatResultModeLabel(selectedFactoryDefinition?.modeId),
-        hint: "The primary user-facing result mode this factory is currently aligned to.",
+        hint: "Current mode",
       },
       {
         label: "Outcome",
         value: outcomeValue,
-        hint: outcomeHint,
+        hint: "Current target",
       },
       {
-        label: "Scope",
+        label: "Cases",
         value: `${scopedCases.length} case${scopedCases.length === 1 ? "" : "s"} in this factory`,
-        hint: "A project can host multiple factories. This view scopes operations to the currently selected one.",
+        hint: "Tracked in this factory",
       },
       {
-        label: "Current bottleneck",
+        label: "Bottleneck",
         value: bottleneckValue,
         hint: bottleneckHint,
         tone: scopedHumanTasks.length > 0 ? "warning" : scopedActiveRunsCount > 0 ? "info" : readyCasesCount > 0 ? "success" : "default",
-      },
-      {
-        label: "Human role",
-        value: "Sparse strategist checkpoints",
-        hint: scopedHumanTasks.length > 0
-          ? "Step in to approve direction, answer missing inputs, or review quality gates."
-          : "The intended role is high-leverage correction, not constant babysitting.",
       },
     ] satisfies CaseSummaryField[]
   }, [
@@ -1449,52 +1470,6 @@ export function FactoryPage() {
     selectedFactoryDefinition,
     selectedFactoryOption,
   ])
-  const projectRecipeFields = useMemo(() => {
-    const stageOrder = selectedFactoryDefinition?.recipe?.stageOrder || selectedPackRecipes[0]?.stageLabels || []
-    const artifactContracts = selectedFactoryDefinition?.recipe?.artifactContracts || selectedPackRecipes[0]?.contractLabels || []
-    const qualityPolicy = selectedFactoryDefinition?.recipe?.qualityPolicy || selectedPackRecipes[0]?.policyLabels || []
-    const checkpoints = selectedFactoryDefinition?.recipe?.strategistCheckpoints || selectedPackRecipes[0]?.checkpointLabels || []
-    const caseRules = selectedFactoryDefinition?.recipe?.caseGenerationRules || (selectedPackRecipes[0] ? [selectedPackRecipes[0].caseRule] : [])
-    const packLabels = dedupePreserveOrder([
-      ...(selectedFactoryDefinition?.recipe?.packIds || [])
-        .map((packId) => selectedPackRecipes.find((recipe) => recipe.id === packId)?.label || packId),
-      ...selectedPackRecipes.map((recipe) => recipe.label),
-    ])
-
-    return [
-      {
-        label: "Built-in paths",
-        value: packLabels.length > 0 ? packLabels.join(", ") : "No pack linked yet",
-        hint: "The built-in path families this outcome currently draws from.",
-      },
-      {
-        label: "Path steps",
-        value: stageOrder.length > 0 ? stageOrder.join(" -> ") : "No stage order defined yet",
-        hint: "The visible path this outcome should run through.",
-      },
-      {
-        label: "Reusable outputs",
-        value: artifactContracts.length > 0 ? artifactContracts.join(", ") : "No artifact contracts defined yet",
-        hint: "The reusable outputs that connect one step to the next.",
-      },
-      {
-        label: "Quality rules",
-        value: qualityPolicy.length > 0 ? qualityPolicy.join(", ") : "No quality policy defined yet",
-        hint: "The rules that should keep this path from drifting into slop.",
-      },
-      {
-        label: "Strategist checkpoints",
-        value: checkpoints.length > 0 ? checkpoints.join(", ") : "No checkpoints defined yet",
-        hint: "Where the human should intervene at high-leverage moments.",
-      },
-      {
-        label: "How this scales",
-        value: caseRules.length > 0 ? caseRules.join(" | ") : "No case generation rule defined yet",
-        hint: "How this project turns planning outputs into repeatable item cases.",
-      },
-    ] satisfies CaseSummaryField[]
-  }, [selectedFactoryDefinition, selectedPackRecipes])
-
   useEffect(() => {
     if (editingFactoryBlueprint) return
     setBlueprintDraft(buildBlueprintDraft(selectedFactoryDefinition, selectedPackRecipes))
@@ -1591,6 +1566,7 @@ export function FactoryPage() {
     setSelectedFactoryId(nextDraftId)
     setBlueprintDraft(createEmptyBlueprintDraft())
     setEditingFactoryBlueprint(true)
+    setActiveTab("setup")
   }, [setSelectedFactoryId])
 
   const spawnPlannedCases = useCallback(async () => {
@@ -1812,7 +1788,7 @@ export function FactoryPage() {
       <PageShell>
         <PageHeader
           title="Factory"
-          subtitle={`Saved outcomes, guided paths, live work, and human checkpoints for ${projectFolderName(selectedProject)}.`}
+          subtitle={`Advanced project view for outcomes, outputs, live work, and review gates in ${projectFolderName(selectedProject)}.`}
           actions={(
             <>
               <Button variant="outline" size="sm" onClick={() => setMainView("artifacts")}>
@@ -1835,31 +1811,26 @@ export function FactoryPage() {
         />
 
         <section className="space-y-4">
-          <SectionHeading title="Overview" />
-          <ScopeBanner
-            eyebrow="Project scope"
-            title={projectFolderName(selectedProject)}
-            description="Factories stay inside one project by default. Use this workbench to see the saved outcome, the guided path, live work, and what needs your attention."
-            actions={(
-              <Button variant="ghost" size="sm" onClick={() => setMainView("templates")}>
-                <Rocket size={14} />
-                Browse modes and templates
-              </Button>
-            )}
-          >
-            <p className="text-body-sm text-muted-foreground">
-              One project can hold several outcomes and paths. Pick one, then follow the cases, outputs, review gates, and next steps without reconstructing intent from old runs.
-            </p>
-          </ScopeBanner>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-2/30 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="ui-meta-label text-muted-foreground">Project</p>
+              <p className="text-body-md font-medium text-foreground">{projectFolderName(selectedProject)}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setMainView("templates")}>
+              <Rocket size={14} />
+              Templates
+            </Button>
+          </div>
 
           <SummaryRail
             items={overviewFields}
             className="xl:grid-cols-4"
+            compact
           />
 
           <article className="rounded-xl surface-panel p-5 space-y-4">
             <SectionHeading
-              title="Saved outcomes"
+              title="Outcomes"
               meta={(
                 <Button variant="outline" size="sm" onClick={startNewFactory}>
                   New outcome
@@ -1881,7 +1852,7 @@ export function FactoryPage() {
                       setSelectedFactoryId(factory.id)
                       setEditingFactoryBlueprint(false)
                     }}
-                    className={`rounded-lg border px-4 py-4 text-left space-y-3 ui-transition-colors ui-motion-fast ${
+                    className={`rounded-lg border px-4 py-3 text-left space-y-2 ui-transition-colors ui-motion-fast ${
                       effectiveSelectedFactoryId === factory.id
                         ? "border-primary/35 bg-primary/8 shadow-[inset_0_1px_0_hsl(var(--primary)/0.08),0_10px_22px_hsl(var(--foreground)/0.05)]"
                         : "border-hairline bg-surface-2/35 hover:bg-surface-2/55"
@@ -1893,28 +1864,35 @@ export function FactoryPage() {
                         {factory.origin === "saved" ? "Saved" : factory.origin === "draft" ? "Draft" : "Derived"}
                       </Badge>
                     </div>
-                    <p className="text-body-sm text-muted-foreground">
+                    <p className="line-clamp-2 text-body-sm text-muted-foreground">
                       {factory.summary}
                     </p>
-                    <SummaryRail
-                      items={[
-                        {
-                          label: "Cases",
-                          value: String(factory.caseCount),
-                        },
-                        {
-                          label: "Artifacts",
-                          value: String(factory.artifactCount),
-                        },
-                      ]}
-                      className="sm:grid-cols-2"
-                    />
+                    <div className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
+                      <span>{factory.caseCount} case{factory.caseCount === 1 ? "" : "s"}</span>
+                      <span className="text-border">•</span>
+                      <span>{factory.artifactCount} output{factory.artifactCount === 1 ? "" : "s"}</span>
+                    </div>
                   </button>
                 ))}
               </div>
             )}
           </article>
 
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as "operations" | "setup")}
+            className="space-y-4"
+          >
+            <TabsList className="h-control-md">
+              <TabsTrigger value="operations" className="px-3 py-1 text-body-sm">
+                Operations
+              </TabsTrigger>
+              <TabsTrigger value="setup" className="px-3 py-1 text-body-sm">
+                Setup
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="setup" className="mt-0 space-y-4">
           <article className="rounded-xl surface-panel p-5 space-y-4">
             <SectionHeading
               title="Selected outcome"
@@ -1939,7 +1917,14 @@ export function FactoryPage() {
                     </Button>
                   </div>
                 ) : (
-                  <Button variant="outline" size="sm" onClick={() => setEditingFactoryBlueprint(true)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingFactoryBlueprint(true)
+                      setActiveTab("setup")
+                    }}
+                  >
                     {selectedFactoryOption ? "Edit outcome" : "Define outcome"}
                   </Button>
                 )
@@ -2138,13 +2123,33 @@ export function FactoryPage() {
               </div>
             ) : selectedFactoryDefinition || selectedFactoryOption ? (
               <div className="space-y-4">
-                <div>
-                  <h3 className="text-title-sm text-foreground">
-                    {selectedFactoryDefinition?.outcome?.title || selectedFactoryOption?.label || "Untitled factory"}
-                  </h3>
-                  <p className="mt-2 text-body-sm text-muted-foreground">
-                    {selectedFactoryDefinition?.outcome?.statement || selectedFactoryOption?.summary || "No explicit outcome statement saved yet."}
-                  </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-title-sm text-foreground">
+                        {selectedFactoryDefinition?.outcome?.title || selectedFactoryOption?.label || "Untitled factory"}
+                      </h3>
+                      <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                        {formatResultModeLabel(selectedFactoryDefinition?.modeId)}
+                      </Badge>
+                    </div>
+                    <p className="text-body-sm text-muted-foreground">
+                      {selectedFactoryDefinition?.outcome?.statement || selectedFactoryOption?.summary || "No saved outcome statement yet."}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setMainView("artifacts")}>
+                      <FileStack size={14} />
+                      Outputs
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setSelectedInboxTaskKey(null)
+                      setMainView("inbox")
+                    }}>
+                      <Inbox size={14} />
+                      Inbox
+                    </Button>
+                  </div>
                 </div>
 
                 <SummaryRail
@@ -2152,67 +2157,59 @@ export function FactoryPage() {
                     {
                       label: "Success signal",
                       value: selectedFactoryDefinition?.outcome?.successSignal || "Not defined",
-                      hint: "How you will decide that this factory delivered the intended result.",
                     },
                     {
                       label: "Time horizon",
                       value: selectedFactoryDefinition?.outcome?.timeHorizon || "Not defined",
-                      hint: "The time window this factory is working inside.",
                     },
                     {
                       label: "Window",
                       value: selectedFactoryDefinition?.outcome?.windowStart || selectedFactoryDefinition?.outcome?.windowEnd
                         ? `${formatFactoryDate(selectedFactoryDefinition?.outcome?.windowStart)} -> ${formatFactoryDate(selectedFactoryDefinition?.outcome?.windowEnd)}`
                         : "Not defined",
-                      hint: "Optional dated window for tracking quota progress over time.",
                     },
                     {
                       label: "Target",
                       value: typeof selectedFactoryDefinition?.outcome?.targetCount === "number"
                         ? `${selectedFactoryDefinition.outcome.targetCount}${selectedFactoryDefinition.outcome.targetUnit ? ` ${selectedFactoryDefinition.outcome.targetUnit}` : ""}`
                         : "Not defined",
-                      hint: "The volume target the factory is expected to produce.",
                     },
                     {
                       label: "Audience",
                       value: selectedFactoryDefinition?.outcome?.audience || "Not defined",
-                      hint: "Who the resulting output is meant to serve.",
                     },
                   ]}
                   className="xl:grid-cols-5"
+                  compact
                 />
 
-                {selectedFactoryDefinition?.outcome?.constraints && selectedFactoryDefinition.outcome.constraints.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="ui-meta-label text-muted-foreground">Constraints</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedFactoryDefinition.outcome.constraints.map((constraint) => (
-                        <Badge key={constraint} variant="secondary" className="ui-meta-text px-2 py-0">
-                          {constraint}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                <BadgeGroup
+                  label="Constraints"
+                  items={selectedFactoryDefinition?.outcome?.constraints || []}
+                  emptyLabel="No constraints"
+                />
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                This project does not have a saved outcome yet. Define one outcome and path, then use the workbench as a strategist instead of reconstructing intent from runs.
+                No saved outcome yet.
               </div>
             )}
           </article>
-        </section>
+            </TabsContent>
 
+            <TabsContent value="operations" className="mt-0 space-y-4">
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
           <StatCard
             label="Active runs"
             value={String(scopedActiveRunsCount)}
             hint={scopedActiveRunsCount > 0 ? "Flows currently executing or waiting on a gate." : "Nothing is actively running right now."}
+            tone={scopedActiveRunsCount > 0 ? "info" : "default"}
           />
           <StatCard
             label="Waiting on you"
             value={String(scopedHumanTasks.length)}
             hint={scopedHumanTasks.length > 0 ? "Structured review or input tasks are blocking progress." : "No open HIL tasks right now."}
+            tone={scopedHumanTasks.length > 0 ? "warning" : "default"}
           />
           <StatCard
             label="Saved outputs"
@@ -2223,16 +2220,17 @@ export function FactoryPage() {
             label="Ready next steps"
             value={String(readyCasesCount)}
             hint={readyCasesCount > 0 ? "Cases with a next step ready to open." : "No downstream step is ready yet."}
+            tone={readyCasesCount > 0 ? "success" : "default"}
           />
         </section>
 
         {scopedCases.length === 0 && availableEntrypointTemplates.length > 0 ? (
           <section className="rounded-xl surface-panel p-5 space-y-4">
             <SectionHeading
-              title="Start this path"
+              title="Entrypoints"
               meta={(
                 <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                  {availableEntrypointTemplates.length} starting step{availableEntrypointTemplates.length === 1 ? "" : "s"}
+                  {availableEntrypointTemplates.length} ready
                 </Badge>
               )}
             />
@@ -2272,7 +2270,7 @@ export function FactoryPage() {
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" onClick={() => { void launchTemplate(template, []) }} disabled={Boolean(launchingTemplateId)}>
                         {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                        {isLaunching ? "Opening..." : "Open first step"}
+                        {isLaunching ? "Opening..." : "Open"}
                       </Button>
                     </div>
                   </article>
@@ -2300,6 +2298,7 @@ export function FactoryPage() {
           <SummaryRail
             items={outcomeProgressFields}
             className="xl:grid-cols-5"
+            compact
           />
 
           {factoryStateError ? (
@@ -2308,18 +2307,18 @@ export function FactoryPage() {
             </div>
           ) : null}
 
-            <div className="space-y-3">
+          <div className="space-y-3">
             <div className="ui-meta-label text-muted-foreground">Planned items</div>
             {factoryStateLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
                 Loading planned item cases...
               </div>
             ) : plannedCaseProgress.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                    {spawnCandidateArtifact
+              <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
+                {spawnCandidateArtifact
                   ? `Use ${spawnCandidateArtifact.title} to spawn item-level work and compare planned volume against the target.`
                   : "No planning output is available yet to spawn item-level work."}
-                  </div>
+              </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {plannedCaseProgress.slice(0, 8).map((entry) => {
@@ -2330,9 +2329,9 @@ export function FactoryPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-body-md font-medium text-foreground">{entry.plannedCase.title}</h3>
-                            <Badge variant="outline" className={cardToneClass(factoryCaseStatusTone(entry.status === "planned" ? "ready" : entry.status))}>
+                            <span className={cn("ui-status-badge ui-meta-text", cardToneClass(factoryCaseStatusTone(entry.status === "planned" ? "ready" : entry.status)))}>
                               {entry.status === "planned" ? "Planned" : factoryCaseStatusLabel(entry.status)}
-                            </Badge>
+                            </span>
                             {entry.plannedCase.scheduledFor ? (
                               <Badge variant="secondary" className="ui-meta-text px-2 py-0">
                                 {formatFactoryDate(entry.plannedCase.scheduledFor)}
@@ -2369,6 +2368,8 @@ export function FactoryPage() {
           </div>
         </section>
 
+            </TabsContent>
+            <TabsContent value="setup" className="mt-0 space-y-4">
         <section className="rounded-xl surface-panel p-5 space-y-4">
           <SectionHeading
             title="Guided path"
@@ -2380,18 +2381,55 @@ export function FactoryPage() {
           />
 
           <article className="rounded-lg border border-hairline bg-surface-2/35 px-4 py-4 space-y-4">
-            <div>
+            <div className="space-y-1">
               <h2 className="text-title-sm text-foreground">{selectedFactoryOption?.label || "Factory"} guided path</h2>
-              <p className="mt-1 text-body-sm text-muted-foreground">
+              <p className="text-body-sm text-muted-foreground">
                 {selectedFactoryDefinition?.recipe?.summary
-                  || "This path defines the steps, reusable outputs, quality rules, and scaling logic before you look at individual runs."}
+                  || "Stages, contracts, and review points for this outcome."}
               </p>
             </div>
 
-            <SummaryRail
-              items={projectRecipeFields}
-              className="xl:grid-cols-2"
-            />
+            <div className="grid gap-4 xl:grid-cols-2">
+              <BadgeGroup
+                label="Built-in paths"
+                items={dedupePreserveOrder([
+                  ...((selectedFactoryDefinition?.recipe?.packIds || [])
+                    .map((packId) => selectedPackRecipes.find((recipe) => recipe.id === packId)?.label || packId)),
+                  ...selectedPackRecipes.map((recipe) => recipe.label),
+                ])}
+                emptyLabel="No linked path"
+                variant="outline"
+              />
+              <BadgeGroup
+                label="Path steps"
+                items={selectedFactoryDefinition?.recipe?.stageOrder || selectedPackRecipes[0]?.stageLabels || []}
+                emptyLabel="No steps yet"
+                variant="outline"
+              />
+              <BadgeGroup
+                label="Reusable outputs"
+                items={selectedFactoryDefinition?.recipe?.artifactContracts || selectedPackRecipes[0]?.contractLabels || []}
+                emptyLabel="No contracts yet"
+              />
+              <BadgeGroup
+                label="Quality rules"
+                items={selectedFactoryDefinition?.recipe?.qualityPolicy || selectedPackRecipes[0]?.policyLabels || []}
+                emptyLabel="No rules yet"
+                variant="info"
+              />
+              <BadgeGroup
+                label="Strategist checkpoints"
+                items={selectedFactoryDefinition?.recipe?.strategistCheckpoints || selectedPackRecipes[0]?.checkpointLabels || []}
+                emptyLabel="No checkpoints yet"
+                variant="warning"
+              />
+              <BadgeGroup
+                label="Scaling"
+                items={selectedFactoryDefinition?.recipe?.caseGenerationRules || (selectedPackRecipes[0] ? [selectedPackRecipes[0].caseRule] : [])}
+                emptyLabel="No scale rule yet"
+                variant="success"
+              />
+            </div>
           </article>
 
           {selectedPackRecipes.length > 0 ? (
@@ -2412,36 +2450,38 @@ export function FactoryPage() {
                     </div>
                   </div>
 
-                  <SummaryRail
-                    items={[
-                      {
-                        label: "Path steps",
-                        value: recipe.stageLabels.length > 0 ? recipe.stageLabels.join(" -> ") : "Not established yet",
-                        hint: "The visible path this recipe runs through inside the project.",
-                      },
-                      {
-                        label: "Reusable outputs",
-                        value: recipe.contractLabels.length > 0 ? recipe.contractLabels.slice(0, 4).join(", ") : "No contracts surfaced yet",
-                        hint: "Typed outputs that connect one step to the next.",
-                      },
-                      {
-                        label: "Quality rules",
-                        value: recipe.policyLabels.length > 0 ? recipe.policyLabels.slice(0, 4).join(", ") : "No explicit policy tags",
-                        hint: "Execution discipline and quality rules applied by this path.",
-                      },
-                      {
-                        label: "Strategist checkpoints",
-                        value: recipe.checkpointLabels.length > 0 ? recipe.checkpointLabels.join(", ") : "No explicit checkpoints surfaced yet",
-                        hint: "Where the human should steer direction, plan, or quality instead of babysitting every run.",
-                      },
-                    ]}
-                    className="xl:grid-cols-2"
-                  />
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <BadgeGroup
+                      label="Steps"
+                      items={recipe.stageLabels}
+                      emptyLabel="No steps"
+                      variant="outline"
+                    />
+                    <BadgeGroup
+                      label="Outputs"
+                      items={recipe.contractLabels.slice(0, 6)}
+                      emptyLabel="No outputs"
+                    />
+                    <BadgeGroup
+                      label="Quality"
+                      items={recipe.policyLabels.slice(0, 6)}
+                      emptyLabel="No rules"
+                      variant="info"
+                    />
+                    <BadgeGroup
+                      label="Checkpoints"
+                      items={recipe.checkpointLabels}
+                      emptyLabel="No checkpoints"
+                      variant="warning"
+                    />
+                  </div>
                 </article>
               ))}
             </div>
           ) : null}
         </section>
+            </TabsContent>
+            <TabsContent value="operations" className="mt-0 space-y-4">
 
         <section className="space-y-4">
           <SectionHeading title="Operations" />
@@ -2479,9 +2519,9 @@ export function FactoryPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className={cardToneClass(action.tone)}>
+                          <span className={cn("ui-status-badge ui-meta-text", cardToneClass(action.tone))}>
                             {factoryActionLabel(action.kind)}
-                          </Badge>
+                          </span>
                           <Badge variant="secondary" className="ui-meta-text px-2 py-0">
                             {action.caseLabel}
                           </Badge>
@@ -2608,9 +2648,9 @@ export function FactoryPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <h2 className="text-title-sm text-foreground">{entry.label}</h2>
-                                  <Badge variant="outline" className={cardToneClass(statusTone)}>
+                                  <span className={cn("ui-status-badge ui-meta-text", cardToneClass(statusTone))}>
                                     {factoryCaseStatusLabel(entry.status)}
-                                  </Badge>
+                                  </span>
                                   {latestLineageLabel(entry) ? (
                                     <Badge variant="secondary" className="ui-meta-text px-2 py-0">
                                       {latestLineageLabel(entry)}
@@ -2649,20 +2689,21 @@ export function FactoryPage() {
                                 },
                               ]}
                               className="sm:grid-cols-3"
+                              compact
                             />
 
                             <div className="space-y-2">
                               <div className="ui-meta-label text-muted-foreground">Next action</div>
                               {entry.activeRun ? (
-                                <div className="rounded-md border border-status-info/25 bg-status-info/8 px-3 py-2 text-body-sm text-foreground">
+                                <div className="rounded-md surface-info-soft px-3 py-2 text-body-sm text-foreground">
                                   {entry.activeRun.summary.activeStepLabel || "Run in progress"}{entry.activeRun.runStartedAt ? ` · ${formatElapsedTime(entry.activeRun.runStartedAt)}` : ""}
                                 </div>
                               ) : entry.tasks[0] ? (
-                                <div className="rounded-md border border-status-warning/25 bg-status-warning/8 px-3 py-2 text-body-sm text-foreground">
+                                <div className="rounded-md surface-warning-soft px-3 py-2 text-body-sm text-foreground">
                                   {entry.tasks[0].title}
                                 </div>
                               ) : primaryTemplate ? (
-                                <div className="rounded-md border border-status-success/25 bg-status-success/8 px-3 py-2 text-body-sm text-foreground">
+                                <div className="rounded-md surface-success-soft px-3 py-2 text-body-sm text-foreground">
                                   {primaryTemplate.name}
                                 </div>
                               ) : (
@@ -2718,9 +2759,9 @@ export function FactoryPage() {
               <SectionHeading
                 title={selectedCase.label}
                 meta={(
-                  <Badge variant="outline" className={cardToneClass(factoryCaseStatusTone(selectedCase.status))}>
+                  <span className={cn("ui-status-badge ui-meta-text", cardToneClass(factoryCaseStatusTone(selectedCase.status)))}>
                     {factoryCaseStatusLabel(selectedCase.status)}
-                  </Badge>
+                  </span>
                 )}
               />
 
@@ -2781,7 +2822,7 @@ export function FactoryPage() {
               <div className="space-y-3">
                 <div className="ui-meta-label text-muted-foreground">Related runs</div>
                 {selectedCase.activeRun ? (
-                  <div className="rounded-lg border border-status-info/25 bg-status-info/8 px-4 py-3">
+                  <div className="rounded-lg surface-info-soft px-4 py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="text-body-sm font-medium text-foreground">{selectedCase.activeRun.workflowName}</div>
@@ -2848,6 +2889,7 @@ export function FactoryPage() {
                   <SummaryRail
                     items={selectedCaseSummary.fields}
                     className="xl:grid-cols-1"
+                    compact
                   />
 
                   <div className="flex flex-wrap gap-2">
@@ -2902,7 +2944,7 @@ export function FactoryPage() {
                 ) : (
                   <div className="space-y-2">
                     {selectedCase.tasks.map((task) => (
-                      <div key={`${task.workspace}:${task.taskId}`} className="rounded-lg border border-status-warning/25 bg-status-warning/8 px-4 py-3">
+                      <div key={`${task.workspace}:${task.taskId}`} className="rounded-lg surface-warning-soft px-4 py-3">
                         <div className="text-body-sm font-medium text-foreground">{task.title}</div>
                         <div className="mt-1 text-body-sm text-muted-foreground">
                           {task.kind === "approval" ? "Review gate" : "Input needed"} · {formatRelativeTime(task.createdAt)}
@@ -3110,9 +3152,9 @@ export function FactoryPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-body-sm font-medium text-foreground">{entry.workflowName}</div>
-                          <Badge variant="outline" className={cardToneClass(entry.summary.tone)}>
+                          <span className={cn("ui-status-badge ui-meta-text", cardToneClass(entry.summary.tone))}>
                             {entry.summary.phaseLabel}
-                          </Badge>
+                          </span>
                         </div>
                         <div className="mt-1 text-body-sm text-muted-foreground">
                           {entry.summary.activeStepLabel || "Waiting for the next step"}{entry.runStartedAt ? ` · ${formatElapsedTime(entry.runStartedAt)}` : ""}
@@ -3222,6 +3264,9 @@ export function FactoryPage() {
             )}
           </article>
         </section>
+        </section>
+            </TabsContent>
+          </Tabs>
         </section>
       </PageShell>
       {unsavedChangesDialog}

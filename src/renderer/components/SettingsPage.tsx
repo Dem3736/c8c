@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
 import {
   defaultProviderAtom,
+  factoryBetaEnabledAtom,
   globalExecutionDefaultsAtom,
   providerAuthStatusAtom,
   providerAvailabilityAtom,
@@ -43,6 +44,7 @@ import { ProviderModelInput, ProviderSelect } from "@/components/provider-contro
 export function SettingsPage() {
   const [webSearchBackend, setWebSearchBackend] = useAtom(webSearchBackendAtom)
   const [execDefaults, setExecDefaults] = useAtom(globalExecutionDefaultsAtom)
+  const [factoryBetaEnabled, setFactoryBetaEnabled] = useAtom(factoryBetaEnabledAtom)
   const [providerSettings, setProviderSettings] = useAtom(providerSettingsAtom)
   const [defaultProvider, setDefaultProvider] = useAtom(defaultProviderAtom)
   const [providerAvailability, setProviderAvailability] = useAtom(providerAvailabilityAtom)
@@ -415,6 +417,30 @@ export function SettingsPage() {
               />
               <p className="ui-meta-text text-muted-foreground">Max concurrent branches for splitter fan-out.</p>
             </div>
+          </div>
+
+          <p className="ui-meta-text text-muted-foreground">
+            Stored locally for this app profile.
+          </p>
+        </article>
+      </section>
+
+      <section className="space-y-3">
+        <SectionHeading title="Beta" />
+
+        <article className="rounded-lg surface-panel p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-hairline bg-surface-1/60 px-3 py-3">
+            <div>
+              <h3 className="text-body-md font-semibold text-foreground">Enable factories (beta)</h3>
+              <p className="mt-1 text-body-sm text-muted-foreground">
+                Shows the advanced factory workspace and related navigation. Leave this off for the simpler workflow and template flow.
+              </p>
+            </div>
+            <Switch
+              checked={factoryBetaEnabled}
+              aria-label="Enable factories beta"
+              onCheckedChange={setFactoryBetaEnabled}
+            />
           </div>
 
           <p className="ui-meta-text text-muted-foreground">

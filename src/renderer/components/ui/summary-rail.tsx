@@ -27,17 +27,21 @@ export interface SummaryRailItem extends VariantProps<typeof summaryRailItemVari
 export function SummaryRail({
   items,
   className,
+  compact = false,
 }: {
   items: SummaryRailItem[]
   className?: string
+  compact?: boolean
 }) {
   return (
     <div className={cn("grid grid-cols-1 gap-2 sm:grid-cols-2", className)}>
       {items.map((item) => (
         <div key={`${item.label}:${item.value}`} className={summaryRailItemVariants({ tone: item.tone })}>
           <div className="ui-meta-label text-muted-foreground">{item.label}</div>
-          <div className="mt-1 text-body-sm font-medium text-foreground">{item.value}</div>
-          {item.hint ? (
+          <div className={cn("mt-1 font-medium text-foreground", compact ? "text-body-md" : "text-body-sm")}>
+            {item.value}
+          </div>
+          {item.hint && !compact ? (
             <div className="mt-1 text-body-sm text-muted-foreground">{item.hint}</div>
           ) : null}
         </div>

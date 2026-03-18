@@ -111,7 +111,7 @@ export function FilePicker({ open, onOpenChange }: FilePickerProps) {
               </div>
             )}
             {!loading && loadError && (
-              <div className="ui-empty-state px-4">
+              <div role="alert" aria-live="assertive" className="ui-empty-state px-4">
                 <p className="text-body-md font-medium text-foreground">Could not load project files</p>
                 <p className="text-body-sm text-status-danger">{loadError}</p>
                 <div className="flex items-center gap-2">
@@ -148,7 +148,7 @@ export function FilePicker({ open, onOpenChange }: FilePickerProps) {
                       aria-label={`Attach ${file.relativePath}`}
                       variant="ghost"
                       size="auto"
-                      className="h-auto w-full justify-start gap-3 rounded-md border border-transparent px-2 py-1.5 text-left whitespace-normal ui-transition-surface ui-motion-fast hover:border-hairline hover:bg-surface-3/80 disabled:opacity-40"
+                      className="ui-interactive-card h-auto w-full justify-start gap-3 rounded-md px-2 py-1.5 text-left whitespace-normal disabled:opacity-40"
                     >
                       <File
                         size={14}
@@ -157,7 +157,9 @@ export function FilePicker({ open, onOpenChange }: FilePickerProps) {
                       />
                       <span className="text-body-sm truncate">{file.name}</span>
                       {alreadyAdded && (
-                        <span className="ui-meta-text text-muted-foreground ml-auto">Added</span>
+                        <span className="control-badge control-badge-compact ml-auto border border-status-success/30 bg-status-success/10 ui-meta-text text-status-success">
+                          Added
+                        </span>
                       )}
                     </Button>
                   )

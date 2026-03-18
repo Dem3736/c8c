@@ -195,7 +195,7 @@ export function reduceWorkflowExecutionEvent(
       return {
         nextState: {
           ...previousState,
-          runStatus: "running",
+          runStatus: previousState.runStatus === "cancelling" ? "cancelling" : "running",
           activeNodeId: event.nodeId,
           nodeStates: {
             ...previousState.nodeStates,

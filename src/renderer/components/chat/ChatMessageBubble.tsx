@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { AlertCircle, ChevronRight, CheckCircle2, Wrench, Loader2, Bot, Copy, Check } from "lucide-react"
+import { AlertCircle, ChevronRight, CheckCircle2, Wrench, Loader2, Bot } from "lucide-react"
 import { cn } from "@/lib/cn"
 import type { ChatMessageDisplay } from "@/lib/store"
 import { isToolResultError, summarizeToolCall, summarizeToolResult } from "@/lib/chat-tool-summary"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
+import { CopyButton } from "@/components/ui/copy-button"
 
 interface ChatMessageBubbleProps {
   message: ChatMessageDisplay
@@ -88,7 +89,14 @@ export function ChatMessageBubble({
                   {message.content}
                 </ReactMarkdown>
               </div>
-              <CopyButton text={message.content} />
+              <CopyButton
+                text={message.content}
+                iconOnly
+                className="ui-reveal-trailing absolute -right-1 top-0"
+                idleLabel="Copy"
+                idleAriaLabel="Copy message"
+                copiedAriaLabel="Message copied"
+              />
             </>
           )}
         </div>
@@ -126,7 +134,7 @@ export function ChatMessageBubble({
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               toolExpanded && "rotate-90",
             )}
           />
@@ -138,11 +146,15 @@ export function ChatMessageBubble({
           </div>
         )}
 
-        {toolExpanded && message.toolInput && (
-          <pre className="mx-2.5 mb-2 ui-meta-text font-mono rounded-md border border-hairline/40 bg-surface-2/70 p-2 overflow-x-auto max-w-full max-h-[220px] overflow-y-auto">
-            {JSON.stringify(message.toolInput, null, 2)}
-          </pre>
-        )}
+        <div data-open={toolExpanded ? "true" : "false"} className="ui-collapsible">
+          <div className="ui-collapsible-inner">
+            {message.toolInput && (
+              <pre className="mx-2.5 mb-2 ui-meta-text font-mono rounded-md border border-hairline/40 bg-surface-2/70 p-2 overflow-x-auto max-w-full max-h-[220px] overflow-y-auto">
+                {JSON.stringify(message.toolInput, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
@@ -191,7 +203,7 @@ export function ChatMessageBubble({
           <ChevronRight
             size={12}
             className={cn(
-              "transition-transform ui-motion-fast",
+              "ui-chevron",
               toolExpanded && "rotate-90",
             )}
           />
@@ -206,42 +218,21 @@ export function ChatMessageBubble({
           </div>
         )}
 
-        {toolExpanded && (
-          <pre className={cn(
-            "mx-2.5 mb-2 ui-meta-text font-mono rounded-md p-2 overflow-x-auto max-w-full max-h-[220px] overflow-y-auto border",
-            isError
-              ? "bg-status-danger/10 border-status-danger/30 text-status-danger"
-              : "bg-surface-2/70 border-hairline/40 text-muted-foreground",
-          )}>
-            {body}
-          </pre>
-        )}
+        <div data-open={toolExpanded ? "true" : "false"} className="ui-collapsible">
+          <div className="ui-collapsible-inner">
+            <pre className={cn(
+              "mx-2.5 mb-2 ui-meta-text font-mono rounded-md p-2 overflow-x-auto max-w-full max-h-[220px] overflow-y-auto border",
+              isError
+                ? "bg-status-danger/10 border-status-danger/30 text-status-danger"
+                : "bg-surface-2/70 border-hairline/40 text-muted-foreground",
+            )}>
+              {body}
+            </pre>
+          </div>
+        </div>
       </div>
     )
   }
 
   return null
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="ui-icon-button ui-reveal-trailing absolute -right-1 top-0"
-      aria-label={copied ? "Copied" : "Copy message"}
-      title={copied ? "Copied" : "Copy"}
-    >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-    </button>
-  )
 }
