@@ -15,7 +15,6 @@ import {
   evalResultsAtom,
   nodeStatesAtom,
   pastRunsAtom,
-  runIdAtom,
   runStatusAtom,
   updateWorkflowExecutionStateAtom,
   useExecutionController,
@@ -42,7 +41,6 @@ const ExecutionActionsContext = createContext<ExecutionActionsContextValue | nul
 
 export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [runStatus] = useAtom(runStatusAtom)
-  const [runId] = useAtom(runIdAtom)
   const [workspace] = useAtom(workspaceAtom)
   const setPastRuns = useSetAtom(pastRunsAtom)
   const setApprovalRequests = useSetAtom(approvalRequestsAtom)
@@ -72,7 +70,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     controller,
     attachments,
     inputValue,
-    runId,
     runStatus,
     setActiveExecutionProvider,
     selectedProject,

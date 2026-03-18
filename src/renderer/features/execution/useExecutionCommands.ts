@@ -36,7 +36,6 @@ import type { WorkflowExecutionController } from "./controller"
 interface UseExecutionCommandsArgs {
   controller: WorkflowExecutionController
   runStatus: ExecutionRunStatus
-  runId: string | null
   workflow: Workflow
   inputValue: string
   attachments: InputAttachment[]
@@ -52,7 +51,6 @@ interface UseExecutionCommandsArgs {
 export function useExecutionCommands({
   controller,
   runStatus,
-  runId,
   workflow,
   inputValue,
   attachments,
