@@ -44,9 +44,56 @@ function createRunResult(): RunResult {
   }
 }
 
+function createApprovalWorkflow(): Workflow {
+  return {
+    version: 1,
+    name: "Approval flow",
+    nodes: [
+      {
+        id: "input",
+        type: "input",
+        position: { x: 0, y: 0 },
+        config: {},
+      },
+      {
+        id: "approval-1",
+        type: "approval",
+        position: { x: 120, y: 0 },
+        config: {
+          message: "Review copy",
+          show_content: true,
+          allow_edit: true,
+        },
+      },
+      {
+        id: "approval-2",
+        type: "approval",
+        position: { x: 240, y: 0 },
+        config: {
+          message: "Review legal",
+          show_content: true,
+          allow_edit: false,
+        },
+      },
+      {
+        id: "output",
+        type: "output",
+        position: { x: 360, y: 0 },
+        config: {},
+      },
+    ],
+    edges: [
+      { id: "edge-1", source: "input", target: "approval-1", type: "default" },
+      { id: "edge-2", source: "approval-1", target: "approval-2", type: "default" },
+      { id: "edge-3", source: "approval-2", target: "output", type: "default" },
+    ],
+  }
+}
+
 function createHarness() {
   let executionStates: Record<string, WorkflowExecutionState> = {}
   let approvalRequests: Array<{
+    workflowKey: string
     runId: string
     nodeId: string
     content: string
@@ -70,6 +117,7 @@ function createHarness() {
     }),
     listRuns: vi.fn().mockResolvedValue([createRunResult()]),
     onRunFailed: vi.fn(),
+    onRunFinished: vi.fn(),
     onError: vi.fn(),
   }
 
@@ -154,6 +202,57 @@ describe("WorkflowExecutionController", () => {
     expect(controller.getExecutionState(workflowKey).workspace).toBe("/tmp/final-workspace")
   })
 
+  it("dedupes approval requests per node and keeps queue order within a run", () => {
+    const { controller, getApprovalRequests } = createHarness()
+    const workflow = createApprovalWorkflow()
+    const startHandle = controller.beginExecution(workflow, "/tmp/approval.chain", "/tmp/project")
+    controller.finishStartWithRunId("run-approval", startHandle)
+
+    controller.processWorkflowEvent({
+      type: "approval-requested",
+      runId: "run-approval",
+      nodeId: "approval-1",
+      content: "Draft v1",
+      message: "Review copy",
+      allowEdit: true,
+    })
+    controller.processWorkflowEvent({
+      type: "approval-requested",
+      runId: "run-approval",
+      nodeId: "approval-2",
+      content: "Legal note",
+      message: "Review legal",
+      allowEdit: false,
+    })
+    controller.processWorkflowEvent({
+      type: "approval-requested",
+      runId: "run-approval",
+      nodeId: "approval-1",
+      content: "Draft v2",
+      message: "Review copy",
+      allowEdit: true,
+    })
+
+    expect(getApprovalRequests()).toEqual([
+      {
+        workflowKey: "/tmp/approval.chain",
+        runId: "run-approval",
+        nodeId: "approval-1",
+        content: "Draft v2",
+        message: "Review copy",
+        allowEdit: true,
+      },
+      {
+        workflowKey: "/tmp/approval.chain",
+        runId: "run-approval",
+        nodeId: "approval-2",
+        content: "Legal note",
+        message: "Review legal",
+        allowEdit: false,
+      },
+    ])
+  })
+
   it("rehydrates an active run snapshot for renderer resync", () => {
     const { controller } = createHarness()
     const snapshot: ActiveWorkflowRun = {
@@ -183,6 +282,43 @@ describe("WorkflowExecutionController", () => {
     expect(state.workspace).toBe("/tmp/workspace")
     expect(state.activeNodeId).toBe("output")
     expect(state.nodeStates.output.status).toBe("running")
+  })
+
+  it("rebuilds visible approval requests from a paused rehydrated run", () => {
+    const { controller, getApprovalRequests } = createHarness()
+    const workflow = createApprovalWorkflow()
+    const snapshot: ActiveWorkflowRun = {
+      kind: "run",
+      runId: "run-paused",
+      workflowName: workflow.name,
+      workflowPath: "/tmp/approval.chain",
+      projectPath: "/tmp/project",
+      workspace: "/tmp/workspace",
+      status: "paused",
+      startedAt: 100,
+      updatedAt: 120,
+      nodeStates: {
+        input: { status: "completed", attempts: 1, log: [] },
+        "approval-1": { status: "waiting_approval", attempts: 1, log: [] },
+      },
+      runtimeNodes: workflow.nodes,
+      runtimeEdges: workflow.edges,
+      runtimeMeta: {},
+    }
+
+    controller.rehydrateActiveRun(snapshot)
+
+    expect(getApprovalRequests()).toEqual([
+      {
+        workflowKey: "/tmp/approval.chain",
+        runId: "run-paused",
+        nodeId: "approval-1",
+        content: "",
+        message: "Review copy",
+        allowEdit: true,
+      },
+    ])
+    expect(controller.getExecutionState("/tmp/approval.chain").runStatus).toBe("paused")
   })
 
   it("reconciles active run events after the workflow key changes", () => {
@@ -312,5 +448,69 @@ describe("WorkflowExecutionController", () => {
 
     expect(controller.getExecutionState(startHandle.workflowKey).runStatus).toBe("done")
     expect(controller.getExecutionState(startHandle.workflowKey).runOutcome).toBe("completed")
+  })
+
+  it("publishes a durable finished state when cancelling an active run", async () => {
+    const { controller, deps } = createHarness()
+    const startHandle = controller.beginExecution(createWorkflow(), "/tmp/research.chain", "/tmp/project")
+    controller.finishStartWithRunId("run-1", startHandle)
+
+    controller.cancelExecution(startHandle.workflowKey, "run-1")
+    await Promise.resolve()
+
+    expect(controller.getExecutionState(startHandle.workflowKey)).toEqual(expect.objectContaining({
+      runStatus: "done",
+      runOutcome: "cancelled",
+      surfaceNotice: expect.objectContaining({
+        title: "Run cancelled",
+        actionTarget: "activity",
+      }),
+    }))
+    expect(deps.onRunFinished).toHaveBeenCalledWith({
+      workflowKey: startHandle.workflowKey,
+      state: expect.objectContaining({
+        runStatus: "done",
+        runOutcome: "cancelled",
+      }),
+    })
+    expect(deps.listRuns).toHaveBeenCalledWith("/tmp/project")
+  })
+
+  it("removes approval requests only for the run that finished or cancelled", () => {
+    const { controller, getApprovalRequests } = createHarness()
+    const firstStart = controller.beginExecution(createApprovalWorkflow(), "/tmp/approval-a.chain", "/tmp/project")
+    const secondStart = controller.beginExecution(createApprovalWorkflow(), "/tmp/approval-b.chain", "/tmp/project")
+    controller.finishStartWithRunId("run-a", firstStart)
+    controller.finishStartWithRunId("run-b", secondStart)
+
+    controller.processWorkflowEvent({
+      type: "approval-requested",
+      runId: "run-a",
+      nodeId: "approval-1",
+      content: "A",
+      message: "Review copy",
+      allowEdit: true,
+    })
+    controller.processWorkflowEvent({
+      type: "approval-requested",
+      runId: "run-b",
+      nodeId: "approval-1",
+      content: "B",
+      message: "Review copy",
+      allowEdit: true,
+    })
+
+    controller.cancelExecution(firstStart.workflowKey, "run-a")
+
+    expect(getApprovalRequests()).toEqual([
+      {
+        workflowKey: "/tmp/approval-b.chain",
+        runId: "run-b",
+        nodeId: "approval-1",
+        content: "B",
+        message: "Review copy",
+        allowEdit: true,
+      },
+    ])
   })
 })

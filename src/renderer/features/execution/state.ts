@@ -127,6 +127,7 @@ export const runtimeMetaAtom = createSelectedWorkflowExecutionFieldAtom("runtime
 export const artifactRecordsAtom = createSelectedWorkflowExecutionFieldAtom("artifactRecords")
 export const artifactPersistenceStatusAtom = createSelectedWorkflowExecutionFieldAtom("artifactPersistenceStatus")
 export const artifactPersistenceErrorAtom = createSelectedWorkflowExecutionFieldAtom("artifactPersistenceError")
+export const surfaceNoticeAtom = createSelectedWorkflowExecutionFieldAtom("surfaceNotice")
 
 export const runsByWorkflowPathAtom = atom<Record<string, RunResult[]>>((get) => {
   const runs = get(pastRunsAtom)

@@ -3,6 +3,8 @@ import type { Workflow } from "@shared/types"
 import {
   addEdgeToWorkflow,
   addSkillNodeToWorkflow,
+  getLinearChainReorderBlockReason,
+  getMiddleNodeMoveBlockedReason,
   moveMiddleNodeByDirection,
   removeEdgeFromWorkflow,
   removeNodeAndRewireWorkflow,
@@ -222,5 +224,41 @@ describe("workflow edge mutations", () => {
 
     const next = moveMiddleNodeByDirection(workflow, "skill-a", "down")
     expect(next).toEqual(workflow)
+    expect(getLinearChainReorderBlockReason(workflow)).toBe(
+      "Reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.",
+    )
+  })
+
+  it("returns boundary reasons for move attempts past the first or last editable step", () => {
+    const workflow = createWorkflow()
+    const withSecondSkill: Workflow = {
+      ...workflow,
+      nodes: [
+        workflow.nodes[0],
+        workflow.nodes[1],
+        {
+          id: "skill-2",
+          type: "skill",
+          position: { x: 280, y: 0 },
+          config: { skillRef: "test/second", prompt: "again" },
+        },
+        workflow.nodes[2],
+      ],
+      edges: [
+        { id: "e-input-skill-1", source: "input-1", target: "skill-1", type: "default" },
+        { id: "e-skill-1-skill-2", source: "skill-1", target: "skill-2", type: "default" },
+        { id: "e-skill-2-output", source: "skill-2", target: "output-1", type: "default" },
+      ],
+    }
+
+    expect(getMiddleNodeMoveBlockedReason(withSecondSkill, "skill-1", "up")).toBe(
+      "This step is already the first editable step.",
+    )
+    expect(getMiddleNodeMoveBlockedReason(withSecondSkill, "skill-2", "down")).toBe(
+      "This step is already the last editable step.",
+    )
+    expect(getMiddleNodeMoveBlockedReason(withSecondSkill, "input-1", "down")).toBe(
+      "Only editable steps can be reordered.",
+    )
   })
 })

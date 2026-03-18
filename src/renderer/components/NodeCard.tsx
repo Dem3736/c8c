@@ -6,6 +6,7 @@ import {
   inputAttachmentsAtom,
   providerSettingsAtom,
   selectedWorkflowPathAtom,
+  validationNavigationTargetAtom,
   validationErrorsAtom,
 } from "@/lib/store"
 import { cn } from "@/lib/cn"
@@ -525,6 +526,8 @@ interface NodeCardProps {
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
+  moveUpDisabledReason?: string | null
+  moveDownDisabledReason?: string | null
   onConfigChange: (config: InputNodeConfig | OutputNodeConfig | SkillNodeConfig | EvaluatorNodeConfig | SplitterNodeConfig | MergerNodeConfig | ApprovalNodeConfig | HumanNodeConfig) => void
   onSelect: () => void
   resolveNodeLabel?: (nodeId: string) => string
@@ -544,6 +547,8 @@ export function NodeCard({
   onRemove,
   onMoveUp,
   onMoveDown,
+  moveUpDisabledReason: moveUpDisabledReasonProp = null,
+  moveDownDisabledReason: moveDownDisabledReasonProp = null,
   onConfigChange,
   onSelect,
   resolveNodeLabel,
@@ -563,6 +568,7 @@ export function NodeCard({
   const [runPickerOpen, setRunPickerOpen] = useState(false)
   const [textEditorOpen, setTextEditorOpen] = useState(false)
   const [editingTextIndex, setEditingTextIndex] = useState<number | undefined>(undefined)
+  const [validationNavigationTarget, setValidationNavigationTarget] = useAtom(validationNavigationTargetAtom)
   const [allValidationErrors] = useAtom(validationErrorsAtom)
   const nodeValidationErrors = allValidationErrors[node.id] || []
   const hasValidationErrors = nodeValidationErrors.some((e) => e.severity === "error")
@@ -671,6 +677,16 @@ export function NodeCard({
     stepLabel: `Step ${index + 1}`,
     displayTitle: runtimePresentation.title,
   }
+  const moveUpDisabledReason = moveUpDisabledReasonProp ?? (!onMoveUp
+    ? "Reordering is only available for linear workflows."
+    : index <= 1
+      ? "This step is already the first editable step."
+      : null)
+  const moveDownDisabledReason = moveDownDisabledReasonProp ?? (!onMoveDown
+    ? "Reordering is only available for linear workflows."
+    : index >= total - 2
+      ? "This step is already the last editable step."
+      : null)
 
   useEffect(() => {
     setInputTouched(false)
@@ -681,6 +697,43 @@ export function NodeCard({
       setExpanded(false)
     }
   }, [runtimeMode])
+
+  useEffect(() => {
+    if (runtimeMode || !validationNavigationTarget) return
+    if (validationNavigationTarget.nodeId && validationNavigationTarget.nodeId !== node.id) return
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    let attempts = 0
+
+    const focusTarget = () => {
+      if (cancelled) return
+      const target = document.getElementById(validationNavigationTarget.fieldId)
+      if (target instanceof HTMLElement) {
+        target.focus()
+        target.scrollIntoView({ block: "center", behavior: "smooth" })
+        setValidationNavigationTarget(null)
+        return
+      }
+      if (hasExpandedPanel && !expanded) {
+        setExpanded(true)
+      }
+      if (attempts >= 6) {
+        setValidationNavigationTarget(null)
+        return
+      }
+      attempts += 1
+      timeoutId = window.setTimeout(focusTarget, 60)
+    }
+
+    timeoutId = window.setTimeout(focusTarget, 0)
+    return () => {
+      cancelled = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [expanded, hasExpandedPanel, node.id, runtimeMode, setValidationNavigationTarget, validationNavigationTarget])
 
   const updateWorkflowDefaults = (patch: Record<string, unknown>) => {
     setWorkflow((prev) => ({
@@ -938,7 +991,7 @@ export function NodeCard({
             "!h-auto min-w-0 flex-1 justify-start items-start rounded-md border-transparent p-0 text-left whitespace-normal hover:bg-transparent hover:border-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
             compact ? "gap-1.5" : "gap-2",
           )}
-          aria-label={`Select node ${title}`}
+          aria-label={`Select step ${title}`}
         >
           <div
             className={cn(
@@ -1037,14 +1090,15 @@ export function NodeCard({
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  aria-label="Move node up"
+                  aria-label="Move step up"
                   onClick={(e) => {
                     e.stopPropagation()
                     onMoveUp?.()
                   }}
-                  disabled={!onMoveUp || index <= 1}
+                  disabled={Boolean(moveUpDisabledReason)}
                   variant="ghost"
                   size="icon"
+                  title={moveUpDisabledReason || undefined}
                   className={cn(
                     "ui-pressable rounded-md text-muted-foreground hover:bg-surface-3 disabled:text-muted-foreground/70",
                     compact ? "h-6 w-6" : "h-control-sm w-control-sm",
@@ -1053,20 +1107,21 @@ export function NodeCard({
                   <ArrowUp size={12} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{onMoveUp ? "Move up" : "Reorder unavailable for branching workflows"}</TooltipContent>
+              <TooltipContent>{moveUpDisabledReason || "Move up"}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  aria-label="Move node down"
+                  aria-label="Move step down"
                   onClick={(e) => {
                     e.stopPropagation()
                     onMoveDown?.()
                   }}
-                  disabled={!onMoveDown || index >= total - 2}
+                  disabled={Boolean(moveDownDisabledReason)}
                   variant="ghost"
                   size="icon"
+                  title={moveDownDisabledReason || undefined}
                   className={cn(
                     "ui-pressable rounded-md text-muted-foreground hover:bg-surface-3 disabled:text-muted-foreground/70",
                     compact ? "h-6 w-6" : "h-control-sm w-control-sm",
@@ -1075,13 +1130,13 @@ export function NodeCard({
                   <ArrowDown size={12} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{onMoveDown ? "Move down" : "Reorder unavailable for branching workflows"}</TooltipContent>
+              <TooltipContent>{moveDownDisabledReason || "Move down"}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  aria-label="Remove node"
+                  aria-label="Remove step"
                   onClick={(e) => {
                     e.stopPropagation()
                     onRemove()
@@ -1096,7 +1151,7 @@ export function NodeCard({
                   <X size={12} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Remove</TooltipContent>
+              <TooltipContent>Remove step</TooltipContent>
             </Tooltip>
           </div>
         )}
@@ -1206,6 +1261,7 @@ export function NodeCard({
                 </DropdownMenuContent>
               </DropdownMenu>
               <ProviderSelect
+                id={`workflow-provider-${node.id}`}
                 value={workflowProvider}
                 onValueChange={(provider) => updateWorkflowDefaults({
                   provider,
@@ -1219,6 +1275,7 @@ export function NodeCard({
                 ariaLabel="Workflow provider"
               />
               <ProviderModelSelect
+                id={`workflow-model-${node.id}`}
                 provider={workflowProvider}
                 value={workflowModel}
                 onValueChange={(model) => updateWorkflowDefaults({ model })}

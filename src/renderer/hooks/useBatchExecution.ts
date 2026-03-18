@@ -24,7 +24,7 @@ interface BatchRunOptions {
   totalInputsOverride?: number
 }
 
-function mergeBatchItems(
+export function mergeBatchItems(
   previousItems: BatchItemResult[],
   nextItems: BatchItemResult[],
 ): BatchItemResult[] {
@@ -42,7 +42,7 @@ function mergeBatchItems(
   return merged.sort((left, right) => left.input_index - right.input_index)
 }
 
-function summarizeBatchItems(items: BatchItemResult[], total: number): BatchSummary {
+export function summarizeBatchItems(items: BatchItemResult[], total: number): BatchSummary {
   const passedItems = items.filter((item) => item.status === "completed")
   const failedItems = items.filter((item) => item.status === "failed")
   const cancelledItems = items.filter((item) => item.status === "cancelled" || item.status === "interrupted")
@@ -60,6 +60,39 @@ function summarizeBatchItems(items: BatchItemResult[], total: number): BatchSumm
     mean_cost_usd: processed > 0 ? totalCost / processed : 0,
     mean_duration_ms: processed > 0 ? totalDuration / processed : 0,
     pass_rate: processed > 0 ? passedItems.length / processed : 0,
+  }
+}
+
+export function resolveBatchDoneState(
+  previousItems: BatchItemResult[],
+  incomingItems: BatchItemResult[],
+  incomingSummary: BatchSummary,
+  previousProgress: { completed: number; total: number; running: number },
+  options: BatchRunOptions | null,
+) {
+  const totalInputs = options?.totalInputsOverride ?? incomingSummary.total
+  const nextItems = options?.preserveExistingItems
+    ? mergeBatchItems(previousItems, incomingItems)
+    : incomingItems
+  const nextSummary = summarizeBatchItems(nextItems, totalInputs)
+
+  return {
+    items: nextItems,
+    summary: nextSummary,
+    progress: {
+      completed: nextSummary.processed,
+      total: Math.max(previousProgress.total, totalInputs),
+      running: 0,
+    },
+    notification: {
+      title: nextSummary.failed > 0
+        ? "Batch run finished with failures"
+        : nextSummary.cancelled > 0
+          ? "Batch run cancelled"
+          : "Batch run completed",
+      description: `${nextSummary.processed}/${nextSummary.total} processed · ${nextSummary.failed} failed · ${nextSummary.cancelled} cancelled`,
+      level: nextSummary.failed > 0 ? "warning" as const : nextSummary.cancelled > 0 ? "warning" as const : "success" as const,
+    },
   }
 }
 
@@ -153,30 +186,31 @@ export function useBatchExecution() {
 
       case "batch-done":
         const normalizedItems = event.items.map((item) => normalizeIncomingItem(item))
-        const preserveExistingItems = currentRunOptionsRef.current?.preserveExistingItems
-        const totalInputs = currentRunOptionsRef.current?.totalInputsOverride ?? event.summary.total
-        const nextItems = preserveExistingItems
-          ? mergeBatchItems(batchItemsRef.current, normalizedItems)
-          : normalizedItems
+        const resolved = resolveBatchDoneState(
+          batchItemsRef.current,
+          normalizedItems,
+          event.summary,
+          {
+            completed: 0,
+            total: event.summary.total,
+            running: 0,
+          },
+          currentRunOptionsRef.current,
+        )
         clearBatchTracking()
         setBatchError(null)
-        setBatchSummary(preserveExistingItems ? summarizeBatchItems(nextItems, totalInputs) : event.summary)
-        applyBatchItems(nextItems)
+        setBatchSummary(resolved.summary)
+        applyBatchItems(resolved.items)
         setBatchStatus("done")
         setBatchId(null)
         setBatchProgress((prev) => ({
-          completed: preserveExistingItems ? nextItems.length : event.summary.processed,
-          total: Math.max(prev.total, totalInputs),
-          running: 0,
+          ...resolved.progress,
+          total: Math.max(prev.total, resolved.progress.total),
         }))
         addNotification({
-          title: event.summary.failed > 0
-            ? "Batch run finished with failures"
-            : event.summary.cancelled > 0
-              ? "Batch run cancelled"
-              : "Batch run completed",
-          description: `${event.summary.processed}/${event.summary.total} processed · ${event.summary.failed} failed · ${event.summary.cancelled} cancelled`,
-          level: event.summary.failed > 0 ? "warning" : event.summary.cancelled > 0 ? "warning" : "success",
+          title: resolved.notification.title,
+          description: resolved.notification.description,
+          level: resolved.notification.level,
           source: "batch",
         })
         break

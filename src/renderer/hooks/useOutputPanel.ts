@@ -15,6 +15,7 @@ import {
   runStatusAtom,
   runOutcomeAtom,
   runtimeMetaAtom,
+  surfaceNoticeAtom,
   selectedPastRunAtom,
   workflowHistoryRunsAtom,
   workspaceAtom,
@@ -37,6 +38,7 @@ export function useOutputPanel() {
   const [artifactRecords] = useAtom(artifactRecordsAtom)
   const [artifactPersistenceStatus] = useAtom(artifactPersistenceStatusAtom)
   const [artifactPersistenceError] = useAtom(artifactPersistenceErrorAtom)
+  const [surfaceNotice, setSurfaceNotice] = useAtom(surfaceNoticeAtom)
 
   return {
     runStatus,
@@ -57,5 +59,7 @@ export function useOutputPanel() {
     artifactRecords,
     artifactPersistenceStatus,
     artifactPersistenceError,
+    surfaceNotice,
+    setSurfaceNotice,
   }
 }

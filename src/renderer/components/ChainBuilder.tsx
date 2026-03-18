@@ -56,6 +56,8 @@ import {
   addFanOutPatternToWorkflow,
   addHumanNodeToWorkflow,
   addSkillNodeToWorkflow,
+  getLinearChainReorderBlockReason,
+  getMiddleNodeMoveBlockedReason,
   isLinearChainReorderSafe,
   moveMiddleNodeBeforeTarget,
   moveMiddleNodeByDirection,
@@ -211,6 +213,7 @@ export function ChainBuilder({
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
   const isReorderSafe = isLinearChainReorderSafe(workflow)
+  const reorderBlockReason = useMemo(() => getLinearChainReorderBlockReason(workflow), [workflow])
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const undoToastIdRef = useRef<string | number | null>(null)
@@ -437,7 +440,7 @@ export function ChainBuilder({
       toast.dismiss(undoToastIdRef.current)
     }
 
-    undoToastIdRef.current = toast.success("Node removed", {
+    undoToastIdRef.current = toast.success("Step removed", {
       duration: Infinity,
       action: {
         label: "Undo",
@@ -447,8 +450,9 @@ export function ChainBuilder({
   }
 
   const moveNode = (nodeId: string, direction: "up" | "down") => {
-    if (!isReorderSafe) {
-      toast.warning("Reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.", {
+    const blockedReason = getMiddleNodeMoveBlockedReason(workflow, nodeId, direction)
+    if (blockedReason) {
+      toast.warning(blockedReason, {
         duration: 8000,
       })
       return
@@ -551,9 +555,9 @@ export function ChainBuilder({
   const handleDragStart = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
     if (flowCardMode) return
     if (node.type === "input" || node.type === "output") return
-    if (!isReorderSafe) {
+    if (reorderBlockReason) {
       event.preventDefault()
-      toast.warning("Drag reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.", {
+      toast.warning(reorderBlockReason, {
         duration: 8000,
       })
       return
@@ -587,9 +591,10 @@ export function ChainBuilder({
     if (flowCardMode) return
     if (!draggedNodeId) return
     if (node.type === "input" || node.type === "output") return
-    if (!isReorderSafe) {
+    const blockedReason = getLinearChainReorderBlockReason(workflow)
+    if (blockedReason) {
       event.preventDefault()
-      toast.warning("Drag reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.", {
+      toast.warning(blockedReason, {
         duration: 8000,
       })
       clearDragState()
@@ -613,6 +618,13 @@ export function ChainBuilder({
       : effectiveState?.status === "running" || effectiveState?.status === "waiting_approval" || effectiveState?.status === "waiting_human" || effectiveState?.status === "failed"
         ? "log"
         : "nodes"
+
+    const moveUpBlockedReason = node.type === "input" || node.type === "output"
+      ? "Only editable steps can be reordered."
+      : getMiddleNodeMoveBlockedReason(workflow, node.id, "up")
+    const moveDownBlockedReason = node.type === "input" || node.type === "output"
+      ? "Only editable steps can be reordered."
+      : getMiddleNodeMoveBlockedReason(workflow, node.id, "down")
 
     return (
       <div
@@ -671,8 +683,10 @@ export function ChainBuilder({
           isActive={resolvedActiveNodeId === node.id}
           isSelected={resolvedSelectedNodeId === node.id}
           onRemove={() => confirmRemove(node.id)}
-          onMoveUp={isReorderSafe ? () => moveNode(node.id, "up") : undefined}
-          onMoveDown={isReorderSafe ? () => moveNode(node.id, "down") : undefined}
+          onMoveUp={moveUpBlockedReason ? undefined : () => moveNode(node.id, "up")}
+          onMoveDown={moveDownBlockedReason ? undefined : () => moveNode(node.id, "down")}
+          moveUpDisabledReason={moveUpBlockedReason}
+          moveDownDisabledReason={moveDownBlockedReason}
           onConfigChange={(config) => updateNodeConfig(node.id, config)}
           onSelect={() => {
             setSelectedNode(node.id)
@@ -762,7 +776,7 @@ export function ChainBuilder({
               compact ? "mb-2 py-1.5" : "mb-3 py-2",
             )}
           >
-            Build your chain by adding a Skill first. Evaluator checks output quality, and Split work creates parallel branches.
+            Build your chain by adding a skill step first. Evaluator checks output quality, and Split work creates parallel branches.
           </div>
         )}
         {flowCardMode ? (
@@ -796,10 +810,10 @@ export function ChainBuilder({
                   onClick={() => setPickerOpen(true)}
                 >
                   <Plus size={16} />
-                  Add Skill
+                  Add skill step
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Add a processing step between Input and Output</TooltipContent>
+              <TooltipContent>Add a skill step between Input and Output</TooltipContent>
             </Tooltip>
 
             <DropdownMenu>
@@ -890,13 +904,14 @@ export function ChainBuilder({
                 setChainContextMenu(null)
               }}
             >
-              Select node
+              Select step
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              disabled={contextNode.type === "input" || contextNode.type === "output"}
+              disabled={Boolean(getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up"))}
+              title={getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up") || undefined}
               onSelect={() => {
-                if (contextNode.type === "input" || contextNode.type === "output") return
+                if (getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up")) return
                 moveNode(contextNode.id, "up")
                 setChainContextMenu(null)
               }}
@@ -904,9 +919,10 @@ export function ChainBuilder({
               Move up
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={contextNode.type === "input" || contextNode.type === "output"}
+              disabled={Boolean(getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down"))}
+              title={getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down") || undefined}
               onSelect={() => {
-                if (contextNode.type === "input" || contextNode.type === "output") return
+                if (getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down")) return
                 moveNode(contextNode.id, "down")
                 setChainContextMenu(null)
               }}
@@ -921,7 +937,7 @@ export function ChainBuilder({
                 setChainContextMenu(null)
               }}
             >
-              Remove node
+              Remove step
             </DropdownMenuItem>
           </>
         )}
@@ -932,8 +948,8 @@ export function ChainBuilder({
       <Dialog open={!runtimeMode && pendingRemoveId !== null} onOpenChange={(open) => !open && setPendingRemoveId(null)}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Remove node?</DialogTitle>
-            <DialogDescription>This will remove the node and its connections from the workflow.</DialogDescription>
+            <DialogTitle>Remove step?</DialogTitle>
+            <DialogDescription>This will remove the step and its connections from the workflow.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <p className="text-body-md text-muted-foreground">

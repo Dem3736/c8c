@@ -1,11 +1,18 @@
-import { useEffect, useLayoutEffect, useRef } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { useAtomValue } from "jotai"
 import { toast } from "sonner"
 import { createWorkflowExecutionController } from "./controller"
 import type { WorkflowExecutionController } from "./controller"
 import { DEFAULT_EXECUTION_IPC_TIMEOUT_MS, withIpcTimeout } from "./commands"
-import type { ApprovalRequest, WorkflowExecutionState } from "@/lib/workflow-execution"
-import { workflowTemplateContextsAtom } from "@/lib/store"
+import { getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
+import type {
+  ApprovalRequest,
+  ExecutionRunStatus,
+  ExecutionSurfaceNotice,
+  WorkflowExecutionState,
+  WorkflowNode,
+} from "@/lib/workflow-execution"
+import { inboxNotificationsAtom, workflowTemplateContextsAtom, type CreateInboxNotification } from "@/lib/store"
 import type { ActiveExecutionSnapshot, RunResult } from "@shared/types"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
@@ -19,6 +26,108 @@ interface UseExecutionControllerArgs {
   setPastRuns: (runs: RunResult[]) => void
 }
 
+function toInboxLevel(level: ExecutionSurfaceNotice["level"]): "info" | "success" | "warning" | "error" {
+  if (level === "error") return "error"
+  if (level === "warning") return "warning"
+  if (level === "success") return "success"
+  return "info"
+}
+
+function showExecutionToast(notice: ExecutionSurfaceNotice) {
+  if (notice.level === "error") {
+    toast.error(notice.title, { description: notice.description })
+    return
+  }
+  if (notice.level === "success") {
+    toast.success(notice.title, { description: notice.description })
+    return
+  }
+  toast(notice.title, { description: notice.description })
+}
+
+function getWorkflowNotificationAction(
+  state: Pick<WorkflowExecutionState, "runWorkflowPath" | "runOutcome">,
+) {
+  if (!state.runWorkflowPath) return undefined
+  return {
+    kind: "open_workflow" as const,
+    workflowPath: state.runWorkflowPath,
+    label: state.runOutcome === "completed" ? "Open workflow" : "Inspect workflow",
+  }
+}
+
+const APPROVAL_NOTIFICATION_KEY_PREFIX = "approval-needed:"
+
+function approvalTaskId(nodeId: string): string {
+  return `approval-${nodeId.replace(/[^a-zA-Z0-9-]/g, "_")}`
+}
+
+function toInboxTaskKey(workspace: string, taskId: string): string {
+  return `${workspace}::${taskId}`
+}
+
+function isRecoverableApprovalRun(status: ExecutionRunStatus): boolean {
+  return status === "starting" || status === "running" || status === "paused" || status === "cancelling"
+}
+
+function findWorkflowNode(state: WorkflowExecutionState, nodeId: string): WorkflowNode | null {
+  return state.workflowSnapshot?.nodes.find((node) => node.id === nodeId)
+    || state.runtimeNodes.find((node) => node.id === nodeId)
+    || null
+}
+
+export function buildPendingApprovalNotifications(
+  workflowExecutionStates: Record<string, WorkflowExecutionState>,
+): CreateInboxNotification[] {
+  const notifications: CreateInboxNotification[] = []
+
+  for (const [workflowKey, state] of Object.entries(workflowExecutionStates)) {
+    if (!state.workspace || !state.runId || !isRecoverableApprovalRun(state.runStatus)) {
+      continue
+    }
+
+    const nodes = state.workflowSnapshot?.nodes ?? state.runtimeNodes
+    const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
+    const pendingApprovals = Object.entries(state.nodeStates)
+      .filter(([, nodeState]) =>
+        nodeState.status === "waiting_approval"
+        && (!nodeState.humanTask || nodeState.humanTask.status === "open"),
+      )
+      .sort(([leftNodeId], [rightNodeId]) =>
+        (nodeOrder.get(leftNodeId) ?? Number.MAX_SAFE_INTEGER)
+        - (nodeOrder.get(rightNodeId) ?? Number.MAX_SAFE_INTEGER),
+      )
+
+    for (const [nodeId, nodeState] of pendingApprovals) {
+      const node = findWorkflowNode(state, nodeId)
+      const presentation = node ? getRuntimeStagePresentation(node, { fallbackId: nodeId }) : null
+      const taskId = nodeState.humanTask?.taskId || approvalTaskId(nodeId)
+      const taskKey = toInboxTaskKey(state.workspace, taskId)
+      const workflowName = state.workflowName || (workflowKey === "__draft__" ? "Draft workflow" : "Workflow")
+      const stageTitle = presentation?.title || nodeId
+      const stageGroup = presentation?.group
+
+      notifications.push({
+        title: `${stageTitle} needs review`,
+        description: stageGroup
+          ? `${workflowName} is waiting at ${stageGroup}. Open the inbox task to approve or reject this gate.`
+          : `${workflowName} is waiting for your approval. Open the inbox task to continue or stop the run.`,
+        level: "warning",
+        source: "workflow",
+        persistentKey: `${APPROVAL_NOTIFICATION_KEY_PREFIX}${taskKey}`,
+        action: {
+          kind: "open_inbox_task",
+          taskKey,
+          workflowPath: state.runWorkflowPath || undefined,
+          label: "Open review gate",
+        },
+      })
+    }
+  }
+
+  return notifications
+}
+
 export function useExecutionController({
   workflowExecutionStates,
   selectedProject,
@@ -27,7 +136,8 @@ export function useExecutionController({
   setPastRuns,
 }: UseExecutionControllerArgs): WorkflowExecutionController {
   const controllerRef = useRef<WorkflowExecutionController | null>(null)
-  const { addNotification } = useInboxNotifications()
+  const { addNotification, removeByPersistentKeys } = useInboxNotifications()
+  const inboxNotifications = useAtomValue(inboxNotificationsAtom)
   const workflowTemplateContexts = useAtomValue(workflowTemplateContextsAtom)
   const commitExecutionStateRef = useRef(commitExecutionState)
   const updateApprovalRequestsRef = useRef(updateApprovalRequests)
@@ -39,6 +149,11 @@ export function useExecutionController({
   setPastRunsRef.current = setPastRuns
   addNotificationRef.current = addNotification
   workflowTemplateContextsRef.current = workflowTemplateContexts
+
+  const pendingApprovalNotifications = useMemo(
+    () => buildPendingApprovalNotifications(workflowExecutionStates),
+    [workflowExecutionStates],
+  )
 
   if (!controllerRef.current) {
     controllerRef.current = createWorkflowExecutionController({
@@ -52,45 +167,35 @@ export function useExecutionController({
         setPastRunsRef.current(runs)
       },
       listRuns: (projectPath) => window.api.listRuns(projectPath),
-      onRunFailed: (message) => {
-        toast.error("Run failed", {
-          description: message,
-        })
+      onRunFailed: ({ state, message }) => {
+        const notice = state.surfaceNotice
+        if (notice) {
+          showExecutionToast(notice)
+        } else {
+          toast.error("Run failed", {
+            description: message,
+          })
+        }
         addNotificationRef.current({
-          title: "Run failed",
-          description: message,
-          level: "error",
+          title: notice?.title || "Run failed",
+          description: notice?.description || message,
+          level: notice ? toInboxLevel(notice.level) : "error",
           source: "workflow",
+          action: getWorkflowNotificationAction(state),
         })
       },
       onRunFinished: ({ workflowKey, state }) => {
-        if (state.runOutcome === "failed") return
         const templateContext = workflowTemplateContextsRef.current[workflowKey]
-        const workflowName = state.workflowName || "Workflow"
-        const title = state.runOutcome === "completed"
-          ? `Run completed: ${workflowName}`
-          : state.runOutcome === "cancelled"
-            ? `Run cancelled: ${workflowName}`
-            : state.runOutcome === "interrupted"
-              ? `Run interrupted: ${workflowName}`
-              : `Run finished: ${workflowName}`
-        const description = state.runOutcome === "completed"
-          ? templateContext?.pack?.recommendedNext?.length
-            ? "Saved outputs are ready. Open the workflow to continue the guided path."
-            : "Open the workflow to review the result and saved outputs."
-          : state.lastError || state.workspace || undefined
+        const notice = state.surfaceNotice
+        if (notice) {
+          showExecutionToast(notice)
+        }
         addNotificationRef.current({
-          title,
-          description,
-          level: state.runOutcome === "completed" ? "success" : state.runOutcome === "cancelled" ? "warning" : "error",
+          title: notice?.title || (state.workflowName || "Workflow"),
+          description: notice?.description || state.lastError || state.workspace || undefined,
+          level: notice ? toInboxLevel(notice.level) : "info",
           source: "workflow",
-          action: state.runWorkflowPath
-            ? {
-                kind: "open_workflow",
-                workflowPath: state.runWorkflowPath,
-                label: state.runOutcome === "completed" ? "Open workflow" : "Inspect workflow",
-              }
-            : undefined,
+          action: getWorkflowNotificationAction(state),
         })
 
         if (
@@ -141,7 +246,7 @@ export function useExecutionController({
             artifactPersistenceError: message,
           }))
           addNotificationRef.current({
-            title: `Artifact persistence failed: ${workflowName}`,
+            title: `Artifact persistence failed: ${state.workflowName || "Workflow"}`,
             description: message,
             level: "error",
             source: "workflow",
@@ -171,6 +276,29 @@ export function useExecutionController({
   useEffect(() => {
     controller.refreshPastRuns()
   }, [controller, selectedProject])
+
+  useEffect(() => {
+    for (const notification of pendingApprovalNotifications) {
+      addNotification(notification)
+    }
+
+    const activeKeys = new Set(
+      pendingApprovalNotifications
+        .map((notification) => notification.persistentKey)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    )
+    const staleKeys = inboxNotifications
+      .map((notification) => notification.persistentKey)
+      .filter((value): value is string =>
+        typeof value === "string"
+        && value.startsWith(APPROVAL_NOTIFICATION_KEY_PREFIX)
+        && !activeKeys.has(value),
+      )
+
+    if (staleKeys.length > 0) {
+      removeByPersistentKeys(staleKeys)
+    }
+  }, [addNotification, inboxNotifications, pendingApprovalNotifications, removeByPersistentKeys])
 
   useEffect(() => {
     window.api.getActiveExecutions().then((executions: ActiveExecutionSnapshot[]) => {

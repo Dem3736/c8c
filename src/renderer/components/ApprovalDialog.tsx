@@ -35,7 +35,9 @@ export function ApprovalDialog() {
   const queueCount = requests.length
   const requestExecutionState = useMemo(
     () => request
-      ? Object.values(executionStates).find((state) => state.runId === request.runId) || null
+      ? executionStates[request.workflowKey]
+        || Object.values(executionStates).find((state) => state.runId === request.runId)
+        || null
       : null,
     [executionStates, request],
   )

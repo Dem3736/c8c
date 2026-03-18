@@ -17,6 +17,16 @@ export type { EvalCriterion, EvaluationResult } from "@shared/types"
 
 export type ExecutionRunStatus = "idle" | "starting" | "running" | "paused" | "cancelling" | "done" | "error"
 export type ArtifactPersistenceStatus = "idle" | "saving" | "saved" | "error"
+export type ExecutionSurfaceNoticeLevel = "success" | "warning" | "error" | "info"
+export type ExecutionSurfaceNoticeActionTarget = "result" | "activity" | "inbox"
+
+export interface ExecutionSurfaceNotice {
+  level: ExecutionSurfaceNoticeLevel
+  title: string
+  description: string
+  actionLabel: string
+  actionTarget: ExecutionSurfaceNoticeActionTarget
+}
 
 export interface WorkflowExecutionState {
   runStatus: ExecutionRunStatus
@@ -44,9 +54,11 @@ export interface WorkflowExecutionState {
   artifactRecords: ArtifactRecord[]
   artifactPersistenceStatus: ArtifactPersistenceStatus
   artifactPersistenceError: string | null
+  surfaceNotice: ExecutionSurfaceNotice | null
 }
 
 export interface ApprovalRequest {
+  workflowKey: string
   runId: string
   nodeId: string
   content: string
@@ -69,6 +81,12 @@ export interface WorkflowExecutionTransition {
 export interface WorkflowInputAttachmentApi {
   readFileContent: (path: string, projectPath: string) => Promise<{ content: string; truncated?: boolean }>
   loadRunResult: (workspace: string) => Promise<LoadedRunResult | null>
+}
+
+export interface ResetWorkflowExecutionStateOptions {
+  clearReportPath?: boolean
+  clearSelectedPastRun?: boolean
+  preserveCompletedWork?: boolean
 }
 
 export const DRAFT_WORKFLOW_EXECUTION_KEY = "__draft__"
@@ -100,6 +118,7 @@ export function createEmptyWorkflowExecutionState(): WorkflowExecutionState {
     artifactRecords: [],
     artifactPersistenceStatus: "idle",
     artifactPersistenceError: null,
+    surfaceNotice: null,
   }
 }
 
@@ -109,6 +128,65 @@ export function toWorkflowExecutionKey(workflowPath: string | null): string {
 
 export function isRunInFlight(status: WorkflowExecutionState["runStatus"]): boolean {
   return status === "starting" || status === "running" || status === "paused" || status === "cancelling"
+}
+
+export function hasWorkflowExecutionInspectableResult(state: Pick<
+  WorkflowExecutionState,
+  "finalContent" | "reportPath" | "nodeStates"
+>): boolean {
+  if (state.finalContent.trim().length > 0) return true
+  if (state.reportPath !== null) return true
+  return Object.values(state.nodeStates).some((nodeState) => typeof nodeState.output?.content === "string")
+}
+
+export function buildExecutionSurfaceNotice(state: WorkflowExecutionState): ExecutionSurfaceNotice | null {
+  const hasResult = hasWorkflowExecutionInspectableResult(state)
+
+  if (state.runStatus === "done" && state.runOutcome === "completed") {
+    return {
+      level: "success",
+      title: "Run complete",
+      description: hasResult
+        ? "Result is ready to review from this workflow."
+        : "Activity is ready to review from this workflow.",
+      actionLabel: hasResult ? "View result" : "Open activity",
+      actionTarget: hasResult ? "result" : "activity",
+    }
+  }
+
+  if (state.runStatus === "done" && state.runOutcome === "blocked") {
+    return {
+      level: "warning",
+      title: "Needs review",
+      description: "Approval or structured input is required before the workflow can continue.",
+      actionLabel: "Open inbox",
+      actionTarget: "inbox",
+    }
+  }
+
+  if (state.runStatus === "done" && state.runOutcome === "cancelled") {
+    return {
+      level: "warning",
+      title: "Run cancelled",
+      description: hasResult
+        ? "The workflow stopped before it finished, but partial result is still available to review."
+        : "The workflow stopped before it finished. Inspect activity to review the last completed stage.",
+      actionLabel: hasResult ? "View partial result" : "Open activity",
+      actionTarget: hasResult ? "result" : "activity",
+    }
+  }
+
+  if ((state.runStatus === "done" && (state.runOutcome === "failed" || state.runOutcome === "interrupted")) || state.runStatus === "error") {
+    return {
+      level: "error",
+      title: "Run needs attention",
+      description: state.lastError || "The workflow did not finish successfully. Inspect activity to review the failure.",
+      actionLabel: "Open activity",
+      actionTarget: "activity",
+    }
+  }
+
+  return null
 }
 
 function createPendingNodeState(): NodeState {
@@ -155,6 +233,7 @@ export function createExecutionStartState(
     artifactRecords: [],
     artifactPersistenceStatus: "idle",
     artifactPersistenceError: null,
+    surfaceNotice: null,
   }
 }
 
@@ -171,16 +250,55 @@ export function createCancelledExecutionState(
     }
   }
 
-  return {
+  const nextState: WorkflowExecutionState = {
     ...previousState,
     runStatus: "done",
     runOutcome: "cancelled",
     runStartedAt: null,
     completedAt,
     runId: null,
-    runWorkflowPath: null,
     activeNodeId: null,
     nodeStates,
+    surfaceNotice: null,
+  }
+
+  return {
+    ...nextState,
+    surfaceNotice: buildExecutionSurfaceNotice(nextState),
+  }
+}
+
+export function resetWorkflowExecutionState(
+  previousState: WorkflowExecutionState,
+  {
+    clearReportPath = false,
+    clearSelectedPastRun = false,
+    preserveCompletedWork = false,
+  }: ResetWorkflowExecutionStateOptions = {},
+): WorkflowExecutionState {
+  return {
+    ...previousState,
+    runStatus: "idle",
+    runStartedAt: null,
+    runId: null,
+    activeNodeId: null,
+    surfaceNotice: null,
+    runOutcome: preserveCompletedWork ? previousState.runOutcome : null,
+    completedAt: preserveCompletedWork ? previousState.completedAt : null,
+    runWorkflowPath: preserveCompletedWork ? previousState.runWorkflowPath : null,
+    lastError: preserveCompletedWork ? previousState.lastError : null,
+    nodeStates: preserveCompletedWork ? previousState.nodeStates : {},
+    inspectedNodeId: preserveCompletedWork ? previousState.inspectedNodeId : null,
+    evalResults: preserveCompletedWork ? previousState.evalResults : {},
+    finalContent: preserveCompletedWork ? previousState.finalContent : "",
+    reportPath: preserveCompletedWork && !clearReportPath ? previousState.reportPath : null,
+    selectedPastRun: clearSelectedPastRun ? null : previousState.selectedPastRun,
+    runtimeNodes: preserveCompletedWork ? previousState.runtimeNodes : [],
+    runtimeEdges: preserveCompletedWork ? previousState.runtimeEdges : [],
+    runtimeMeta: preserveCompletedWork ? previousState.runtimeMeta : {},
+    artifactRecords: preserveCompletedWork ? previousState.artifactRecords : [],
+    artifactPersistenceStatus: preserveCompletedWork ? previousState.artifactPersistenceStatus : "idle",
+    artifactPersistenceError: preserveCompletedWork ? previousState.artifactPersistenceError : null,
   }
 }
 
@@ -244,12 +362,17 @@ export function reduceWorkflowExecutionEvent(
 
     case "node-error":
       if (event.nodeId === "__global") {
+        const nextState: WorkflowExecutionState = {
+          ...previousState,
+          runStatus: "error",
+          activeNodeId: null,
+          lastError: event.error || "Workflow execution failed.",
+          surfaceNotice: null,
+        }
         return {
           nextState: {
-            ...previousState,
-            runStatus: "error",
-            activeNodeId: null,
-            lastError: event.error || "Workflow execution failed.",
+            ...nextState,
+            surfaceNotice: buildExecutionSurfaceNotice(nextState),
           },
           effects: {
             runFailedMessage: event.error || "Workflow execution failed.",
@@ -384,18 +507,23 @@ export function reduceWorkflowExecutionEvent(
       }
 
     case "run-done":
+      const nextState: WorkflowExecutionState = {
+        ...previousState,
+        runStatus: event.status === "completed" || event.status === "cancelled" || event.status === "blocked" ? "done" : "error",
+        runOutcome: event.status,
+        runStartedAt: null,
+        completedAt,
+        runId: null,
+        runWorkflowPath: previousState.runWorkflowPath,
+        activeNodeId: null,
+        reportPath: event.reportPath || previousState.reportPath,
+        workspace: event.workspace || previousState.workspace,
+        surfaceNotice: null,
+      }
       return {
         nextState: {
-          ...previousState,
-          runStatus: event.status === "completed" || event.status === "cancelled" || event.status === "blocked" ? "done" : "error",
-          runOutcome: event.status,
-          runStartedAt: null,
-          completedAt,
-          runId: null,
-          runWorkflowPath: null,
-          activeNodeId: null,
-          reportPath: event.reportPath || previousState.reportPath,
-          workspace: event.workspace || previousState.workspace,
+          ...nextState,
+          surfaceNotice: buildExecutionSurfaceNotice(nextState),
         },
         effects: {
           refreshPastRuns: true,

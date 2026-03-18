@@ -255,7 +255,7 @@ export function MultiRunDashboard() {
     return Object.entries(workflowExecutionStates)
       .filter(([, state]) => isDashboardVisibleState(state))
       .map(([workflowKey, state]): DashboardEntry => {
-        const matchingRequests = approvalRequests.filter((request) => request.runId === state.runId)
+        const matchingRequests = approvalRequests.filter((request) => request.workflowKey === workflowKey)
         const workflowPath = workflowKey === "__draft__" ? null : workflowKey
         const matchingPastRun = state.workspace
           ? historyByWorkspace.get(state.workspace)

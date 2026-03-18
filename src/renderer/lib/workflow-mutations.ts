@@ -532,13 +532,19 @@ function rebuildLinearWorkflowWithMiddleNodes(
 }
 
 export function isLinearChainReorderSafe(workflow: Workflow): boolean {
+  return getLinearChainReorderBlockReason(workflow) === null
+}
+
+export function getLinearChainReorderBlockReason(workflow: Workflow): string | null {
   const inputNodes = workflow.nodes.filter((node) => node.type === "input")
   const outputNodes = workflow.nodes.filter((node) => node.type === "output")
-  if (inputNodes.length !== 1 || outputNodes.length !== 1) return false
+  if (inputNodes.length !== 1 || outputNodes.length !== 1) {
+    return "Reordering is only available for linear workflows."
+  }
 
   // Reorder in list mode must not flatten fan-out/fan-in topology.
   if (workflow.nodes.some((node) => node.type === "splitter" || node.type === "merger")) {
-    return false
+    return "Reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows."
   }
 
   const nodeIds = new Set(workflow.nodes.map((node) => node.id))
@@ -547,9 +553,13 @@ export function isLinearChainReorderSafe(workflow: Workflow): boolean {
   let nonFailEdges = 0
 
   for (const edge of workflow.edges) {
-    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) return false
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      return "Reordering is only available for linear workflows."
+    }
     if (edge.type === "fail") {
-      if (edge.source === edge.target) return false
+      if (edge.source === edge.target) {
+        return "Reordering is only available for linear workflows."
+      }
       continue
     }
 
@@ -558,23 +568,65 @@ export function isLinearChainReorderSafe(workflow: Workflow): boolean {
     const incomingCount = (incoming.get(edge.target) || 0) + 1
     outgoing.set(edge.source, outgoingCount)
     incoming.set(edge.target, incomingCount)
-    if (outgoingCount > 1 || incomingCount > 1) return false
+    if (outgoingCount > 1 || incomingCount > 1) {
+      return "Reordering is only available for linear workflows."
+    }
   }
 
-  if (nonFailEdges !== workflow.nodes.length - 1) return false
+  if (nonFailEdges !== workflow.nodes.length - 1) {
+    return "Reordering is only available for linear workflows."
+  }
 
   const inputId = inputNodes[0].id
   const outputId = outputNodes[0].id
-  if ((incoming.get(inputId) || 0) !== 0) return false
-  if ((outgoing.get(outputId) || 0) !== 0) return false
+  if ((incoming.get(inputId) || 0) !== 0) {
+    return "Reordering is only available for linear workflows."
+  }
+  if ((outgoing.get(outputId) || 0) !== 0) {
+    return "Reordering is only available for linear workflows."
+  }
 
   for (const node of workflow.nodes) {
     if (node.id === inputId || node.id === outputId) continue
-    if ((incoming.get(node.id) || 0) !== 1) return false
-    if ((outgoing.get(node.id) || 0) !== 1) return false
+    if ((incoming.get(node.id) || 0) !== 1) {
+      return "Reordering is only available for linear workflows."
+    }
+    if ((outgoing.get(node.id) || 0) !== 1) {
+      return "Reordering is only available for linear workflows."
+    }
   }
 
-  return true
+  return null
+}
+
+export function getMiddleNodeMoveBlockedReason(
+  workflow: Workflow,
+  nodeId: string,
+  direction: "up" | "down",
+): string | null {
+  const reorderBlockReason = getLinearChainReorderBlockReason(workflow)
+  if (reorderBlockReason) return reorderBlockReason
+
+  const node = workflow.nodes.find((candidate) => candidate.id === nodeId)
+  if (!node || node.type === "input" || node.type === "output") {
+    return "Only editable steps can be reordered."
+  }
+
+  const middleNodes = workflow.nodes.filter((candidate) => candidate.type !== "input" && candidate.type !== "output")
+  const sourceIndex = middleNodes.findIndex((candidate) => candidate.id === nodeId)
+  if (sourceIndex < 0) {
+    return "Only editable steps can be reordered."
+  }
+
+  const targetIndex = direction === "up" ? sourceIndex - 1 : sourceIndex + 1
+  if (targetIndex < 0) {
+    return "This step is already the first editable step."
+  }
+  if (targetIndex >= middleNodes.length) {
+    return "This step is already the last editable step."
+  }
+
+  return null
 }
 
 export function moveMiddleNodeByDirection(

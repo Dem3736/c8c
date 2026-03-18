@@ -6,8 +6,10 @@ import {
   Controls,
   MiniMap,
   type Connection,
+  type FinalConnectionState,
   type NodeTypes,
   type EdgeTypes,
+  type OnConnectStartParams,
   type ReactFlowInstance,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
@@ -71,6 +73,10 @@ const edgeTypes: EdgeTypes = {
 
 const CONNECTION_LINE_STYLE = { stroke: "hsl(var(--hairline))", strokeWidth: 1.5, strokeDasharray: "6 4" }
 const PRO_OPTIONS = { hideAttribution: true }
+const READ_ONLY_EDITOR_REASON = "This workflow is read-only."
+const RUNNING_EDITOR_REASON = "Cannot edit the workflow while a run is in progress."
+const PROTECTED_STEP_REASON = "Input and output steps cannot be removed."
+const SELF_CONNECTION_REASON = "Cannot connect a step to itself."
 
 interface CanvasViewProps {
   readOnly?: boolean
@@ -142,6 +148,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [pendingInsertPosition, setPendingInsertPosition] = useState<NodePosition | null>(null)
+  const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null)
   const [canvasContextMenu, setCanvasContextMenu] = useState<{
     x: number
     y: number
@@ -295,11 +302,11 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
   const canDeleteSelectedEdge = Boolean(selectedEdgeId && !readOnly && !isRunning)
   const canDeleteSelection = canDeleteSelectedNode || canDeleteSelectedEdge
   const selectedSummaryLabel = selectedNodeIds.length > 1
-    ? `${selectedNodeIds.length} nodes selected`
+    ? `${selectedNodeIds.length} steps selected`
     : selectedTemplateNode
       ? getWorkflowNodeLabel(selectedTemplateNode)
       : selectedEdgeId
-        ? "Edge selected"
+        ? "Connection selected"
         : null
   const contextNode = canvasContextMenu?.scope === "node" && canvasContextMenu.nodeId
     ? workflow.nodes.find((node) => node.id === canvasContextMenu.nodeId) || null
@@ -312,12 +319,14 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
     && !isRunning,
   )
 
-  const removeSelectedNode = useCallback(() => {
-    if (!selectedNodeId || readOnly || isRunning) return
+  const removeNodeWithUndo = useCallback((nodeId: string) => {
+    if (readOnly || isRunning) return
     const previousWorkflow = cloneWorkflow(workflow)
-    setWorkflow((prev) => removeNodeAndRewireWorkflow(prev, selectedNodeId))
-    setSelectedNodeId(null)
-    toast.success("Node removed", {
+    setWorkflow((prev) => removeNodeAndRewireWorkflow(prev, nodeId))
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId(null)
+    }
+    toast.success("Step removed", {
       duration: Infinity,
       action: {
         label: "Undo",
@@ -325,6 +334,11 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
       },
     })
   }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow, setWorkflowDirect, workflow])
+
+  const removeSelectedNode = useCallback(() => {
+    if (!selectedNodeId || readOnly || isRunning) return
+    removeNodeWithUndo(selectedNodeId)
+  }, [isRunning, readOnly, removeNodeWithUndo, selectedNodeId])
 
   const removeSelectedEdge = useCallback(() => {
     if (!selectedEdgeId || readOnly || isRunning) return
@@ -357,7 +371,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
       })
       setSelectedNodeId(null)
       setSelectedNodeIds([])
-      toast.success(`${deletableIds.length} nodes removed`, {
+      toast.success(`${deletableIds.length} steps removed`, {
         duration: Infinity,
         action: {
           label: "Undo",
@@ -377,11 +391,8 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
 
   const removeNodeById = useCallback((nodeId: string) => {
     if (readOnly || isRunning) return
-    setWorkflow((prev) => removeNodeAndRewireWorkflow(prev, nodeId))
-    if (selectedNodeId === nodeId) {
-      setSelectedNodeId(null)
-    }
-  }, [isRunning, readOnly, selectedNodeId, setSelectedNodeId, setWorkflow])
+    removeNodeWithUndo(nodeId)
+  }, [isRunning, readOnly, removeNodeWithUndo])
 
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: Array<{ id: string }>; edges: Array<{ id: string }> }) => {
@@ -421,6 +432,41 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
     },
     [isRunning, readOnly, setWorkflow],
   )
+
+  const onConnectStart = useCallback((_: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+    setConnectionStart(params)
+  }, [])
+
+  const onConnectEnd = useCallback((_: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+    if (
+      connectionStart?.nodeId
+      && connectionState.isValid === false
+      && connectionState.toNode?.id === connectionStart.nodeId
+    ) {
+      toast.warning(SELF_CONNECTION_REASON, { duration: 8000 })
+    }
+    setConnectionStart(null)
+  }, [connectionStart])
+
+  const addStepDisabledReason = readOnly
+    ? READ_ONLY_EDITOR_REASON
+    : isRunning
+      ? RUNNING_EDITOR_REASON
+      : null
+  const deleteSelectionDisabledReason = canDeleteSelection
+    ? null
+    : selectedTemplateNode && (selectedTemplateNode.type === "input" || selectedTemplateNode.type === "output")
+      ? PROTECTED_STEP_REASON
+      : "Select a step or connection to delete."
+  const deleteContextNodeDisabledReason = !contextNode
+    ? null
+    : readOnly
+      ? READ_ONLY_EDITOR_REASON
+      : isRunning
+        ? RUNNING_EDITOR_REASON
+        : contextNode.type === "input" || contextNode.type === "output"
+          ? PROTECTED_STEP_REASON
+          : null
 
   useEffect(() => {
     if (readOnly || isRunning) return
@@ -503,6 +549,8 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
         selectionOnDrag
         onSelectionChange={handleSelectionChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
         connectionRadius={12}
         connectionLineStyle={CONNECTION_LINE_STYLE}
@@ -561,20 +609,14 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
           size="sm"
           aria-label="Add skill step"
           disabled={readOnly || isRunning}
-          title={
-            readOnly
-              ? "Canvas is read-only."
-              : isRunning
-                ? "Cannot add nodes while a run is in progress."
-                : undefined
-          }
+          title={addStepDisabledReason || undefined}
           onClick={() => {
             setPendingInsertPosition(null)
             setPickerOpen(true)
           }}
         >
           <Plus size={14} />
-          Add Skill
+          Add skill step
         </Button>
 
         <Button
@@ -608,16 +650,14 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Delete selected item"
+          aria-label="Delete selected step or connection"
           onClick={removeSelection}
           disabled={!canDeleteSelection}
           className="text-muted-foreground enabled:hover:text-status-danger"
           title={
             canDeleteSelection
-              ? "Delete selected node or edge"
-              : selectedTemplateNode && (selectedTemplateNode.type === "input" || selectedTemplateNode.type === "output")
-                ? "Input and output nodes cannot be removed."
-                : "Select a node or edge to delete."
+              ? "Delete selected step or connection"
+              : deleteSelectionDisabledReason || undefined
           }
         >
           <Trash2 size={14} />
@@ -630,13 +670,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
               size="sm"
               className="w-48 justify-between bg-surface-1/90"
               disabled={readOnly || isRunning}
-              title={
-                readOnly
-                  ? "Canvas is read-only."
-                  : isRunning
-                    ? "Cannot add nodes while a run is in progress."
-                    : undefined
-              }
+              title={addStepDisabledReason || undefined}
             >
               <span className="inline-flex min-w-0 flex-1 items-center gap-2">
                 <GitFork size={14} />
@@ -752,7 +786,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
               size="sm"
               onClick={removeSelection}
               className="gap-1.5 text-muted-foreground hover:text-status-danger"
-              title="Delete selected node or edge"
+              title="Delete selected step or connection"
             >
               <Trash2 size={13} />
               Delete
@@ -801,7 +835,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
                 setCanvasContextMenu(null)
               }}
             >
-              Add Skill
+              Add skill step
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={readOnly || isRunning || !hasSkillNodes}
@@ -852,25 +886,25 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
         )}
         {canvasContextMenu?.scope === "node" && contextNode && (
           <>
-            <DropdownMenuLabel>{contextNode.type} node</DropdownMenuLabel>
+            <DropdownMenuLabel>{contextNode.type} step</DropdownMenuLabel>
             <DropdownMenuItem
               onSelect={() => {
                 setSelectedNodeId(contextNode.id)
                 setCanvasContextMenu(null)
               }}
             >
-              Select node
+              Select step
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!canDeleteContextNode}
-              title={!canDeleteContextNode && contextNode ? "Input and output nodes cannot be removed." : undefined}
+              title={deleteContextNodeDisabledReason || undefined}
               onSelect={() => {
                 if (!canDeleteContextNode) return
                 removeNodeById(contextNode.id)
                 setCanvasContextMenu(null)
               }}
             >
-              Delete node
+              Delete step
             </DropdownMenuItem>
           </>
         )}

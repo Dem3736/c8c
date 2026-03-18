@@ -3,17 +3,17 @@ import { useAtomValue, useSetAtom } from "jotai"
 import {
   addInboxNotificationAtom,
   clearInboxNotificationsAtom,
+  removeInboxNotificationsByPersistentKeysAtom,
   markAllInboxNotificationsReadAtom,
   markInboxNotificationReadAtom,
   unreadInboxCountAtom,
-  type InboxNotification,
+  type CreateInboxNotification,
 } from "@/lib/store"
-
-type CreateInboxNotification = Omit<InboxNotification, "id" | "createdAt" | "read">
 
 export function useInboxNotifications() {
   const unreadCount = useAtomValue(unreadInboxCountAtom)
   const addInboxNotification = useSetAtom(addInboxNotificationAtom)
+  const removeNotificationsByPersistentKeys = useSetAtom(removeInboxNotificationsByPersistentKeysAtom)
   const markRead = useSetAtom(markInboxNotificationReadAtom)
   const markAllRead = useSetAtom(markAllInboxNotificationsReadAtom)
   const clearAll = useSetAtom(clearInboxNotificationsAtom)
@@ -22,15 +22,20 @@ export function useInboxNotifications() {
     (notification: CreateInboxNotification) => addInboxNotification(notification),
     [addInboxNotification],
   )
+  const removeByPersistentKeys = useCallback(
+    (persistentKeys: readonly string[]) => removeNotificationsByPersistentKeys(persistentKeys),
+    [removeNotificationsByPersistentKeys],
+  )
 
   return useMemo(
     () => ({
       unreadCount,
       addNotification,
+      removeByPersistentKeys,
       markRead,
       markAllRead,
       clearAll,
     }),
-    [unreadCount, addNotification, markRead, markAllRead, clearAll],
+    [unreadCount, addNotification, removeByPersistentKeys, markRead, markAllRead, clearAll],
   )
 }

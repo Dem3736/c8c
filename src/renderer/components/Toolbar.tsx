@@ -104,7 +104,7 @@ export function Toolbar({
   const [runId] = useAtom(runIdAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [, setMainView] = useAtom(mainViewAtom)
-  const [, setViewMode] = useAtom(viewModeAtom)
+  const [viewMode, setViewMode] = useAtom(viewModeAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const [sidebarOpen] = useAtom(projectSidebarOpenAtom)
   const [workflowReviewMode] = useAtom(workflowReviewModeAtom)
@@ -269,7 +269,7 @@ export function Toolbar({
   }
 
   const navigateToValidationIssue = useCallback((issue: (typeof workflowValidation)[number]) => {
-    const target = resolveValidationNavigationTarget(workflow, issue)
+    const target = resolveValidationNavigationTarget(workflow, issue, viewMode)
     setViewMode(target.viewMode)
     setSelectedNodeId(target.nodeId)
     setValidationNavigationTarget(
@@ -281,7 +281,18 @@ export function Toolbar({
           }
         : null,
     )
-  }, [setSelectedNodeId, setValidationNavigationTarget, setViewMode, workflow])
+  }, [setSelectedNodeId, setValidationNavigationTarget, setViewMode, viewMode, workflow])
+
+  const revealRunBlocker = useCallback(() => {
+    if (!runDisabledReason) return
+    const firstBlockingIssue = workflowValidation.find((issue) => issue.severity === "error") || null
+    toast.warning("Run blocked", {
+      description: firstBlockingIssue?.message || runDisabledReason,
+    })
+    if (firstBlockingIssue) {
+      navigateToValidationIssue(firstBlockingIssue)
+    }
+  }, [navigateToValidationIssue, runDisabledReason, workflowValidation])
 
   const deleteLabel =
     workflowPath
@@ -497,6 +508,8 @@ export function Toolbar({
         void onCancel()
       } else if (canRun) {
         void handleRunWithValidation("edit")
+      } else {
+        revealRunBlocker()
       }
     }
 
@@ -504,7 +517,7 @@ export function Toolbar({
     return () => {
       window.removeEventListener("keydown", handler)
     }
-  }, [canRun, desktopRuntime.primaryModifierKey, handlePrimarySave, isRunning, onCancel, onRun, setChatOpen, setMainView, workflowDirty])
+  }, [canRun, desktopRuntime.primaryModifierKey, handlePrimarySave, isRunning, onCancel, onRun, revealRunBlocker, setChatOpen, setMainView, workflowDirty])
 
   return (
     <>
@@ -900,12 +913,20 @@ export function Toolbar({
         )}
       >
         <div className="ui-collapsible-inner">
-          <div className="px-3 py-1 ui-meta-text text-muted-foreground bg-surface-1/70">
+                  <div className="px-3 py-1 ui-meta-text text-muted-foreground bg-surface-1/70">
             {runDisabledReason || ""}
             {hasBlockingErrors && (
-              <ul className="mt-1 list-disc list-inside">
+              <ul className="mt-1 space-y-1">
                 {workflowValidation.filter((e) => e.severity === "error").map((e) => (
-                  <li key={`${e.nodeId}-${e.field}`}>{e.message}</li>
+                  <li key={`${e.nodeId}-${e.field}`}>
+                    <button
+                      type="button"
+                      onClick={() => navigateToValidationIssue(e)}
+                      className="text-left text-status-danger underline-offset-2 hover:underline"
+                    >
+                      {e.message}
+                    </button>
+                  </li>
                 ))}
               </ul>
             )}

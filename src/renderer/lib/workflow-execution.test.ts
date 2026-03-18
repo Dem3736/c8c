@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest"
 import type { RunResult, Workflow } from "@shared/types"
 import {
   assembleInputWithAttachments,
+  buildExecutionSurfaceNotice,
   createCancelledExecutionState,
   createEmptyWorkflowExecutionState,
   createExecutionStartState,
+  hasWorkflowExecutionInspectableResult,
+  resetWorkflowExecutionState,
   reduceWorkflowExecutionEvent,
 } from "./workflow-execution"
 
@@ -247,6 +250,7 @@ describe("workflow execution state", () => {
       runWorkflowPath: "/tmp/research.chain",
       activeNodeId: "output",
       reportPath: "/tmp/old-report.md",
+      finalContent: "Final answer",
     }
 
     const transition = reduceWorkflowExecutionEvent(
@@ -266,9 +270,17 @@ describe("workflow execution state", () => {
     expect(transition.nextState.runOutcome).toBe("completed")
     expect(transition.nextState.completedAt).toBe(999)
     expect(transition.nextState.runId).toBeNull()
+    expect(transition.nextState.runWorkflowPath).toBe("/tmp/research.chain")
     expect(transition.nextState.activeNodeId).toBeNull()
     expect(transition.nextState.reportPath).toBe("/tmp/new-report.md")
     expect(transition.nextState.workspace).toBe("/tmp/run-workspace")
+    expect(transition.nextState.surfaceNotice).toEqual({
+      level: "success",
+      title: "Run complete",
+      description: "Result is ready to review from this workflow.",
+      actionLabel: "View result",
+      actionTarget: "result",
+    })
     expect(transition.effects.refreshPastRuns).toBe(true)
     expect(transition.effects.runFinished).toBe(true)
   })
@@ -315,8 +327,18 @@ describe("workflow execution state", () => {
       runId: "run-1",
       runWorkflowPath: "/tmp/research.chain",
       activeNodeId: "output",
+      finalContent: "Partial answer",
+      reportPath: "/tmp/partial-report.md",
       nodeStates: {
-        input: { status: "completed" as const, attempts: 1, log: [] },
+        input: {
+          status: "completed" as const,
+          attempts: 1,
+          log: [],
+          output: {
+            content: "Partial answer",
+            metadata: { source: "output" },
+          },
+        },
         branch: { status: "running" as const, attempts: 0, log: [] },
         approval: { status: "waiting_approval" as const, attempts: 0, log: [] },
         review: { status: "waiting_human" as const, attempts: 0, log: [] },
@@ -328,11 +350,21 @@ describe("workflow execution state", () => {
     expect(nextState.runStatus).toBe("done")
     expect(nextState.runOutcome).toBe("cancelled")
     expect(nextState.runId).toBeNull()
+    expect(nextState.runWorkflowPath).toBe("/tmp/research.chain")
     expect(nextState.activeNodeId).toBeNull()
+    expect(nextState.finalContent).toBe("Partial answer")
+    expect(nextState.reportPath).toBe("/tmp/partial-report.md")
     expect(nextState.nodeStates.branch.status).toBe("skipped")
     expect(nextState.nodeStates.approval.status).toBe("skipped")
     expect(nextState.nodeStates.review.status).toBe("skipped")
     expect(nextState.nodeStates.input.status).toBe("completed")
+    expect(nextState.surfaceNotice).toEqual({
+      level: "warning",
+      title: "Run cancelled",
+      description: "The workflow stopped before it finished, but partial result is still available to review.",
+      actionLabel: "View partial result",
+      actionTarget: "result",
+    })
   })
 
   it("keeps cancelling visible while late node activity arrives", () => {
@@ -355,6 +387,136 @@ describe("workflow execution state", () => {
     expect(transition.nextState.runStatus).toBe("cancelling")
     expect(transition.nextState.activeNodeId).toBe("output")
     expect(transition.nextState.nodeStates.output.status).toBe("running")
+  })
+
+  it("builds an inbox-oriented notice for blocked runs", () => {
+    const notice = buildExecutionSurfaceNotice({
+      ...createEmptyWorkflowExecutionState(),
+      runStatus: "done",
+      runOutcome: "blocked",
+    })
+
+    expect(notice).toEqual({
+      level: "warning",
+      title: "Needs review",
+      description: "Approval or structured input is required before the workflow can continue.",
+      actionLabel: "Open inbox",
+      actionTarget: "inbox",
+    })
+  })
+
+  it("falls back to activity when a completed run has no inspectable result artifact", () => {
+    const notice = buildExecutionSurfaceNotice({
+      ...createEmptyWorkflowExecutionState(),
+      runStatus: "done",
+      runOutcome: "completed",
+      finalContent: "",
+      reportPath: null,
+      nodeStates: {},
+    })
+
+    expect(notice).toEqual({
+      level: "success",
+      title: "Run complete",
+      description: "Activity is ready to review from this workflow.",
+      actionLabel: "Open activity",
+      actionTarget: "activity",
+    })
+  })
+
+  it("resets into idle without wiping inspectable work when requested", () => {
+    const previousState = {
+      ...createEmptyWorkflowExecutionState(),
+      runStatus: "done" as const,
+      runOutcome: "cancelled" as const,
+      completedAt: 999,
+      runWorkflowPath: "/tmp/research.chain",
+      workflowName: "Research flow",
+      projectPath: "/tmp/project",
+      lastError: "Stopped by user",
+      inspectedNodeId: "input",
+      finalContent: "Partial answer",
+      reportPath: "/tmp/partial-report.md",
+      selectedPastRun: createPastRun(),
+      runtimeNodes: createWorkflow().nodes,
+      runtimeEdges: createWorkflow().edges,
+      runtimeMeta: {
+        input: {
+          subtaskKey: "alpha",
+          branchIndex: 0,
+          totalBranches: 1,
+          templateId: "input",
+        },
+      },
+      artifactRecords: [
+        {
+          id: "artifact-1",
+          title: "Spec draft",
+          kind: "document",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/run-workspace",
+          runId: "run-1",
+          relativePath: "spec.md",
+          contentPath: "/tmp/spec.md",
+          metadataPath: "/tmp/spec.meta.json",
+          createdAt: 100,
+          updatedAt: 100,
+        },
+      ],
+      artifactPersistenceStatus: "saved" as const,
+      nodeStates: {
+        input: {
+          status: "completed",
+          attempts: 1,
+          log: [],
+          output: {
+            content: "Partial answer",
+            metadata: { source: "output" },
+          },
+        },
+      },
+      surfaceNotice: {
+        level: "warning",
+        title: "Run cancelled",
+        description: "The workflow stopped before it finished, but partial result is still available to review.",
+        actionLabel: "View partial result",
+        actionTarget: "result",
+      },
+    }
+
+    const nextState = resetWorkflowExecutionState(previousState, {
+      preserveCompletedWork: true,
+    })
+
+    expect(nextState.runStatus).toBe("idle")
+    expect(nextState.runId).toBeNull()
+    expect(nextState.activeNodeId).toBeNull()
+    expect(nextState.surfaceNotice).toBeNull()
+    expect(nextState.runOutcome).toBe("cancelled")
+    expect(nextState.finalContent).toBe("Partial answer")
+    expect(nextState.reportPath).toBe("/tmp/partial-report.md")
+    expect(nextState.nodeStates.input.output?.content).toBe("Partial answer")
+    expect(nextState.runtimeNodes).toEqual(createWorkflow().nodes)
+    expect(nextState.artifactRecords).toHaveLength(1)
+    expect(nextState.selectedPastRun).toEqual(createPastRun())
+  })
+
+  it("detects inspectable output from node results", () => {
+    expect(hasWorkflowExecutionInspectableResult({
+      finalContent: "",
+      reportPath: null,
+      nodeStates: {
+        output: {
+          status: "completed",
+          attempts: 1,
+          log: [],
+          output: {
+            content: "Artifact body",
+            metadata: { source: "output" },
+          },
+        },
+      },
+    })).toBe(true)
   })
 })
 

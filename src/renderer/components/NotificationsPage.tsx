@@ -478,6 +478,12 @@ export function NotificationsPage() {
     if (notification.action.kind === "open_workflow") {
       await openWorkflowPath(notification.action.workflowPath)
       markRead(notification.id)
+      return
+    }
+    if (notification.action.kind === "open_inbox_task") {
+      setSelectedTaskId(notification.action.taskKey)
+      setMainView("inbox")
+      markRead(notification.id)
     }
   }
 

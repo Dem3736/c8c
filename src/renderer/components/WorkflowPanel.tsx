@@ -38,6 +38,7 @@ import {
   runtimeMetaAtom,
   runtimeNodesAtom,
   selectedPastRunAtom,
+  surfaceNoticeAtom,
   workflowHistoryRunsAtom,
 } from "@/features/execution"
 import { resolveWorkflowInput } from "@/lib/input-type"
@@ -91,6 +92,7 @@ import {
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 import type { ArtifactContract, ArtifactRecord, WorkflowTemplate } from "@shared/types"
 import { buildRunProgressSummary, formatElapsedTime, type RunProgressSummary } from "@/lib/run-progress"
+import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
 
 function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
   return (
@@ -415,6 +417,7 @@ export function WorkflowPanel() {
   const [runStatus] = useAtom(runStatusAtom)
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
   const [runtimeNodes] = useAtom(runtimeNodesAtom)
+  const [surfaceNotice, setSurfaceNotice] = useAtom(surfaceNoticeAtom)
   const [pendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [workflowEntryState, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const [, setWorkflowReviewMode] = useAtom(workflowReviewModeAtom)
@@ -436,10 +439,9 @@ export function WorkflowPanel() {
   const [outputTabRequest, setOutputTabRequest] = useState<{ tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null>(null)
   const [flowSurfaceMode, setFlowSurfaceMode] = useAtom(flowSurfaceModeAtom)
   const previousRunStatusRef = useRef(runStatus)
-  const completionToastRef = useRef<string | null>(null)
   const completionSurfaceRef = useRef<string | null>(null)
   const pendingListAutoScrollRef = useRef(false)
-  const resetExecution = useExecutionReset({ clearReportPath: true })
+  const resetExecution = useExecutionReset({ preserveCompletedWork: true })
 
   useWorkflowReset()
   useWorkflowValidation()
@@ -711,6 +713,24 @@ export function WorkflowPanel() {
     requestOutputTab(hasResult ? "result" : "nodes")
   }, [hasResult, requestOutputTab])
 
+  const handleSurfaceNoticeAction = useCallback(() => {
+    if (!surfaceNotice) return
+    if (surfaceNotice.actionTarget === "result") {
+      openResult()
+      setSurfaceNotice(null)
+      return
+    }
+    if (surfaceNotice.actionTarget === "activity") {
+      openActivity()
+      setSurfaceNotice(null)
+      return
+    }
+    if (surfaceNotice.actionTarget === "inbox") {
+      setMainView("inbox")
+      setSurfaceNotice(null)
+    }
+  }, [openActivity, openResult, setMainView, setSurfaceNotice, surfaceNotice])
+
   const focusInputPanel = useCallback(() => {
     const inputPanel = inputPanelRef.current
     if (!inputPanel) return
@@ -794,62 +814,6 @@ export function WorkflowPanel() {
   ])
 
   useEffect(() => {
-    if (runOutcome !== "completed") return
-
-    const waitingForArtifactContinuation = Boolean(selectedWorkflowTemplateContext?.contractOut?.length)
-      && artifactPersistenceStatus === "saving"
-    if (waitingForArtifactContinuation) return
-
-    const toastKey = nextStageTemplate
-      ? `${selectedWorkflowPath ?? "__draft__"}:${runId || "completed"}:next:${nextStageTemplate.id}`
-      : `${selectedWorkflowPath ?? "__draft__"}:${runId || "completed"}:result`
-    if (completionToastRef.current === toastKey) return
-    completionToastRef.current = toastKey
-
-    if (nextStageTemplate) {
-      toast.success("Done. Next step ready.", {
-        description: nextStageTemplate.name,
-        action: {
-          label: "Open next step",
-          onClick: () => {
-            void handleRunNextStage()
-          },
-        },
-        duration: 7000,
-      })
-      return
-    }
-
-    toast.success("Run complete", {
-      description: artifactPersistenceStatus === "error"
-        ? "Result is ready, but saving reusable outputs needs attention."
-        : "Result is ready to review.",
-      action: {
-        label: hasResult ? "View result" : "View activity",
-        onClick: () => {
-          if (hasResult) {
-            openResult()
-            return
-          }
-          openActivity()
-        },
-      },
-      duration: 5000,
-    })
-  }, [
-    artifactPersistenceStatus,
-    hasResult,
-    nextStageTemplate,
-    handleRunNextStage,
-    openActivity,
-    openResult,
-    runId,
-    runOutcome,
-    selectedWorkflowPath,
-    selectedWorkflowTemplateContext,
-  ])
-
-  useEffect(() => {
     if (runStatus !== "done" || runOutcome !== "completed" || !hasResult || viewMode !== "list") {
       completionSurfaceRef.current = null
       return
@@ -859,56 +823,6 @@ export function WorkflowPanel() {
     completionSurfaceRef.current = completionKey
     openResult()
   }, [hasResult, openResult, runId, runOutcome, runStatus, selectedWorkflowPath, viewMode])
-
-  const canvasSurfaceBanner = useMemo(() => {
-    if (viewMode !== "canvas") return null
-
-    if (runStatus === "done" && runOutcome === "completed") {
-      return {
-        surfaceClass: "surface-success-soft",
-        labelClass: "text-status-success",
-        title: "Run complete",
-        description: hasResult ? "Result is ready to review from this flow." : "Activity is ready to review from this flow.",
-        actionLabel: hasResult ? "View result" : "View activity",
-        action: hasResult ? openResult : openActivity,
-      }
-    }
-
-    if (runStatus === "done" && runOutcome === "blocked") {
-      return {
-        surfaceClass: "surface-warning-soft",
-        labelClass: "text-status-warning",
-        title: "Needs review",
-        description: "This run is waiting for approval or human input before it can continue.",
-        actionLabel: "Open activity",
-        action: openActivity,
-      }
-    }
-
-    if (runStatus === "done" && runOutcome === "cancelled") {
-      return {
-        surfaceClass: "surface-warning-soft",
-        labelClass: "text-status-warning",
-        title: "Run cancelled",
-        description: "The workflow stopped before it finished. Open activity to inspect the last completed step.",
-        actionLabel: "Open activity",
-        action: openActivity,
-      }
-    }
-
-    if ((runStatus === "done" && (runOutcome === "failed" || runOutcome === "interrupted")) || runStatus === "error") {
-      return {
-        surfaceClass: "surface-danger-soft",
-        labelClass: "text-status-danger",
-        title: "Run needs attention",
-        description: "The workflow did not finish successfully. Open activity to inspect the failure.",
-        actionLabel: "Open activity",
-        action: openActivity,
-      }
-    }
-
-    return null
-  }, [hasResult, openActivity, openResult, runOutcome, runStatus, viewMode])
 
   const handleStartNewRun = () => {
     if (runStatus !== "idle") {
@@ -1135,29 +1049,13 @@ export function WorkflowPanel() {
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <SectionErrorBoundary sectionName="canvas view">
                   <CanvasView
-                    surfaceBanner={canvasSurfaceBanner ? (
-                      <div className={cn(
-                        "pointer-events-auto inline-flex max-w-[560px] items-center gap-3 rounded-lg px-3 py-2 shadow-sm backdrop-blur",
-                        canvasSurfaceBanner.surfaceClass,
-                      )}
-                      >
-                        <div className="min-w-0">
-                          <p className={cn("ui-meta-label", canvasSurfaceBanner.labelClass)}>
-                            {canvasSurfaceBanner.title}
-                          </p>
-                          <p className="text-body-sm text-foreground">
-                            {canvasSurfaceBanner.description}
-                          </p>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={canvasSurfaceBanner.action}
-                        >
-                          {canvasSurfaceBanner.actionLabel}
-                        </Button>
-                      </div>
+                    surfaceBanner={surfaceNotice ? (
+                      <ExecutionSurfaceNoticeBanner
+                        notice={surfaceNotice}
+                        onAction={handleSurfaceNoticeAction}
+                        onDismiss={() => setSurfaceNotice(null)}
+                        className="pointer-events-auto max-w-[560px] shadow-sm backdrop-blur"
+                      />
                     ) : null}
                   />
                 </SectionErrorBoundary>
@@ -1186,6 +1084,13 @@ export function WorkflowPanel() {
 
           <TabsContent value="settings" className="mt-0 ui-scroll-region flex-1 min-h-0 overflow-y-auto ui-fade-slide-in">
             <div className="ui-content-shell py-6 space-y-6">
+              {surfaceNotice && (
+                <ExecutionSurfaceNoticeBanner
+                  notice={surfaceNotice}
+                  onAction={handleSurfaceNoticeAction}
+                  onDismiss={() => setSurfaceNotice(null)}
+                />
+              )}
               <WorkflowSettingsPanel />
             </div>
           </TabsContent>

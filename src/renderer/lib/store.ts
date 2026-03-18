@@ -283,11 +283,18 @@ export const selectedInboxTaskKeyAtom = atomWithStorage<string | null>(
 export type InboxNotificationLevel = "info" | "success" | "warning" | "error"
 export type InboxNotificationSource = "workflow" | "batch" | "agent" | "system"
 
-export interface InboxNotificationAction {
-  kind: "open_workflow"
-  workflowPath: string
-  label?: string
-}
+export type InboxNotificationAction =
+  | {
+      kind: "open_workflow"
+      workflowPath: string
+      label?: string
+    }
+  | {
+      kind: "open_inbox_task"
+      taskKey: string
+      workflowPath?: string
+      label?: string
+    }
 
 export interface InboxNotification {
   id: string
@@ -296,9 +303,12 @@ export interface InboxNotification {
   level: InboxNotificationLevel
   source: InboxNotificationSource
   action?: InboxNotificationAction
+  persistentKey?: string
   createdAt: number
   read: boolean
 }
+
+export type CreateInboxNotification = Omit<InboxNotification, "id" | "createdAt" | "read">
 
 const MAX_INBOX_NOTIFICATIONS = 150
 const INBOX_DEDUPE_WINDOW_MS = 15_000
@@ -307,6 +317,87 @@ export const inboxNotificationsAtom = atomWithStorage<InboxNotification[]>(
   "c8c:inbox-notifications-v2",
   [],
 )
+
+function areInboxActionsEqual(
+  left: InboxNotificationAction | undefined,
+  right: InboxNotificationAction | undefined,
+): boolean {
+  if (left === right) return true
+  if (!left || !right) return false
+  if (left.kind !== right.kind) return false
+  if (left.kind === "open_workflow" && right.kind === "open_workflow") {
+    return left.workflowPath === right.workflowPath && left.label === right.label
+  }
+  if (left.kind === "open_inbox_task" && right.kind === "open_inbox_task") {
+    return left.taskKey === right.taskKey
+      && left.workflowPath === right.workflowPath
+      && left.label === right.label
+  }
+  return false
+}
+
+function areInboxNotificationsEqual(left: InboxNotification, right: InboxNotification): boolean {
+  return left.title === right.title
+    && left.description === right.description
+    && left.level === right.level
+    && left.source === right.source
+    && left.persistentKey === right.persistentKey
+    && left.read === right.read
+    && left.createdAt === right.createdAt
+    && areInboxActionsEqual(left.action, right.action)
+}
+
+export function appendInboxNotification(
+  existing: InboxNotification[],
+  notification: CreateInboxNotification,
+  now = Date.now(),
+): InboxNotification[] {
+  if (notification.persistentKey) {
+    const existingIndex = existing.findIndex((entry) => entry.persistentKey === notification.persistentKey)
+    if (existingIndex >= 0) {
+      const current = existing[existingIndex]
+      const updated: InboxNotification = {
+        ...current,
+        ...notification,
+        id: current.id,
+        createdAt: current.createdAt,
+        read: current.read,
+      }
+      if (areInboxNotificationsEqual(current, updated)) return existing
+      const next = existing.slice()
+      next[existingIndex] = updated
+      return next
+    }
+  }
+
+  const duplicate = existing.find((entry) =>
+    (!notification.persistentKey || entry.persistentKey === notification.persistentKey)
+    && entry.title === notification.title
+    && entry.description === notification.description
+    && entry.level === notification.level
+    && entry.source === notification.source
+    && (now - entry.createdAt) < INBOX_DEDUPE_WINDOW_MS,
+  )
+  if (duplicate) return existing
+
+  const nextEntry: InboxNotification = {
+    id: `${now}-${Math.random().toString(36).slice(2, 10)}`,
+    createdAt: now,
+    read: false,
+    ...notification,
+  }
+  return [nextEntry, ...existing].slice(0, MAX_INBOX_NOTIFICATIONS)
+}
+
+export function pruneInboxNotificationsByPersistentKeys(
+  existing: InboxNotification[],
+  persistentKeys: readonly string[],
+): InboxNotification[] {
+  const keySet = new Set(persistentKeys.filter((value) => value.length > 0))
+  if (keySet.size === 0) return existing
+  const next = existing.filter((entry) => !entry.persistentKey || !keySet.has(entry.persistentKey))
+  return next.length === existing.length ? existing : next
+}
 
 export const unreadInboxCountAtom = atom((get) =>
   get(inboxNotificationsAtom).filter((notification) => !notification.read).length,
@@ -317,27 +408,24 @@ export const addInboxNotificationAtom = atom(
   (
     get,
     set,
-    notification: Omit<InboxNotification, "id" | "createdAt" | "read">,
+    notification: CreateInboxNotification,
   ) => {
     const existing = get(inboxNotificationsAtom)
-    const now = Date.now()
-    const duplicate = existing.find((entry) =>
-      entry.title === notification.title
-      && entry.description === notification.description
-      && entry.level === notification.level
-      && entry.source === notification.source
-      && (now - entry.createdAt) < INBOX_DEDUPE_WINDOW_MS,
-    )
-    if (duplicate) return
-
-    const nextEntry: InboxNotification = {
-      id: `${now}-${Math.random().toString(36).slice(2, 10)}`,
-      createdAt: now,
-      read: false,
-      ...notification,
+    const next = appendInboxNotification(existing, notification)
+    if (next !== existing) {
+      set(inboxNotificationsAtom, next)
     }
-    const next = [nextEntry, ...existing].slice(0, MAX_INBOX_NOTIFICATIONS)
-    set(inboxNotificationsAtom, next)
+  },
+)
+
+export const removeInboxNotificationsByPersistentKeysAtom = atom(
+  null,
+  (get, set, persistentKeys: readonly string[]) => {
+    const existing = get(inboxNotificationsAtom)
+    const next = pruneInboxNotificationsByPersistentKeys(existing, persistentKeys)
+    if (next !== existing) {
+      set(inboxNotificationsAtom, next)
+    }
   },
 )
 

@@ -39,6 +39,7 @@ import rehypeHighlight from "rehype-highlight"
 import { toast } from "sonner"
 import { CopyButton } from "@/components/ui/copy-button"
 import { isRunInFlight } from "@/lib/workflow-execution"
+import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
 
 const PREVIEW_MAX_W = "max-w-52" as const
 const MARKDOWN_PROSE_CLASS = "prose-c8c"
@@ -173,6 +174,8 @@ export function OutputPanel({
     artifactRecords,
     artifactPersistenceStatus,
     artifactPersistenceError,
+    surfaceNotice,
+    setSurfaceNotice,
   } = useOutputPanel()
   const [activeTab, setActiveTab] = useState("nodes")
   const [resultReadyPulse, setResultReadyPulse] = useState(false)
@@ -450,7 +453,6 @@ export function OutputPanel({
     && openReviewTaskCount === 0
     && !!onContinueRun
     && !!selectedReviewRun
-  const stoppedLiveRun = !reviewingRunHistory && runStatus === "done" && (runOutcome === "cancelled" || runOutcome === "interrupted")
   const canStartFreshRun = Boolean(onStartNewRun) && !isRunInFlight(runStatus) && (reviewingRunHistory || runStatus === "done" || runStatus === "error" || pastRuns.length > 0)
   const canRerunStages = Boolean(onRerunFrom) && !isRunInFlight(runStatus) && !!rerunWorkspace
   const canRerunSelectedStage = Boolean(
@@ -464,6 +466,8 @@ export function OutputPanel({
     || Boolean(artifactPersistenceError)
     || Boolean(nextStageTemplate)
   )
+  const failedNodeErrors = Object.entries(displayNodeStates)
+    .filter(([, state]) => state.status === "failed" && state.error)
   const artifactContinuationToneClass = artifactPersistenceStatus === "error"
     ? "surface-danger-soft"
     : artifactPersistenceStatus === "saved"
@@ -514,6 +518,24 @@ export function OutputPanel({
       })
     }
   }, [onOpenReport])
+
+  const handleSurfaceNoticeAction = useCallback(() => {
+    if (!surfaceNotice) return
+    if (surfaceNotice.actionTarget === "result") {
+      setActiveTab("result")
+      setSurfaceNotice(null)
+      return
+    }
+    if (surfaceNotice.actionTarget === "activity") {
+      setActiveTab("nodes")
+      setSurfaceNotice(null)
+      return
+    }
+    if (surfaceNotice.actionTarget === "inbox" && onOpenInbox) {
+      onOpenInbox()
+      setSurfaceNotice(null)
+    }
+  }, [onOpenInbox, setSurfaceNotice, surfaceNotice])
 
   useEffect(() => {
     if (!hasResult && activeTab === "result") {
@@ -646,6 +668,17 @@ export function OutputPanel({
             </TabsList>
           </div>
         </div>
+        {!reviewingRunHistory && surfaceNotice && (
+          <ExecutionSurfaceNoticeBanner
+            notice={surfaceNotice}
+            onAction={
+              surfaceNotice.actionTarget === "inbox" && !onOpenInbox
+                ? null
+                : handleSurfaceNoticeAction
+            }
+            onDismiss={() => setSurfaceNotice(null)}
+          />
+        )}
         {showBlockedReviewStrip && (
           <div className="rounded-lg surface-warning-soft px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -815,95 +848,33 @@ export function OutputPanel({
               />
 
                   {!reviewingRunHistory && (
-                    <>
-                      <div
-                        data-open={runStatus === "done" ? "true" : "false"}
-                        className="ui-collapsible"
-                      >
-                        <div className="ui-collapsible-inner">
-                          <div
-                            role="status"
-                            aria-live="polite"
-                            className={cn(
-                              "mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ui-meta-text",
-                              stoppedLiveRun
-                                ? "surface-warning-soft text-status-warning"
-                                : "surface-success-soft text-status-success",
-                            )}
-                          >
-                            <span>
-                              {stoppedLiveRun
-                                ? "Run stopped. Start a new run when you are ready."
-                                : nextStageTemplate
-                                  ? `Run complete. Next step ready: ${nextStageTemplate.name}.`
-                                  : artifactPersistenceStatus === "saving"
-                                    ? "Run complete. Saving outputs for the next guided step..."
-                                    : "Run complete. You can inspect the result now."}
-                            </span>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {nextStageTemplate && onRunNextStage && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    void Promise.resolve(onRunNextStage())
-                                  }}
-                                  disabled={artifactPersistenceStatus === "saving" || nextStagePending}
-                                >
-                                  <ArrowRight size={12} />
-                                  {nextStagePending ? "Opening next step..." : "Open next step"}
-                                </Button>
-                              )}
-                              {hasResult && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setActiveTab("result")}
-                                >
-                                  View result
-                                </Button>
-                              )}
-                              {canStartFreshRun && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={onStartNewRun}
-                                >
-                                  New run
-                                </Button>
-                              )}
+                    <div
+                      data-open={runStatus === "error" || runOutcome === "failed" || runOutcome === "interrupted" ? "true" : "false"}
+                      className="ui-collapsible"
+                    >
+                      <div className="ui-collapsible-inner">
+                        <div
+                          role="alert"
+                          className="mt-2 space-y-1 rounded-lg surface-danger-soft px-3 py-2 ui-meta-text text-status-danger"
+                        >
+                          <div className="font-medium text-status-danger">Run needs attention</div>
+                          {failedNodeErrors.length === 0 && (
+                            <div className="text-status-danger/80">
+                              Inspect the activity log for the failing stage or the last interrupted step.
                             </div>
-                          </div>
+                          )}
+                          {failedNodeErrors.map(([id, s]) => {
+                            const node = allDisplayNodes.find((n) => n.id === id)
+                            return (
+                              <div key={id} className="text-status-danger/80">
+                                <span className="font-medium">{node?.label || id}:</span>{" "}
+                                {s.error}
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
-                      <div
-                        data-open={runStatus === "error" ? "true" : "false"}
-                        className="ui-collapsible"
-                      >
-                        <div className="ui-collapsible-inner">
-                          <div
-                            role="alert"
-                            className="mt-2 space-y-1 rounded-lg surface-danger-soft px-3 py-2 ui-meta-text text-status-danger"
-                          >
-                            <div className="font-medium text-status-danger">Run needs attention</div>
-                            {Object.entries(displayNodeStates)
-                              .filter(([, s]) => s.status === "failed" && s.error)
-                              .map(([id, s]) => {
-                                const node = allDisplayNodes.find((n) => n.id === id)
-                                return (
-                                  <div key={id} className="text-status-danger/80">
-                                    <span className="font-medium">{node?.label || id}:</span>{" "}
-                                    {s.error}
-                                  </div>
-                                )
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    </>
+                    </div>
                   )}
                 </>
               )}
