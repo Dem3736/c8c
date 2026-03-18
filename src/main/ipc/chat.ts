@@ -4,6 +4,7 @@ import { loadChatHistory, clearChatHistory } from "../lib/chat-storage"
 import type { ChatConversation, ChatSessionSnapshot, Workflow } from "@shared/types"
 import { resolve, extname } from "node:path"
 import { allowedProjectRoots, allowedWorkflowRoots, assertWithinRoots } from "../lib/security-paths"
+import { logError, logInfo } from "../lib/structured-log"
 
 async function assertWorkflowPath(workflowPath: string): Promise<string> {
   const resolvedPath = resolve(workflowPath)
@@ -25,7 +26,7 @@ async function assertProjectPath(projectPath: string): Promise<string> {
 }
 
 export function registerChatHandlers() {
-  console.log("[chat] registering chat IPC handlers...")
+  logInfo("chat-ipc", "handlers_registering")
 
   ipcMain.handle(
     "chat:send-message",
@@ -38,9 +39,9 @@ export function registerChatHandlers() {
     ): Promise<string> => {
       const safeWorkflowPath = await assertWorkflowPath(workflowPath)
       const safeProjectPath = await assertProjectPath(projectPath)
-      console.log("[chat] chat:send-message called", {
+      logInfo("chat-ipc", "send_message_called", {
         workflowPath: safeWorkflowPath,
-        message: message.slice(0, 100),
+        messageLength: message.length,
         projectPath: safeProjectPath,
         hasWorkflow: !!currentWorkflow,
         nodeCount: currentWorkflow?.nodes?.length ?? 0,
@@ -54,10 +55,13 @@ export function registerChatHandlers() {
           currentWorkflow,
           window && !window.isDestroyed() ? window : null,
         )
-        console.log("[chat] chat:send-message completed, sessionId:", sessionId)
+        logInfo("chat-ipc", "send_message_completed", { workflowPath: safeWorkflowPath, sessionId })
         return sessionId
       } catch (err) {
-        console.error("[chat] chat:send-message error:", err)
+        logError("chat-ipc", "send_message_failed", {
+          workflowPath: safeWorkflowPath,
+          error: err instanceof Error ? err.message : String(err),
+        })
         throw err
       }
     },
@@ -67,7 +71,7 @@ export function registerChatHandlers() {
     "chat:load-history",
     async (_event, workflowPath: string): Promise<ChatConversation | null> => {
       const safeWorkflowPath = await assertWorkflowPath(workflowPath)
-      console.log("[chat] chat:load-history called", { workflowPath: safeWorkflowPath })
+      logInfo("chat-ipc", "load_history_called", { workflowPath: safeWorkflowPath })
       return loadChatHistory(safeWorkflowPath)
     },
   )
@@ -76,7 +80,7 @@ export function registerChatHandlers() {
     "chat:get-active-session",
     async (_event, workflowPath: string): Promise<ChatSessionSnapshot | null> => {
       const safeWorkflowPath = await assertWorkflowPath(workflowPath)
-      console.log("[chat] chat:get-active-session called", { workflowPath: safeWorkflowPath })
+      logInfo("chat-ipc", "get_active_session_called", { workflowPath: safeWorkflowPath })
       return getActiveChatSession(safeWorkflowPath)
     },
   )
@@ -84,7 +88,7 @@ export function registerChatHandlers() {
   ipcMain.handle(
     "chat:cancel",
     async (_event, sessionId: string): Promise<boolean> => {
-      console.log("[chat] chat:cancel called", { sessionId })
+      logInfo("chat-ipc", "cancel_called", { sessionId })
       return cancelChatSession(sessionId)
     },
   )
@@ -93,10 +97,10 @@ export function registerChatHandlers() {
     "chat:clear-history",
     async (_event, workflowPath: string): Promise<void> => {
       const safeWorkflowPath = await assertWorkflowPath(workflowPath)
-      console.log("[chat] chat:clear-history called", { workflowPath: safeWorkflowPath })
+      logInfo("chat-ipc", "clear_history_called", { workflowPath: safeWorkflowPath })
       return clearChatHistory(safeWorkflowPath)
     },
   )
 
-  console.log("[chat] all chat IPC handlers registered OK")
+  logInfo("chat-ipc", "handlers_registered")
 }

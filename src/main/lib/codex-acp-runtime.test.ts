@@ -561,4 +561,35 @@ describe("createCodexAcpExecutionHandle", () => {
       }),
     }))
   })
+
+  it("cleans up the ACP provider only once when abort races with completion", async () => {
+    let releaseStream: (() => void) | undefined
+    streamTextMock.mockReturnValue({
+      fullStream: (async function *() {
+        await new Promise<void>((resolve) => {
+          releaseStream = resolve
+        })
+        yield { type: "abort" }
+        yield { type: "finish", finishReason: "abort" }
+      })(),
+      totalUsage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+      }),
+      finishReason: Promise.resolve("abort"),
+    })
+
+    const handle = await createCodexAcpExecutionHandle({
+      workdir: "/tmp/project",
+      prompt: "Abort this run",
+      model: "gpt-5.4",
+    })
+
+    const donePromise = handle.done
+    handle.abort()
+    releaseStream?.()
+    await donePromise
+
+    expect(cleanupMock).toHaveBeenCalledTimes(1)
+  })
 })

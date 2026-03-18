@@ -14,7 +14,6 @@ import {
   listWorkflowHilTasks,
   writeWorkflowHilTaskResponse,
 } from "@c8c/workflow-runner"
-import { validateWorkflow } from "../lib/graph-engine"
 import { runBatch, cancelBatch, getActiveBatchSnapshot } from "../lib/batch-runner"
 import { scaffoldMissingSkills } from "../lib/skill-scaffold"
 import { scanAllSkills } from "../lib/skill-scanner"
@@ -29,6 +28,7 @@ import type {
   ActiveWorkflowRun,
   ArtifactRecord,
   EvaluationResult,
+  HumanTaskPointer,
   HumanTaskSnapshot,
   HumanTaskSubmitInput,
   HumanTaskSummary,
@@ -41,6 +41,7 @@ import type {
   WorkflowInput,
   RunResult,
 } from "@shared/types"
+import type { ExecutionStartError } from "@shared/c8c-api"
 import { allowedProjectRoots, allowedReportRoots, assertWithinRoots } from "../lib/security-paths"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
 import {
@@ -48,13 +49,19 @@ import {
   providerReadinessError,
   resolveWorkflowProviderId,
 } from "../lib/provider-runtime"
+import { formatWorkflowExecutionIssue, validateWorkflowForExecution } from "@shared/workflow-execution-validation"
 import { sendWorkflowEvent } from "../workflow-notifications"
-import { hydratePersistedRunSnapshotLogs } from "./run-snapshot"
+import { hydratePersistedRunSnapshotLogs, readPersistedEventsTail } from "./run-snapshot"
 
 let runCounter = 0
 let batchCounter = 0
 const activeWindowExecutions = new Map<number, Set<string>>()
 const windowLifecycleBindings = new Set<number>()
+const HUMAN_TASK_STATUSES = new Set(["open", "answered", "rejected", "timed_out", "consumed"])
+
+function isHumanTaskLifecycleStatus(value: unknown): value is HumanTaskPointer["status"] {
+  return typeof value === "string" && HUMAN_TASK_STATUSES.has(value)
+}
 
 function trackWindowExecution(windowId: number, executionId: string): void {
   const executions = activeWindowExecutions.get(windowId) ?? new Set<string>()
@@ -133,7 +140,7 @@ async function getActiveExecutionsForWindow(windowId: number): Promise<ActiveExe
       runtimeMeta: snapshot.state.runtimeMeta || {},
       input: snapshot.state.input,
       evalResults: {},
-      humanTasks: snapshot.state.humanTasks || {},
+      humanTasks: sanitizeHumanTasks(snapshot.state.humanTasks),
     })
 
     const runSnapshot: ActiveWorkflowRun = {
@@ -174,6 +181,23 @@ function errorCode(error: unknown): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function sanitizeHumanTasks(input: unknown): Record<string, HumanTaskPointer> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {}
+
+  const next: Record<string, HumanTaskPointer> = {}
+  for (const [nodeId, value] of Object.entries(input)) {
+    if (!value || typeof value !== "object") continue
+    const taskId = "taskId" in value ? (value as { taskId?: unknown }).taskId : undefined
+    const status = "status" in value ? (value as { status?: unknown }).status : undefined
+    if (typeof taskId !== "string" || !isHumanTaskLifecycleStatus(status)) continue
+    next[nodeId] = {
+      taskId,
+      status,
+    }
+  }
+  return next
 }
 
 async function assertProjectPath(projectPath: string): Promise<string> {
@@ -219,7 +243,7 @@ async function loadPersistedRunSnapshot(workspace: string): Promise<PersistedRun
       runtimeMeta: parsed.runtimeMeta || {},
       input: parsed.input,
       evalResults: parsed.evalResults || {},
-      humanTasks: parsed.humanTasks || {},
+      humanTasks: sanitizeHumanTasks(parsed.humanTasks),
     })
   } catch (error) {
     if (errorCode(error) !== "ENOENT") {
@@ -234,9 +258,14 @@ async function loadPersistedRunSnapshot(workspace: string): Promise<PersistedRun
 
 async function loadPersistedEvalResults(workspace: string): Promise<Record<string, EvaluationResult[]>> {
   try {
-    const raw = await readFile(join(workspace, "events.jsonl"), "utf-8")
+    const persistedEvents = await readPersistedEventsTail(workspace)
+    if (!persistedEvents) return {}
     const evalResults: Record<string, EvaluationResult[]> = {}
-    for (const line of raw.split("\n")) {
+    const lines = persistedEvents.raw.split("\n")
+    if (persistedEvents.truncated && lines.length > 0) {
+      lines.shift()
+    }
+    for (const line of lines) {
       const trimmed = line.trim()
       if (!trimmed) continue
       let event: WorkflowEvent
@@ -393,6 +422,64 @@ async function scaffoldWorkflowWithTelemetry(
   }
 }
 
+function createExecutionStartError(
+  error: string,
+  code: ExecutionStartError["code"] = "unknown",
+  validationIssues?: ExecutionStartError["validationIssues"],
+): ExecutionStartError {
+  return {
+    error,
+    code,
+    ...(validationIssues && validationIssues.length > 0 ? { validationIssues } : {}),
+  }
+}
+
+function normalizeProviderPreflightError(message: string): string {
+  const separatorIndex = message.indexOf(":")
+  if (separatorIndex === -1) return message
+  const prefix = message.slice(0, separatorIndex)
+  if (prefix !== "cli_unavailable") return message
+  return message.slice(separatorIndex + 1)
+}
+
+function createValidationStartError(workflow: Workflow): ExecutionStartError | null {
+  const validationIssues = validateWorkflowForExecution(workflow).filter((issue) => issue.severity === "error")
+  if (validationIssues.length === 0) return null
+  if (validationIssues.length === 1) {
+    return createExecutionStartError(
+      formatWorkflowExecutionIssue(validationIssues[0]),
+      "validation",
+      validationIssues,
+    )
+  }
+  return createExecutionStartError(
+    `${validationIssues.length} validation errors — fix them before running.`,
+    "validation",
+    validationIssues,
+  )
+}
+
+async function createExecutionStartBlocker(
+  workflow: Workflow,
+  precheckEvent: string,
+): Promise<ExecutionStartError | null> {
+  const validationError = createValidationStartError(workflow)
+  if (validationError) return validationError
+
+  try {
+    const providerId = await resolveWorkflowProviderId(workflow)
+    const readiness = await getProviderReadiness(providerId)
+    const providerError = providerReadinessError(readiness)
+    if (providerError) {
+      return createExecutionStartError(normalizeProviderPreflightError(providerError), "preflight")
+    }
+  } catch (err) {
+    logWarn("executor-ipc", precheckEvent, { error: errorMessage(err) })
+  }
+
+  return null
+}
+
 export function registerExecutorHandlers() {
   ipcMain.handle(
     "executor:run",
@@ -407,37 +494,21 @@ export function registerExecutorHandlers() {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
 
-      try {
-        const providerId = await resolveWorkflowProviderId(workflow)
-        const readiness = await getProviderReadiness(providerId)
-        const providerError = providerReadinessError(readiness)
-        if (providerError) return { error: providerError }
-      } catch (err) {
-        logWarn("executor-ipc", "cli_precheck_failed", { error: errorMessage(err) })
-      }
-
-      let errors: string[]
-      try {
-        errors = validateWorkflow(workflow)
-      } catch (err) {
-        return { error: `Validation failed: ${String(err)}` }
-      }
-      if (errors.length > 0) {
-        return { error: errors.join("; ") }
-      }
+      const startBlocker = await createExecutionStartBlocker(workflow, "run_precheck_failed")
+      if (startBlocker) return startBlocker
 
       // Auto-scaffold missing skills before run
       if (projectPath) {
         try {
           workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
         } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
+          return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
       }
 
       if (window.isDestroyed()) {
         logWarn("executor-ipc", "run_start_aborted_window_closed", { windowId: window.id })
-        return { error: "Window was closed before run start" }
+        return createExecutionStartError("Window was closed before run start", "window")
       }
 
       const runId = `run-${++runCounter}-${Date.now()}`
@@ -504,19 +575,8 @@ export function registerExecutorHandlers() {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
 
-      const valErrors = validateWorkflow(workflow)
-      if (valErrors.length > 0) {
-        return { error: valErrors.join("; ") }
-      }
-
-      try {
-        const providerId = await resolveWorkflowProviderId(workflow)
-        const readiness = await getProviderReadiness(providerId)
-        const providerError = providerReadinessError(readiness)
-        if (providerError) return { error: providerError }
-      } catch (err) {
-        logWarn("executor-ipc", "rerun_precheck_failed", { error: errorMessage(err) })
-      }
+      const startBlocker = await createExecutionStartBlocker(workflow, "rerun_precheck_failed")
+      if (startBlocker) return startBlocker
 
       const runId = `rerun-${++runCounter}-${Date.now()}`
       const safeWorkspace = await assertRunWorkspacePath(workspace)
@@ -526,13 +586,13 @@ export function registerExecutorHandlers() {
         try {
           workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
         } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
+          return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
       }
 
       if (window.isDestroyed()) {
         logWarn("executor-ipc", "rerun_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
-        return { error: "Window was closed before rerun start" }
+        return createExecutionStartError("Window was closed before rerun start", "window")
       }
 
       trackWindowExecution(window.id, runId)
@@ -587,19 +647,8 @@ export function registerExecutorHandlers() {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
 
-      const valErrors = validateWorkflow(workflow)
-      if (valErrors.length > 0) {
-        return { error: valErrors.join("; ") }
-      }
-
-      try {
-        const providerId = await resolveWorkflowProviderId(workflow)
-        const readiness = await getProviderReadiness(providerId)
-        const providerError = providerReadinessError(readiness)
-        if (providerError) return { error: providerError }
-      } catch (err) {
-        logWarn("executor-ipc", "continue_precheck_failed", { error: errorMessage(err) })
-      }
+      const startBlocker = await createExecutionStartBlocker(workflow, "continue_precheck_failed")
+      if (startBlocker) return startBlocker
 
       const runId = `resume-${++runCounter}-${Date.now()}`
       const safeWorkspace = await assertRunWorkspacePath(workspace)
@@ -609,13 +658,13 @@ export function registerExecutorHandlers() {
         try {
           workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
         } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
+          return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
       }
 
       if (window.isDestroyed()) {
         logWarn("executor-ipc", "continue_start_aborted_window_closed", { windowId: window.id, workspace: safeWorkspace })
-        return { error: "Window was closed before continue start" }
+        return createExecutionStartError("Window was closed before continue start", "window")
       }
 
       trackWindowExecution(window.id, runId)
@@ -768,23 +817,21 @@ export function registerExecutorHandlers() {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
 
-      const valErrors = validateWorkflow(workflow)
-      if (valErrors.length > 0) {
-        return { error: valErrors.join("; ") }
-      }
+      const startBlocker = await createExecutionStartBlocker(workflow, "batch_precheck_failed")
+      if (startBlocker) return startBlocker
 
       // Auto-scaffold missing skills before batch run
       if (projectPath) {
         try {
           workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
         } catch (err) {
-          return { error: `Skill scaffolding failed: ${String(err)}` }
+          return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
       }
 
       if (window.isDestroyed()) {
         logWarn("executor-ipc", "batch_start_aborted_window_closed", { windowId: window.id })
-        return { error: "Window was closed before batch start" }
+        return createExecutionStartError("Window was closed before batch start", "window")
       }
 
       const batchId = `batch-${++batchCounter}-${Date.now()}`

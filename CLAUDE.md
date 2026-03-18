@@ -107,18 +107,22 @@ Sidebar rows should stay compact: project headers around 26px minimum height, th
 
 ### Custom utility classes (in globals.css)
 
-- `.surface-panel`, `.surface-elevated`, `.surface-soft`, `.surface-inset-card`, `.surface-depth-header` — layered surface styles
-- `.surface-danger-soft`, `.surface-warning-soft` — soft severity surfaces
+- `.surface-panel`, `.surface-elevated`, `.surface-soft`, `.surface-inset-card`, `.surface-depth-header`, `.surface-depth-footer` — layered surface styles
+- `.surface-info-soft`, `.surface-success-soft`, `.surface-danger-soft`, `.surface-warning-soft` — soft severity surfaces
 - `.section-kicker`, `.ui-title-text`, `.ui-body-text`, `.ui-meta-text`, `.ui-meta-label`, `.ui-body-text-medium` — content typography
 - `.ui-motion-fast`, `.ui-motion-standard` — transition duration shortcuts
 - `.ui-transition-colors`, `.ui-transition-surface`, `.ui-transition-opacity`, `.ui-transition-width` — transition property helpers
-- `.ui-scroll-region` — containment + gutter management
-- `.ui-interactive-card`, `.ui-pressable`, `.ui-icon-button`, `.ui-resize-handle` — interaction feedback
-- `.ui-status-badge`, `.ui-status-badge-success|warning|danger|info` — status badge pattern
-- `.ui-badge-row`, `.ui-empty-state`, `.ui-metric-text`, `.inline-code`, `.prose-c8c` — layout/content helpers
+- `.ui-scroll-region`, `.ui-scrollbar-hidden`, `.ui-dialog-gutter` — containment + layout helpers
+- `.ui-interactive-card`, `.ui-interactive-card-subtle`, `.ui-pressable`, `.ui-icon-button`, `.ui-icon-button-danger`, `.ui-resize-handle`, `.ui-chevron` — interaction feedback
+- `.ui-status-badge`, `.ui-status-badge-success|warning|danger|info`, `.ui-status-halo-danger` — status badge/halo patterns
+- `.ui-alert-info|warning|danger|success` — compact alert containers; use these when the alert owns its padding/layout, and `surface-*-soft` when the component owns layout
+- `.ui-badge-row`, `.ui-empty-state`, `.ui-metric-text`, `.inline-code`, `.prose-c8c`, `.ui-content-shell` — layout/content helpers
 - `.control-cluster`, `.control-badge`, `.border-hairline`, `.ui-disclosure` — shared control primitives
-- `.ui-elevation-base`, `.ui-elevation-inset`, `.ui-fade-slide-in` — elevation + motion composition
-- `.sidebar-progress-track`, `.sidebar-progress-bar`, `.ui-content-shell` — app-shell and sidebar utilities
+- `.ui-elevation-base`, `.ui-elevation-inset`, `.ui-surface-lift`, `.ui-fade-slide-in`, `.ui-fade-slide-in-trailing` — elevation + motion composition
+- `.ui-progress-track`, `.ui-progress-bar`, `.sidebar-progress-track`, `.sidebar-progress-bar` — progress primitives
+- `.ui-collapsible`, `.ui-collapsible-inner` — collapsible content helpers
+
+Additional approved Tailwind typography tokens: `text-label-xs`, `text-title-sm`, `text-title-md`, `text-title-lg`.
 
 ## Key Dependencies
 

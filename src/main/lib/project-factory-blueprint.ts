@@ -121,12 +121,18 @@ function sanitizeFactory(
   }
 }
 
+type NormalizedBlueprintInput = {
+  factories?: Array<Partial<ProjectFactoryDefinition>>
+  selectedFactoryId?: string | null
+  createdAt?: number
+  updatedAt?: number
+  outcome?: FactoryOutcomeDefinition
+  recipe?: FactoryRecipeDefinition
+}
+
 function normalizeBlueprint(
   projectPath: string,
-  input: Partial<ProjectFactoryBlueprint> & {
-    outcome?: FactoryOutcomeDefinition
-    recipe?: FactoryRecipeDefinition
-  },
+  input: NormalizedBlueprintInput,
 ): ProjectFactoryBlueprint | null {
   const legacyFactory = sanitizeFactory({
     id: "factory:default",

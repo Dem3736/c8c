@@ -379,11 +379,14 @@ export async function discoverMcpTools(
     : servers.filter((s) => !s.disabled)
 
   const allTools: McpToolInfo[] = []
+  const results = await Promise.allSettled(
+    targets.map((server) => testMcpServer(server.name, server.scope, projectPath)),
+  )
 
-  for (const server of targets) {
-    const result = await testMcpServer(server.name, server.scope, projectPath)
-    if (result.healthy) {
-      allTools.push(...result.tools)
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue
+    if (result.value.healthy) {
+      allTools.push(...result.value.tools)
     }
   }
 

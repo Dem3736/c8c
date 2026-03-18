@@ -21,7 +21,7 @@ function gitLsFiles(projectPath: string, query?: string): Promise<string[]> {
     execFile(
       "git",
       ["ls-files", "--cached", "--others", "--exclude-standard"],
-      { cwd: projectPath, maxBuffer: 4 * 1024 * 1024 },
+      { cwd: projectPath, maxBuffer: 4 * 1024 * 1024, timeout: 10_000 },
       (error, stdout) => {
         if (error) {
           reject(error)

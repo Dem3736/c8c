@@ -72,7 +72,13 @@ export async function loadRunPidManifest(workspace: string): Promise<RunPidManif
 async function withManifestLock<T>(workspace: string, operation: () => Promise<T>): Promise<T> {
   const previous = manifestQueues.get(workspace) || Promise.resolve()
   const next = previous.then(operation)
-  manifestQueues.set(workspace, next.then(() => undefined, () => undefined))
+  const tracked = next.then(() => undefined, () => undefined)
+  manifestQueues.set(workspace, tracked)
+  void tracked.finally(() => {
+    if (manifestQueues.get(workspace) === tracked) {
+      manifestQueues.delete(workspace)
+    }
+  })
   return next
 }
 

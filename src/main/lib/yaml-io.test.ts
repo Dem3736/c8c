@@ -1,0 +1,53 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, describe, expect, it } from "vitest"
+import { loadChainYaml } from "./yaml-io"
+
+describe("yaml-io", () => {
+  let workspace: string
+
+  afterEach(async () => {
+    if (workspace) {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it("loads valid workflow YAML objects", async () => {
+    workspace = await mkdtemp(join(tmpdir(), "yaml-io-test-"))
+    const filePath = join(workspace, "workflow.yaml")
+    await writeFile(filePath, [
+      "name: Test workflow",
+      "nodes: []",
+      "edges: []",
+    ].join("\n"), "utf-8")
+
+    await expect(loadChainYaml(filePath)).resolves.toEqual(
+      expect.objectContaining({
+        name: "Test workflow",
+        nodes: [],
+        edges: [],
+      }),
+    )
+  })
+
+  it("rejects YAML that does not parse into a workflow object", async () => {
+    workspace = await mkdtemp(join(tmpdir(), "yaml-io-test-"))
+    const filePath = join(workspace, "invalid.yaml")
+    await writeFile(filePath, "[]", "utf-8")
+
+    await expect(loadChainYaml(filePath)).rejects.toThrow(
+      "Invalid workflow YAML: expected an object",
+    )
+  })
+
+  it("rejects YAML objects without workflow arrays", async () => {
+    workspace = await mkdtemp(join(tmpdir(), "yaml-io-test-"))
+    const filePath = join(workspace, "missing-arrays.yaml")
+    await writeFile(filePath, "name: Broken workflow", "utf-8")
+
+    await expect(loadChainYaml(filePath)).rejects.toThrow(
+      "Invalid workflow YAML: missing nodes or edges array",
+    )
+  })
+})

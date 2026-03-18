@@ -1,5 +1,5 @@
 import type { Workflow, WorkflowNode, WorkflowEdge, NodeState } from "@shared/types"
-import { validateWorkflowNodeConfigs } from "@shared/workflow-config-validation"
+import { formatWorkflowExecutionIssue, validateWorkflowForExecution } from "@shared/workflow-execution-validation"
 
 export function findNodeById(workflow: Workflow, nodeId: string): WorkflowNode | undefined {
   return workflow.nodes.find((n) => n.id === nodeId)
@@ -94,74 +94,9 @@ export function getDownstreamNodeIds(
 }
 
 export function validateWorkflow(workflow: Workflow): string[] {
-  const errors: string[] = []
-  const configIssues = validateWorkflowNodeConfigs(workflow)
-
-  for (const issue of configIssues) {
-    if (issue.severity === "error") {
-      errors.push(`Node "${issue.nodeId}" ${issue.field}: ${issue.message}`)
-    }
-  }
-
-  if (!workflow.nodes.some((n) => n.type === "input")) {
-    errors.push("Workflow must have at least one input node")
-  }
-
-  if (!workflow.nodes.some((n) => n.type === "output")) {
-    errors.push("Workflow must have at least one output node")
-  }
-
-  const nodeIds = new Set(workflow.nodes.map((n) => n.id))
-  for (const edge of workflow.edges) {
-    if (!nodeIds.has(edge.source)) {
-      errors.push(`Edge "${edge.id}" references nonexistent source node "${edge.source}"`)
-    }
-    if (!nodeIds.has(edge.target)) {
-      errors.push(`Edge "${edge.id}" references nonexistent target node "${edge.target}"`)
-    }
-  }
-
-  const seen = new Set<string>()
-  for (const node of workflow.nodes) {
-    if (seen.has(node.id)) {
-      errors.push(`Duplicate node ID "${node.id}"`)
-    }
-    seen.add(node.id)
-  }
-
-  // Cycle detection via topological sort (ignoring evaluator fail edges)
-  const nonFailEdges = workflow.edges.filter((e) => e.type !== "fail")
-  const inDegree = new Map<string, number>()
-  const adjacency = new Map<string, string[]>()
-  for (const node of workflow.nodes) {
-    inDegree.set(node.id, 0)
-    adjacency.set(node.id, [])
-  }
-  for (const edge of nonFailEdges) {
-    if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
-      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1)
-      adjacency.get(edge.source)!.push(edge.target)
-    }
-  }
-  const queue: string[] = []
-  for (const [id, deg] of inDegree) {
-    if (deg === 0) queue.push(id)
-  }
-  let visited = 0
-  while (queue.length > 0) {
-    const id = queue.shift()!
-    visited++
-    for (const target of adjacency.get(id) || []) {
-      const newDeg = (inDegree.get(target) || 1) - 1
-      inDegree.set(target, newDeg)
-      if (newDeg === 0) queue.push(target)
-    }
-  }
-  if (visited < workflow.nodes.length) {
-    errors.push("Workflow contains a cycle — nodes would deadlock during execution")
-  }
-
-  return errors
+  return validateWorkflowForExecution(workflow)
+    .filter((issue) => issue.severity === "error")
+    .map((issue) => formatWorkflowExecutionIssue(issue))
 }
 
 export function createInitialNodeStates(workflow: Workflow): Record<string, NodeState> {

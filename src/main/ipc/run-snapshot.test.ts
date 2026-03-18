@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, describe, expect, it } from "vitest"
 import type { PersistedRunSnapshot } from "@shared/types"
-import { mergeNodeLogsIntoSnapshot, parsePersistedNodeLogs } from "./run-snapshot"
+import { loadPersistedNodeLogs, mergeNodeLogsIntoSnapshot, parsePersistedNodeLogs } from "./run-snapshot"
 
 describe("run snapshot log hydration", () => {
   it("parses node logs from persisted workflow events", () => {
@@ -59,6 +62,46 @@ describe("run snapshot log hydration", () => {
       status: "pending",
       attempts: 0,
       log: [{ type: "text", content: "late branch", timestamp: 30 }],
+    })
+  })
+
+  describe("bounded persisted event loading", () => {
+    let workspace: string
+
+    afterEach(async () => {
+      if (workspace) {
+        await rm(workspace, { recursive: true, force: true })
+      }
+    })
+
+    it("loads only the retained tail of oversized events files", async () => {
+      workspace = await mkdtemp(join(tmpdir(), "run-snapshot-test-"))
+      const eventsPath = join(workspace, "events.jsonl")
+      const oversizedPrefix = "x".repeat(5 * 1024 * 1024 + 128)
+      const tailEvents = [
+        JSON.stringify({
+          type: "node-log",
+          runId: "run-1",
+          nodeId: "kept",
+          entry: { type: "text", content: "tail event", timestamp: 20 },
+        }),
+        JSON.stringify({
+          type: "node-log",
+          runId: "run-1",
+          nodeId: "kept",
+          entry: { type: "thinking", content: "still here", timestamp: 21 },
+        }),
+      ].join("\n")
+      await writeFile(eventsPath, `${oversizedPrefix}\n${tailEvents}\n`, "utf-8")
+
+      const logs = await loadPersistedNodeLogs(workspace)
+
+      expect(logs).toEqual({
+        kept: [
+          { type: "text", content: "tail event", timestamp: 20 },
+          { type: "thinking", content: "still here", timestamp: 21 },
+        ],
+      })
     })
   })
 })

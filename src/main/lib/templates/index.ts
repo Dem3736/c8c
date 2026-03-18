@@ -18,6 +18,7 @@ import contentReadyPostsRaw from "./content-ready-posts.yaml?raw"
 import coursesAudienceOfferRaw from "./courses-audience-offer.yaml?raw"
 import coursesCurriculumMapRaw from "./courses-curriculum-map.yaml?raw"
 import coursesLessonSystemRaw from "./courses-lesson-system.yaml?raw"
+import coursesTriggerPlaybookRaw from "./courses-trigger-playbook.yaml?raw"
 import coursesLaunchAssetsRaw from "./courses-launch-assets.yaml?raw"
 import deepResearchRaw from "./deep-research.yaml?raw"
 import landingAuditLoopRaw from "./landing-audit-loop.yaml?raw"
@@ -77,6 +78,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(coursesAudienceOfferRaw, { source: "builtin" }),
   parseTemplate(coursesCurriculumMapRaw, { source: "builtin" }),
   parseTemplate(coursesLessonSystemRaw, { source: "builtin" }),
+  parseTemplate(coursesTriggerPlaybookRaw, { source: "builtin" }),
   parseTemplate(coursesLaunchAssetsRaw, { source: "builtin" }),
   parseTemplate(deepResearchRaw, { source: "builtin" }),
   parseTemplate(landingAuditLoopRaw, { source: "builtin" }),

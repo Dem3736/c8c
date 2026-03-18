@@ -65,6 +65,7 @@ export async function scaffoldMissingSkills(
     const config = node.config as SkillNodeConfig
     if (!config.skillRef) continue
     if (knownRefs.has(config.skillRef)) continue
+    const skillRef = config.skillRef
     const allowedTools = resolveAllowedTools(config)
     const enrichedConfig: SkillNodeConfig = {
       ...config,
@@ -72,7 +73,7 @@ export async function scaffoldMissingSkills(
     }
 
     // Parse category/name from skillRef
-    const parts = enrichedConfig.skillRef.split("/")
+    const parts = skillRef.split("/")
     let category: string
     let name: string
     if (parts.length >= 2) {

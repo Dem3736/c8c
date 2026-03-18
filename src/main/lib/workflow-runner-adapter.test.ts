@@ -102,7 +102,7 @@ describe("workflow-runner adapter", () => {
   })
 
   it("honors cancel requests that arrive before a run handle is attached", async () => {
-    let resolveStart: ((handle: ReturnType<typeof createHandle>) => void) | null = null
+    let resolveStart: ((handle: ReturnType<typeof createHandle>) => void) | undefined
     startRunMock.mockReturnValue(
       new Promise((resolve) => {
         resolveStart = resolve as (handle: ReturnType<typeof createHandle>) => void

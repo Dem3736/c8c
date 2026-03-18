@@ -7,6 +7,7 @@ describe("courses pack templates", () => {
     "courses-audience-offer",
     "courses-curriculum-map",
     "courses-lesson-system",
+    "courses-trigger-playbook",
     "courses-launch-assets",
   ] as const
 

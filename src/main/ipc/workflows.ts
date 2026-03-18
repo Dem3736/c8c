@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from "electron"
+import { ipcMain, dialog, BrowserWindow, shell } from "electron"
 import {
   loadChainYaml,
   saveChainYaml,
@@ -57,6 +57,66 @@ async function assertWorkflowFilePath(filePath: string): Promise<string> {
   assertSupportedWorkflowExtension(resolvedPath)
   const workflowRoots = await allowedWorkflowRoots()
   return assertWithinRoots(resolvedPath, workflowRoots, "Workflow path")
+}
+
+function isOutsideAllowedWorkflowRootsError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("outside allowed directories")
+}
+
+function formatAllowedWorkflowRoots(roots: string[]): string {
+  return roots.map((root) => `- ${root}`).join("\n")
+}
+
+async function withWorkflowRootGuidance<T>(
+  actionLabel: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await action()
+  } catch (error) {
+    if (!isOutsideAllowedWorkflowRootsError(error)) {
+      throw error
+    }
+    const roots = await allowedWorkflowRoots()
+    throw new Error(
+      `${actionLabel} is limited to registered workflow folders.\n\n`
+      + `Allowed workflow folders:\n${formatAllowedWorkflowRoots(roots)}\n\n`
+      + "Move the workflow into one of these folders, or add/open the project first.",
+    )
+  }
+}
+
+function defaultWorkflowFilename(data: Workflow | ChainDefinition): string {
+  const title = "nodes" in data
+    ? normalizeWorkflowTitle((data as Workflow).name || "")
+    : ""
+  return `${toWorkflowFileStem(title || "workflow")}.chain`
+}
+
+async function saveWorkflowDefinition(
+  filePath: string,
+  data: Workflow | ChainDefinition,
+): Promise<string> {
+  if (filePath.endsWith(".chain")) {
+    if ("nodes" in data) {
+      await saveChain(filePath, data as Workflow)
+    } else {
+      const name = basename(filePath, ".chain")
+      const workflow = yamlToChain(data as ChainDefinition, name)
+      await saveChain(filePath, workflow)
+    }
+    return filePath
+  }
+
+  if ("steps" in data) {
+    await saveChainYaml(filePath, data as ChainDefinition)
+    return filePath
+  }
+
+  const chainPath = filePath.replace(/\.(yaml|yml)$/, ".chain")
+  await assertWorkflowFilePath(chainPath)
+  await saveChain(chainPath, data as Workflow)
+  return chainPath
 }
 
 async function assertRegisteredProjectPath(projectPath: string): Promise<string> {
@@ -120,75 +180,82 @@ export function registerWorkflowsHandlers() {
   ipcMain.handle(
     "workflows:save-as",
     async (_e, data: Workflow | ChainDefinition, projectPath?: string) => {
-      const window = BrowserWindow.getFocusedWindow()
-      if (!window) return null
+      return withWorkflowRootGuidance("Workflow save destination", async () => {
+        const window = BrowserWindow.getFocusedWindow()
+        if (!window) return null
 
-      const defaultDir = projectPath
-        ? join(await assertRegisteredProjectPath(projectPath), ".c8c")
-        : await ensureChainsDir()
+        const defaultDir = projectPath
+          ? join(await assertRegisteredProjectPath(projectPath), ".c8c")
+          : await ensureChainsDir()
 
-      const result = await dialog.showSaveDialog(window, {
-        title: "Save Workflow",
-        defaultPath: join(defaultDir, "workflow.chain"),
-        filters: [
-          { name: "Chain Workflow", extensions: ["chain"] },
-          { name: "YAML (legacy)", extensions: ["yaml", "yml"] },
-        ],
+        const result = await dialog.showSaveDialog(window, {
+          title: "Save Workflow As",
+          defaultPath: join(defaultDir, defaultWorkflowFilename(data)),
+          filters: [
+            { name: "Chain Workflow", extensions: ["chain"] },
+            { name: "YAML (legacy)", extensions: ["yaml", "yml"] },
+          ],
+        })
+
+        if (result.canceled || !result.filePath) return null
+        const safeFilePath = await assertWorkflowFilePath(result.filePath)
+        return saveWorkflowDefinition(safeFilePath, data)
       })
+    },
+  )
 
-      if (result.canceled || !result.filePath) return null
-      const safeFilePath = await assertWorkflowFilePath(result.filePath)
+  ipcMain.handle(
+    "workflows:export-copy",
+    async (_e, data: Workflow | ChainDefinition, projectPath?: string) => {
+      return withWorkflowRootGuidance("Workflow export destination", async () => {
+        const window = BrowserWindow.getFocusedWindow()
+        if (!window) return null
 
-      if (safeFilePath.endsWith(".chain")) {
-        // For .chain files, ensure we have a Workflow object
-        if ("nodes" in data) {
-          await saveChain(safeFilePath, data as Workflow)
-        } else {
-          // Convert legacy to workflow before saving as .chain
-          const name = basename(safeFilePath, ".chain")
-          const workflow = yamlToChain(data as ChainDefinition, name)
-          await saveChain(safeFilePath, workflow)
-        }
-      } else {
-        // Legacy YAML save
-        if ("steps" in data) {
-          await saveChainYaml(safeFilePath, data as ChainDefinition)
-        } else {
-          // Workflow object being saved as YAML — save as .chain instead
-          const chainPath = safeFilePath.replace(/\.(yaml|yml)$/, ".chain")
-          await assertWorkflowFilePath(chainPath)
-          await saveChain(chainPath, data as Workflow)
-          return chainPath
-        }
-      }
+        const defaultDir = projectPath
+          ? join(await assertRegisteredProjectPath(projectPath), ".c8c")
+          : await ensureChainsDir()
 
-      return safeFilePath
+        const result = await dialog.showSaveDialog(window, {
+          title: "Export Workflow Copy",
+          defaultPath: join(defaultDir, defaultWorkflowFilename(data)),
+          filters: [
+            { name: "Chain Workflow", extensions: ["chain"] },
+            { name: "YAML (legacy)", extensions: ["yaml", "yml"] },
+          ],
+        })
+
+        if (result.canceled || !result.filePath) return null
+        const safeFilePath = await assertWorkflowFilePath(result.filePath)
+        return saveWorkflowDefinition(safeFilePath, data)
+      })
     },
   )
 
   ipcMain.handle("workflows:open-file", async () => {
-    const window = BrowserWindow.getFocusedWindow()
-    if (!window) return null
+    return withWorkflowRootGuidance("Workflow import", async () => {
+      const window = BrowserWindow.getFocusedWindow()
+      if (!window) return null
 
-    const result = await dialog.showOpenDialog(window, {
-      title: "Open Workflow",
-      filters: [{ name: "Workflows", extensions: ["chain", "yaml", "yml"] }],
-      properties: ["openFile"],
+      const result = await dialog.showOpenDialog(window, {
+        title: "Open Workflow",
+        filters: [{ name: "Workflows", extensions: ["chain", "yaml", "yml"] }],
+        properties: ["openFile"],
+      })
+
+      if (result.canceled || !result.filePaths[0]) return null
+      const safeFilePath = await assertWorkflowFilePath(result.filePaths[0])
+
+      let chain: Workflow | ChainDefinition
+      if (safeFilePath.endsWith(".chain")) {
+        chain = await loadChain(safeFilePath)
+      } else {
+        const legacy = await loadChainYaml(safeFilePath)
+        const name = basename(safeFilePath).replace(/\.(yaml|yml)$/, "")
+        chain = yamlToChain(legacy, name)
+      }
+
+      return { filePath: safeFilePath, chain }
     })
-
-    if (result.canceled || !result.filePaths[0]) return null
-    const safeFilePath = await assertWorkflowFilePath(result.filePaths[0])
-
-    let chain: Workflow | ChainDefinition
-    if (safeFilePath.endsWith(".chain")) {
-      chain = await loadChain(safeFilePath)
-    } else {
-      const legacy = await loadChainYaml(safeFilePath)
-      const name = basename(safeFilePath).replace(/\.(yaml|yml)$/, "")
-      chain = yamlToChain(legacy, name)
-    }
-
-    return { filePath: safeFilePath, chain }
   })
 
   ipcMain.handle(
@@ -279,8 +346,18 @@ export function registerWorkflowsHandlers() {
   })
 
   ipcMain.handle("workflows:delete", async (_e, filePath: string) => {
-    const { unlink } = await import("node:fs/promises")
     const safeFilePath = await assertWorkflowFilePath(filePath)
-    await unlink(safeFilePath)
+    try {
+      await shell.trashItem(safeFilePath)
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === "EPERM" || code === "EACCES") {
+        throw new Error("This workflow file is read-only and can't be deleted.")
+      }
+      if (code === "ENOENT") {
+        throw new Error("This workflow was already deleted.")
+      }
+      throw error
+    }
   })
 }

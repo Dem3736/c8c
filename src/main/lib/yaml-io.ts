@@ -17,7 +17,15 @@ export async function ensureChainsDir(): Promise<string> {
 
 export async function loadChainYaml(filePath: string): Promise<ChainDefinition> {
   const content = await readFile(filePath, "utf-8")
-  return YAML.parse(content) as ChainDefinition
+  const parsed = YAML.parse(content) as unknown
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid workflow YAML: expected an object")
+  }
+  const candidate = parsed as Partial<ChainDefinition>
+  if (!Array.isArray(candidate.steps)) {
+    throw new Error("Invalid workflow YAML: missing steps array")
+  }
+  return parsed as ChainDefinition
 }
 
 export async function saveChainYaml(

@@ -27,6 +27,7 @@ import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-ru
 const activeGenerateControllers = new Map<number, AbortController>()
 const generateLifecycleBindings = new Set<number>()
 let templateUsageMutationQueue: Promise<unknown> = Promise.resolve()
+const MAX_GENERATION_STDERR_CHARS = 8_192
 
 function runSerializedTemplateUsageMutation<T>(operation: () => Promise<T>): Promise<T> {
   const next = templateUsageMutationQueue.then(() => operation())
@@ -204,7 +205,7 @@ export function registerTemplateHandlers() {
                 logParser.applyUsage(usage)
               },
               onStderr: (text) => {
-                stderrOutput += text
+                stderrOutput = (stderrOutput + text).slice(-MAX_GENERATION_STDERR_CHARS)
               },
             })
           })

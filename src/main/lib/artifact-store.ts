@@ -229,7 +229,7 @@ export async function listProjectArtifacts(projectPath: string): Promise<Artifac
             return null
           }
 
-          return {
+          const record: ArtifactRecord = {
             id: parsed.id,
             kind: parsed.kind,
             title: parsed.title,
@@ -253,7 +253,8 @@ export async function listProjectArtifacts(projectPath: string): Promise<Artifac
             metadataPath: typeof parsed.metadataPath === "string" ? parsed.metadataPath : metadataPath,
             createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : 0,
             updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
-          } satisfies ArtifactRecord
+          }
+          return record
         } catch (error) {
           logWarn("artifact-store", "read_artifact_metadata_failed", {
             metadataPath,

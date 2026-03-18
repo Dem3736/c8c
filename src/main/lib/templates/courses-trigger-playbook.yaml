@@ -1,0 +1,191 @@
+id: courses-trigger-playbook
+stage: content
+emoji: "\U0001FA9D"
+headline: Turn folder materials into a grounded trigger playbook
+how: Extract the trigger logic from the source materials folder, then ground those triggers to a specific course input instead of copying the source blindly.
+input: Course brief, lesson notes, sales page, transcript, or other course input. Use the selected project folder for the source materials.
+output: Trigger playbook with source-backed triggers, grounded hooks, retention beats, CTA ideas, and guardrails
+use_when: You have a folder of course, book, or worksheet materials and want to adapt the trigger system they teach or imply to a specific course or expertise product.
+steps:
+  - Inspect the selected project folder and map the trigger system present in the source materials
+  - Split the mapped trigger system into distinct grounding tasks
+  - Ground each selected trigger on the course input and merge the results into one playbook
+  - Evaluate evidence quality, faithfulness to the course input, and practical usability
+pack:
+  id: courses-factory-alpha
+  label: Courses Factory
+  journey_stage: execute
+  recommended_next:
+    - courses-launch-assets
+contract_out:
+  - kind: trigger_playbook
+    title: Course Trigger Playbook
+    description: Source-backed trigger system grounded to a specific course input.
+execution_policy:
+  profile_id: courses_trigger_playbook
+  summary: Folder-evidenced trigger grounding
+  description: Read the materials folder first, then adapt only supported triggers to the course input.
+  tags:
+    - evidence_first
+    - no_slop
+    - consistency_checks
+  notes:
+    - Separate what comes from the source materials from what is newly grounded to the course input.
+    - Do not invent course claims, promises, or outcomes that are absent from the input.
+version: 1
+name: "Courses Factory: Trigger Playbook"
+description: Inspect a folder of source materials, extract the trigger system they teach or model, and ground those triggers to a specific course or offer input.
+defaults:
+  model: sonnet
+  maxTurns: 160
+  timeout_minutes: 35
+  maxParallel: 6
+  permissionMode: plan
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 220
+    config:
+      inputType: auto
+      required: true
+      placeholder: Paste the course brief, outline, offer notes, transcript, or URL you want grounded. Keep the source materials in the selected project folder.
+  - id: mapper-1
+    type: skill
+    position:
+      x: 300
+      y: 220
+    config:
+      skillRef: strategist
+      prompt: >-
+        Using the current working directory as the source materials folder, inspect the relevant files and build a
+        Trigger Source Map. Focus on course, book, worksheet, and reference materials rather than unrelated project
+        files. If there are PDFs, docs, or other non-plain-text files, use read-only extraction methods when
+        available.
+
+        Output markdown with these sections:
+        1) Source Inventory — relevant file paths and why each matters
+        2) Trigger Taxonomy — the trigger families or patterns clearly present in the materials
+        3) Evidence Table — for each trigger: name, source file path, what it does psychologically or strategically,
+        typical placement (headline / main point / retention / CTA), and guardrails
+        4) Selection Guidance — which triggers look strongest, most reusable, or most characteristic of the source
+        system and why
+
+        Do not ground the triggers to the course input yet. Do not edit files.
+  - id: splitter-1
+    type: splitter
+    position:
+      x: 600
+      y: 220
+    config:
+      strategy: |-
+        Using the Trigger Source Map and the original course input, create exactly 6 self-contained grounding tasks.
+
+        Each task must cover one trigger or one tightly related trigger family from the source materials and include:
+        - task key
+        - trigger name or family
+        - why this trigger was selected
+        - source evidence with file paths
+        - what part of the course input it should be grounded to
+        - the desired deliverable for the grounded trigger card
+
+        Balance the tasks across the funnel when possible so the set covers headline, main point, retention, and CTA
+        applications.
+      maxBranches: 6
+  - id: grounder-1
+    type: skill
+    position:
+      x: 900
+      y: 220
+    config:
+      skillRef: writer
+      prompt: >-
+        Act as a trigger strategist and conversion copywriter. For the assigned trigger task, create a grounded
+        trigger card for the specific course input.
+
+        For each card include:
+        1) trigger name
+        2) what the source materials teach or model about it
+        3) why it fits this course input
+        4) adaptation rule — how to use it without distorting the offer
+        5) 3 grounded hook or headline options
+        6) 2 retention beats or mid-script moves
+        7) 1 CTA angle
+        8) misuse warnings
+
+        Use only claims and promises that are supported by the course input. Keep the language concrete and specific.
+  - id: merger-1
+    type: merger
+    position:
+      x: 1200
+      y: 220
+    config:
+      strategy: summarize
+      prompt: |-
+        Merge the branch outputs into one Course Trigger Playbook.
+
+        Structure the playbook as:
+        - Top recommended triggers
+        - Trigger matrix: source-derived rule vs course-specific grounding
+        - Grounded hooks by trigger
+        - Retention and CTA ideas
+        - Guardrails and misuse risks
+        - Evidence index by file path
+
+        Keep the result usable for scripting lessons, reels, emails, or launch assets. Clearly distinguish source
+        evidence from generated adaptation.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1500
+      y: 220
+    config:
+      criteria: >-
+        Score 1-10 on: trigger choices are clearly evidenced by the folder materials; grounded versions are faithful to
+        the course input; no claims are invented; the playbook is concrete enough to use in scripts or launch assets;
+        and source rules are clearly separated from grounded adaptations. Fail if evidence is vague or if the grounded
+        triggers drift away from the course input.
+      threshold: 7
+      maxRetries: 2
+      retryFrom: mapper-1
+      skillRefs:
+        - infostyle
+        - slop-check
+  - id: output-1
+    type: output
+    position:
+      x: 1800
+      y: 220
+    config:
+      title: Course Trigger Playbook
+      format: markdown
+edges:
+  - id: e-input-mapper
+    source: input-1
+    target: mapper-1
+    type: default
+  - id: e-mapper-splitter
+    source: mapper-1
+    target: splitter-1
+    type: default
+  - id: e-splitter-grounder
+    source: splitter-1
+    target: grounder-1
+    type: default
+  - id: e-grounder-merger
+    source: grounder-1
+    target: merger-1
+    type: default
+  - id: e-merger-eval
+    source: merger-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-retry
+    source: eval-1
+    target: mapper-1
+    type: fail

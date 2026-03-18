@@ -1,12 +1,16 @@
 import { ipcMain, dialog, BrowserWindow } from "electron"
 import { loadProjectsConfig, saveProjectsConfig } from "../lib/projects-config"
-import { logInfo } from "../lib/structured-log"
+import { logInfo, logWarn } from "../lib/structured-log"
 
 let configMutationQueue: Promise<unknown> = Promise.resolve()
 
 function runSerializedConfigOperation<T>(operation: () => Promise<T>): Promise<T> {
   const next = configMutationQueue.then(() => operation())
-  configMutationQueue = next.catch(() => undefined)
+  configMutationQueue = next.catch((error) => {
+    logWarn("projects-ipc", "serialized_config_operation_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  })
   return next
 }
 

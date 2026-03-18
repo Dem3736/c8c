@@ -22,6 +22,7 @@ import {
   looksLikeAuthOrQuotaError,
   looksLikeRateLimitError,
 } from './errors.js';
+import { sanitizeJsonPayload } from './json-sanitizer.js';
 import { KeyPool, loadProviderKeys, type KeyBadness } from './keyring.js';
 import { TokenBucket, jitterMs, sleep } from './rate-limiter.js';
 
@@ -40,18 +41,25 @@ const bucket = new TokenBucket(5, 2); // 5 tokens, 2/sec refill (~120 req/min)
 
 function normalizeToolResult(res: Awaited<ReturnType<Client['callTool']>>): CallToolResult {
   const anyRes = res as unknown as { content?: unknown; toolResult?: unknown; _meta?: unknown };
-  if (Array.isArray(anyRes.content)) {
-    return CallToolResultSchema.parse(res);
-  }
-  const toolResult = anyRes.toolResult;
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
-      },
-    ],
-  };
+  const normalized = Array.isArray(anyRes.content)
+    ? CallToolResultSchema.parse(res)
+    : {
+      ...(anyRes as { isError?: unknown }).isError === true ? { isError: true } : {},
+      content: [
+        {
+          type: 'text' as const,
+          text: typeof anyRes.toolResult === 'string'
+            ? anyRes.toolResult
+            : anyRes.toolResult == null
+              ? ''
+              : JSON.stringify(anyRes.toolResult),
+        },
+      ],
+    };
+
+  // Exa can return scraped page text with lone surrogates; replace them before
+  // Claude SDK re-serializes tool results into the next API request.
+  return sanitizeJsonPayload(normalized) as CallToolResult;
 }
 
 function classifyBadness(err: unknown): { badness: KeyBadness; cooldownMs: number } | null {

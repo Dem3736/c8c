@@ -913,6 +913,12 @@ export async function createCodexAcpExecutionHandle(
   const queue = new AsyncEventQueue<AgentExecutionEvent>()
   const abortController = new AbortController()
   const toolNamesById = new Map<string, string>()
+  let cleanedUp = false
+  const cleanupProvider = () => {
+    if (cleanedUp) return
+    cleanedUp = true
+    provider.cleanup()
+  }
 
   const onAbort = () => {
     if (!abortController.signal.aborted) {
@@ -1023,7 +1029,7 @@ export async function createCodexAcpExecutionHandle(
       queue.push({ type: "finish", summary })
       return summary
     } finally {
-      provider.cleanup()
+      cleanupProvider()
       if (options.abortSignal) {
         options.abortSignal.removeEventListener("abort", onAbort)
       }
@@ -1037,7 +1043,7 @@ export async function createCodexAcpExecutionHandle(
     events: queue,
     abort: () => {
       onAbort()
-      provider.cleanup()
+      cleanupProvider()
     },
     done,
   }
