@@ -1,4 +1,5 @@
 import type {
+  ProjectInspectionKind,
   ResultModeDefinition,
   ResultModeId,
   WorkflowTemplate,
@@ -137,15 +138,182 @@ const QUICK_STARTS_BY_MODE: Partial<Record<ResultModeId, WorkflowResultModeQuick
     },
     {
       templateId: "delivery-verify-phase",
-      label: "Review & ship",
-      summary: "Check the delivered work, fix issues, and continue toward the ship decision.",
-      stageLabel: "Review",
+      label: "Verify phase",
+      summary: "Check the delivered work against the plan before calling the phase complete.",
+      stageLabel: "Verify",
     },
   ],
 }
 
+function getDevelopmentCreateQuickStartPresentation(
+  templateId: string,
+  projectKind?: ProjectInspectionKind | null,
+): Pick<WorkflowResultModeQuickStart, "label" | "summary" | "stageLabel"> | null {
+  switch (projectKind) {
+    case "greenfield_empty":
+    case "greenfield_scaffold":
+      if (templateId === "delivery-shape-project") {
+        return {
+          label: "Build from brief",
+          summary: "Turn the brief into a scoped build path and move toward a working result.",
+          stageLabel: "Do it",
+        }
+      }
+      if (templateId === "delivery-plan-phase") {
+        return {
+          label: "Plan from brief",
+          summary: "Turn the brief into a concrete plan without forcing implementation.",
+          stageLabel: "Plan it",
+        }
+      }
+      return null
+    case "existing_repo":
+      if (templateId === "delivery-map-codebase") {
+        return {
+          label: "Change the current app",
+          summary: "Start from the current codebase, understand it fast, then shape the change.",
+          stageLabel: "Do it",
+        }
+      }
+      if (templateId === "delivery-shape-project") {
+        return {
+          label: "Plan the next change",
+          summary: "Turn the repo context and desired outcome into a concrete change plan.",
+          stageLabel: "Plan it",
+        }
+      }
+      if (templateId === "delivery-plan-phase") {
+        return {
+          label: "Prepare the implementation plan",
+          summary: "Take the scoped work and turn it into an execution-ready phase plan.",
+          stageLabel: "Plan it",
+        }
+      }
+      return null
+    case "review_ready":
+      if (templateId === "delivery-verify-phase") {
+        return {
+          label: "Review before ship",
+          summary: "Check the current work, surface gaps, and decide if it is actually ready.",
+          stageLabel: "Review it",
+        }
+      }
+      if (templateId === "delivery-map-codebase") {
+        return {
+          label: "Change the current app",
+          summary: "Start from the current codebase, understand it fast, then shape the change.",
+          stageLabel: "Do it",
+        }
+      }
+      if (templateId === "delivery-shape-project") {
+        return {
+          label: "Plan the next change",
+          summary: "Turn the repo context and desired outcome into a concrete change plan.",
+          stageLabel: "Plan it",
+        }
+      }
+      return null
+    default:
+      if (templateId === "delivery-shape-project") {
+        return {
+          label: "Build from brief",
+          summary: "Turn the desired outcome into a scoped build path with visible checkpoints.",
+          stageLabel: "Do it",
+        }
+      }
+      if (templateId === "delivery-map-codebase") {
+        return {
+          label: "Change the current app",
+          summary: "Start from the current codebase, understand it fast, then shape the change.",
+          stageLabel: "Do it",
+        }
+      }
+      if (templateId === "delivery-plan-phase") {
+        return {
+          label: "Plan the next change",
+          summary: "Turn the desired outcome into a concrete plan without jumping straight to implementation.",
+          stageLabel: "Plan it",
+        }
+      }
+      if (templateId === "delivery-verify-phase") {
+        return {
+          label: "Review before ship",
+          summary: "Check the current work, surface gaps, and decide if it is actually ready.",
+          stageLabel: "Review it",
+        }
+      }
+      return null
+  }
+}
+
 export function getResultModeQuickStartOptions(modeId: ResultModeId): WorkflowResultModeQuickStart[] {
   return [...(QUICK_STARTS_BY_MODE[modeId] || [])]
+}
+
+export function prioritizeDevelopmentCreateQuickStarts<T extends { templateId: string }>(
+  quickStarts: T[],
+  projectKind?: ProjectInspectionKind | null,
+): T[] {
+  if (quickStarts.length === 0) return []
+
+  const templateIds =
+    projectKind === "review_ready"
+      ? [
+        "delivery-verify-phase",
+        "delivery-map-codebase",
+        "delivery-shape-project",
+      ]
+      : projectKind === "existing_repo"
+        ? [
+          "delivery-map-codebase",
+          "delivery-shape-project",
+          "delivery-plan-phase",
+        ]
+        : projectKind === "greenfield_empty" || projectKind === "greenfield_scaffold"
+          ? [
+            "delivery-shape-project",
+            "delivery-plan-phase",
+          ]
+          : [
+            "delivery-shape-project",
+            "delivery-map-codebase",
+            "delivery-plan-phase",
+          ]
+
+  const quickStartById = new Map(quickStarts.map((quickStart) => [quickStart.templateId, quickStart]))
+  return templateIds.flatMap((templateId) => {
+    const quickStart = quickStartById.get(templateId)
+    return quickStart ? [quickStart] : []
+  })
+}
+
+export function presentDevelopmentCreateQuickStarts(
+  quickStarts: WorkflowResultModeQuickStart[],
+  projectKind?: ProjectInspectionKind | null,
+): WorkflowResultModeQuickStart[] {
+  return quickStarts.map((quickStart) => {
+    const presentation = getDevelopmentCreateQuickStartPresentation(quickStart.templateId, projectKind)
+    if (!presentation) return quickStart
+    return {
+      ...quickStart,
+      ...presentation,
+    }
+  })
+}
+
+export function presentDevelopmentCreateRouteOptions<T extends { templateId: string, label: string, stageLabel?: string }>(
+  options: T[],
+  projectKind?: ProjectInspectionKind | null,
+): T[] {
+  return options.map((option) => {
+    const presentation = getDevelopmentCreateQuickStartPresentation(option.templateId, projectKind)
+    if (!presentation) return option
+    return {
+      ...option,
+      label: presentation.label,
+      stageLabel: presentation.stageLabel,
+    }
+  })
 }
 
 function compactText(values: Array<string | undefined | null>): string {
@@ -178,8 +346,8 @@ export const RESULT_MODES: WorkflowResultMode[] = [
     id: "development",
     label: "Dev Process",
     emoji: "🧩",
-    summary: "Map context, shape scope, plan delivery, and move toward implementation with visible checkpoints.",
-    useFor: "Repo-first development, brief-first shaping, implementation planning, review, and verification.",
+    summary: "Start from the result you want, then let the system route through the right dev path with visible checkpoints.",
+    useFor: "Build from brief, change the current app, plan the next change, review current work, and verify completion.",
     youProvide: "A repo, feature brief, bug, PRD, or delivery goal.",
     youGetFirst: "Codebase map, project shape, or phase plan.",
     userRole: "Approve scope, risky execution, and quality at a few high-leverage checkpoints.",
@@ -187,10 +355,10 @@ export const RESULT_MODES: WorkflowResultMode[] = [
     templateIds: Array.from(DEVELOPMENT_TEMPLATE_IDS),
     stagePreferences: ["research", "strategy", "code", "operations"],
     startTemplateId: "delivery-map-codebase",
-    startActionLabel: "Start Dev Process",
-    guidedPath: ["Shape / Map", "Plan", "Implement", "Review", "Ship"],
-    runtimeLine: "Stops at approval before risky work.",
-    composerPlaceholder: "Describe the result, repo or context, and any delivery constraints...",
+    startActionLabel: "Start from request",
+    guidedPath: ["Shape / Map", "Plan", "Implement", "Verify"],
+    runtimeLine: "Chooses the right path after you submit.",
+    composerPlaceholder: "Describe what you want by the end. Add repo context and delivery constraints if they matter...",
     scaffoldPlaceholders: {
       goal: "What product or feature outcome should this workflow drive?",
       input: "Repository path, issue, PRD, user flow, or technical context.",
@@ -254,6 +422,19 @@ const MODE_BY_ID = new Map<ResultModeId, WorkflowResultMode>(
 
 export function getResultMode(modeId: ResultModeId): WorkflowResultMode {
   return MODE_BY_ID.get(modeId) || RESULT_MODES[0]
+}
+
+export function inferResultModeFromText(text: string): ResultModeId {
+  const normalized = compactText([text])
+  if (!normalized) return "development"
+
+  const developmentScore = DEVELOPMENT_TEXT_RE.test(normalized) ? 2 : 0
+  const contentScore = CONTENT_TEXT_RE.test(normalized) ? 2 : 0
+  const coursesScore = COURSES_TEXT_RE.test(normalized) ? 2 : 0
+
+  if (contentScore > developmentScore && contentScore >= coursesScore) return "content"
+  if (coursesScore > developmentScore && coursesScore > contentScore) return "courses"
+  return "development"
 }
 
 export function getResultModeQuickStarts(

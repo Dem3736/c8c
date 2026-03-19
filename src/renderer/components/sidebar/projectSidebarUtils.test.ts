@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { clampSidebarWidth, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "./useSidebarResize"
 import {
+  buildSidebarWorkflowSummary,
   formatRelativeTime,
   historicalRunVisual,
   latestRunByWorkflowPath,
@@ -40,7 +41,7 @@ describe("projectSidebarUtils", () => {
     })
     expect(resolveProjectRowSelectionState("/tmp/beta", "/tmp/alpha", true)).toEqual({
       shouldSelectProject: true,
-      nextExpanded: true,
+      nextExpanded: false,
     })
     expect(resolveProjectRowSelectionState("/tmp/beta", "/tmp/beta", true)).toEqual({
       shouldSelectProject: false,
@@ -72,6 +73,63 @@ describe("projectSidebarUtils", () => {
     expect(latestByPath.get("/tmp/a.chain")?.status).toBe("completed")
     expect(latestByPath.get("/tmp/b.chain")?.status).toBe("failed")
     expect(latestByPath.size).toBe(2)
+  })
+
+  it("builds compact sidebar summary for active workflow runs", () => {
+    const summary = buildSidebarWorkflowSummary({
+      executionState: {
+        runStatus: "running",
+        runOutcome: null,
+        runStartedAt: Date.now(),
+        completedAt: null,
+        lastUpdatedAt: Date.now(),
+        runId: "run-1",
+        runWorkflowPath: "/tmp/demo.chain",
+        workflowName: "Demo",
+        projectPath: "/tmp",
+        lastError: null,
+        workflowSnapshot: {
+          version: 1,
+          name: "Demo",
+          defaults: { model: "sonnet", maxTurns: 10, timeout_minutes: 10, maxParallel: 1 },
+          nodes: [
+            { id: "input", type: "input", position: { x: 0, y: 0 }, config: {} },
+            {
+              id: "shape",
+              type: "skill",
+              position: { x: 120, y: 0 },
+              config: { skillRef: "shape", prompt: "Shape the change" },
+            },
+          ],
+          edges: [],
+        },
+        nodeStates: {
+          shape: { status: "running", attempts: 0, log: [] },
+        },
+        activeNodeId: "shape",
+        inspectedNodeId: null,
+        evalResults: {},
+        finalContent: "",
+        reportPath: null,
+        workspace: null,
+        selectedPastRun: null,
+        runtimeNodes: [],
+        runtimeEdges: [],
+        runtimeMeta: {},
+        artifactRecords: [],
+        artifactPersistenceStatus: "idle",
+        artifactPersistenceError: null,
+        surfaceNotice: null,
+      },
+    } as any)
+
+    expect(summary.detailLabel).toBe("Shape")
+  })
+
+  it("keeps recent finished rows quiet when there is no active run", () => {
+    expect(buildSidebarWorkflowSummary({})).toEqual({
+      detailLabel: null,
+    })
   })
 })
 

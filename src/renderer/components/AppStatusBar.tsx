@@ -93,6 +93,8 @@ export function AppStatusBar() {
   }, [runStartedAt, runStatus])
   const primaryShortcutLabel = desktopRuntime.primaryModifierLabel
   const runShortcutLabel = `${primaryShortcutLabel}↵`
+  const commandPaletteShortcutLabel = `${primaryShortcutLabel}K`
+  const newProcessShortcutLabel = `${primaryShortcutLabel}N`
   const chatShortcutLabel = `${primaryShortcutLabel}⇧K`
   const sidebarShortcutLabel = `${primaryShortcutLabel}B`
   const settingsShortcutLabel = `${primaryShortcutLabel},`
@@ -293,7 +295,10 @@ export function AppStatusBar() {
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <div className="space-y-2">
-              {[
+                {[
+                { keys: commandPaletteShortcutLabel, label: "Open command palette / quick switch" },
+                { keys: `${primaryShortcutLabel}1…9`, label: "Jump to recent or active processes" },
+                { keys: newProcessShortcutLabel, label: "Start a new process" },
                 { keys: `${primaryShortcutLabel}Z`, label: "Undo last structural change" },
                 { keys: redoShortcutLabel, label: "Redo last undone change" },
                 { keys: `${primaryShortcutLabel}S`, label: "Save current workflow" },

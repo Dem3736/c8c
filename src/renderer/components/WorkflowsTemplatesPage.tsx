@@ -118,7 +118,7 @@ function TemplateCard({
           <Badge variant="outline" size="compact">
             {STAGE_META[template.stage].shortLabel}
           </Badge>
-          {(sourceKind === "plugin" || sourceKind === "user") && (
+          {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
             <Badge variant="secondary" size="compact">
               {getTemplateSourceLabel(template)}
             </Badge>
@@ -127,6 +127,12 @@ function TemplateCard({
       </div>
     </Button>
   )
+}
+
+async function resolveHubTemplate(template: WorkflowTemplate): Promise<WorkflowTemplate> {
+  if (template.source !== "hub" || template.workflow.nodes.length > 0) return template
+  const full = await window.api.fetchHubTemplate(template.id)
+  return { ...template, ...full, source: "hub" }
 }
 
 function normalizeTemplateForWorkflowUse(template: WorkflowTemplate): WorkflowTemplate {
@@ -258,7 +264,7 @@ function TemplateDetailPanel({
             )}
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Badge variant="outline" size="compact">{stageLabel}</Badge>
-              {(sourceKind === "plugin" || sourceKind === "user") && (
+              {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
                 <Badge variant="secondary" size="compact">{sourceLabel}</Badge>
               )}
             </div>
@@ -317,7 +323,7 @@ function TemplateDetailPanel({
             </ol>
           </DisclosurePanel>
 
-          {(sourceKind === "plugin" || sourceKind === "user") && (
+          {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
             <div>
               <span className="ui-meta-label text-muted-foreground">Source</span>
               <p className="mt-1 text-body-sm">
@@ -389,6 +395,8 @@ export function WorkflowsTemplatesPage() {
   const loadTemplates = useCallback(async () => {
     setLoading(true)
     try {
+      // Trigger background catalog refresh, then load templates
+      void window.api.refreshCatalog().catch(() => undefined)
       const loaded = await window.api.listTemplates()
       setTemplates(loaded)
     } catch (error) {
@@ -514,7 +522,7 @@ export function WorkflowsTemplatesPage() {
     doApplyTemplate(template)
   }
 
-  const doApplyTemplate = (template: WorkflowTemplate) => {
+  const doApplyTemplate = async (template: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
       toast.error("Cannot replace the current process while a run is active", {
         description: replaceCurrentBlockedReason,
@@ -522,8 +530,9 @@ export function WorkflowsTemplatesPage() {
       return
     }
 
+    const resolved = await resolveHubTemplate(template)
     const previousWorkflow = structuredClone(workflow)
-    const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
+    const templateForWorkflowUse = normalizeTemplateForWorkflowUse(resolved)
     const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
     const templateStartState = buildTemplateStartState({
       template: {
@@ -558,7 +567,8 @@ export function WorkflowsTemplatesPage() {
   }
 
   const doCreateFromTemplate = async (template: WorkflowTemplate, projectPath: string) => {
-    const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
+    const resolved = await resolveHubTemplate(template)
+    const templateForWorkflowUse = normalizeTemplateForWorkflowUse(resolved)
     const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
     try {
       const filePath = await window.api.createWorkflow(projectPath, templateForWorkflowUse.name, nextWorkflow)

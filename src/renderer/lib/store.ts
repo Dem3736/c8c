@@ -28,6 +28,7 @@ import type {
   ProviderId,
   ProviderSettings,
   ResultModeId,
+  RunResult,
   SafetyProfile,
 } from "@shared/types"
 import type { ClaudeCodeSubscriptionStatus } from "@shared/types"
@@ -112,6 +113,9 @@ export const selectedProjectAtom = atomWithStorage<string | null>(
 )
 export const expandedProjectsAtom = atomWithStorage<string[]>("c8c:expanded-projects", [])
 export const workflowsAtom = atom<WorkflowFile[]>([])
+export const projectWorkflowsCacheAtom = atom<Record<string, WorkflowFile[]>>({})
+export const projectLatestRunsCacheAtom = atom<Record<string, Record<string, RunResult>>>({})
+export const projectWorkflowsLoadingAtom = atom<Record<string, boolean>>({})
 export const selectedWorkflowPathAtom = atomWithStorage<string | null>("c8c:selectedWorkflowPath", null)
 export const projectSidebarWidthAtom = atomWithStorage<number>(
   "c8c:sidebar-width",

@@ -3,7 +3,7 @@ import { useAtom } from "jotai"
 import { Send, Square } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { Button } from "@/components/ui/button"
-import { AutosizeTextarea } from "@/components/ui/autosize-textarea"
+import { PromptComposer } from "@/components/ui/prompt-composer"
 import {
   chatDraftByWorkflowAtom,
   currentWorkflowAtom,
@@ -92,98 +92,87 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
     }
   }
 
-  return (
+    return (
     <div className="border-t border-hairline p-3 bg-surface-1">
-      <div
-        ref={composerRef}
-        className="overflow-hidden rounded-lg surface-elevated ui-transition-surface focus-within:border-ring/60 focus-within:ring focus-within:ring-ring/20"
-      >
-        <div className="relative">
-          <AutosizeTextarea
-            ref={textareaRef}
-            id="chat-input"
-            aria-label="Message input"
-            aria-busy={isStreaming}
-            autoFocus={autoFocus}
-            value={value}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask the agent to refine the flow, adjust the result, or change how it works..."
-            rows={1}
-            spellCheck
-            autoCorrect="on"
-            maxHeight={160}
-            className={cn(
-              "w-full min-h-0 resize-none border-0 bg-transparent px-5 py-4 pr-16 shadow-none hover:border-transparent hover:bg-transparent",
-              "text-body-md text-foreground placeholder:text-muted-foreground/80",
-              "focus-visible:border-transparent focus-visible:ring-transparent",
-              "disabled:bg-surface-2/80 disabled:text-disabled disabled:cursor-not-allowed",
-            )}
-          />
-          <div className="absolute right-3 bottom-3">
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={onCancel}
-                aria-label="Cancel generation"
-                title="Cancel (Esc)"
-                className="ui-icon-button h-control-lg w-control-lg rounded-full surface-danger-soft text-status-danger ui-fade-slide-in"
-              >
-                <Square size={14} aria-hidden="true" />
-              </button>
-            ) : (
-              <Button
-                type="button"
-                onClick={handleSend}
-                disabled={!value.trim() || isStreaming}
-                aria-label="Send message"
-                title={`Send (${sendShortcutLabel})`}
-                className="h-control-lg w-control-lg rounded-full"
-                variant="send"
-                size="icon"
-              >
-                <Send size={16} aria-hidden="true" />
-              </Button>
-            )}
-          </div>
-        </div>
-        <div
-          className={cn(
-            "border-t border-border/50 px-4 py-3",
-            isCompact
-              ? "flex flex-col items-start gap-2"
-              : "flex items-center justify-between gap-3",
-          )}
-        >
-          <ProviderSelect
-            value={activeProvider}
-            onValueChange={(provider) => setWorkflow((prev) => ({
-              ...prev,
-              defaults: {
-                ...(prev.defaults || {}),
-                provider,
-              },
-            }))}
-            codexEnabled={providerSettings.features.codexProvider}
-            labelMode={isCompact ? "short" : "full"}
-            className={cn(
-              "border-0 bg-surface-2/90 shadow-none",
-              isCompact
-                ? "h-control-md w-32 rounded-md"
-                : "h-control-lg w-48 rounded-md",
-            )}
-          />
-          <p
-            className={cn(
-              "ui-meta-text text-muted-foreground",
-              isCompact ? "text-left" : "text-right",
-            )}
-            aria-hidden="true"
+      <PromptComposer
+        ref={textareaRef}
+        id="chat-input"
+        aria-label="Message input"
+        aria-busy={isStreaming}
+        autoFocus={autoFocus}
+        value={value}
+        onChange={handleInput}
+        onKeyDown={handleKeyDown}
+        placeholder="Ask the agent to refine the flow, adjust the result, or change how it works..."
+        rows={1}
+        spellCheck
+        autoCorrect="on"
+        maxHeight={160}
+        shellClassName="rounded-[1.25rem]"
+        textareaClassName="min-h-0"
+        action={isStreaming ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel generation"
+            title="Cancel (Esc)"
+            className="ui-icon-button h-control-lg w-control-lg rounded-full surface-danger-soft text-status-danger ui-fade-slide-in"
           >
-            {shortcutHint}
-          </p>
-        </div>
-      </div>
+            <Square size={14} aria-hidden="true" />
+          </button>
+        ) : (
+          <Button
+            type="button"
+            onClick={handleSend}
+            disabled={!value.trim() || isStreaming}
+            aria-label="Send message"
+            title={`Send (${sendShortcutLabel})`}
+            className="h-control-lg w-control-lg rounded-full"
+            variant="send"
+            size="icon"
+          >
+            <Send size={16} aria-hidden="true" />
+          </Button>
+        )}
+        footer={(
+          <div
+            ref={composerRef}
+            className={cn(
+              isCompact
+                ? "flex flex-col items-start gap-2"
+                : "flex items-center justify-between gap-3",
+            )}
+          >
+            <ProviderSelect
+              value={activeProvider}
+              onValueChange={(provider) => setWorkflow((prev) => ({
+                ...prev,
+                defaults: {
+                  ...(prev.defaults || {}),
+                  provider,
+                },
+              }))}
+              codexEnabled={providerSettings.features.codexProvider}
+              labelMode={isCompact ? "short" : "full"}
+              className={cn(
+                "border-0 bg-surface-2/90 shadow-none",
+                isCompact
+                  ? "h-control-md w-32 rounded-md"
+                  : "h-control-lg w-48 rounded-md",
+              )}
+            />
+            <p
+              className={cn(
+                "ui-meta-text text-muted-foreground",
+                isCompact ? "text-left" : "text-right",
+              )}
+              aria-hidden="true"
+            >
+              {shortcutHint}
+            </p>
+          </div>
+        )}
+      />
       <span className="sr-only">Press {sendShortcutAriaLabel} to send, Shift Enter for a new line, Escape to cancel generation</span>
     </div>
   )

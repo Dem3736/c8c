@@ -26,10 +26,10 @@ import {
   workflowsAtom,
 } from "@/lib/store"
 import { Button } from "@/components/ui/button"
-import { AutosizeTextarea } from "@/components/ui/autosize-textarea"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { PromptComposer } from "@/components/ui/prompt-composer"
 import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu,
@@ -39,7 +39,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
+import { PageHeader, PageShell } from "@/components/ui/page-shell"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   CanvasDialogBody,
   CanvasDialogContent,
@@ -55,7 +56,6 @@ import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import {
   EMPTY_WORKFLOW_CREATE_SCAFFOLD,
-  buildWorkflowCreatePrompt,
   countWorkflowCreateScaffoldFields,
   hasWorkflowCreatePromptContent,
 } from "@/lib/workflow-create-prompt"
@@ -65,15 +65,21 @@ import { toast } from "sonner"
 import {
   ArrowUp,
   Check,
-  ChevronLeft,
   ChevronRight,
-  FilePlus2,
   Folder,
   FolderPlus,
   Loader2,
+  MoreHorizontal,
   Sparkles,
 } from "lucide-react"
-import type { CreateEntryRouteOption, InputAttachment, ResultModeId, WorkflowTemplate } from "@shared/types"
+import type {
+  CreateEntryHelpModeHint,
+  CreateEntryRouteOption,
+  InputAttachment,
+  ProjectInspectionSummary,
+  ResultModeId,
+  WorkflowTemplate,
+} from "@shared/types"
 import { cn } from "@/lib/cn"
 import { STAGE_META } from "@/lib/template-stages"
 import {
@@ -92,12 +98,14 @@ import {
 import {
   getResultMode,
   getResultModeQuickStartOptions,
+  presentDevelopmentCreateQuickStarts,
+  presentDevelopmentCreateRouteOptions,
+  prioritizeDevelopmentCreateQuickStarts,
   prioritizeTemplatesForResultMode,
   RESULT_MODES,
   splitTemplatesForResultMode,
 } from "@/lib/result-modes"
 import { resolveGuidedStartTemplateId } from "@/lib/guided-start"
-import { ResultModeCard } from "@/components/ui/result-mode-card"
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 import { useBlankWorkflowCreation } from "@/hooks/useBlankWorkflowCreation"
@@ -113,19 +121,26 @@ const DEVELOPMENT_CREATE_QUICK_START_IDS = new Set([
 const DEVELOPMENT_CONTEXTUAL_ROUTE_OPTIONS: CreateEntryRouteOption[] = [
   {
     templateId: "ux-ui-polish-audit",
-    label: "Audit UX/UI polish",
+    label: "Audit and polish this UI",
     stageLabel: "Review",
   },
   {
     templateId: "impeccable-ui-pipeline",
-    label: "Polish a UI feature",
-    stageLabel: "Implement",
+    label: "Improve this UI flow",
+    stageLabel: "Do it",
   },
   {
     templateId: "playwright-visual-audit",
-    label: "Run visual UI audit",
-    stageLabel: "Review",
+    label: "Audit this UI in browser",
+    stageLabel: "Review it",
   },
+]
+
+const DEVELOPMENT_HELP_MODE_OPTIONS: Array<{ value: CreateEntryHelpModeHint, label: string }> = [
+  { value: "auto", label: "Auto" },
+  { value: "do", label: "Do it" },
+  { value: "plan", label: "Plan it" },
+  { value: "review", label: "Review it" },
 ]
 
 function buildTemplateCustomizationPrompt(template: WorkflowTemplate, requestedResult?: string): string {
@@ -145,6 +160,12 @@ function buildTemplateCustomizationPrompt(template: WorkflowTemplate, requestedR
 
 function templateCardCopy(template: WorkflowTemplate): string {
   return deriveTemplateCardCopy(template)
+}
+
+async function resolveHubTemplate(template: WorkflowTemplate): Promise<WorkflowTemplate> {
+  if (template.source !== "hub" || template.workflow.nodes.length > 0) return template
+  const full = await window.api.fetchHubTemplate(template.id)
+  return { ...template, ...full, source: "hub" }
 }
 
 function normalizeTemplateForWorkflowUse(template: WorkflowTemplate): WorkflowTemplate {
@@ -174,38 +195,31 @@ function TemplateSuggestionCard({
       variant="ghost"
       size="bare"
       onClick={() => onSelect(template)}
-      className="ui-interactive-card-subtle min-h-36 w-60 shrink-0 snap-start !flex-col !items-start !justify-start overflow-hidden rounded-lg surface-panel px-4 py-4 text-left !whitespace-normal md:w-60"
+      className="ui-interactive-card-subtle h-auto w-full !items-start gap-2.5 rounded-[1rem] border border-hairline/80 bg-surface-1/78 px-3 py-3 text-left !whitespace-normal"
     >
-      <div className="flex w-full items-start gap-3">
-        <div className="surface-inset-card flex h-9 w-9 shrink-0 items-center justify-center p-0 text-lg">
-          <span aria-hidden>{template.emoji}</span>
-        </div>
-        <div className="min-w-0 flex-1 space-y-1">
-          {(eyebrow || recommended) && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {eyebrow ? (
-                <Badge variant="outline" size="compact">
-                  {eyebrow}
-                </Badge>
-              ) : null}
-              {recommended ? (
-                <Badge variant="secondary" size="compact">
-                  Recommended
-                </Badge>
-              ) : null}
-            </div>
-          )}
-          <p className="ui-body-text-medium truncate text-foreground">
-            {title || getWorkflowTemplateDisplayName(template)}
-          </p>
-          <p className="line-clamp-3 text-body-sm text-muted-foreground">
-            {summary || template.headline || templateCardCopy(template)}
-          </p>
-        </div>
+      <div className="surface-inset-card flex h-9 w-9 shrink-0 items-center justify-center p-0 text-[15px]">
+        <span aria-hidden>{template.emoji}</span>
       </div>
-      <p className="mt-auto ui-meta-text text-muted-foreground">
-        {title ? getWorkflowTemplateDisplayName(template) : STAGE_META[template.stage].shortLabel}
-      </p>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {eyebrow ? (
+            <Badge variant="outline" size="compact">
+              {eyebrow}
+            </Badge>
+          ) : null}
+          {recommended ? (
+            <Badge variant="secondary" size="compact">
+              Suggested
+            </Badge>
+          ) : null}
+        </div>
+        <p className="truncate text-body-sm font-medium text-foreground">
+          {title || getWorkflowTemplateDisplayName(template)}
+        </p>
+        <p className="line-clamp-2 text-[13px] leading-5 text-muted-foreground">
+          {summary || template.headline || templateCardCopy(template)}
+        </p>
+      </div>
     </Button>
   )
 }
@@ -323,6 +337,8 @@ export function WorkflowCreatePage() {
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [createContext, setCreateContext] = useAtom(workflowCreateContextAtom)
+  const [projectInspection, setProjectInspection] = useState<ProjectInspectionSummary | null>(null)
+  const [developmentHelpModeHint, setDevelopmentHelpModeHint] = useState<CreateEntryHelpModeHint>("auto")
   const [draftPrompt, setDraftPrompt] = useAtom(workflowCreateDraftPromptAtom)
   const [modeConfigs, setModeConfigs] = useAtom(workflowCreateModeConfigsAtom)
   const [promptScaffold, setPromptScaffold] = useAtom(workflowCreatePromptScaffoldAtom)
@@ -334,7 +350,6 @@ export function WorkflowCreatePage() {
   const [promptHelperOpen, setPromptHelperOpen] = useState(false)
   const [popularTemplates, setPopularTemplates] = useState<WorkflowTemplate[]>([])
   const [availableTemplates, setAvailableTemplates] = useState<WorkflowTemplate[]>([])
-  const [popularTemplatesFromUsage, setPopularTemplatesFromUsage] = useState(false)
   const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [openingProject, setOpeningProject] = useState(false)
@@ -343,7 +358,6 @@ export function WorkflowCreatePage() {
   const [templateAction, setTemplateAction] = useState<"create" | "customize" | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const templateRailRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLDivElement | null>(null)
   const promptHelperRef = useRef<HTMLDivElement | null>(null)
   const promptHelperScrollRef = useRef<HTMLDivElement | null>(null)
@@ -370,8 +384,15 @@ export function WorkflowCreatePage() {
       return
     }
 
-    if (projects.length > 0) {
+    if (projects.length === 1) {
       setCreateContext({ projectPath: projects[0], locked: false })
+      return
+    }
+
+    if (projects.length > 1) {
+      if (targetProjectPath !== null || createContext.locked) {
+        setCreateContext({ projectPath: null, locked: false })
+      }
       return
     }
 
@@ -411,7 +432,6 @@ export function WorkflowCreatePage() {
 
         if (cancelled) return
         setAvailableTemplates(templates)
-        setPopularTemplatesFromUsage(popular.length > 0)
         const seen = new Set(popular.map((template) => template.id))
         const supplemented = templates.filter((template) => !seen.has(template.id))
         setPopularTemplates(
@@ -421,7 +441,6 @@ export function WorkflowCreatePage() {
         if (cancelled) return
         setAvailableTemplates([])
         setPopularTemplates([])
-        setPopularTemplatesFromUsage(false)
         toast.error(`Failed to load starting points: ${String(error)}`)
       } finally {
         if (!cancelled) {
@@ -522,12 +541,15 @@ export function WorkflowCreatePage() {
   )
   const routeOptions = useMemo<CreateEntryRouteOption[]>(
     () => {
-      const primaryOptions = (visibleQuickStarts.length > 0 ? visibleQuickStarts : quickStartOptions).map((quickStart) => ({
+      const basePrimaryOptions = (visibleQuickStarts.length > 0 ? visibleQuickStarts : quickStartOptions).map((quickStart) => ({
         templateId: "template" in quickStart ? quickStart.template.id : quickStart.templateId,
         label: quickStart.label,
         stageLabel: quickStart.stageLabel,
         recommended: quickStart.recommended,
       }))
+      const primaryOptions = selectedResultMode.id === "development"
+        ? presentDevelopmentCreateRouteOptions(basePrimaryOptions, projectInspection?.projectKind)
+        : basePrimaryOptions
       if (selectedResultMode.id !== "development") return primaryOptions
 
       const availableTemplateIds = new Set(availableTemplates.map((template) => template.id))
@@ -537,7 +559,7 @@ export function WorkflowCreatePage() {
       return [...primaryOptions, ...contextualOptions].filter((option, index, array) =>
         array.findIndex((candidate) => candidate.templateId === option.templateId) === index)
     },
-    [availableTemplates, quickStartOptions, selectedResultMode.id, visibleQuickStarts],
+    [availableTemplates, projectInspection?.projectKind, quickStartOptions, selectedResultMode.id, visibleQuickStarts],
   )
   const resolvedStartTemplateId = useMemo(
     () => resolveGuidedStartTemplateId({
@@ -566,33 +588,47 @@ export function WorkflowCreatePage() {
     if (visibleQuickStarts.length === 0) return []
     if (selectedResultMode.id !== "development") return visibleQuickStarts
     const entryQuickStarts = visibleQuickStarts.filter((quickStart) =>
-      DEVELOPMENT_CREATE_QUICK_START_IDS.has(quickStart.template.id))
-    return entryQuickStarts.length > 0 ? entryQuickStarts : visibleQuickStarts.slice(0, 3)
-  }, [selectedResultMode.id, visibleQuickStarts])
+      DEVELOPMENT_CREATE_QUICK_START_IDS.has(quickStart.template.id) || quickStart.template.id === "delivery-verify-phase")
+    const prioritizedQuickStarts = prioritizeDevelopmentCreateQuickStarts(
+      entryQuickStarts.length > 0 ? entryQuickStarts : visibleQuickStarts,
+      projectInspection?.projectKind,
+    )
+    const primaryQuickStarts = prioritizedQuickStarts.length > 0 ? prioritizedQuickStarts : visibleQuickStarts.slice(0, 3)
+    return presentDevelopmentCreateQuickStarts(primaryQuickStarts, projectInspection?.projectKind)
+  }, [projectInspection?.projectKind, selectedResultMode.id, visibleQuickStarts])
   const visiblePopularTemplates = useMemo(() => {
     const modeTemplates = prioritizeTemplatesForResultMode(popularTemplates, selectedResultModeId)
     return (modeTemplates.length > 0 ? modeTemplates : popularTemplates).slice(0, POPULAR_TEMPLATE_LIMIT)
   }, [popularTemplates, selectedResultModeId])
-  const useQuickStartRail = displayQuickStarts.length > 0
-  const popularTemplatesTitle = useMemo(() => {
-    if (useQuickStartRail) {
-      if (selectedResultMode.id === "development") {
-        return `Starting points in ${selectedResultMode.label}`
-      }
-      return `Quick starts in ${selectedResultMode.label}`
+  const suggestedTemplates = useMemo(() => {
+    if (displayQuickStarts.length > 0) {
+      return displayQuickStarts.map((quickStart) => ({
+        template: quickStart.template,
+        title: quickStart.label,
+        summary: quickStart.summary,
+        eyebrow: quickStart.stageLabel,
+        recommended: quickStart.recommended,
+      }))
     }
-    const baseLabel = `${selectedResultMode.label} starting points`
-    if (targetProjectName && popularTemplatesFromUsage) {
-      return `${baseLabel} for ${targetProjectName}`
-    }
-    return baseLabel
-  }, [popularTemplatesFromUsage, selectedResultMode.id, selectedResultMode.label, targetProjectName, useQuickStartRail])
+
+    return visiblePopularTemplates.slice(0, 6).map((template) => ({
+      template,
+      title: undefined,
+      summary: undefined,
+      eyebrow: undefined,
+      recommended: false,
+    }))
+  }, [displayQuickStarts, visiblePopularTemplates])
+  const suggestedTemplatesTitle = useMemo(() => {
+    if (selectedResultMode.id === "development") return "Suggested starts"
+    return `Suggested ${selectedResultMode.label.toLowerCase()} starts`
+  }, [selectedResultMode.id, selectedResultMode.label])
   const pendingQuickStart = useMemo(
-    () => visibleQuickStarts.find((quickStart) => quickStart.template.id === pendingTemplate?.id) || null,
-    [pendingTemplate?.id, visibleQuickStarts],
+    () => displayQuickStarts.find((quickStart) => quickStart.template.id === pendingTemplate?.id) || null,
+    [displayQuickStarts, pendingTemplate?.id],
   )
   const pendingPrimaryActionLabel = pendingQuickStart?.stageLabel
-    ? `Start at ${pendingQuickStart.stageLabel}`
+    ? `Start ${pendingQuickStart.label}`
     : "Start here"
 
   const openWorkflowFile = async (
@@ -661,6 +697,44 @@ export function WorkflowCreatePage() {
     }
   }
 
+  useEffect(() => {
+    let cancelled = false
+
+    if (!targetProjectPath) {
+      setProjectInspection(null)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const inspectCreateEntryProject = (window.api as typeof window.api & {
+      inspectCreateEntryProject?: typeof window.api.inspectCreateEntryProject
+    }).inspectCreateEntryProject
+
+    if (!inspectCreateEntryProject) {
+      setProjectInspection(null)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void inspectCreateEntryProject(targetProjectPath)
+      .then((inspection) => {
+        if (!cancelled) {
+          setProjectInspection(inspection)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProjectInspection(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [targetProjectPath])
+
   const handleTemplateSelect = (template: WorkflowTemplate) => {
     setPendingTemplate(template)
     setSubmitError(null)
@@ -696,7 +770,8 @@ export function WorkflowCreatePage() {
 
     setTemplateAction("create")
     try {
-      const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
+      const resolved = await resolveHubTemplate(template)
+      const templateForWorkflowUse = normalizeTemplateForWorkflowUse(resolved)
       const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
       const filePath = await window.api.createWorkflow(targetProjectPath, templateForWorkflowUse.name, nextWorkflow)
       const templateStartState = buildTemplateStartState({
@@ -732,7 +807,8 @@ export function WorkflowCreatePage() {
 
     setTemplateAction("customize")
     try {
-      const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
+      const resolved = await resolveHubTemplate(template)
+      const templateForWorkflowUse = normalizeTemplateForWorkflowUse(resolved)
       const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
       const filePath = await window.api.createWorkflow(targetProjectPath, templateForWorkflowUse.name, nextWorkflow)
       const templateStartState = buildTemplateStartState({
@@ -790,6 +866,7 @@ export function WorkflowCreatePage() {
           fallbackTemplateId: selectedResultMode.startTemplateId,
           draftPrompt,
           requestedResult: message,
+          helpModeHint: selectedResultMode.id === "development" ? developmentHelpModeHint : "auto",
           modeConfig: selectedModeConfig,
           promptScaffold,
           allowedOptions: routeOptions,
@@ -809,7 +886,8 @@ export function WorkflowCreatePage() {
         || null
 
       if (startTemplate) {
-        const templateForWorkflowUse = normalizeTemplateForWorkflowUse(startTemplate)
+        const resolvedStartTemplate = await resolveHubTemplate(startTemplate)
+        const templateForWorkflowUse = normalizeTemplateForWorkflowUse(resolvedStartTemplate)
         const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
         const filePath = await window.api.createWorkflow(targetProjectPath, templateForWorkflowUse.name, nextWorkflow)
         const template = {
@@ -866,16 +944,6 @@ export function WorkflowCreatePage() {
       event.preventDefault()
       void handleSend()
     }
-  }
-
-  const scrollTemplates = (direction: "left" | "right") => {
-    const rail = templateRailRef.current
-    if (!rail) return
-    const amount = Math.max(rail.clientWidth * 0.72, 260)
-    rail.scrollBy({
-      left: direction === "left" ? -amount : amount,
-      behavior: "smooth",
-    })
   }
 
   return (
@@ -942,290 +1010,288 @@ export function WorkflowCreatePage() {
         )}
       />
 
-      <div className={cn("mx-auto flex w-full flex-1 flex-col gap-6 pb-8", CREATE_SURFACE_MAX_WIDTH)}>
-        <div ref={composerRef} className="mx-auto w-full">
-          <div className="rounded-lg surface-elevated transition-[border-color,box-shadow] ui-motion-fast focus-within:border-ring/60 focus-within:ring-[3px] focus-within:ring-ring/20">
-            <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
-                    <p className="ui-meta-label text-muted-foreground">Guided</p>
-                  </div>
-                  <div className="rounded-full surface-inset-card px-3 py-1.5">
-                    <p className="ui-meta-text text-muted-foreground">
-                      {targetProjectName || "Select project"}
-                    </p>
-                  </div>
-                </div>
+      <div className={cn("mx-auto flex w-full flex-1 flex-col gap-5 pb-8", CREATE_SURFACE_MAX_WIDTH)}>
+        <div ref={composerRef} className="mx-auto w-full space-y-4">
+          <div className="flex flex-col gap-2 px-1">
+            <Tabs
+              value={selectedResultMode.id}
+              onValueChange={(value) => setSelectedResultModeId(value as ResultModeId)}
+              className="w-full"
+            >
+              <TabsList className="h-auto w-fit flex-wrap rounded-[0.95rem] border border-hairline/75 bg-surface-1/72 p-1 shadow-[inset_0_1px_0_var(--inset-highlight)]">
+                {RESULT_MODES.map((mode) => (
+                  <TabsTrigger
+                    key={mode.id}
+                    value={mode.id}
+                    className="h-8 gap-2 rounded-[0.75rem] border-transparent px-3 text-[15px] font-medium text-muted-foreground hover:bg-surface-2/45 hover:text-foreground data-[state=active]:border-transparent data-[state=active]:bg-surface-1 data-[state=active]:text-foreground data-[state=active]:shadow-[inset_0_1px_0_var(--inset-highlight),0_1px_2px_hsl(var(--foreground)/0.08)]"
+                  >
+                    <span aria-hidden>{mode.emoji}</span>
+                    <span>{mode.label}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
 
-                <div className="grid gap-3 lg:grid-cols-3">
-                  {RESULT_MODES.map((mode) => (
-                    <ResultModeCard
-                      key={mode.id}
-                      mode={mode}
-                      selected={mode.id === selectedResultMode.id}
-                      onSelect={(nextMode) => setSelectedResultModeId(nextMode.id as ResultModeId)}
-                      compact
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="relative">
-              <AutosizeTextarea
-                ref={textareaRef}
-                aria-label="Process request"
-                value={draftPrompt}
-                onChange={(event) => setDraftPrompt(event.target.value)}
-                onKeyDown={handleTextareaKeyDown}
-                placeholder={selectedResultMode.composerPlaceholder}
-                rows={1}
-                maxHeight={240}
-                className={cn(
-                  "min-h-24 w-full resize-none border-0 bg-transparent px-5 py-4 pr-16 shadow-none hover:border-transparent hover:bg-transparent",
-                  "text-body-md text-foreground placeholder:text-muted-foreground/80 focus-visible:border-transparent focus-visible:ring-transparent",
+          <PromptComposer
+            ref={textareaRef}
+            aria-label="Process request"
+            value={draftPrompt}
+            onChange={(event) => setDraftPrompt(event.target.value)}
+            onKeyDown={handleTextareaKeyDown}
+            placeholder={selectedResultMode.composerPlaceholder}
+            rows={1}
+            maxHeight={220}
+            shellClassName="rounded-[1.875rem]"
+            textareaClassName="min-h-28 text-[1.02rem] leading-7"
+            action={(
+              <Button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={!canSubmitPrompt || submitting}
+                variant="send"
+                size="icon"
+                className="h-11 w-11 rounded-full"
+                aria-label={selectedResultMode.startActionLabel || "Start process"}
+                title={selectedResultMode.startActionLabel || "Start process"}
+              >
+                {submitting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <ArrowUp size={16} />
                 )}
-              />
-              <div className="absolute bottom-3 right-3">
-                <Button
-                  type="button"
-                  onClick={() => void handleSend()}
-                  disabled={!canSubmitPrompt || submitting}
-                  variant="send"
-                  size="icon"
-                  className="h-control-lg w-control-lg rounded-full"
-                  aria-label={selectedResultMode.startActionLabel || "Start process"}
-                  title={selectedResultMode.startActionLabel || "Start process"}
-                >
-                  {submitting ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <ArrowUp size={16} />
-                  )}
-                </Button>
-              </div>
-            </div>
-            <div data-open={promptHelperOpen ? "true" : "false"} className="ui-collapsible">
-              <div className="ui-collapsible-inner">
-                <div className="px-4 pt-3">
-                  <div ref={promptHelperRef} className="surface-inset-card overflow-hidden">
-                    <div className="flex flex-wrap items-start justify-between gap-3 px-3 pb-0 pt-3">
-                      <div>
-                        <p className="section-kicker">Details</p>
-                      </div>
-                      {optionalDetailCount > 0 ? (
+              </Button>
+            )}
+            footer={(
+              <div className="space-y-2.5">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    {selectedResultMode.id === "development" ? (
+                      <>
+                        <span className="ui-meta-text shrink-0 text-muted-foreground">Mode</span>
+                        <div
+                          className="control-cluster control-cluster-compact flex flex-wrap items-center gap-1 rounded-xl surface-inset-card p-1"
+                          aria-label="Development help mode"
+                        >
+                          {DEVELOPMENT_HELP_MODE_OPTIONS.map((option) => (
+                            <Button
+                              key={option.value}
+                              type="button"
+                              variant={developmentHelpModeHint === option.value ? "secondary" : "ghost"}
+                              size="xs"
+                              aria-pressed={developmentHelpModeHint === option.value}
+                              onClick={() => setDevelopmentHelpModeHint(option.value)}
+                              className="px-2.5 text-muted-foreground"
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="ui-meta-text text-muted-foreground">{selectedResultMode.runtimeLine}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant={promptHelperOpen ? "secondary" : "ghost"}
+                      size="xs"
+                      aria-pressed={promptHelperOpen}
+                      className="text-muted-foreground"
+                      onClick={() => setPromptHelperOpen((prev) => !prev)}
+                    >
+                      <Sparkles size={13} />
+                      {promptHelperOpen ? "Hide details" : "Details"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={openTemplateLibrary}
+                      className="text-muted-foreground"
+                    >
+                      Library
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
                           type="button"
                           variant="ghost"
-                          size="xs"
-                          className="shrink-0 text-muted-foreground"
-                          onClick={clearOptionalDetails}
+                          size="icon-xs"
+                          aria-label="More create actions"
+                          className="text-muted-foreground"
                         >
-                          Clear details
+                          <MoreHorizontal size={14} />
                         </Button>
-                      ) : null}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 rounded-lg p-1.5">
+                        <DropdownMenuItem
+                          onSelect={() => void createBlankWorkflow({ projectPath: targetProjectPath })}
+                          disabled={creatingBlankWorkflow || !targetProjectPath}
+                          className="h-auto items-center gap-2 rounded-md px-3 py-2 text-body-sm"
+                        >
+                          {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : null}
+                          Blank process
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {submitHint ? (
+                      <p className="ui-meta-text text-muted-foreground">{submitHint}</p>
+                    ) : null}
+                    {optionalDetailCount > 0 ? (
+                      <Badge variant="secondary" size="compact">
+                        {optionalDetailCount} detail{optionalDetailCount === 1 ? "" : "s"}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="ui-meta-text text-muted-foreground">
+                    {submitting ? "Choosing the best start..." : "Enter to start · Shift+Enter new line"}
+                  </p>
+                </div>
+              </div>
+            )}
+          />
+
+          <div data-open={promptHelperOpen ? "true" : "false"} className="ui-collapsible">
+            <div className="ui-collapsible-inner">
+              <div className="px-2 pt-1">
+                <div ref={promptHelperRef} className="surface-inset-card overflow-hidden">
+                  <div className="flex flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-4">
+                    <div>
+                      <p className="section-kicker">Details</p>
                     </div>
+                    {optionalDetailCount > 0 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="shrink-0 text-muted-foreground"
+                        onClick={clearOptionalDetails}
+                      >
+                        Clear details
+                      </Button>
+                    ) : null}
+                  </div>
 
-                    <div
-                      ref={promptHelperScrollRef}
-                      className="ui-scroll-region max-h-[min(56vh,36rem)] overflow-y-auto border-t border-hairline/70 px-3 py-3"
-                    >
-                      <div className="space-y-5">
-                        <div className="space-y-3">
-                          <p className="ui-meta-label text-muted-foreground">Mode details</p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {selectedModeConfigFields.map((field) => (
-                              <ModeConfigField
-                                key={field.id}
-                                field={field}
-                                value={selectedModeConfig[field.id] || ""}
-                                onChange={(value) => handleModeConfigChange(field.id, value)}
-                              />
-                            ))}
-                          </div>
+                  <div
+                    ref={promptHelperScrollRef}
+                    className="ui-scroll-region max-h-[min(56vh,36rem)] overflow-y-auto border-t border-hairline/70 px-4 py-4"
+                  >
+                    <div className="space-y-5">
+                      <div className="space-y-3">
+                        <p className="ui-meta-label text-muted-foreground">Mode details</p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {selectedModeConfigFields.map((field) => (
+                            <ModeConfigField
+                              key={field.id}
+                              field={field}
+                              value={selectedModeConfig[field.id] || ""}
+                              onChange={(value) => handleModeConfigChange(field.id, value)}
+                            />
+                          ))}
                         </div>
+                      </div>
 
-                        <div className="space-y-3 border-t border-hairline/70 pt-4">
-                          <p className="ui-meta-label text-muted-foreground">Request scaffold</p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <ScaffoldField
-                              id="workflow-helper-goal"
-                              label="Goal"
-                              placeholder={selectedResultMode.scaffoldPlaceholders.goal}
-                              value={promptScaffold.goal}
-                              onChange={(value) => setPromptScaffold((prev) => ({ ...prev, goal: value }))}
-                            />
-                            <ScaffoldField
-                              id="workflow-helper-input"
-                              label="Input"
-                              placeholder={selectedResultMode.scaffoldPlaceholders.input}
-                              value={promptScaffold.input}
-                              onChange={(value) => setPromptScaffold((prev) => ({ ...prev, input: value }))}
-                            />
-                            <ScaffoldField
-                              id="workflow-helper-constraints"
-                              label="Constraints"
-                              placeholder={selectedResultMode.scaffoldPlaceholders.constraints}
-                              value={promptScaffold.constraints}
-                              onChange={(value) => setPromptScaffold((prev) => ({ ...prev, constraints: value }))}
-                            />
-                            <ScaffoldField
-                              id="workflow-helper-success"
-                              label="Success criteria"
-                              placeholder={selectedResultMode.scaffoldPlaceholders.successCriteria}
-                              value={promptScaffold.successCriteria}
-                              onChange={(value) => setPromptScaffold((prev) => ({ ...prev, successCriteria: value }))}
-                            />
-                          </div>
+                      <div className="space-y-3 border-t border-hairline/70 pt-4">
+                        <p className="ui-meta-label text-muted-foreground">Request scaffold</p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <ScaffoldField
+                            id="workflow-helper-goal"
+                            label="Goal"
+                            placeholder={selectedResultMode.scaffoldPlaceholders.goal}
+                            value={promptScaffold.goal}
+                            onChange={(value) => setPromptScaffold((prev) => ({ ...prev, goal: value }))}
+                          />
+                          <ScaffoldField
+                            id="workflow-helper-input"
+                            label="Input"
+                            placeholder={selectedResultMode.scaffoldPlaceholders.input}
+                            value={promptScaffold.input}
+                            onChange={(value) => setPromptScaffold((prev) => ({ ...prev, input: value }))}
+                          />
+                          <ScaffoldField
+                            id="workflow-helper-constraints"
+                            label="Constraints"
+                            placeholder={selectedResultMode.scaffoldPlaceholders.constraints}
+                            value={promptScaffold.constraints}
+                            onChange={(value) => setPromptScaffold((prev) => ({ ...prev, constraints: value }))}
+                          />
+                          <ScaffoldField
+                            id="workflow-helper-success"
+                            label="Success criteria"
+                            placeholder={selectedResultMode.scaffoldPlaceholders.successCriteria}
+                            value={promptScaffold.successCriteria}
+                            onChange={(value) => setPromptScaffold((prev) => ({ ...prev, successCriteria: value }))}
+                          />
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-            <div className="border-t border-hairline/70 px-4 py-3">
-              <div className="control-cluster control-cluster-compact flex flex-wrap items-center justify-between gap-2 rounded-lg">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant={promptHelperOpen ? "secondary" : "ghost"}
-                    size="sm"
-                    aria-pressed={promptHelperOpen}
-                    className="text-muted-foreground"
-                    onClick={() => setPromptHelperOpen((prev) => !prev)}
-                  >
-                    <Sparkles size={14} />
-                    {promptHelperOpen ? "Hide details" : "Details"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={openTemplateLibrary}
-                    className="text-muted-foreground"
-                  >
-                    Process library
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={creatingBlankWorkflow || !targetProjectPath}
-                    onClick={() => void createBlankWorkflow({ projectPath: targetProjectPath })}
-                    className="text-muted-foreground"
-                  >
-                    {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
-                    Blank process
-                  </Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {submitHint ? (
-                    <Badge variant="secondary" size="pill">
-                      {submitHint}
-                    </Badge>
-                  ) : null}
-                  {optionalDetailCount > 0 ? (
-                    <Badge variant="secondary" size="pill">
-                      {optionalDetailCount} field{optionalDetailCount === 1 ? "" : "s"}
-                    </Badge>
-                  ) : null}
-                  <p className="ui-meta-text text-muted-foreground">
-                    {submitting ? "Choosing the best start..." : "Enter to start · Shift+Enter for new line"}
-                  </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {submitError && (
-            <div className="mt-4 rounded-lg ui-alert-danger text-status-danger">
+          {submitError ? (
+            <div className="rounded-lg ui-alert-danger text-status-danger">
               {submitError}
             </div>
-          )}
+          ) : null}
         </div>
 
-        {(loadingTemplates || useQuickStartRail || visiblePopularTemplates.length > 0) && (
-          <section aria-label={popularTemplatesTitle} className="w-full">
-            <SectionHeading
-              title={popularTemplatesTitle}
-              meta={(
-                <div className="control-cluster flex items-center gap-1 rounded-lg p-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => scrollTemplates("left")}
-                    className="text-muted-foreground"
-                    aria-label="Scroll starting points left"
-                  >
-                    <ChevronLeft size={16} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => scrollTemplates("right")}
-                    className="text-muted-foreground"
-                    aria-label="Scroll starting points right"
-                  >
-                    <ChevronRight size={16} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={openTemplateLibrary}
-                    className="rounded-md text-muted-foreground"
-                  >
-                    Process library
-                  </Button>
-                </div>
-              )}
-            />
+        {(loadingTemplates || suggestedTemplates.length > 0) ? (
+          <section aria-label={suggestedTemplatesTitle} className="w-full space-y-2.5">
+            <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-body-sm font-medium text-muted-foreground">{suggestedTemplatesTitle}</p>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={openTemplateLibrary}
+                className="w-fit text-muted-foreground"
+              >
+                Browse library
+              </Button>
+            </div>
 
-                {loadingTemplates ? (
-              <div className="mt-4 flex gap-3 overflow-hidden pb-3 pt-1">
-                {Array.from({ length: 5 }).map((_, index) => (
+            {loadingTemplates ? (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
                   <div
                     key={`template-skeleton-${index}`}
-                    className="h-36 w-56 shrink-0 animate-pulse rounded-lg surface-panel px-4 py-4 md:w-56"
+                    className="h-24 animate-pulse rounded-xl surface-panel"
                   />
                 ))}
               </div>
             ) : (
-              <div
-                ref={templateRailRef}
-                aria-label={popularTemplatesTitle}
-                className="ui-scroll-region ui-scrollbar-hidden mt-4 flex items-stretch snap-x snap-mandatory gap-3 overflow-x-auto pb-3 pt-1"
-              >
-                {useQuickStartRail
-                  ? displayQuickStarts.map((quickStart) => (
-                    <TemplateSuggestionCard
-                      key={quickStart.template.id}
-                      template={quickStart.template}
-                      title={quickStart.label}
-                      summary={quickStart.summary}
-                      eyebrow={quickStart.stageLabel}
-                      recommended={quickStart.recommended}
-                      onSelect={handleTemplateSelect}
-                    />
-                  ))
-                  : visiblePopularTemplates.map((template) => (
-                    <TemplateSuggestionCard
-                      key={template.id}
-                      template={template}
-                      onSelect={handleTemplateSelect}
-                    />
-                  ))}
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {suggestedTemplates.map((suggestion) => (
+                  <TemplateSuggestionCard
+                    key={suggestion.template.id}
+                    template={suggestion.template}
+                    title={suggestion.title}
+                    summary={suggestion.summary}
+                    eyebrow={suggestion.eyebrow}
+                    recommended={suggestion.recommended}
+                    onSelect={handleTemplateSelect}
+                  />
+                ))}
               </div>
             )}
           </section>
-        )}
+        ) : null}
       </div>
 
       {unsavedChangesDialog}
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
-        <CanvasDialogContent showCloseButton={false} size="lg">
+          <CanvasDialogContent showCloseButton={false} size="lg">
           <CanvasDialogHeader>
-            <DialogTitle>{pendingQuickStart?.stageLabel ? `Start at ${pendingQuickStart.stageLabel}` : "Start from this starting point"}</DialogTitle>
+            <DialogTitle>{pendingQuickStart?.label ? `Start ${pendingQuickStart.label}` : "Start from this starting point"}</DialogTitle>
             <DialogDescription>
               &ldquo;{pendingQuickStart?.label || (pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : "")}&rdquo; is ready in the selected project.
             </DialogDescription>

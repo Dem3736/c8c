@@ -5,7 +5,11 @@ import { currentWorkflowAtom, selectedWorkflowPathAtom, workflowSavedSnapshotAto
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { createEmptyWorkflowExecutionState } from "@/lib/workflow-execution"
 import { workflowExecutionStatesAtom } from "@/features/execution"
-import { applyLoadedWorkflow, createEmptySelectionState } from "./useWorkflowCrud"
+import {
+  applyLoadedWorkflow,
+  createEmptySelectionState,
+  removeWorkflowFromProjectCaches,
+} from "./useWorkflowCrud"
 
 describe("useWorkflowCrud helpers", () => {
   it("preserves execution state when opening another workflow", () => {
@@ -74,5 +78,22 @@ describe("useWorkflowCrud helpers", () => {
     expect(store.get(currentWorkflowAtom)).toEqual(emptyWorkflow)
     expect(store.get(workflowSavedSnapshotAtom)).toBe(workflowSnapshot(emptyWorkflow))
     expect(clearDraftExecutionState).toHaveBeenCalledTimes(1)
+  })
+
+  it("removes a deleted workflow from every cached project list", () => {
+    expect(removeWorkflowFromProjectCaches({
+      "/tmp/alpha": [
+        { name: "Keep", path: "/tmp/alpha/keep.chain", updatedAt: 1 },
+        { name: "Delete", path: "/tmp/shared/delete.chain", updatedAt: 2 },
+      ],
+      "/tmp/beta": [
+        { name: "Delete", path: "/tmp/shared/delete.chain", updatedAt: 3 },
+      ],
+    }, "/tmp/shared/delete.chain")).toEqual({
+      "/tmp/alpha": [
+        { name: "Keep", path: "/tmp/alpha/keep.chain", updatedAt: 1 },
+      ],
+      "/tmp/beta": [],
+    })
   })
 })

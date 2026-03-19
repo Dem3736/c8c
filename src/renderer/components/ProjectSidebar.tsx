@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useAtom, useSetAtom } from "jotai"
+import { toast } from "sonner"
+import { moveProjectBeforeOrAfterTarget, type ProjectDropPosition } from "@shared/project-order"
 import {
   projectsAtom,
   selectedProjectAtom,
@@ -23,7 +25,6 @@ import {
 import {
   clearWorkflowExecutionStateAtom,
   moveWorkflowExecutionStateAtom,
-  pastRunsAtom,
   toWorkflowExecutionKey,
   workflowExecutionStatesAtom,
 } from "@/features/execution"
@@ -73,7 +74,7 @@ import { CursorMenu } from "@/components/ui/cursor-menu"
 import {
   formatRelativeTime,
   historicalRunVisual,
-  latestRunByWorkflowPath,
+  buildSidebarWorkflowSummary,
   projectFolderName,
   resolveProjectRowSelectionState,
   workflowHasActiveRunStatus,
@@ -92,6 +93,7 @@ interface ProjectSidebarProps {
 }
 
 const PROJECT_WORKFLOW_PREVIEW_LIMIT = 10
+const PROJECT_WORKFLOW_LOADING_ROWS = 3
 
 export function ProjectSidebar({
   collapsed = false,
@@ -102,6 +104,7 @@ export function ProjectSidebar({
 }: ProjectSidebarProps = {}) {
   const sidebarRef = useRef<HTMLElement | null>(null)
   const scrollHideTimerRef = useRef<number | null>(null)
+  const projectReorderRequestIdRef = useRef(0)
   const [projects, setProjects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [expandedProjects, setExpandedProjects] = useAtom(expandedProjectsAtom)
@@ -110,7 +113,6 @@ export function ProjectSidebar({
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [sidebarWidth, setSidebarWidth] = useAtom(projectSidebarWidthAtom)
   const [currentWorkflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
-  const [pastRuns] = useAtom(pastRunsAtom)
   const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setSkills] = useAtom(skillsAtom)
@@ -126,6 +128,11 @@ export function ProjectSidebar({
   const [workflowSearchQuery, setWorkflowSearchQuery] = useState("")
   const [expandedWorkflowLists, setExpandedWorkflowLists] = useState<Record<string, boolean>>({})
   const [sidebarScrolling, setSidebarScrolling] = useState(false)
+  const [draggedProjectPath, setDraggedProjectPath] = useState<string | null>(null)
+  const [projectDropIndicator, setProjectDropIndicator] = useState<{
+    projectPath: string
+    position: ProjectDropPosition
+  } | null>(null)
   const [sidebarContextMenu, setSidebarContextMenu] = useState<{
     x: number
     y: number
@@ -144,15 +151,19 @@ export function ProjectSidebar({
   }
   const {
     projectWorkflowsCache,
+    projectLatestRunsCache,
+    projectWorkflowsLoading,
     setProjectWorkflowsCache,
     globalWorkflows,
     toggleProjectExpansion,
   } = useProjectSidebarData({
+    projects,
     selectedProject,
     setProjects,
     setSelectedProject,
     expandedProjects,
     setExpandedProjects,
+    workflows,
     setWorkflows,
     setSkills,
     selectedWorkflowPath,
@@ -222,7 +233,6 @@ export function ProjectSidebar({
     pendingRemoveProject === selectedProject &&
     workflowDirty
 
-  const latestRunByPath = latestRunByWorkflowPath(pastRuns)
   const handleOpenWorkflowCreate = (projectPath?: string, locked = false) => {
     openWorkflowCreate({
       projectPath,
@@ -239,6 +249,111 @@ export function ProjectSidebar({
       setSidebarScrolling(false)
       scrollHideTimerRef.current = null
     }, MOTION_BASE_MS)
+  }
+
+  const clearProjectDragState = () => {
+    setDraggedProjectPath(null)
+    setProjectDropIndicator(null)
+  }
+
+  const resolveProjectDropPosition = (
+    event: React.DragEvent<HTMLElement>,
+  ): ProjectDropPosition => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    return event.clientY >= bounds.top + bounds.height / 2 ? "after" : "before"
+  }
+
+  const handleProjectDragStart = (
+    projectPath: string,
+    event: React.DragEvent<HTMLButtonElement>,
+  ) => {
+    if (projects.length < 2) {
+      event.preventDefault()
+      return
+    }
+
+    setDraggedProjectPath(projectPath)
+    event.dataTransfer.effectAllowed = "move"
+    event.dataTransfer.setData("text/plain", projectPath)
+  }
+
+  const handleProjectDragOver = (
+    projectPath: string,
+    event: React.DragEvent<HTMLDivElement>,
+  ) => {
+    if (!draggedProjectPath || draggedProjectPath === projectPath) {
+      if (projectDropIndicator) {
+        setProjectDropIndicator(null)
+      }
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+    const position = resolveProjectDropPosition(event)
+    setProjectDropIndicator((current) => {
+      if (current?.projectPath === projectPath && current.position === position) {
+        return current
+      }
+      return { projectPath, position }
+    })
+  }
+
+  const handleProjectDragLeave = (
+    projectPath: string,
+    event: React.DragEvent<HTMLDivElement>,
+  ) => {
+    if (projectDropIndicator?.projectPath !== projectPath) return
+    const nextTarget = event.relatedTarget as Node | null
+    if (nextTarget && event.currentTarget.contains(nextTarget)) return
+    setProjectDropIndicator(null)
+  }
+
+  const handleProjectDrop = (
+    targetProjectPath: string,
+    event: React.DragEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault()
+
+    if (!draggedProjectPath || draggedProjectPath === targetProjectPath) {
+      clearProjectDragState()
+      return
+    }
+
+    const position = resolveProjectDropPosition(event)
+    const previousProjects = projects
+    const nextProjects = moveProjectBeforeOrAfterTarget(
+      projects,
+      draggedProjectPath,
+      targetProjectPath,
+      position,
+    )
+
+    clearProjectDragState()
+    if (nextProjects.every((projectPath, index) => projectPath === previousProjects[index])) {
+      return
+    }
+
+    const requestId = projectReorderRequestIdRef.current + 1
+    projectReorderRequestIdRef.current = requestId
+    setProjects(nextProjects)
+
+    void window.api.reorderProjects(nextProjects).then((persistedProjects) => {
+      if (projectReorderRequestIdRef.current !== requestId) return
+      setProjects(persistedProjects)
+    }).catch(async (error) => {
+      if (projectReorderRequestIdRef.current !== requestId) return
+      try {
+        const persistedProjects = await window.api.listProjects()
+        if (projectReorderRequestIdRef.current !== requestId) return
+        setProjects(persistedProjects)
+      } catch {
+        setProjects(previousProjects)
+      }
+      toast.error("Could not reorder projects", {
+        description: String(error),
+      })
+    })
   }
 
   const getWorkflowRunMetrics = (workflowPath: string) => {
@@ -421,9 +536,6 @@ export function ProjectSidebar({
         <div className="flex items-center justify-between">
           <span className="section-kicker inline-flex items-center gap-1.5">
             Workflows
-            <span className="text-sidebar-meta text-muted-foreground normal-case tracking-normal">
-              {workflows.length}
-            </span>
             {workflowDirty && selectedWorkflowPath && (
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-status-warning" aria-label="Workflow has unsaved changes" />
             )}
@@ -513,21 +625,43 @@ export function ProjectSidebar({
         {projects.map((projectPath) => {
           const isSelectedProject = selectedProject === projectPath
           const isExpanded = expandedProjects.includes(projectPath)
-          const projectWorkflows = isSelectedProject
-            ? workflows
-            : projectWorkflowsCache[projectPath] || []
+          const isDraggingProject = draggedProjectPath === projectPath
+          const projectDropPosition = projectDropIndicator?.projectPath === projectPath
+            ? projectDropIndicator.position
+            : null
+          const projectWorkflows = projectWorkflowsCache[projectPath] || []
+          const isProjectLoading = projectWorkflowsLoading[projectPath] === true
           const projectRowSelection = resolveProjectRowSelectionState(projectPath, selectedProject, isExpanded)
 
           return (
-            <div key={projectPath} className="sidebar-list-group mt-1 first:mt-0">
-              <div className="group flex items-center gap-1">
+            <div
+              key={projectPath}
+              className={cn(
+                "sidebar-list-group mt-1 first:mt-0",
+                projectDropPosition === "before" && "sidebar-list-group--project-drop-before",
+                projectDropPosition === "after" && "sidebar-list-group--project-drop-after",
+              )}
+            >
+              <div
+                className="group flex items-center gap-1"
+                onDragOver={(event) => handleProjectDragOver(projectPath, event)}
+                onDragLeave={(event) => handleProjectDragLeave(projectPath, event)}
+                onDrop={(event) => handleProjectDrop(projectPath, event)}
+              >
                 <button
                   type="button"
                   data-sidebar-item="true"
+                  draggable={projects.length > 1}
+                  aria-grabbed={projects.length > 1 ? isDraggingProject : undefined}
                   className={cn(
                     "sidebar-project-row ui-pressable text-left text-sidebar-label",
+                    projects.length > 1 && "cursor-grab active:cursor-grabbing",
                     isSelectedProject ? "text-foreground" : "text-muted-foreground",
+                    isDraggingProject && "sidebar-project-row--dragging",
+                    projectDropPosition && "sidebar-project-row--drop-target",
                   )}
+                  onDragStart={(event) => handleProjectDragStart(projectPath, event)}
+                  onDragEnd={clearProjectDragState}
                   onClick={() => {
                     if (projectRowSelection.shouldSelectProject) {
                       setSelectedProject(projectPath)
@@ -619,35 +753,55 @@ export function ProjectSidebar({
                 return (
                   <div className="mt-0.5 ml-7 space-y-px">
                     <div role="listbox" aria-label={`${projectFolderName(projectPath)} workflows`}>
-                      {visibleProjectWorkflows.map((workflow) => {
+                      {isProjectLoading && filteredProjectWorkflows.length === 0
+                        ? Array.from({ length: PROJECT_WORKFLOW_LOADING_ROWS }, (_, index) => (
+                          <div
+                            key={`loading-${projectPath}-${index}`}
+                            className="sidebar-thread-row"
+                            aria-hidden="true"
+                          >
+                            <div className="flex items-center gap-1.5 px-1 py-0.5">
+                              <span className="inline-flex h-2 w-2 flex-shrink-0 rounded-full bg-muted-foreground/20" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block h-3.5 w-[72%] rounded bg-muted-foreground/12" />
+                                <span className="mt-1 block h-3 w-[40%] rounded bg-muted-foreground/10" />
+                              </span>
+                              <span className="h-3 w-7 rounded bg-muted-foreground/10" />
+                            </div>
+                          </div>
+                        ))
+                        : visibleProjectWorkflows.map((workflow) => {
                         const runMetrics = getWorkflowRunMetrics(workflow.path)
                         const workflowRunStatus = runMetrics.runStatus
                         const isSelected = selectedWorkflowPath === workflow.path
-                    const isRunOwner = workflowHasActiveRunStatus(workflowRunStatus)
-                    const isDirty = isSelected && workflowDirty
-                    const latestRun = latestRunByPath.get(workflow.path)
-                    const latestRunMeta = historicalRunVisual(latestRun?.status)
-                    const showSpinningIndicator = workflowRunStatus === "starting"
-                      || workflowRunStatus === "running"
-                      || workflowRunStatus === "cancelling"
-                    const activeIndicatorClass = runMetrics.textClass === "text-status-warning"
-                      ? "border-status-warning/30 bg-status-warning"
-                      : runMetrics.textClass === "text-status-danger"
-                        ? "border-status-danger/30 bg-status-danger"
-                        : "border-status-info/30 bg-status-info"
-                    const rowMeta = isRunOwner && runMetrics.totalSteps > 0
-                      ? `${runMetrics.completedSteps}/${runMetrics.totalSteps}`
-                      : (isRunOwner ? "now" : formatRelativeTime(workflow.updatedAt))
-                    const rowMetaClass = isRunOwner && runMetrics.totalSteps > 0
-                      ? runMetrics.textClass
-                      : "text-muted-foreground"
-                    const indicatorTitle = isRunOwner
-                      ? (
-                        runMetrics.totalSteps > 0
-                          ? `${workflowRunStatus}: ${runMetrics.completedSteps}/${runMetrics.totalSteps}`
-                          : workflowRunStatus
-                      )
-                      : (latestRun ? `Last run ${latestRunMeta.label}` : "No runs yet")
+                        const isRunOwner = workflowHasActiveRunStatus(workflowRunStatus)
+                        const isDirty = isSelected && workflowDirty
+                        const latestRun = projectLatestRunsCache[projectPath]?.[workflow.path]
+                        const latestRunMeta = historicalRunVisual(latestRun?.status)
+                        const workflowSummary = buildSidebarWorkflowSummary({
+                          executionState: workflowExecutionStates[workflow.path],
+                        })
+                        const showSpinningIndicator = workflowRunStatus === "starting"
+                          || workflowRunStatus === "running"
+                          || workflowRunStatus === "cancelling"
+                        const activeIndicatorClass = runMetrics.textClass === "text-status-warning"
+                          ? "border-status-warning/30 bg-status-warning"
+                          : runMetrics.textClass === "text-status-danger"
+                            ? "border-status-danger/30 bg-status-danger"
+                            : "border-status-info/30 bg-status-info"
+                        const rowMeta = isRunOwner && runMetrics.totalSteps > 0
+                          ? `${runMetrics.completedSteps}/${runMetrics.totalSteps}`
+                          : (isRunOwner ? "now" : formatRelativeTime(workflow.updatedAt))
+                        const rowMetaClass = isRunOwner && runMetrics.totalSteps > 0
+                          ? runMetrics.textClass
+                          : "text-muted-foreground"
+                        const indicatorTitle = isRunOwner
+                          ? (
+                            runMetrics.totalSteps > 0
+                              ? `${workflowRunStatus}: ${runMetrics.completedSteps}/${runMetrics.totalSteps}`
+                              : workflowRunStatus
+                          )
+                          : (latestRun ? `Last run ${latestRunMeta.label}` : "No runs yet")
 
                       return (
                         <div
@@ -682,14 +836,14 @@ export function ProjectSidebar({
                                 })
                               }}
                               className={cn(
-                                "ui-pressable min-w-0 flex-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
+                                "ui-pressable min-w-0 flex-1 flex items-start gap-1.5 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
                                 isSelected
                                   ? "hover:bg-transparent"
                                   : "hover:bg-sidebar-hover/80",
                               )}
                             >
                               {showSpinningIndicator ? (
-                                <span title={indicatorTitle} className="inline-flex flex-shrink-0">
+                                <span title={indicatorTitle} className="mt-0.5 inline-flex flex-shrink-0">
                                   <Loader2
                                     size={12}
                                     className={cn("animate-spin flex-shrink-0", runMetrics.textClass)}
@@ -698,24 +852,35 @@ export function ProjectSidebar({
                               ) : (
                                 <span
                                   className={cn(
-                                    "inline-flex h-2 w-2 rounded-full border flex-shrink-0",
+                                    "mt-1 inline-flex h-2 w-2 rounded-full border flex-shrink-0",
                                     isRunOwner ? activeIndicatorClass : latestRunMeta.dotClass,
                                   )}
                                   title={indicatorTitle}
                                 />
                               )}
-                              <span className={cn(
-                                "truncate flex-1 text-sidebar-item",
-                                isSelected ? "text-foreground" : "text-foreground-subtle",
-                              )}
-                              >
-                                {workflow.name}
-                              </span>
-                              {isDirty && (
-                                <span className="ui-status-badge ui-status-badge-warning rounded-sm px-1 py-0 text-sidebar-meta">
-                                  unsaved
+                              <span className="min-w-0 flex-1">
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  <span className={cn(
+                                    "truncate flex-1 text-sidebar-item",
+                                    isSelected ? "text-foreground" : "text-foreground-subtle",
+                                  )}
+                                  >
+                                    {workflow.name}
+                                  </span>
+                                  {isDirty && (
+                                    <span className="ui-status-badge ui-status-badge-warning rounded-sm px-1 py-0 text-sidebar-meta">
+                                      unsaved
+                                    </span>
+                                  )}
                                 </span>
-                              )}
+                                {workflowSummary.detailLabel && (
+                                  <span className="mt-0.5 block min-w-0">
+                                    <span className="block truncate text-sidebar-meta text-muted-foreground">
+                                      {workflowSummary.detailLabel}
+                                    </span>
+                                  </span>
+                                )}
+                              </span>
                             </button>
 
                             <span
@@ -791,7 +956,7 @@ export function ProjectSidebar({
                           </div>
                         </div>
                       )
-                    })}
+                      })}
                     </div>
 
                     {shouldShowWorkflowToggle && !autoExpandWorkflowList && (
@@ -822,6 +987,9 @@ export function ProjectSidebar({
             <div className="space-y-0.5 sidebar-list-group">
               {globalWorkflows.map((workflow) => {
                 const isSelected = selectedWorkflowPath === workflow.path
+                const workflowSummary = buildSidebarWorkflowSummary({
+                  executionState: workflowExecutionStates[workflow.path],
+                })
                 return (
                   <button
                     key={workflow.path}
@@ -845,9 +1013,16 @@ export function ProjectSidebar({
                         : "text-foreground-subtle",
                     )}
                   >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <Globe size={12} className="text-muted-foreground flex-shrink-0" />
-                      <span className="truncate flex-1">{workflow.name}</span>
+                    <span className="flex items-start gap-2 min-w-0">
+                      <Globe size={12} className="mt-1 text-muted-foreground flex-shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{workflow.name}</span>
+                        {workflowSummary.detailLabel && (
+                          <span className="mt-0.5 block truncate text-sidebar-meta text-muted-foreground">
+                            {workflowSummary.detailLabel}
+                          </span>
+                        )}
+                      </span>
                       <span className="text-sidebar-meta text-muted-foreground tabular-nums">
                         {formatRelativeTime(workflow.updatedAt)}
                       </span>

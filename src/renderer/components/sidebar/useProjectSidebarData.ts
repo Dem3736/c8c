@@ -4,20 +4,28 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react"
-import { useSetAtom } from "jotai"
-import type { DiscoveredSkill, Workflow, WorkflowFile } from "@shared/types"
+import { useAtom, useSetAtom } from "jotai"
+import type { DiscoveredSkill, RunResult, Workflow, WorkflowFile } from "@shared/types"
 import { toast } from "sonner"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
-import { workflowOpenStateAtom } from "@/lib/store"
+import {
+  projectLatestRunsCacheAtom,
+  projectWorkflowsCacheAtom,
+  projectWorkflowsLoadingAtom,
+  workflowOpenStateAtom,
+} from "@/lib/store"
+import { latestRunByWorkflowPath } from "./projectSidebarUtils"
 import { restoreSelectedWorkflowIfNeeded, shouldRestoreSelectedWorkflow } from "./workflowRestore"
 
 interface UseProjectSidebarDataParams {
+  projects: string[]
   selectedProject: string | null
   setProjects: Dispatch<SetStateAction<string[]>>
   setSelectedProject: Dispatch<SetStateAction<string | null>>
   expandedProjects: string[]
   setExpandedProjects: Dispatch<SetStateAction<string[]>>
+  workflows: WorkflowFile[]
   setWorkflows: Dispatch<SetStateAction<WorkflowFile[]>>
   setSkills: Dispatch<SetStateAction<DiscoveredSkill[]>>
   selectedWorkflowPath: string | null
@@ -28,11 +36,13 @@ interface UseProjectSidebarDataParams {
 }
 
 export function useProjectSidebarData({
+  projects,
   selectedProject,
   setProjects,
   setSelectedProject,
   expandedProjects,
   setExpandedProjects,
+  workflows,
   setWorkflows,
   setSkills,
   selectedWorkflowPath,
@@ -42,8 +52,15 @@ export function useProjectSidebarData({
   setWorkflowSavedSnapshot,
 }: UseProjectSidebarDataParams) {
   const setWorkflowOpenState = useSetAtom(workflowOpenStateAtom)
-  const [projectWorkflowsCache, setProjectWorkflowsCache] = useState<Record<string, WorkflowFile[]>>({})
+  const [projectWorkflowsCache, setProjectWorkflowsCache] = useAtom(projectWorkflowsCacheAtom)
+  const [projectLatestRunsCache, setProjectLatestRunsCache] = useAtom(projectLatestRunsCacheAtom)
+  const [projectWorkflowsLoading, setProjectWorkflowsLoading] = useAtom(projectWorkflowsLoadingAtom)
   const [globalWorkflows, setGlobalWorkflows] = useState<WorkflowFile[]>([])
+
+  const toLatestRunRecord = (runs: RunResult[]) => {
+    const map = latestRunByWorkflowPath(runs)
+    return Object.fromEntries(map.entries())
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -77,21 +94,41 @@ export function useProjectSidebarData({
   useEffect(() => {
     if (selectedProject) {
       let cancelled = false
+      setProjectWorkflowsLoading((prev) => ({ ...prev, [selectedProject]: true }))
 
-      void Promise.all([
-        window.api.listProjectWorkflows(selectedProject),
-        window.api.scanSkills(selectedProject),
-      ]).then(([workflows, skills]) => {
+      void window.api.listProjectWorkflows(selectedProject).then((workflows) => {
         if (cancelled) return
         setWorkflows(workflows)
-        setSkills(skills)
+        setProjectWorkflowsCache((prev) => ({ ...prev, [selectedProject]: workflows }))
+        setProjectWorkflowsLoading((prev) => ({ ...prev, [selectedProject]: false }))
       }).catch((error) => {
         if (cancelled) return
         setWorkflows([])
-        setSkills([])
+        setProjectWorkflowsLoading((prev) => ({ ...prev, [selectedProject]: false }))
         toast.error("Could not load project data", {
           description: String(error),
         })
+      })
+
+      void window.api.scanSkills(selectedProject).then((skills) => {
+        if (cancelled) return
+        setSkills(skills)
+      }).catch((error) => {
+        if (cancelled) return
+        setSkills([])
+        toast.error("Could not load project skills", {
+          description: String(error),
+        })
+      })
+
+      void window.api.listRuns(selectedProject).then((runs) => {
+        if (cancelled) return
+        setProjectLatestRunsCache((prev) => ({
+          ...prev,
+          [selectedProject]: toLatestRunRecord(runs),
+        }))
+      }).catch(() => {
+        // Ignore run-history refresh failures in the sidebar; activity surfaces handle deeper errors.
       })
 
       void window.api.setSelectedProject(selectedProject).catch((error) => {
@@ -109,6 +146,30 @@ export function useProjectSidebarData({
     setWorkflows([])
     setSkills([])
   }, [selectedProject, setSkills, setWorkflows])
+
+  useEffect(() => {
+    if (!selectedProject) return
+    setProjectWorkflowsCache((prev) => {
+      const current = prev[selectedProject]
+      if (current === workflows) return prev
+      if (
+        Array.isArray(current)
+        && current.length === workflows.length
+        && current.every((workflow, index) => {
+          const next = workflows[index]
+          return workflow.path === next?.path
+            && workflow.name === next?.name
+            && workflow.updatedAt === next?.updatedAt
+        })
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        [selectedProject]: workflows,
+      }
+    })
+  }, [selectedProject, workflows])
 
   useEffect(() => {
     window.api.listGlobalWorkflows().then(setGlobalWorkflows).catch(() => setGlobalWorkflows([]))
@@ -176,21 +237,42 @@ export function useProjectSidebarData({
   useEffect(() => {
     let cancelled = false
 
-    for (const path of expandedProjects) {
+    for (const path of projects) {
       if (path === selectedProject) continue
-      if (projectWorkflowsCache[path]) continue
+      if (projectWorkflowsCache[path] && projectLatestRunsCache[path]) continue
+      if (projectWorkflowsLoading[path]) continue
+      setProjectWorkflowsLoading((prev) => ({ ...prev, [path]: true }))
       void window.api.listProjectWorkflows(path).then((wfs) => {
         if (cancelled) return
-        setProjectWorkflowsCache((prev) => ({ ...prev, [path]: wfs }))
+        setProjectWorkflowsCache((prev) => {
+          if (prev[path]) return prev
+          return {
+            ...prev,
+            [path]: wfs,
+          }
+        })
+        setProjectWorkflowsLoading((prev) => ({ ...prev, [path]: false }))
       }).catch(() => {
         // Ignore background prefetch failures; the active project effect surfaces foreground errors.
+        if (cancelled) return
+        setProjectWorkflowsLoading((prev) => ({ ...prev, [path]: false }))
+      })
+
+      void window.api.listRuns(path).then((runs) => {
+        if (cancelled) return
+        setProjectLatestRunsCache((prev) => ({
+          ...prev,
+          [path]: toLatestRunRecord(runs),
+        }))
+      }).catch(() => {
+        // Ignore background run-history failures for non-selected projects.
       })
     }
 
     return () => {
       cancelled = true
     }
-  }, [expandedProjects, projectWorkflowsCache, selectedProject])
+  }, [projectLatestRunsCache, projectWorkflowsCache, projectWorkflowsLoading, projects, selectedProject])
 
   const toggleProjectExpansion = (projectPath: string) => {
     setExpandedProjects((prev) =>
@@ -202,6 +284,8 @@ export function useProjectSidebarData({
 
   return {
     projectWorkflowsCache,
+    projectLatestRunsCache,
+    projectWorkflowsLoading,
     setProjectWorkflowsCache,
     globalWorkflows,
     toggleProjectExpansion,

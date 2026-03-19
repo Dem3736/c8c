@@ -1,4 +1,6 @@
 import type { RunResult } from "@shared/types"
+import { buildRunProgressSummary } from "@/lib/run-progress"
+import type { WorkflowExecutionState } from "@/lib/workflow-execution"
 
 export function resolveProjectRowSelectionState(
   projectPath: string,
@@ -8,15 +10,8 @@ export function resolveProjectRowSelectionState(
   shouldSelectProject: boolean
   nextExpanded: boolean
 } {
-  if (selectedProject !== projectPath) {
-    return {
-      shouldSelectProject: true,
-      nextExpanded: true,
-    }
-  }
-
   return {
-    shouldSelectProject: false,
+    shouldSelectProject: selectedProject !== projectPath,
     nextExpanded: !isExpanded,
   }
 }
@@ -105,4 +100,42 @@ export function latestRunByWorkflowPath(pastRuns: RunResult[]): Map<string, RunR
     result.set(path, run)
   }
   return result
+}
+
+export interface SidebarWorkflowSummary {
+  detailLabel: string | null
+}
+
+export function buildSidebarWorkflowSummary({
+  executionState,
+}: {
+  executionState?: WorkflowExecutionState | null
+}): SidebarWorkflowSummary {
+  if (
+    executionState
+    && (workflowHasActiveRunStatus(executionState.runStatus)
+      || executionState.runStatus === "done"
+      || executionState.runStatus === "error")
+    && executionState.workflowSnapshot
+  ) {
+    const summary = buildRunProgressSummary({
+      workflow: executionState.workflowSnapshot,
+      runtimeNodes: executionState.runtimeNodes,
+      runtimeMeta: executionState.runtimeMeta,
+      nodeStates: executionState.nodeStates,
+      runStatus: executionState.runStatus,
+      runOutcome: executionState.runOutcome,
+      activeNodeId: executionState.activeNodeId,
+    })
+
+    return {
+      detailLabel: workflowHasActiveRunStatus(executionState.runStatus)
+        ? (summary.activeStepLabel || summary.branchLabel || null)
+        : null,
+    }
+  }
+
+  return {
+    detailLabel: null,
+  }
 }

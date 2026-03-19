@@ -24,7 +24,9 @@ export function useWorkflowCreateNavigation() {
   const setWorkflowCreateDraftPrompt = useSetAtom(workflowCreateDraftPromptAtom)
 
   const openWorkflowCreate = useCallback((options: OpenWorkflowCreateOptions = {}) => {
-    const projectPath = options.projectPath ?? selectedProject ?? null
+    const projectPath = Object.prototype.hasOwnProperty.call(options, "projectPath")
+      ? (options.projectPath ?? null)
+      : (selectedProject ?? null)
     if (options.modeId) {
       setSelectedResultModeId(options.modeId)
     }

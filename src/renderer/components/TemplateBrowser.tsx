@@ -76,6 +76,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     setIsLoading(true)
     setLoadError(null)
     try {
+      void window.api.refreshCatalog().catch(() => undefined)
       setTemplates(await window.api.listTemplates())
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -365,7 +366,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                                 <Badge variant="outline" size="compact">
                                   {STAGE_META[template.stage].label}
                                 </Badge>
-                                {(sourceKind === "plugin" || sourceKind === "user") && (
+                                {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
                                   <Badge variant="secondary" size="compact">
                                     {getTemplateSourceLabel(template)}
                                   </Badge>
@@ -417,7 +418,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                                 <Badge variant="outline" size="compact">
                                   {STAGE_META[template.stage].label}
                                 </Badge>
-                                {(sourceKind === "plugin" || sourceKind === "user") && (
+                                {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
                                   <Badge variant="secondary" size="compact">
                                     {getTemplateSourceLabel(template)}
                                   </Badge>
@@ -499,7 +500,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   <p className="text-body-sm text-muted-foreground">{selected.how}</p>
                 </div>
 
-                {(selectedSourceKind === "plugin" || selectedSourceKind === "user") && (
+                {(selectedSourceKind === "plugin" || selectedSourceKind === "user" || selectedSourceKind === "hub") && (
                   <div>
                     <span className="ui-meta-label text-muted-foreground">Source</span>
                     <p className="text-body-sm text-foreground">

@@ -63,6 +63,24 @@ export function applyLoadedWorkflow(
   setWorkflowSavedSnapshot(workflowSnapshot(workflow))
 }
 
+export function removeWorkflowFromProjectCaches(
+  caches: Record<string, WorkflowFile[]>,
+  workflowPath: string,
+): Record<string, WorkflowFile[]> {
+  let changed = false
+  const next: Record<string, WorkflowFile[]> = {}
+
+  for (const [projectPath, workflows] of Object.entries(caches)) {
+    const filtered = workflows.filter((workflow) => workflow.path !== workflowPath)
+    next[projectPath] = filtered
+    if (filtered.length !== workflows.length) {
+      changed = true
+    }
+  }
+
+  return changed ? next : caches
+}
+
 export function useWorkflowCrud({
   selectedProject,
   setProjects,
@@ -383,9 +401,16 @@ export function useWorkflowCrud({
       clearWorkflowExecutionState(toWorkflowExecutionKey(workflow.path))
       clearWorkflowTemplateContext(toWorkflowExecutionKey(workflow.path))
 
+      setWorkflows((previous) => previous.filter((entry) => entry.path !== workflow.path))
+      setProjectWorkflowsCache((previous) => removeWorkflowFromProjectCaches(previous, workflow.path))
+
       if (selectedProject) {
         const refreshed = await window.api.listProjectWorkflows(selectedProject)
         setWorkflows(refreshed)
+        setProjectWorkflowsCache((previous) => ({
+          ...previous,
+          [selectedProject]: refreshed,
+        }))
       }
 
       if (selectedWorkflowPath === workflow.path) {

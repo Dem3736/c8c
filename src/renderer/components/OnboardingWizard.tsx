@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/cn"
 import {
   chatPanelOpenAtom,
   firstLaunchAtom,
@@ -62,8 +64,8 @@ export function OnboardingWizard() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-[var(--titlebar-height)]">
-      <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
-        <div className="w-full max-w-lg space-y-8">
+      <div className="flex min-h-full flex-col items-center justify-start px-6 py-10">
+        <div className="w-full max-w-3xl space-y-6">
           {/* Progress indicator */}
           <div className="flex items-center justify-center gap-2">
             {Array.from({ length: TOTAL_STEPS }, (_, i) => (
@@ -81,38 +83,49 @@ export function OnboardingWizard() {
             ))}
           </div>
 
-          {/* Step content */}
-          <div className="rounded-lg surface-panel p-8 space-y-6">
-            {step === 1 && <StepCheckCli />}
-            {step === 2 && <StepOpenProject onProjectAdded={setSelectedProject} />}
-            {step === 3 && <StepUnderstandWorkflow onOpenAgent={openAgent} onGoTemplates={goTemplates} />}
-          </div>
+          <div className="overflow-hidden rounded-xl surface-panel">
+            <div className="px-6 py-6 sm:px-8 sm:py-8">
+              <div
+                className={cn(
+                  "mx-auto w-full min-h-[30rem]",
+                  step === TOTAL_STEPS ? "max-w-3xl" : "max-w-xl",
+                )}
+              >
+                {step === 1 && <StepCheckCli />}
+                {step === 2 && <StepOpenProject onProjectAdded={setSelectedProject} />}
+                {step === 3 && <StepUnderstandWorkflow onOpenAgent={openAgent} onGoTemplates={goTemplates} />}
+              </div>
+            </div>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={skip}
-              className="text-muted-foreground"
-            >
-              Skip setup
-            </Button>
+            <div className="surface-depth-footer px-6 py-4 sm:px-8">
+              <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+                <div>
+                  {step > 1 && (
+                    <Button type="button" variant="ghost" size="sm" onClick={prev}>
+                      <ArrowLeft size={14} />
+                      Back
+                    </Button>
+                  )}
+                </div>
 
-            <div className="flex items-center gap-2">
-              {step > 1 && (
-                <Button type="button" variant="ghost" size="sm" onClick={prev}>
-                  <ArrowLeft size={14} />
-                  Back
-                </Button>
-              )}
-              {step < TOTAL_STEPS && (
-                <Button type="button" variant="default" size="sm" onClick={next}>
-                  Continue
-                  <ArrowRight size={14} />
-                </Button>
-              )}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={skip}
+                    className="text-muted-foreground"
+                  >
+                    {step === TOTAL_STEPS ? "Finish" : "Skip setup"}
+                  </Button>
+                  {step < TOTAL_STEPS && (
+                    <Button type="button" variant="default" size="sm" onClick={next}>
+                      Continue
+                      <ArrowRight size={14} />
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -401,67 +414,96 @@ function StepUnderstandWorkflow({
   onGoTemplates: () => void
 }) {
   const examplePrompt = "Build a workflow that reviews this codebase for risky files, then summarizes what to fix first."
+  const flowCards = [
+    {
+      label: "1. Input",
+      detail: "Text, URL, or a project folder",
+      meta: "Start with source material",
+    },
+    {
+      label: "2. Steps",
+      detail: "Research, transform, branch, review",
+      meta: "Shape the workflow as it runs",
+    },
+    {
+      label: "3. Result",
+      detail: "Inspect output, logs, and rerun points",
+      meta: "Tighten only the stage that needs work",
+    },
+  ]
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
-          <Bot size={20} className="text-foreground" />
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
+            <Bot size={20} className="text-foreground" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-title-md text-foreground">Start from a prompt or a template</h2>
+            <div className="ui-meta-text text-muted-foreground">
+              Use the Agent for a draft, or start from Templates and tune steps later.
+            </div>
+          </div>
         </div>
-        <h2 className="text-title-md text-foreground">A workflow is input → steps → result</h2>
-      </div>
-      <p className="text-body-md text-muted-foreground">
-        Start with an input, add one or more workflow steps, then review the result.
-        Templates are the fastest way to get moving, and the Agent can draft the first version
-        for you when you want to describe the job in plain language.
-      </p>
 
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg surface-inset-card p-3">
-          <div className="ui-meta-label">1. Input</div>
-          <p className="text-body-sm text-foreground mt-1">Text, URL, or a project folder.</p>
-        </div>
-        <div className="rounded-lg surface-inset-card p-3">
-          <div className="ui-meta-label">2. Workflow steps</div>
-          <p className="text-body-sm text-foreground mt-1">Research, transform, review, branch, or ask for approval as the flow runs.</p>
-        </div>
-        <div className="rounded-lg surface-inset-card p-3">
-          <div className="ui-meta-label">3. Result</div>
-          <p className="text-body-sm text-foreground mt-1">Inspect logs, review the output, and rerun from the step that needs attention.</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" variant="default" size="sm" onClick={onOpenAgent}>
+            <Bot size={14} />
+            Open the Agent
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
+            <LayoutTemplate size={14} />
+            Browse templates
+          </Button>
         </div>
       </div>
 
-      <div className="rounded-lg surface-soft p-3 space-y-2">
-        <div className="ui-meta-text text-muted-foreground flex items-center gap-1.5">
-          Agent <code className="inline-code ui-meta-text">&#8984;&#8679;K</code>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="rounded-lg surface-soft p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="ui-meta-label text-muted-foreground">Agent draft</div>
+              <div className="ui-meta-text text-muted-foreground">Describe the job in plain language.</div>
+            </div>
+            <Badge variant="outline" size="compact">Cmd+Shift+K</Badge>
+          </div>
+          <div className="rounded-lg border border-hairline bg-surface-1/80 px-4 py-3">
+            <div className="text-body-sm font-mono leading-6 text-foreground">
+              {examplePrompt}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 rounded-lg control-cluster control-cluster-compact">
+            <Badge variant="outline" size="compact">Cmd+Enter Run</Badge>
+            <Badge variant="outline" size="compact">Cmd+S Save</Badge>
+            <Badge variant="outline" size="compact">Plugins add skills</Badge>
+          </div>
         </div>
-        <p className="text-body-sm font-mono text-foreground">
-          {examplePrompt}
-        </p>
-      </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="button" variant="default" size="sm" onClick={onOpenAgent}>
-          <Bot size={14} />
-          Open the Agent
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
-          <LayoutTemplate size={14} />
-          Browse templates
-        </Button>
+        <div className="rounded-lg surface-inset-card p-4 space-y-3">
+          <div className="ui-meta-label text-muted-foreground">Workflow shape</div>
+          <div className="space-y-0">
+            {flowCards.map((card, index) => (
+              <div
+                key={card.label}
+                className={cn(
+                  "flex items-start gap-3 px-1 py-3",
+                  index > 0 && "border-t border-hairline/70",
+                )}
+              >
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-hairline bg-surface-1 text-label-xs font-medium text-muted-foreground">
+                  {index + 1}
+                </span>
+                <div className="min-w-0 space-y-1">
+                  <div className="text-body-sm font-medium text-foreground">{card.detail}</div>
+                  <div className="ui-meta-text text-muted-foreground">{card.meta}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-
-      <p className="ui-meta-text text-muted-foreground">
-        Start with the Agent if you want c8c to assemble the first draft for you.
-      </p>
-      <p className="ui-meta-text text-muted-foreground">
-        Need more building blocks later? Open Plugins to install more skills.
-      </p>
-      <p className="ui-meta-text text-muted-foreground">
-        <code className="inline-code ui-meta-text">&#8984;Enter</code> to run
-        {" "}&middot;{" "}
-        <code className="inline-code ui-meta-text">&#8984;S</code> to save
-      </p>
     </div>
   )
 }
