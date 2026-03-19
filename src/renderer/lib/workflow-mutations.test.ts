@@ -199,6 +199,28 @@ describe("workflow edge mutations", () => {
     expect((addedSkill?.config as { model?: string }).model).toBeUndefined()
   })
 
+  it("normalizes discovered skill metadata before inserting a node", () => {
+    const workflow = createWorkflow()
+    const skill = {
+      type: "skill" as const,
+      name: "Backend Architect",
+      description: "Design scalable backend systems",
+      category: "engineering",
+      path: "/tmp/backend-architect/SKILL.md",
+      maxTurns: "12" as unknown as number,
+      allowedTools: "Read, Edit, Bash" as unknown as string[],
+      disallowedTools: ["", "WebSearch", 42] as unknown as string[],
+    }
+
+    const next = addSkillNodeToWorkflow(workflow, skill, 1700000000000)
+    const addedSkill = next.nodes.find((node) => node.id !== "skill-1" && node.type === "skill")
+    const config = addedSkill?.config as { maxTurns?: number; allowedTools?: string[]; disallowedTools?: string[] }
+
+    expect(config.maxTurns).toBe(12)
+    expect(config.allowedTools).toEqual(["Read", "Edit", "Bash"])
+    expect(config.disallowedTools).toEqual(["WebSearch"])
+  })
+
   it("does not flatten fan-out topology when reordering in list mode", () => {
     const workflow: Workflow = {
       version: 1,

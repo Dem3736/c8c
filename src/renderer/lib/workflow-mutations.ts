@@ -126,6 +126,45 @@ function addLinearNodeBeforeOutput(
   }
 }
 
+function normalizePositiveInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    const parsed = Number(trimmed)
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed
+    }
+  }
+  return undefined
+}
+
+function normalizeStringArray(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const normalized = [...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    )]
+    return normalized.length > 0 ? normalized : undefined
+  }
+
+  if (typeof value === "string") {
+    const normalized = [...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    )]
+    return normalized.length > 0 ? normalized : undefined
+  }
+
+  return undefined
+}
+
 export function addSkillNodeToWorkflow(
   workflow: Workflow,
   skill: DiscoveredSkill,
@@ -133,6 +172,9 @@ export function addSkillNodeToWorkflow(
 ): Workflow {
   const nextNodeId = createNodeIdGenerator(workflow)
   const newNodeId = nextNodeId(`skill-${toIdFragment(skill.name || "skill")}`)
+  const maxTurns = normalizePositiveInteger(skill.maxTurns)
+  const allowedTools = normalizeStringArray(skill.allowedTools)
+  const disallowedTools = normalizeStringArray(skill.disallowedTools)
   const newNode: WorkflowNode = {
     id: newNodeId,
     type: "skill",
@@ -140,10 +182,10 @@ export function addSkillNodeToWorkflow(
     config: {
       skillRef: `${skill.category}/${skill.name}`.replace(/^\//, ""),
       prompt: skill.description || `Run ${skill.name}`,
-      maxTurns: skill.maxTurns,
+      ...(maxTurns ? { maxTurns } : {}),
       skillPaths: [skill.path],
-      allowedTools: skill.allowedTools,
-      disallowedTools: skill.disallowedTools,
+      ...(allowedTools ? { allowedTools } : {}),
+      ...(disallowedTools ? { disallowedTools } : {}),
     } satisfies SkillNodeConfig,
   }
 

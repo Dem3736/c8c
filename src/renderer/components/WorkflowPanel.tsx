@@ -24,6 +24,8 @@ import {
   webSearchBackendAtom,
   workflowsAtom,
   desktopRuntimeAtom,
+  skillPickerOpenAtom,
+  selectedNodeIdAtom,
 } from "@/lib/store"
 import {
   activeNodeIdAtom,
@@ -46,6 +48,7 @@ import { resolveWorkflowInput } from "@/lib/input-type"
 import { InputPanel } from "./InputPanel"
 import { ChainBuilder } from "./ChainBuilder"
 import { CanvasView } from "./CanvasView"
+import { SkillPicker } from "./SkillPicker"
 import { NodeInspector } from "./canvas/NodeInspector"
 import { Toolbar } from "./Toolbar"
 import { OutputPanel } from "./OutputPanel"
@@ -75,10 +78,19 @@ import {
   Play,
   FileText,
   Activity,
+  Plus,
+  MoreHorizontal,
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -92,11 +104,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
+import { ScopeBanner } from "@/components/ui/scope-banner"
 import type { WorkflowEntryState, WorkflowTemplateRunContext } from "@/lib/workflow-entry"
 import {
   areTemplateContractsSatisfied,
   buildContinuationArtifactPool,
   deriveTemplateDisplayLabel,
+  deriveTemplateJobLabel,
   deriveTemplateContextJourneyStageLabel,
   formatArtifactContractLabel,
   selectArtifactsForTemplateContracts,
@@ -106,11 +120,23 @@ import {
   contextRequiresStartApproval,
 } from "@/lib/stage-run-policy"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
-import type { ArtifactContract, ArtifactRecord, InputAttachment, PermissionMode, Workflow, WorkflowTemplate } from "@shared/types"
+import type {
+  ArtifactContract,
+  ArtifactRecord,
+  InputAttachment,
+  PermissionMode,
+  ProjectFactoryBlueprint,
+  Workflow,
+  WorkflowTemplate,
+} from "@shared/types"
 import { buildRunProgressSummary, formatElapsedTime, type RunProgressSummary } from "@/lib/run-progress"
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
 import { DisclosurePanel } from "@/components/ui/disclosure-panel"
+import { ProcessSpine } from "@/components/ui/process-spine"
 import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
+import { buildProcessSpine, selectProcessSpineFactory } from "@/lib/process-spine"
+import { addSkillNodeToWorkflow } from "@/lib/workflow-mutations"
+import type { DiscoveredSkill } from "@shared/types"
 
 function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
   return (
@@ -193,7 +219,9 @@ function deriveEntryNextStepLabel({
   nextStageTemplate: WorkflowTemplate | null
 }) {
   if (!readyToRun) return "Add stage input."
-  if (nextStageTemplate) return `Continue with ${deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}.`
+  if (nextStageTemplate) {
+    return `Continue with ${deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}.`
+  }
   return "Review the result."
 }
 
@@ -216,6 +244,7 @@ function WorkflowEntryLanding({
   primaryActionLabel,
   onRefine,
   onToggleEditor,
+  onAttachCapability,
   showEditor,
   canRefine,
   onDismiss,
@@ -232,17 +261,31 @@ function WorkflowEntryLanding({
   primaryActionLabel: string
   onRefine: () => void
   onToggleEditor: () => void
+  onAttachCapability: () => void
   showEditor: boolean
   canRefine: boolean
   onDismiss: () => void
 }) {
+  const compactItems = [
+    {
+      label: "Expects",
+      value: inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : entry.inputText,
+    },
+    {
+      label: "Produces",
+      value: entry.outputText,
+    },
+    {
+      label: "Next",
+      value: startApprovalRequired ? "Review gate before run." : nextStepLabel,
+    },
+  ]
+
   return (
-    <section className="rounded-xl surface-panel p-4 ui-fade-slide-in">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-hairline bg-surface-2 text-foreground ui-elevation-inset">
-          <Sparkles size={18} aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
+    <section className="space-y-2.5 ui-fade-slide-in">
+      <ScopeBanner
+        tone="muted"
+        eyebrow={(
           <div className="flex flex-wrap items-center gap-1.5">
             {stageLabel && (
               <Badge variant="outline" className="ui-meta-text px-2 py-0">
@@ -257,89 +300,64 @@ function WorkflowEntryLanding({
                 Approval before run
               </Badge>
             )}
-            <Badge variant="outline" className="ui-meta-text px-2 py-0">
-              {policySummary}
-            </Badge>
-            <span className="ui-meta-text text-muted-foreground">{entry.readinessText}</span>
           </div>
-          <h2 className="text-title-md text-foreground">{displayTitle}</h2>
-          {entry.routing && (
-            <DisclosurePanel
-              summary="Why this start?"
-              className="max-w-full"
-              summaryClassName="px-0 py-0 text-muted-foreground"
-              contentClassName="space-y-2 px-0 pb-0 pt-2 border-0"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                  Chosen after submit
-                </Badge>
-                <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                  {entry.routing.source === "agent" ? "Agent route" : "Fallback route"}
-                </Badge>
-              </div>
-              {entry.routing.reason ? (
-                <p className="ui-meta-text text-muted-foreground">{entry.routing.reason}</p>
-              ) : null}
-            </DisclosurePanel>
-          )}
-          <div className="grid gap-1.5 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">{entry.contractLabel}</p>
-              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{entry.contractText}</p>
-            </div>
-            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Need</p>
-              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{entry.inputText}</p>
-              {inputLabels.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {inputLabels.slice(0, 4).map((label) => (
-                    <Badge key={label} variant="outline" className="ui-meta-text px-2 py-0">
-                      {label}
-                    </Badge>
-                  ))}
-                  {inputLabels.length > 4 && (
-                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                      +{inputLabels.length - 4} more
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Result</p>
-              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{entry.outputText}</p>
-            </div>
-            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Next</p>
-              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">
-                {startApprovalRequired
-                  ? "Review the gate, then run this stage."
-                  : nextStepLabel}
-              </p>
-            </div>
-          </div>
+        )}
+        title={displayTitle}
+        actions={(
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={onPrimaryAction}>
               <Play size={14} />
               {primaryActionLabel}
             </Button>
-            {canRefine && (
+            {canRefine ? (
               <Button variant="outline" size="sm" onClick={onRefine}>
                 <MessageSquare size={14} />
                 Refine
               </Button>
-            )}
-            <Button variant="ghost" size="sm" onClick={onToggleEditor}>
-              <PencilLine size={14} />
-              {showEditor ? "Hide editor" : "Edit"}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onDismiss}>
-              Dismiss
-            </Button>
+            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="More actions">
+                  <MoreHorizontal size={14} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={8} className="w-56">
+                <DropdownMenuItem onSelect={onAttachCapability}>
+                  <Plus size={14} />
+                  Attach capability
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onToggleEditor}>
+                  <PencilLine size={14} />
+                  {showEditor ? "Hide editor" : "Edit process"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onDismiss}>
+                  Dismiss
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
+        )}
+      >
+        <div className="grid gap-2 sm:grid-cols-3">
+          {compactItems.map((item) => (
+            <div key={item.label} className="rounded-lg border border-hairline/80 bg-surface-1/70 px-3 py-2">
+              <p className="ui-meta-label text-muted-foreground">{item.label}</p>
+              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{item.value}</p>
+            </div>
+          ))}
         </div>
-      </div>
+        {entry.routing?.reason ? (
+          <DisclosurePanel
+            summary="Why this start?"
+            className="max-w-full"
+            summaryClassName="px-0 py-0 text-muted-foreground"
+            contentClassName="space-y-2 px-0 pb-0 pt-2 border-0"
+          >
+            <p className="ui-meta-text text-muted-foreground">{entry.routing.reason}</p>
+          </DisclosurePanel>
+        ) : null}
+      </ScopeBanner>
     </section>
   )
 }
@@ -398,40 +416,36 @@ function StageStartApprovalDialog({
             <Badge variant="outline" size="compact">{shortcutLabel}</Badge>
           </DialogTitle>
           <DialogDescription id="stage-start-approval-description">
-            Review this stage before execution begins.
+            Review this next step before execution begins.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <ExecutionSurfaceNoticeBanner
-            notice={{
-              level: "warning",
-              title: "Human gate required",
-              description: policySummary,
-              actionLabel: "",
-              actionTarget: "result",
-            }}
-            children={(
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {stageLabel && (
-                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                      {stageLabel}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-body-sm font-medium text-foreground">{title}</p>
+          <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="ui-meta-label text-muted-foreground">Before run</div>
+                <p className="mt-1 text-body-sm font-medium text-foreground">{title}</p>
               </div>
-            )}
-          />
+              <div className="ui-badge-row">
+                {stageLabel && (
+                  <Badge variant="outline" size="compact">
+                    {stageLabel}
+                  </Badge>
+                )}
+                <Badge variant="warning" size="compact">Approval gate</Badge>
+                <Badge variant="outline" size="compact">{policySummary}</Badge>
+              </div>
+            </div>
+          </div>
 
           <div className="grid gap-2 md:grid-cols-2">
             <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Stage result</p>
+              <p className="ui-meta-label text-muted-foreground">Result</p>
               <p className="mt-1 text-body-sm text-foreground">{expectedArtifact}</p>
             </div>
             <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Stage input</p>
+              <p className="ui-meta-label text-muted-foreground">Input</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {inputLabels.length > 0 ? inputLabels.map((label) => (
                   <Badge key={label} variant="outline" className="ui-meta-text px-2 py-0">
@@ -445,7 +459,7 @@ function StageStartApprovalDialog({
           </div>
 
           {notes.length > 0 && (
-            <DisclosurePanel summary="Policy notes">
+            <DisclosurePanel summary="Gate notes">
               <div className="space-y-2">
                 {notes.map((note, index) => (
                   <p key={`${note}-${index}`} className="text-body-sm text-foreground">{note}</p>
@@ -687,6 +701,7 @@ export function WorkflowPanel() {
   const [projectArtifacts, setProjectArtifacts] = useState<ArtifactRecord[]>([])
   const [projectArtifactsLoading, setProjectArtifactsLoading] = useState(false)
   const [projectArtifactsError, setProjectArtifactsError] = useState<string | null>(null)
+  const [factoryBlueprint, setFactoryBlueprint] = useState<ProjectFactoryBlueprint | null>(null)
   const [finalContent] = useAtom(finalContentAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [reportPath] = useAtom(reportPathAtom)
@@ -718,6 +733,8 @@ export function WorkflowPanel() {
   const [outputTabRequest, setOutputTabRequest] = useState<{ tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null>(null)
   const [flowSurfaceMode, setFlowSurfaceMode] = useAtom(flowSurfaceModeAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
+  const [, setSkillPickerOpen] = useAtom(skillPickerOpenAtom)
+  const [, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const previousRunStatusRef = useRef(runStatus)
   const completionSurfaceRef = useRef<string | null>(null)
   const pendingListAutoScrollRef = useRef(false)
@@ -812,6 +829,7 @@ export function WorkflowPanel() {
       setProjectArtifacts([])
       setProjectArtifactsLoading(false)
       setProjectArtifactsError(null)
+      setFactoryBlueprint(null)
       return
     }
 
@@ -838,7 +856,28 @@ export function WorkflowPanel() {
   }, [selectedProject, artifactRecords])
 
   useEffect(() => {
-    if (!selectedWorkflowTemplateContext?.pack?.recommendedNext?.length) {
+    if (!selectedProject) {
+      setFactoryBlueprint(null)
+      return
+    }
+
+    let cancelled = false
+    void window.api.loadProjectFactoryBlueprint(selectedProject).then((blueprint) => {
+      if (cancelled) return
+      setFactoryBlueprint(blueprint)
+    }).catch(() => {
+      if (!cancelled) {
+        setFactoryBlueprint(null)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedProject])
+
+  useEffect(() => {
+    if (!selectedWorkflowTemplateContext?.pack?.id) {
       setPackTemplates([])
       return
     }
@@ -971,6 +1010,30 @@ export function WorkflowPanel() {
     && !showCreateDraftSkeleton
     && workflowPastRuns.length > 0
     && !prepareNewRun
+  )
+  const processSpineFactory = useMemo(
+    () => selectProcessSpineFactory(factoryBlueprint, selectedWorkflowTemplateContext),
+    [factoryBlueprint, selectedWorkflowTemplateContext],
+  )
+  const processSpineStages = useMemo(
+    () => buildProcessSpine({
+      context: selectedWorkflowTemplateContext,
+      nextTemplate: nextStageTemplate,
+      templates: packTemplates,
+      factory: processSpineFactory,
+      runStatus,
+      runOutcome,
+      reviewingPastRun: showIdleReviewMode,
+    }),
+    [
+      nextStageTemplate,
+      packTemplates,
+      processSpineFactory,
+      runOutcome,
+      runStatus,
+      selectedWorkflowTemplateContext,
+      showIdleReviewMode,
+    ],
   )
   const showIdleInputPanel = (
     viewMode === "list"
@@ -1137,8 +1200,8 @@ export function WorkflowPanel() {
 
       toast.success(
         nextStageNeedsApproval
-          ? `Opened gated stage: ${deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`
-          : `Continuing with ${deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`,
+          ? `Opened gated stage: ${deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`
+          : `Continuing with ${deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`,
       )
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
@@ -1251,6 +1314,28 @@ export function WorkflowPanel() {
       setPrepareNewRun(false)
     }
   }, [prepareNewRun, runStatus])
+
+  const handleAttachCapability = useCallback(() => {
+    setSkillPickerOpen(true)
+  }, [setSkillPickerOpen])
+
+  const handleAttachCapabilitySelection = useCallback((skill: DiscoveredSkill) => {
+    let nextSelectedId: string | null = null
+    setWorkflow((prev) => {
+      const previousNodeIds = new Set(prev.nodes.map((node) => node.id))
+      const next = addSkillNodeToWorkflow(prev, skill)
+      nextSelectedId = next.nodes.find((node) => !previousNodeIds.has(node.id))?.id ?? null
+      return next
+    })
+    if (nextSelectedId) {
+      setSelectedNodeId(nextSelectedId)
+    }
+    setShowEntryEditor(true)
+    setFlowSurfaceMode("edit")
+    toast.success(`Attached ${skill.name}`, {
+      description: "Added to this process. Review the new capability in Edit process.",
+    })
+  }, [setFlowSurfaceMode, setSelectedNodeId, setWorkflow])
 
   const focusStageDetails = ({ nodeId, preferredTab }: { nodeId: string; preferredTab: "nodes" | "log" | "result" }) => {
     if (runStatus === "idle" && !showIdleReviewMode) return
@@ -1434,6 +1519,14 @@ export function WorkflowPanel() {
             />
           )}
 
+          {processSpineStages && processSpineStages.length > 1 && (
+            <div className="border-b border-hairline bg-surface-1/80">
+              <div className="ui-content-gutter py-2">
+                <ProcessSpine stages={processSpineStages} />
+              </div>
+            </div>
+          )}
+
           {/* Content */}
           <TabsContent value="canvas" className="mt-0 flex-1 min-h-0 flex flex-col overflow-hidden ui-fade-slide-in">
             <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -1506,7 +1599,7 @@ export function WorkflowPanel() {
                     <>
                       <WorkflowEntryLanding
                         entry={activeEntryState}
-                        displayTitle={workflow.name || activeEntryState.title}
+                        displayTitle={activeEntryState.title || workflow.name}
                         readyToRun={readyToRun}
                         startApprovalRequired={startApprovalRequired}
                         stageLabel={entryStageLabel}
@@ -1523,6 +1616,7 @@ export function WorkflowPanel() {
                         primaryActionLabel={readyToRun ? "Run" : "Add input"}
                         onRefine={() => setChatOpen(true)}
                         onToggleEditor={() => setShowEntryEditor((prev) => !prev)}
+                        onAttachCapability={handleAttachCapability}
                         showEditor={showEntryEditor}
                         canRefine={canShowAgentPanel}
                         onDismiss={() => setWorkflowEntryState(null)}
@@ -1622,9 +1716,21 @@ export function WorkflowPanel() {
         )}
 
         <BatchPanel />
+        {showEntryLanding && !showEntryEditor && (
+          <SkillPicker
+            onAddSkill={handleAttachCapabilitySelection}
+            title="Attach capability"
+            description="Choose a reusable capability to add to the current process."
+            searchPlaceholder="Search capabilities..."
+            emptyStateMessage="No capabilities found. Enable a plugin pack, keep using local skills, or open a project with project-level capabilities."
+            emptyResultsMessage={(query) => `No capabilities found for “${query}”`}
+            stageLabel={entryStageLabel}
+            attachTargetLabel="this process"
+          />
+        )}
         <StageStartApprovalDialog
           open={stageStartGateOpen}
-          title={workflow.name || activeEntryState?.title || selectedWorkflowTemplateContext?.templateName || "This stage"}
+          title={activeEntryState?.title || workflow.name || selectedWorkflowTemplateContext?.templateName || "This stage"}
           stageLabel={entryStageLabel}
           policySummary={entryPolicySummary}
           expectedArtifact={selectedWorkflowTemplateContext?.outputText || activeEntryState?.outputText || "A reviewable result"}

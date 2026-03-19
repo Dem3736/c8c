@@ -6,6 +6,7 @@ import {
   buildArtifactAttachmentSeedInput,
   buildTemplateRunContext,
   deriveTemplateDisplayLabel,
+  deriveTemplateJobLabel,
   deriveTemplateContextDisplayLabel,
   deriveTemplateContextJourneyStageLabel,
   deriveTemplateJourneyStageLabel,
@@ -229,7 +230,7 @@ describe("workflow-entry factory helpers", () => {
         label: "Delivery Factory",
         journeyStage: "verify",
       },
-    }))).toBe("Review")
+    }))).toBe("Verify")
 
     expect(deriveTemplateJourneyStageLabel(createTemplate({
       id: "delivery-implement-phase",
@@ -250,7 +251,7 @@ describe("workflow-entry factory helpers", () => {
         label: "Gstack Team",
         journeyStage: "verify",
       },
-    })).toBe("Ship")
+    })).toBe("Verify")
 
     expect(deriveTemplateDisplayLabel(createTemplate({
       id: "delivery-plan-phase",
@@ -273,7 +274,27 @@ describe("workflow-entry factory helpers", () => {
         label: "Gstack Team",
         journeyStage: "verify",
       },
-    })).toBe("Ship")
+    })).toBe("Verify")
+
+    expect(deriveTemplateJobLabel(createTemplate({
+      id: "delivery-plan-phase",
+      name: "Delivery Factory: Plan Phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+      },
+    }))).toBe("Prepare the implementation plan")
+
+    expect(deriveTemplateJobLabel(createTemplate({
+      id: "delivery-verify-phase",
+      name: "Delivery Factory: Verify Phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "verify",
+      },
+    }))).toBe("Verify completion")
   })
 
   it("prefers current run and current case artifacts for continuation", () => {

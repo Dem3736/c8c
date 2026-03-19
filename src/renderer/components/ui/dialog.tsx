@@ -58,7 +58,7 @@ const DialogContent = React.forwardRef<
       >
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md border border-transparent p-1.5 text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 disabled:pointer-events-none">
+          <DialogPrimitive.Close className="ui-focus-managed absolute right-4 top-4 rounded-md border border-transparent p-1.5 text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/14 disabled:pointer-events-none">
             <Cross2Icon className="h-4 w-4" aria-hidden="true" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
@@ -103,7 +103,7 @@ const CanvasDialogContent = React.forwardRef<
       >
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close className="absolute right-3 top-3 h-control-sm w-control-sm rounded-md flex items-center justify-center text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
+          <DialogPrimitive.Close className="ui-focus-managed absolute right-3 top-3 h-control-sm w-control-sm rounded-md flex items-center justify-center text-muted-foreground ui-transition-colors ui-motion-fast hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/14">
             <Cross2Icon className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>

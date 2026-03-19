@@ -191,9 +191,22 @@ const TEMPLATE_STAGE_LABELS: Record<string, string> = {
   "gstack-feature-squad": "Shape / Map",
   "delivery-plan-phase": "Plan",
   "delivery-implement-phase": "Implement",
-  "delivery-verify-phase": "Review",
-  "gstack-preflight-gate": "Ship",
+  "delivery-verify-phase": "Verify",
+  "gstack-preflight-gate": "Verify",
   "gstack-release-room": "Ship",
+}
+
+const TEMPLATE_JOB_LABELS: Record<string, string> = {
+  "delivery-map-codebase": "Change the current app",
+  "delivery-shape-project": "Build from brief",
+  "delivery-plan-phase": "Prepare the implementation plan",
+  "delivery-implement-phase": "Apply approved changes",
+  "delivery-verify-phase": "Verify completion",
+  "gstack-preflight-gate": "Verify completion",
+  "gstack-release-room": "Ship approved work",
+  "ux-ui-polish-audit": "Audit and polish this UI",
+  "impeccable-ui-pipeline": "Improve this UI flow",
+  "playwright-visual-audit": "Audit this UI in browser",
 }
 
 const EXECUTION_POLICY_TAG_LABELS: Record<string, string> = {
@@ -272,6 +285,15 @@ export function deriveTemplateDisplayLabel(
     || deriveTemplateJourneyStageLabel(template as WorkflowTemplate)
 }
 
+export function deriveTemplateJobLabel(
+  template?: Pick<WorkflowTemplate, "id" | "name" | "pack"> | null,
+) {
+  if (!template) return null
+  return TEMPLATE_JOB_LABELS[template.id]
+    || stripPackPrefix(template.name, template.pack?.label)
+    || null
+}
+
 export function deriveTemplateContextDisplayLabel(
   context?: Pick<WorkflowTemplateRunContext, "templateId" | "templateName" | "pack"> | null,
 ) {
@@ -279,6 +301,15 @@ export function deriveTemplateContextDisplayLabel(
   return TEMPLATE_STAGE_LABELS[context.templateId]
     || stripPackPrefix(context.templateName, context.pack?.label)
     || deriveTemplateContextJourneyStageLabel(context)
+}
+
+export function deriveTemplateContextJobLabel(
+  context?: Pick<WorkflowTemplateRunContext, "templateId" | "templateName" | "pack"> | null,
+) {
+  if (!context) return null
+  return TEMPLATE_JOB_LABELS[context.templateId]
+    || stripPackPrefix(context.templateName, context.pack?.label)
+    || null
 }
 
 export function deriveTemplateExecutionDisciplineLabels(template: WorkflowTemplate) {
@@ -446,7 +477,7 @@ export function buildTemplateWorkflowEntryState({
     workflowPath,
     workflowName: template.workflow.name || template.name,
     source,
-    title: template.name,
+    title: deriveTemplateJobLabel(template) || template.name,
     summary: buildTemplateEntrySummary(template, source),
     contractLabel: "Use this when",
     contractText: deriveTemplateUseWhen(template),

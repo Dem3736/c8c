@@ -8,7 +8,7 @@ import {
   FolderTree,
   RotateCcw,
 } from "lucide-react"
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -44,8 +44,12 @@ import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { isRunInFlight } from "@/lib/workflow-execution"
 import { templateAutoRunsOnContinue, templateRequiresStartApproval } from "@/lib/stage-run-policy"
 import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
-import { deriveTemplateDisplayLabel } from "@/lib/workflow-entry"
+import { deriveTemplateDisplayLabel, deriveTemplateJobLabel } from "@/lib/workflow-entry"
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
+import { deriveExecutionLoopSummary } from "@/lib/execution-loops"
+import { ExecutionLoopCard } from "@/components/ui/execution-loop-card"
+import { ScopeBanner } from "@/components/ui/scope-banner"
+import { SummaryRail } from "@/components/ui/summary-rail"
 
 const PREVIEW_MAX_W = "max-w-52" as const
 const MARKDOWN_PROSE_CLASS = "prose-c8c"
@@ -574,7 +578,7 @@ export function OutputPanel({
   const nextStageRequiresApproval = templateRequiresStartApproval(nextStageTemplate)
   const nextStageAutoRuns = templateAutoRunsOnContinue(nextStageTemplate)
   const nextStageLabel = nextStageTemplate
-    ? (deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name)
+    ? (deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name)
     : null
   const visibleArtifactContinuation = artifactRecords.slice(0, 4)
   const hiddenArtifactContinuationCount = Math.max(0, artifactRecords.length - visibleArtifactContinuation.length)
@@ -669,6 +673,15 @@ export function OutputPanel({
       ) : null}
     />
   ) : null
+  const executionLoopSummary = useMemo(
+    () => deriveExecutionLoopSummary({
+      workflow,
+      nodeStates: displayNodeStates,
+      evalResults: displayEvalResults,
+      runOutcome: reviewingRunHistory ? (selectedReviewRun?.status || null) : runOutcome,
+    }),
+    [displayEvalResults, displayNodeStates, reviewingRunHistory, runOutcome, selectedReviewRun?.status, workflow],
+  )
 
   const openNodeDetails = useCallback((nodeId: string) => {
     setInspectedNodeId(nodeId)
@@ -1000,6 +1013,7 @@ export function OutputPanel({
                   onRerunFrom={handleRerunFrom}
                 />
               )}
+              <ExecutionLoopCard summary={executionLoopSummary} compact detailSummary="Why / checks" />
               {activitySummaryItems.length > 0 && (
                 <div className="rounded-lg border border-hairline bg-surface-2/50 px-3 py-2">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ui-meta-text text-foreground-subtle">
@@ -1061,6 +1075,7 @@ export function OutputPanel({
                   onRerunFrom={handleRerunFrom}
                 />
               )}
+              <ExecutionLoopCard summary={executionLoopSummary} compact detailSummary="Why / checks" />
               <LogTab selectedNodeId={selectedStageId} nodeStates={displayNodeStates} evalResults={displayEvalResults} />
                 </>
               )}
@@ -1118,19 +1133,24 @@ export function OutputPanel({
                         {selectedResultPresentation.outcomeLabel}
                       </Badge>
                     )}
+                    {!reviewingRunHistory && selectedResultMetricsLabel && (
+                      <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
+                        {selectedResultMetricsLabel}
+                      </Badge>
+                    )}
                   </div>
                 </div>
-                <p className="mt-2 ui-meta-text text-muted-foreground">
-                  {reviewingRunHistory
-                    ? (selectedRunLabel || "Reviewing the saved result from the selected run.")
-                    : (selectedResultBranchDetail || selectedResultPresentation?.outcomeText || "Result ready.")}
-                </p>
-                {!reviewingRunHistory && selectedResultMetricsLabel && (
-                  <div className="mt-2 ui-meta-text text-muted-foreground">
-                    {selectedResultMetricsLabel}
-                  </div>
+                {(reviewingRunHistory
+                  ? selectedRunLabel
+                  : (selectedResultBranchDetail || selectedResultPresentation?.outcomeText)) && (
+                  <p className="mt-2 line-clamp-2 ui-meta-text text-muted-foreground">
+                    {reviewingRunHistory
+                      ? selectedRunLabel
+                      : (selectedResultBranchDetail || selectedResultPresentation?.outcomeText)}
+                  </p>
                 )}
               </div>
+              <ExecutionLoopCard summary={executionLoopSummary} compact detailSummary="Why / checks" />
               {savedRunLoadingNotice}
               {savedRunErrorNotice}
               {!reviewingRunHistory && hasMultipleResultOptions && (
@@ -1140,9 +1160,6 @@ export function OutputPanel({
                   contentClassName="space-y-2"
                 >
                   <div className="space-y-1">
-                    <p className="ui-meta-text text-muted-foreground">
-                      Keep one primary artifact above. Switch only when you need a stage-specific result.
-                    </p>
                     <Select
                       value={selectedResultNodeId || undefined}
                       onValueChange={(nextNodeId) => {
@@ -1164,11 +1181,11 @@ export function OutputPanel({
                 </DisclosurePanel>
               )}
               {showArtifactContinuation && (
-                <div className={cn("rounded-lg px-3 py-3", artifactContinuationToneClass)}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-2">
+                <div className={cn("space-y-3 rounded-lg px-3 py-3", artifactContinuationToneClass)}>
+                  <ScopeBanner
+                    tone="muted"
+                    eyebrow={(
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <div className="ui-meta-label text-muted-foreground">Continue with</div>
                         <Badge
                           variant={
                             artifactPersistenceStatus === "error"
@@ -1187,112 +1204,88 @@ export function OutputPanel({
                                 ? `${formatArtifactCountLabel(artifactRecords.length)} ready`
                                 : "No artifacts"}
                         </Badge>
-                        {nextStageLabel && (
-                          <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                            Next: {nextStageLabel}
-                          </Badge>
-                        )}
-                        {nextStageRequiresApproval && (
+                        {nextStageRequiresApproval ? (
                           <Badge variant="warning" className="ui-meta-text px-2 py-0">
                             Approval before run
                           </Badge>
-                        )}
-                        {nextStageAutoRuns && (
+                        ) : null}
+                        {nextStageAutoRuns ? (
                           <Badge variant="success" className="ui-meta-text px-2 py-0">
                             Auto-runs on continue
                           </Badge>
-                        )}
+                        ) : null}
                       </div>
-                      <div className="text-body-sm font-medium text-foreground">
-                        {artifactPersistenceStatus === "saving"
-                          ? "Preparing reusable artifacts for the next stage."
-                          : artifactPersistenceError
-                            ? artifactPersistenceError
-                            : nextStageTemplate
-                              ? "Next stage is ready."
-                              : artifactPersistenceStatus === "saved"
-                                ? "Artifacts saved."
-                                : "No reusable artifacts saved from this run."}
-                      </div>
-                      {nextStageTemplate?.output && (
-                        <div className="rounded-lg border border-hairline bg-surface-1/70 px-3 py-2.5">
-                          <div className="ui-meta-label text-muted-foreground">Next result</div>
-                          <p className="mt-1 line-clamp-2 text-body-sm text-foreground">
-                            {nextStageTemplate.output}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {nextStageTemplate && onRunNextStage && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          title={`${desktopRuntime.primaryModifierLabel}↵`}
-                          onClick={() => {
-                            void Promise.resolve(onRunNextStage())
-                          }}
-                          disabled={artifactPersistenceStatus === "saving" || nextStagePending}
-                        >
-                          <ArrowRight size={12} />
-                          {nextStagePending
-                            ? "Opening..."
-                            : nextStageLabel
-                              ? `Continue: ${nextStageLabel}`
-                              : "Continue"}
-                        </Button>
-                      )}
-                      {onOpenArtifacts && artifactPersistenceStatus === "saved" && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={onOpenArtifacts}
-                        >
-                          <FolderTree size={12} />
-                          Artifacts
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {(artifactRecords.length > 0 || visibleNextStageArtifacts.length > 0) && (
-                    <div className="mt-2 space-y-2">
-                      {artifactRecords.length > 0 && (
-                        <div className="space-y-1">
-                          <div className="ui-meta-label text-muted-foreground">Saved now</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {visibleArtifactContinuation.map((artifact) => (
-                              <Badge key={artifact.id} variant="outline" className="ui-meta-text px-2 py-0">
-                                {artifact.title}
-                              </Badge>
-                            ))}
-                            {hiddenArtifactContinuationCount > 0 && (
-                              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                                +{hiddenArtifactContinuationCount} more
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {visibleNextStageArtifacts.length > 0 && (
-                        <div className="space-y-1">
-                          <div className="ui-meta-label text-muted-foreground">Used in next stage</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {visibleNextStageArtifacts.map((artifact) => (
-                              <Badge key={`next-stage-${artifact.id}`} variant="success" className="ui-meta-text px-2 py-0">
-                                {artifact.title}
-                              </Badge>
-                            ))}
-                            {hiddenNextStageArtifactCount > 0 && (
-                              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                                +{hiddenNextStageArtifactCount} more
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    title={nextStageLabel ? `Continue with ${nextStageLabel}` : "Continue with the next step"}
+                    description={
+                      artifactPersistenceStatus === "saving"
+                        ? "Preparing reusable artifacts for the next step."
+                        : artifactPersistenceError
+                          ? artifactPersistenceError
+                          : nextStageTemplate
+                            ? "Next step is ready."
+                            : artifactPersistenceStatus === "saved"
+                              ? "Artifacts saved."
+                              : "No reusable artifacts saved from this run."
+                    }
+                    actions={(
+                      <>
+                        {nextStageTemplate && onRunNextStage ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            title={`${desktopRuntime.primaryModifierLabel}↵`}
+                            onClick={() => {
+                              void Promise.resolve(onRunNextStage())
+                            }}
+                            disabled={artifactPersistenceStatus === "saving" || nextStagePending}
+                          >
+                            <ArrowRight size={12} />
+                            {nextStagePending
+                              ? "Opening..."
+                              : nextStageLabel
+                                ? `Continue: ${nextStageLabel}`
+                                : "Continue"}
+                          </Button>
+                        ) : null}
+                        {onOpenArtifacts && artifactPersistenceStatus === "saved" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={onOpenArtifacts}
+                          >
+                            <FolderTree size={12} />
+                            Artifacts
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
+                  />
+                  <SummaryRail
+                    compact
+                    className={cn(nextStageTemplate?.output ? "md:grid-cols-3" : "md:grid-cols-2")}
+                    items={[
+                      {
+                        label: "Saved now",
+                        value: artifactRecords.length > 0
+                          ? visibleArtifactContinuation.map((artifact) => artifact.title).join(" · ")
+                          : "No reusable artifacts",
+                        hint: hiddenArtifactContinuationCount > 0 ? `+${hiddenArtifactContinuationCount} more` : undefined,
+                      },
+                      {
+                        label: "Used next",
+                        value: visibleNextStageArtifacts.length > 0
+                          ? visibleNextStageArtifacts.map((artifact) => artifact.title).join(" · ")
+                          : "Resolved after continue",
+                        hint: hiddenNextStageArtifactCount > 0 ? `+${hiddenNextStageArtifactCount} more` : undefined,
+                      },
+                      ...(nextStageTemplate?.output ? [{
+                        label: "Next result",
+                        value: nextStageTemplate.output,
+                      }] : []),
+                    ]}
+                  />
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">

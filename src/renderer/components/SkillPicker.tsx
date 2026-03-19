@@ -5,7 +5,6 @@ import {
   skillPickerOpenAtom,
   type DiscoveredSkill,
 } from "@/lib/store"
-import { cn } from "@/lib/cn"
 import { getSkillSourceKey, getSkillSourceLabel } from "@/lib/skill-source"
 import { Search, Zap, Bot, Terminal } from "lucide-react"
 import {
@@ -19,6 +18,12 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import {
+  compareSkillsForStage,
+  deriveSkillProvenanceLabel,
+  deriveSkillSourceBadge,
+  deriveSkillStageFit,
+} from "@/lib/skill-fit"
 
 const TYPE_ICONS = {
   skill: Zap,
@@ -28,9 +33,25 @@ const TYPE_ICONS = {
 
 interface SkillPickerProps {
   onAddSkill: (skill: DiscoveredSkill) => void
+  title?: string
+  description?: string
+  searchPlaceholder?: string
+  emptyStateMessage?: string
+  emptyResultsMessage?: (query: string) => string
+  stageLabel?: string | null
+  attachTargetLabel?: string
 }
 
-export function SkillPicker({ onAddSkill }: SkillPickerProps) {
+export function SkillPicker({
+  onAddSkill,
+  title = "Add Skill",
+  description = "Choose a skill to add to your workflow",
+  searchPlaceholder = "Search skills...",
+  emptyStateMessage = "No skills found. Install a plugin pack in Plugins, keep using legacy libraries, or open a project with local skills.",
+  emptyResultsMessage = (query) => `No results for “${query}”`,
+  stageLabel = null,
+  attachTargetLabel = "This process",
+}: SkillPickerProps) {
   const [skills] = useAtom(skillsAtom)
   const [pickerOpen, setPickerOpen] = useAtom(skillPickerOpenAtom)
   const [search, setSearch] = useState("")
@@ -46,7 +67,8 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
   }, [skills])
 
   const grouped = useMemo(() => {
-    const filtered = skills.filter((s) => {
+    const filtered = skills
+      .filter((s) => {
       if (sourceFilter) {
         const skillSource = getSkillSourceKey(s)
         if (skillSource !== sourceFilter) return false
@@ -55,19 +77,28 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
       const q = search.toLowerCase()
       return (
         s.name.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q)
-      )
-    })
+          s.category.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q)
+        )
+      })
+      .sort((left, right) => compareSkillsForStage(left, right, stageLabel))
+
+    const featured = filtered.filter((skill) => deriveSkillStageFit(skill, stageLabel).score >= 3).slice(0, 6)
+    const featuredPaths = new Set(featured.map((skill) => skill.path))
+    const remaining = filtered.filter((skill) => !featuredPaths.has(skill.path))
+
     const groups = new Map<string, DiscoveredSkill[]>()
-    for (const skill of filtered) {
+    for (const skill of remaining) {
       const key = skill.category || "uncategorized"
       const list = groups.get(key) || []
       list.push(skill)
       groups.set(key, list)
     }
-    return groups
-  }, [skills, search, sourceFilter])
+    return {
+      featured,
+      groups,
+    }
+  }, [skills, search, sourceFilter, stageLabel])
 
   const handleAddSkill = (skill: DiscoveredSkill) => {
     onAddSkill(skill)
@@ -78,9 +109,9 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
     <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
       <CanvasDialogContent className="p-0 gap-0 max-h-[75vh] flex flex-col" showCloseButton>
         <CanvasDialogHeader className="surface-depth-header">
-          <DialogTitle>Add Skill</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">
-            Choose a skill to add to your workflow
+            {description}
           </DialogDescription>
         </CanvasDialogHeader>
 
@@ -97,7 +128,7 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search skills..."
+                placeholder={searchPlaceholder}
                 aria-label="Search skills"
                 autoFocus
                 className="pl-8"
@@ -133,6 +164,13 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
                 ))}
               </div>
             )}
+
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline" size="compact">Attach to {attachTargetLabel}</Badge>
+              {stageLabel && (
+                <Badge variant="outline" size="compact">Current stage: {stageLabel}</Badge>
+              )}
+            </div>
           </div>
 
           {/* Skill list */}
@@ -140,23 +178,65 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
             <div role="status" aria-live="polite" aria-atomic="true">
               {skills.length === 0 && (
                 <div className="ui-empty-state text-body-md text-muted-foreground">
-                  No skills found. Install a plugin pack in Plugins, keep using legacy libraries, or open a project with local skills.
+                  {emptyStateMessage}
                 </div>
               )}
-              {skills.length > 0 && grouped.size === 0 && (
+              {skills.length > 0 && grouped.featured.length === 0 && grouped.groups.size === 0 && (
                 <div className="ui-empty-state text-body-md text-muted-foreground">
-                  No results for &ldquo;{search}&rdquo;
+                  {emptyResultsMessage(search)}
                 </div>
               )}
             </div>
 
-            {Array.from(grouped.entries()).map(([category, categorySkills]) => (
+            {grouped.featured.length > 0 && (
+              <div className="mb-3">
+                <div className="px-2 py-1 section-kicker">
+                  Best fit now
+                </div>
+                {grouped.featured.map((skill) => {
+                  const Icon = TYPE_ICONS[skill.type]
+                  const fit = deriveSkillStageFit(skill, stageLabel)
+                  return (
+                    <Button
+                      type="button"
+                      key={`featured-${skill.path}`}
+                      onClick={() => handleAddSkill(skill)}
+                      aria-label={`Attach ${skill.name}`}
+                      variant="ghost"
+                      size="auto"
+                      className="ui-interactive-card h-auto w-full justify-start items-start gap-3 rounded-md px-2 py-2 text-left whitespace-normal"
+                    >
+                      <Icon
+                        size={16}
+                        aria-hidden="true"
+                        className="text-muted-foreground mt-0.5 flex-shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="ui-badge-row">
+                          <span className="text-body-md font-medium truncate">{skill.name}</span>
+                          <Badge variant="success" size="compact">{fit.label}</Badge>
+                          <Badge variant="outline" size="compact">{deriveSkillSourceBadge(skill)}</Badge>
+                        </div>
+                        <div className="mt-1 ui-meta-text text-muted-foreground">{fit.reason}</div>
+                        <div className="mt-1 ui-badge-row">
+                          <Badge variant="secondary" size="compact">{deriveSkillProvenanceLabel(skill)}</Badge>
+                          <Badge variant="outline" size="compact">{skill.type}</Badge>
+                        </div>
+                      </div>
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
+
+            {Array.from(grouped.groups.entries()).map(([category, categorySkills]) => (
               <div key={category} className="mb-3">
                 <div className="px-2 py-1 section-kicker">
                   {category}
                 </div>
                 {categorySkills.map((skill) => {
                   const Icon = TYPE_ICONS[skill.type]
+                  const fit = deriveSkillStageFit(skill, stageLabel)
                   return (
                     <Button
                       type="button"
@@ -175,19 +255,17 @@ export function SkillPicker({ onAddSkill }: SkillPickerProps) {
                       <div className="min-w-0 flex-1">
                         <div className="ui-badge-row">
                           <span className="text-body-md font-medium truncate">{skill.name}</span>
-                          <Badge
-                            variant="secondary"
-                            size="compact"
-                            className={cn("text-muted-foreground")}
-                          >
-                            {getSkillSourceLabel(skill)}
+                          <Badge variant={fit.score >= 3 ? "success" : "outline"} size="compact">
+                            {fit.label}
                           </Badge>
+                          <Badge variant="outline" size="compact">{deriveSkillSourceBadge(skill)}</Badge>
                         </div>
-                        {skill.description && (
-                          <div className="mt-1 line-clamp-2 ui-meta-text">
-                            {skill.description}
-                          </div>
-                        )}
+                        <div className="mt-1 line-clamp-2 ui-meta-text">
+                          {fit.score >= 3 ? fit.reason : skill.description}
+                        </div>
+                        <div className="mt-1 ui-meta-text text-muted-foreground">
+                          {deriveSkillProvenanceLabel(skill)}
+                        </div>
                       </div>
                       <Badge variant="outline" size="compact" className="mt-0.5">
                         {skill.type}

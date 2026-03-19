@@ -16,16 +16,31 @@ import { Badge } from "@/components/ui/badge"
 import { Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { DEFAULT_EXECUTION_IPC_TIMEOUT_MS, withIpcTimeout } from "@/features/execution"
-import { getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
 import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
-import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
-import type { EvaluatorNodeConfig, WorkflowNode } from "@shared/types"
+import type { WorkflowNode } from "@shared/types"
+import { deriveExecutionLoopSummary } from "@/lib/execution-loops"
+import { ExecutionLoopCard } from "@/components/ui/execution-loop-card"
+import { getRuntimeNodeLabel, getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
 
 type EvaluatorWorkflowNode = Extract<WorkflowNode, { type: "evaluator" }>
 
 function isEvaluatorNode(node: WorkflowNode | null | undefined): node is EvaluatorWorkflowNode {
   return node?.type === "evaluator"
+}
+
+function labelFromPathLike(value: string | null | undefined, fallback: string) {
+  if (!value) return fallback
+  const leaf = value.split(/[\\/]/).pop() || value
+  const normalized = leaf.replace(/\.(ya?ml|json)$/i, "").trim()
+  return normalized || fallback
+}
+
+function formatNextStageLabel(labels: string[]) {
+  if (labels.length === 0) return null
+  if (labels.length === 1) return labels[0]
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`
+  return `${labels[0]} +${labels.length - 1} more`
 }
 
 export function ApprovalDialog() {
@@ -53,34 +68,59 @@ export function ApprovalDialog() {
     const directPredecessorIds = workflow.edges
       .filter((edge) => edge.target === request.nodeId)
       .map((edge) => edge.source)
-    const directEvaluator = directPredecessorIds
+    const directEvaluatorNode = directPredecessorIds
       .map((nodeId) => workflow.nodes.find((node) => node.id === nodeId) || null)
       .find(isEvaluatorNode)
-    const fallbackEvaluator = [...workflow.nodes]
-      .reverse()
-      .find((node) => isEvaluatorNode(node) && (requestExecutionState.evalResults[node.id] || []).length > 0)
-    const evaluatorNode = directEvaluator || (isEvaluatorNode(fallbackEvaluator) ? fallbackEvaluator : null)
-    if (!evaluatorNode) return null
-
-    const attempts = requestExecutionState.evalResults[evaluatorNode.id] || []
-    const latestAttempt = attempts[attempts.length - 1] || null
-    const config = evaluatorNode.config as EvaluatorNodeConfig
-    const presentation = getRuntimeStagePresentation(evaluatorNode, { fallbackId: evaluatorNode.id })
-
-    return {
-      criteria: config.criteria,
-      threshold: config.threshold,
-      title: presentation.title,
-      group: presentation.group,
-      attempts,
-      latestAttempt,
-    }
+    return deriveExecutionLoopSummary({
+      workflow,
+      nodeStates: requestExecutionState.nodeStates,
+      evalResults: requestExecutionState.evalResults,
+      runOutcome: requestExecutionState.runOutcome,
+      preferredEvaluatorNodeId: directEvaluatorNode?.id || null,
+    })
   }, [request, requestExecutionState])
   const primaryShortcutLabel = `${desktopRuntime.primaryModifierLabel}↵`
-  const failedCriterionCount = useMemo(() => {
-    if (!evaluatorSummary?.latestAttempt?.criteria?.length) return 0
-    return evaluatorSummary.latestAttempt.criteria.filter((criterion) => criterion.score < evaluatorSummary.threshold).length
-  }, [evaluatorSummary])
+  const failedCriterionCount = evaluatorSummary?.failedCriteriaCount || 0
+  const gateTitle = evaluatorSummary
+    ? `${evaluatorSummary.title} gate`
+    : "Approval required"
+  const gateDescription = request?.message || "Review this stage before the process continues."
+  const requestContext = useMemo(() => {
+    if (!request) return null
+
+    const workflow = requestExecutionState?.workflowSnapshot
+    const workflowName = requestExecutionState?.workflowName.trim()
+      || labelFromPathLike(requestExecutionState?.runWorkflowPath, labelFromPathLike(request.workflowKey, "Workflow"))
+    const stageNode = workflow?.nodes.find((node) => node.id === request.nodeId) || null
+    const stageLabel = stageNode
+      ? getRuntimeNodeLabel(stageNode, { fallbackId: stageNode.id })
+      : labelFromPathLike(request.nodeId, "Stage")
+    const stageKind = stageNode
+      ? getRuntimeStagePresentation(stageNode, { fallbackId: stageNode.id }).kind
+      : "Stage"
+    const nextStageLabels = workflow
+      ? Array.from(new Set(
+        workflow.edges
+          .filter((edge) => edge.source === request.nodeId)
+          .map((edge) => workflow.nodes.find((node) => node.id === edge.target) || null)
+          .filter((node): node is WorkflowNode => Boolean(node))
+          .map((node) => getRuntimeNodeLabel(node, { fallbackId: node.id })),
+      ))
+      : []
+    const nextStageLabel = formatNextStageLabel(nextStageLabels)
+
+    return {
+      workflowName,
+      stageLabel,
+      stageKind,
+      approveConsequence: nextStageLabel
+        ? `Continues to ${nextStageLabel}`
+        : workflow
+          ? "Completes this workflow run"
+          : "Continues this workflow run",
+      rejectConsequence: "Stops this workflow run",
+    }
+  }, [request, requestExecutionState])
 
   useEffect(() => {
     mountedRef.current = true
@@ -174,99 +214,75 @@ export function ApprovalDialog() {
 
   return (
     <Dialog open={!!request} onOpenChange={() => {}}>
-      <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto ui-scroll-region" showCloseButton={false} aria-describedby="approval-description">
-        <DialogHeader>
-          <DialogTitle className="flex flex-wrap items-center gap-2">
-            Approval before continue
-            {queueCount > 1 && (
-              <Badge variant="secondary">{queueCount - 1} more pending</Badge>
-            )}
-            <Badge variant="outline" size="compact">{primaryShortcutLabel} approve</Badge>
-          </DialogTitle>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region" showCloseButton={false} aria-describedby="approval-description">
+        <DialogHeader className="space-y-2">
+          <DialogTitle>{gateTitle}</DialogTitle>
           <DialogDescription id="approval-description">
-            {request.message || "Review this stage before the process continues."}
+            {gateDescription}
           </DialogDescription>
         </DialogHeader>
 
-        {evaluatorSummary && (
-          <ExecutionSurfaceNoticeBanner
-            notice={{
-              level: "warning",
-              title: evaluatorSummary.group,
-              description: evaluatorSummary.latestAttempt?.reason
-                || "Review this gate before the process continues.",
-              actionLabel: "",
-              actionTarget: "result",
-            }}
-            children={(
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="text-body-sm font-medium text-foreground">{evaluatorSummary.title}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline" size="compact">
-                      Threshold {evaluatorSummary.threshold}/10
-                    </Badge>
-                    {evaluatorSummary.latestAttempt && (
-                      <Badge
-                        variant={evaluatorSummary.latestAttempt.passed ? "success" : "warning"}
-                        size="compact"
-                      >
-                        Score {evaluatorSummary.latestAttempt.score}/10
-                      </Badge>
-                    )}
-                    {evaluatorSummary.attempts.length > 1 && (
-                      <Badge variant="outline" size="compact">
-                        {evaluatorSummary.attempts.length} attempts
-                      </Badge>
-                    )}
-                    {failedCriterionCount > 0 && (
-                      <Badge variant="warning" size="compact">
-                        {failedCriterionCount} below threshold
-                      </Badge>
-                    )}
-                  </div>
-                </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {queueCount > 1 && (
+            <Badge variant="secondary">{queueCount - 1} more pending</Badge>
+          )}
+          <Badge variant="outline" size="compact">{primaryShortcutLabel} approve</Badge>
+          {failedCriterionCount > 0 && (
+            <Badge variant="warning" size="compact">
+              {failedCriterionCount} below
+            </Badge>
+          )}
+        </div>
 
-                {evaluatorSummary.latestAttempt && (
-                  <DisclosurePanel summary="Gate details">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="ui-meta-label text-muted-foreground">Criteria</p>
-                        <p className="mt-1 text-body-sm text-foreground whitespace-pre-wrap">{evaluatorSummary.criteria}</p>
-                      </div>
-                      {evaluatorSummary.latestAttempt.fix_instructions && (
-                        <div>
-                          <p className="ui-meta-label text-muted-foreground">Fix guidance</p>
-                          <p className="mt-1 text-body-sm text-foreground whitespace-pre-wrap">
-                            {evaluatorSummary.latestAttempt.fix_instructions}
-                          </p>
-                        </div>
-                      )}
-                      {evaluatorSummary.latestAttempt.criteria && evaluatorSummary.latestAttempt.criteria.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="ui-meta-label text-muted-foreground">Criterion scores</p>
-                          {evaluatorSummary.latestAttempt.criteria.map((criterion) => (
-                            <div key={`${criterion.id}-${criterion.score}`} className="flex items-center justify-between gap-3 text-body-sm">
-                              <span className="text-foreground">{criterion.id}</span>
-                              <span className="font-mono text-muted-foreground">{criterion.score}/10</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </DisclosurePanel>
-                )}
+        {requestContext && (
+          <section className="rounded-lg border border-hairline bg-surface-2/70 p-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" size="compact">Workflow</Badge>
+              <span className="text-body-sm font-medium text-foreground">{requestContext.workflowName}</span>
+              <Badge variant="outline" size="compact">{requestContext.stageKind}</Badge>
+              {request.allowEdit && (
+                <Badge variant="outline" size="compact">Editable payload</Badge>
+              )}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
+                <div className="ui-meta-label text-muted-foreground">Current stage</div>
+                <div className="text-body-sm font-medium text-foreground">{requestContext.stageLabel}</div>
               </div>
-            )}
+              <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
+                <div className="ui-meta-label text-muted-foreground">Workflow</div>
+                <div className="text-body-sm font-medium text-foreground">{requestContext.workflowName}</div>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border border-status-success/20 bg-status-success/5 px-3 py-2.5">
+                <div className="ui-meta-label text-status-success">Approve</div>
+                <div className="text-body-sm font-medium text-foreground">{requestContext.approveConsequence}</div>
+              </div>
+              <div className="rounded-md border border-status-danger/20 bg-status-danger/5 px-3 py-2.5">
+                <div className="ui-meta-label text-status-danger">Reject</div>
+                <div className="text-body-sm font-medium text-foreground">{requestContext.rejectConsequence}</div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {evaluatorSummary && (
+          <ExecutionLoopCard
+            summary={evaluatorSummary}
+            compact
+            detailSummary="Why / checks"
           />
         )}
 
         {request.content && (
           request.allowEdit ? (
-            <section className="space-y-2">
+            <section className="space-y-2 rounded-lg surface-inset-card p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="ui-meta-label text-muted-foreground">Adjust before continue</p>
-                <Badge variant="outline" size="compact">Approve uses current text</Badge>
+                <p className="ui-meta-label text-muted-foreground">Gate payload</p>
+                <Badge variant="outline" size="compact">Editable</Badge>
               </div>
               <Textarea
                 value={editedContent}
@@ -276,9 +292,9 @@ export function ApprovalDialog() {
               />
             </section>
           ) : (
-            <DisclosurePanel summary="Stage payload">
-              <div>
-                <div className="rounded-md border border-hairline bg-surface-2 p-3 max-h-64 overflow-y-auto ui-scroll-region">
+            <DisclosurePanel summary="Show payload">
+              <div className="rounded-lg surface-inset-card p-3">
+                <div className="max-h-64 overflow-y-auto ui-scroll-region">
                   <pre className="text-body-sm text-foreground-subtle whitespace-pre-wrap">{request.content}</pre>
                 </div>
               </div>
@@ -286,14 +302,14 @@ export function ApprovalDialog() {
           )
         )}
 
-        <DialogFooter>
+        <DialogFooter className="border-t border-hairline/70 pt-3">
           <Button variant="destructive" size="sm" onClick={handleReject} disabled={submitting}>
             <X size={14} />
-            Reject
+            Reject & stop
           </Button>
           <Button size="sm" onClick={handleApprove} disabled={submitting}>
             <Check size={14} />
-            Approve
+            Approve & continue
           </Button>
         </DialogFooter>
       </DialogContent>

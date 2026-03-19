@@ -11,8 +11,8 @@ const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
       ref={ref}
       type="range"
       className={cn(
-        "ui-slider h-control-xs w-full cursor-pointer ui-motion-fast",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+        "ui-focus-managed ui-slider h-control-xs w-full cursor-pointer ui-motion-fast",
+        "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/14",
         "disabled:cursor-not-allowed",
         className,
       )}
