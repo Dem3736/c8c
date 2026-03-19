@@ -1,11 +1,12 @@
 id: gstack-preflight-gate
 stage: code
 emoji: "\U0001F6A7"
-headline: Review a branch, verify it with QA, and hold a human release gate
+headline: Review a branch, QA it, and hold a release gate
 how: Runs gstack review on the current branch, verifies the resulting branch with report-only QA, merges both signals, and pauses for explicit approval
 input: Repo and branch context, local or staging URL, auth or setup notes, and any risky areas that must be checked
 output: Approved preflight brief with code-review findings, QA evidence, and release recommendation
 use_when: You have a branch that feels close to ready and want one gated preflight pass before shipping.
+time: ~8-12 min.
 steps:
   - Run pre-landing branch review and preserve unresolved asks
   - Verify the reviewed branch with report-only QA
@@ -21,19 +22,6 @@ credits:
   - label: gstack
     href: https://github.com/garrytan/gstack
     note: Built around Garry Tan's gstack skill pack.
-contract_in:
-  - kind: verification_report
-    title: Verification Report
-    description: Helpful upstream verification evidence for the preflight review.
-    required: false
-  - kind: phase_plan
-    title: Phase Plan
-    description: Helpful scope context for what the branch was supposed to accomplish.
-    required: false
-  - kind: validation_contract
-    title: Validation Contract
-    description: Helpful acceptance criteria and checks to keep in view during preflight.
-    required: false
 contract_out:
   - kind: validation_contract
     title: Preflight Gate

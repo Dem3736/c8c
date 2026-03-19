@@ -1,11 +1,12 @@
 id: content-idea-backlog
 stage: content
 emoji: "\U0001F4A1"
-headline: Turn the trend digest into a backlog of high-quality post ideas
+headline: Turn trends into a backlog of post ideas
 how: Convert evidence and themes into concrete content ideas with hooks, angles, and why each idea is worth publishing.
 input: Trend digest, campaign notes, or publishing constraints
 output: Idea backlog with hooks, angles, and post-worthy thesis statements
 use_when: You have an evidence base and need a strong pipeline of ideas before building a calendar or drafting copy.
+time: ~5-8 min.
 steps:
   - Generate multiple differentiated angles from the trend digest
   - Convert them into a prioritized backlog of content ideas with hooks and thesis

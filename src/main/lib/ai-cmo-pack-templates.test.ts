@@ -15,7 +15,7 @@ describe("AI CMO pack templates", () => {
   it("ships the AI CMO pack with linked built-in templates", () => {
     const templates = getBuiltinTemplates().filter((template) => targetIds.includes(template.id as (typeof targetIds)[number]))
 
-    expect(templates.map((template) => template.id)).toEqual(targetIds)
+    expect(templates.map((template) => template.id).sort()).toEqual([...targetIds].sort())
 
     for (const template of templates) {
       expect(template.pack?.id).toBe("ai-cmo")

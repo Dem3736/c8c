@@ -2,9 +2,11 @@ id: ux-ui-polish-audit
 stage: code
 emoji: "\U0001F3A8"
 headline: Audit UX/UI polish across the whole project
-how: Maps the product surface, fans out repo-wide UX/UI audit lenses, and merges findings into one actionable polish report
-input: A project directory
+how: Maps the product surface, audits through UX/UI lenses, and merges findings into one prioritized polish report
+input: A project directory or repository path with the UI codebase to audit
 output: Repo-wide UX/UI polish report with prioritized fixes and file-level evidence
+use_when: The product works, but you need one pass focused on friction, clarity, and finish.
+time: ~8-12 min.
 steps:
   - Map the full user-facing surface of the project
   - Fan out repo-wide UX/UI audit tracks by lens
@@ -17,7 +19,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: UX/UI Polish Audit
-description: Map the full product surface, audit the entire project in parallel through UX/UI lenses, and produce
+description: Map the full product surface, audit the entire project through UX/UI lenses, and produce
   one prioritized polish report
 defaults:
   model: sonnet

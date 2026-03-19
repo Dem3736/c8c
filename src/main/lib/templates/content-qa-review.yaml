@@ -1,11 +1,12 @@
 id: content-qa-review
 stage: content
 emoji: "\U0001F50D"
-headline: Review a draft for tone, slop, and publish quality before approving it
+headline: Review a draft before it goes live
 how: Critique the draft, then require explicit human approval before the item is considered ready to publish or bundle.
 input: Draft post, ToV notes, and any quality rubric that should be enforced
 output: Approved QA report with edits, risks, and publish recommendation
 use_when: A draft exists and you want a clear review gate before it becomes publish-ready.
+time: ~5-8 min.
 steps:
   - Evaluate the draft against tone, anti-slop, and clarity rules
   - Require explicit human approval before the QA result is treated as final

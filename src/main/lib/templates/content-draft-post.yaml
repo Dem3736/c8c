@@ -6,6 +6,7 @@ how: Turn one calendar slot into a strong post draft using the intended tone of 
 input: Editorial calendar slot, trend context, and tone-of-voice rules
 output: Post draft ready for quality review
 use_when: You want to draft a specific content item with the right voice and without generic AI filler.
+time: ~5-8 min.
 steps:
   - Use the selected calendar slot and trend context to draft one post
   - Respect tone of voice, no-slop constraints, and channel format requirements

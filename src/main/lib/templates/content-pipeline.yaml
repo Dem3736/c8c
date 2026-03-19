@@ -1,10 +1,12 @@
 id: content-pipeline
 stage: content
 emoji: "\U0001F4F0"
-headline: Strategy → report → marketing artifacts in one pass
-how: Develops product strategy, generates a comprehensive report, creates marketing artifacts, and evaluates quality
+headline: Turn strategy into marketing assets
+how: Builds the strategy, turns it into a report, then drafts the first marketing assets from it.
 input: Product or feature brief
 output: Strategy report plus marketing artifacts (positioning, messaging, content ideas)
+use_when: You have the product strategy and need the first set of marketing assets from it.
+time: ~10-15 min.
 steps:
   - Develop product strategy and positioning
   - Founder approves the strategy before downstream artifacts are generated
@@ -16,7 +18,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Content Pipeline
-description: Develop product strategy, generate comprehensive report, create marketing artifacts, evaluate quality
+description: Develop product strategy, generate structured report, create marketing artifacts, evaluate quality
 defaults:
   model: sonnet
   maxTurns: 120

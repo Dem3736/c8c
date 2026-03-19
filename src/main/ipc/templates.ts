@@ -1,5 +1,7 @@
 import { ipcMain, BrowserWindow, type WebContents } from "electron"
 import { listTemplates as listTemplateCatalog } from "../lib/templates"
+import { refreshHubCatalog } from "../lib/templates/hub-catalog"
+import { getHubTemplate } from "../lib/templates/hub-template-cache"
 import { drainExecutionHandle } from "../lib/agent-execution"
 import { LogParser } from "../lib/log-parser"
 import { buildGeneratorPrompt, parseGeneratedWorkflow } from "../lib/workflow-generator"
@@ -116,6 +118,14 @@ export function registerTemplateHandlers() {
   )
 
   ipcMain.handle(
+    "templates:inspect-project",
+    async (_event, projectPath: string) => {
+      const safeProjectPath = await resolveGenerateWorkdir(projectPath)
+      return inspectProjectForCreateEntry(safeProjectPath)
+    },
+  )
+
+  ipcMain.handle(
     "templates:route-create-entry",
     async (_event, input: CreateEntryRouteInput): Promise<CreateEntryRouteResult> => {
       const safeProjectPath = await resolveGenerateWorkdir(input.projectPath)
@@ -136,6 +146,14 @@ export function registerTemplateHandlers() {
     const senderId = event.sender.id
     abortGenerationForSender(senderId)
     logInfo("templates-ipc", "generate_cancel_requested", { senderId })
+  })
+
+  ipcMain.handle("templates:fetch-hub-template", async (_event, templateId: string) => {
+    return getHubTemplate(templateId)
+  })
+
+  ipcMain.handle("templates:refresh-catalog", async () => {
+    await refreshHubCatalog()
   })
 
   ipcMain.handle(

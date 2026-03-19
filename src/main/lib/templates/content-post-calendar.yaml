@@ -6,6 +6,7 @@ how: Convert current signals into a short, usable post plan so drafting can star
 input: Trend digest, channel constraints, and publishing intent
 output: Post calendar with concrete slots ready for drafting
 use_when: You already have a trend digest and want a concrete post plan before writing the actual posts.
+time: ~5-8 min.
 steps:
   - Turn the trend digest into a small, concrete post calendar
   - Make each planned slot specific enough for downstream drafting

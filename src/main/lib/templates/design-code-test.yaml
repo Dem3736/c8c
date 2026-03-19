@@ -5,6 +5,8 @@ headline: Design a component, build it, and test it
 how: Generates a frontend component, reviews code quality, gates on standards, writes tests, and gates on coverage
 input: A component specification or UI requirement
 output: Production-ready component with tests and quality checks passed
+use_when: You have a component or feature to build and want design, implementation, and tests lined up in one pass.
+time: ~15-20 min.
 steps:
   - Generate frontend component from specification
   - Review code quality against standards

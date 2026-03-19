@@ -33,6 +33,18 @@ const DIRECTORY_ROUTE_TEMPLATES = new Set([
   "ux-ui-polish-audit",
 ])
 
+function buildCombinedRequestFields(input: CreateEntryRouteInput) {
+  return [
+    input.draftPrompt,
+    input.requestedResult,
+    ...Object.values(input.modeConfig || {}),
+    input.promptScaffold?.goal,
+    input.promptScaffold?.input,
+    input.promptScaffold?.constraints,
+    input.promptScaffold?.successCriteria,
+  ]
+}
+
 function normalize(value: string | undefined | null) {
   return (value || "").trim()
 }
@@ -115,15 +127,8 @@ export function buildHeuristicCreateEntryRoute(
   allowedOptions: CreateEntryRouteOption[],
 ): CreateEntryRouteResult {
   const allowedTemplateIds = new Set(allowedOptions.map((option) => option.templateId))
-  const combined = compactFields([
-    input.draftPrompt,
-    input.requestedResult,
-    ...Object.values(input.modeConfig || {}),
-    input.promptScaffold?.goal,
-    input.promptScaffold?.input,
-    input.promptScaffold?.constraints,
-    input.promptScaffold?.successCriteria,
-  ])
+  const combined = compactFields(buildCombinedRequestFields(input))
+  const planOption = allowedOptions.find((option) => option.templateId === "delivery-plan-phase")
 
   const reviewOption = allowedOptions.find((option) => option.templateId === "delivery-verify-phase")
   const mapOption = allowedOptions.find((option) => option.templateId === "delivery-map-codebase")
@@ -140,7 +145,35 @@ export function buildHeuristicCreateEntryRoute(
     projectInspection.projectKind === "existing_repo"
     || projectInspection.projectKind === "review_ready"
 
-  if (
+  if (input.helpModeHint === "review") {
+    if (
+      (playwrightAuditOption || uiPolishOption || uxAuditOption)
+      && hasExistingUiSurface
+      && UI_POLISH_SIGNAL_RE.test(combined)
+    ) {
+      if (playwrightAuditOption && PLAYWRIGHT_SIGNAL_RE.test(combined)) {
+        recommendedTemplateId = playwrightAuditOption.templateId
+        reason = "Recommended because review mode and the request both point to a browser-based visual audit."
+      } else if (uiPolishOption && /полиш|polish|improve|improvement|fix the ui|clean up ui|harden ui|clarify ui/i.test(combined)) {
+        recommendedTemplateId = uiPolishOption.templateId
+        reason = "Recommended because review mode points to a UI polish path on an active product surface."
+      } else if (uxAuditOption) {
+        recommendedTemplateId = uxAuditOption.templateId
+        reason = "Recommended because review mode points to a repo-wide UX/UI audit."
+      }
+    } else if (reviewOption) {
+      recommendedTemplateId = reviewOption.templateId
+      reason = "Recommended because review mode was selected for a review-ready project."
+    }
+  } else if (input.helpModeHint === "plan") {
+    if (planOption) {
+      recommendedTemplateId = planOption.templateId
+      reason = "Recommended because plan mode was selected."
+    } else if (shapeOption) {
+      recommendedTemplateId = shapeOption.templateId
+      reason = "Recommended because plan mode was selected and shaping is the safest planning start."
+    }
+  } else if (
     (playwrightAuditOption || uiPolishOption || uxAuditOption)
     && hasExistingUiSurface
     && UI_POLISH_SIGNAL_RE.test(combined)
@@ -214,6 +247,7 @@ function buildRouterPrompt(
   const requestSections = {
     draftPrompt: normalize(input.draftPrompt),
     requestedResult: normalize(input.requestedResult),
+    helpModeHint: input.helpModeHint || "auto",
     modeConfig: input.modeConfig || {},
     promptScaffold: input.promptScaffold || {},
   }
@@ -234,6 +268,7 @@ function buildRouterPrompt(
     "",
     "Rules:",
     "- Recommend exactly one allowed templateId.",
+    "- Respect helpModeHint when it is present. `plan` should prefer plan-oriented starts, `review` should prefer review-oriented starts, and `do` should prefer execution-oriented starts.",
     "- Review entries are only valid when review context genuinely exists.",
     "- Prefer specialized UI audit/polish entries when the request is explicitly about UI review, polish, visual quality, or browser-based visual testing.",
     "- Prefer Shape Project for greenfield or brief-first requests.",
@@ -255,15 +290,7 @@ function parseRouterDecision(rawText: string, allowedTemplateIds: Set<string>): 
 }
 
 function buildCombinedRequestText(input: CreateEntryRouteInput) {
-  return compactFields([
-    input.draftPrompt,
-    input.requestedResult,
-    ...Object.values(input.modeConfig || {}),
-    input.promptScaffold?.goal,
-    input.promptScaffold?.input,
-    input.promptScaffold?.constraints,
-    input.promptScaffold?.successCriteria,
-  ])
+  return compactFields(buildCombinedRequestFields(input))
 }
 
 function shouldForceExistingRepoMap(

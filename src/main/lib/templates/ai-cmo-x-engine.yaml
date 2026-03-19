@@ -6,6 +6,7 @@ how: Extracts voice and proof, generates multiple X angles, drafts a queue of po
 input: Website, launch context, product update, or upstream AI CMO strategy pack
 output: X posting queue with angle labels, hooks, CTAs, and posting notes ready for review
 use_when: You want a product-specific X motion with real angles and review gates, not a generic viral-thread generator.
+time: ~8-12 min.
 steps:
   - Extract voice, proof points, audience tension, and claims to avoid
   - Create multiple X post assignments across different angles

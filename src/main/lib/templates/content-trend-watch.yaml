@@ -6,6 +6,7 @@ how: Gather recent signals, themes, launches, and discussion patterns, then cond
 input: Notes, links, feeds, or a research brief describing the market or topic space
 output: Trend digest with named themes, signals, and why they matter
 use_when: You need a current evidence base before generating a concrete post plan or drafting posts.
+time: ~6-8 min.
 steps:
   - Extract recurring themes, launches, controversies, and shifts in the topic space
   - Turn the raw input into a structured trend digest that can drive downstream content work

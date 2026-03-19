@@ -5,6 +5,8 @@ headline: Craft messaging that resonates at every awareness level
 how: Extracts signal from product data, maps audience awareness stages, sharpens messaging, and generates awareness-matched headlines
 input: Product data, landing pages, or marketing copy
 output: Awareness-stage-matched headlines and sharpened messaging framework
+use_when: The offer is clear to you, but the message still is not landing across awareness levels.
+time: ~8-12 min.
 steps:
   - Extract signal and strip noise from product data
   - Map audience awareness stages

@@ -1,10 +1,12 @@
 id: seed-account-map-pipeline
 stage: research
 emoji: "\U0001F3AF"
-headline: Turn a handful of best customers into a scored target account map
+headline: Turn best customers into target accounts
 how: Captures why existing wins closed, converts that into explicit buying hypotheses, builds and enriches an account table, then tiers who deserves attention now
 input: 3-10 seed customers or closed-won accounts, ICP notes, geography and size constraints, and any do-not-contact domains
 output: A prioritized target-account table with hypothesis fit, timing signals, personalization hooks, and Tier 1/2/3 recommendations
+use_when: You know who your best customers are and want more accounts that look like them.
+time: ~8-12 min.
 steps:
   - Turn real wins into explicit "why they buy" hypotheses in plain seller language.
   - Build a candidate account universe and reject vague search angles before enrichment.

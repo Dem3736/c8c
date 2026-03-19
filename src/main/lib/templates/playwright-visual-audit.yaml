@@ -1,10 +1,12 @@
 id: playwright-visual-audit
 stage: code
 emoji: "\U0001F3AD"
-headline: Split app flows into scenarios, run them in a browser, and audit visual regressions
+headline: Audit app flows for visual regressions
 how: Maps the product surface, turns it into Playwright-ready scenarios, runs each flow end-to-end, and merges findings into one evidence-backed audit
 input: A testing brief with base URL or startup hints, auth/setup notes, must-cover journeys, and exclusions
 output: Scenario-by-scenario visual QA report with screenshots, blockers, and prioritized fixes
+use_when: You changed the product surface and need browser evidence before shipping.
+time: ~8-12 min.
 steps:
   - Map the product surface and propose executable visual test scenarios
   - Split the plan into self-contained browser scenarios

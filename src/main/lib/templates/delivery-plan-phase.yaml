@@ -6,6 +6,7 @@ how: Break the next phase into concrete slices, dependencies, and validation che
 input: A project brief, scoped feature, or roadmap segment to plan
 output: Phase plan with small tasks, sequencing notes, and a validation contract
 use_when: You know what should be built next and want a concrete phase plan before execution starts.
+time: ~5-8 min.
 steps:
   - Break the next phase into ordered task slices with dependencies and risks
   - Review and tighten the plan, then produce a validation contract
@@ -15,7 +16,6 @@ pack:
   journey_stage: plan
   recommended_next:
     - delivery-implement-phase
-    - delivery-verify-phase
 contract_in:
   - kind: project_brief
     title: Project Brief

@@ -1,10 +1,12 @@
 id: twitter-growth-machine
 stage: outreach
 emoji: "\U0001F426"
-headline: Generate algorithm-optimized tweets from trending topics
+headline: Turn trends into ready-to-post tweets
 how: Researches trending topics, generates multiple tweet angles, optimizes each for algorithm, selects the best, and evaluates quality
 input: A niche, brand voice, or topic area
 output: Optimized tweet batch ready to post
+use_when: You want to post on the moment without spending the day drafting tweets.
+time: ~5-8 min.
 steps:
   - Research trending topics in your niche
   - Generate multiple tweet angles in parallel

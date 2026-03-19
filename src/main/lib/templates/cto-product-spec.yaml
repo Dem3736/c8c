@@ -2,9 +2,11 @@ id: cto-product-spec
 stage: strategy
 emoji: "\U0001F4DD"
 headline: Go from idea to CTO-grade product spec
-how: Generates a comprehensive product specification from idea to modular implementation details with architecture decisions
+how: Breaks the idea into modules, makes stack and architecture decisions per module, then assembles everything into one spec
 input: A product idea or feature concept
 output: Complete product spec with architecture, stack decisions, and implementation modules
+use_when: You have an idea and need a spec you can actually build from.
+time: ~10-15 min.
 steps:
   - Analyze the idea and define product requirements
   - Design system architecture and choose stack

@@ -2,9 +2,11 @@ id: competitor-ad-intelligence
 stage: research
 emoji: "\U0001F4CA"
 headline: Decode competitor ads and build your counter-strategy
-how: Structures your context, fans out per-competitor research, synthesizes gaps, evaluates evidence quality, then builds an actionable counter-positioning plan
+how: Structures your context, researches each competitor separately, synthesizes gaps, evaluates evidence quality, then builds a counter-positioning plan
 input: Your product, budget, current channels, and 3-5 competitors to analyze
 output: Competitive ad landscape analysis with counter-positioning strategy and ready-to-test ad concepts
+use_when: Competitors are running ads and you need to understand their angles before launching your own.
+time: ~10-15 min.
 steps:
   - Extract and structure your product context, budget, and competitor list
   - Fan out per-competitor ad strategy research in parallel
@@ -13,7 +15,7 @@ steps:
   - Build counter-positioning strategy with ready-to-test ad concepts
 version: 1
 name: Competitor Ad Intelligence
-description: Structure context, research competitor ads in parallel, synthesize gaps, evaluate evidence, build counter-positioning strategy with actionable ad concepts
+description: Structure context, research competitor ads separately, synthesize gaps, evaluate evidence, build counter-positioning strategy with ad concepts
 defaults:
   model: sonnet
   maxTurns: 120

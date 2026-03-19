@@ -1,10 +1,12 @@
 id: landing-audit-loop
 stage: content
 emoji: "\U0001F50D"
-headline: Audit and rewrite a landing page through JTBD lens
+headline: Audit and rewrite a landing page
 how: Analyze the landing page against the stated job-to-be-done, split into logical blocks for parallel rewriting, merge with consistency checks, and route through an approval gate.
 input: A landing page URL or copy text
 output: Rewritten landing page copy with JTBD-aligned messaging
+use_when: You have a landing page that feels weak and need a sharper version before sending traffic.
+time: ~8-12 min.
 steps:
   - Analyze landing page against JTBD framework
   - Split page into logical blocks for parallel rewriting

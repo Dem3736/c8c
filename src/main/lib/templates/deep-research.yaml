@@ -2,9 +2,11 @@ id: deep-research
 stage: research
 emoji: "\U0001F50D"
 headline: Research any topic from multiple angles
-how: Decomposes a topic into lenses, investigates each in parallel, then synthesizes a comprehensive report
+how: Decomposes a topic into lenses, investigates each separately, then synthesizes a structured report
 input: A topic or research question
-output: Structured research report with executive summary, findings per angle, and actionable conclusions
+output: Structured research report with executive summary, findings per angle, and practical conclusions
+use_when: You need grounded evidence before making a decision, not a single-pass summary.
+time: ~8-12 min.
 steps:
   - Decompose topic into 4-6 research lenses with key questions
   - Fan out parallel investigation per lens
@@ -12,8 +14,8 @@ steps:
   - Evaluate evidence quality, disconfirming coverage, and source specificity
 version: 1
 name: Deep Research
-description: Plan a topic via multi-angle decomposition and KAC, investigate each aspect in parallel, synthesize into a
-  comprehensive report
+description: Plan a topic via multi-angle decomposition and KAC, investigate each aspect separately, synthesize into a
+  structured report
 defaults:
   model: sonnet
   maxTurns: 120

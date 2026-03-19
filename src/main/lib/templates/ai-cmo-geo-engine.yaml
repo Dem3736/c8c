@@ -6,6 +6,7 @@ how: Maps buyer questions and entities, creates a GEO answer brief, drafts answe
 input: Website, product brief, FAQ notes, or upstream AI CMO strategy pack
 output: GEO answer brief, answer-pack draft, and fact/citation checklist ready for review
 use_when: You want the CMO motion to optimize for AI answers and overviews, not just classic search rankings.
+time: ~8-12 min.
 steps:
   - Map the buyer questions, entity facts, comparison surfaces, and missing evidence
   - Create a GEO brief with direct answers, objections, comparisons, and citation needs

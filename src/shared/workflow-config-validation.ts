@@ -10,7 +10,7 @@ export interface WorkflowConfigIssue {
 const PERMISSION_MODES = new Set<PermissionMode>(["plan", "edit"])
 const SKILL_OUTPUT_MODES = new Set(["auto", "stdout", "content_file"])
 const INPUT_TYPES = new Set(["auto", "text", "url", "directory"])
-const MERGER_STRATEGIES = new Set(["concatenate", "summarize", "select_best"])
+const MERGER_STRATEGIES = new Set(["concatenate", "summarize", "select_best", "assemble"])
 const OUTPUT_FORMATS = new Set(["markdown", "text"])
 const TIMEOUT_ACTIONS = new Set(["auto_approve", "auto_reject", "skip"])
 const HUMAN_MODES = new Set(["form", "approval"])

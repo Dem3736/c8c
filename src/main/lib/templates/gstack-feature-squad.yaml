@@ -2,10 +2,11 @@ id: gstack-feature-squad
 stage: strategy
 emoji: "\U0001F9E0"
 headline: Pressure-test a feature through founder and engineering-lead lenses
-how: Reframes a request into the highest-leverage product outcome, turns it into an execution plan for the repo, and quality-gates the resulting brief
+how: Reframes the request into the right product outcome, turns it into a repo-ready plan, and checks whether the brief is ready to build.
 input: Feature brief, repo context, constraints, and any relevant product or technical background
 output: Product direction memo plus engineering execution plan
 use_when: You want a high-rigor shaping pass before implementation starts.
+time: ~8-12 min.
 steps:
   - Reframe the request into the 10-star product outcome and the right scope
   - Turn that direction into architecture, failure-mode, and test planning

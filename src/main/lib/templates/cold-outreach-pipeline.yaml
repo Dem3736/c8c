@@ -5,6 +5,8 @@ headline: Generate personalized cold emails that get replies
 how: Builds company context, generates pain hypotheses, crafts templates, generates personalized emails, and simulates buyer response
 input: Target company or prospect information
 output: Personalized cold email sequences with buyer-response simulation
+use_when: You have a prospect list and need emails that sound specific, not batch-blasted.
+time: ~8-12 min.
 steps:
   - Build company context and generate pain hypotheses
   - Craft email templates from pain points

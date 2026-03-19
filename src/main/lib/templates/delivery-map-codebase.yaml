@@ -6,6 +6,7 @@ how: Build a fast orientation map of the repository, its architecture, and the h
 input: A repository or project folder path
 output: Codebase map with architecture, main flows, hotspots, and open questions
 use_when: You are about to change an existing codebase and need a reliable map before deciding what to build.
+time: ~5-8 min.
 steps:
   - Inspect the repository structure, entry points, and runtime paths
   - Build an orientation map covering architecture, key flows, hotspots, and open questions

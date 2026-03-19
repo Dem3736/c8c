@@ -21,6 +21,7 @@ import {
   extractDeepLinkUrl,
   handleDeepLink,
 } from "./deep-links"
+import { initHubCatalogRefresh } from "./lib/templates/hub-catalog"
 import { registerMainHandlers } from "./register-handlers"
 import {
   areBoundsEqual,
@@ -268,6 +269,7 @@ app.whenReady().then(async () => {
   registerMainHandlers(() => mainWindow)
 
   logInfo("main", "register_handlers_completed")
+  initHubCatalogRefresh()
   createWindow()
   if (app.isPackaged) {
     initUpdater()

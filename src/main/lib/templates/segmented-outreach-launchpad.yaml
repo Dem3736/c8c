@@ -2,9 +2,11 @@ id: segmented-outreach-launchpad
 stage: outreach
 emoji: "\U0001F4E9"
 headline: Turn segmented contacts into send-ready outreach without sounding batch-blasted
-how: Refreshes the GTM context, writes a self-contained prompt, fans out message generation by segment, pressure-tests the copy, and prepares sequencer handoff without auto-sending
+how: Refreshes the GTM context, writes a self-contained prompt, generates messages per segment, pressure-tests the copy, and prepares sequencer handoff without auto-sending
 input: A segmented contact CSV or Extruct table, company context or proof points, campaign goal, and the email sequencer you plan to use
 output: A branch-labeled email pack, simulation-backed copy fixes, manual-review queue for risky rows, and a sequencer handoff checklist
+use_when: You already segmented the list and now need send-ready outreach for each segment.
+time: ~8-12 min.
 steps:
   - Reduce the campaign to the few messaging angles that really deserve their own copy branch.
   - Build one self-contained outreach prompt with voice, proof, banned phrasing, and CTA rules baked in.

@@ -1,11 +1,12 @@
 id: gstack-web-quality-board
 stage: code
 emoji: "\U0001F440"
-headline: Run report-only QA and design review against the same web surface
+headline: Audit one web surface with QA and design
 how: Sends one testing brief into gstack's QA and design-audit roles, then merges both perspectives into a single prioritized quality brief
 input: Repo path, base URL, auth or setup notes, must-cover journeys, and any flows to ignore
 output: Combined QA and design audit with concrete evidence and prioritized fixes
 use_when: You need a no-code-change quality readout before deciding what to fix next.
+time: ~8-12 min.
 steps:
   - Audit the current surface for functional regressions and runtime issues
   - Audit the same surface for design quality, hierarchy, and AI-slop tells

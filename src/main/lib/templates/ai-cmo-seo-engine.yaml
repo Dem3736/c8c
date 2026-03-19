@@ -6,6 +6,7 @@ how: Finds credible search opportunities, turns the strongest ones into detailed
 input: Website, product brief, or upstream AI CMO strategy pack
 output: Prioritized SEO brief pack plus a flagship search-first draft ready for review
 use_when: You already know the product and want the SEO leg of the CMO motion to produce concrete assets instead of generic keyword lists.
+time: ~10-15 min.
 steps:
   - Identify the highest-leverage search opportunities and why they are worth pursuing
   - Build detailed briefs for the strongest opportunities

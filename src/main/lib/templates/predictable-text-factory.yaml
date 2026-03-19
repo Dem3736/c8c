@@ -1,10 +1,12 @@
 id: predictable-text-factory
 stage: content
 emoji: "\U0001F3ED"
-headline: Produce long-form content with section-level quality gates
+headline: Write long-form content with quality checks
 how: Plans sections, processes each independently, runs section-level and final quality gates, iterates until pass
 input: A content brief or outline with target structure
 output: Polished long-form document with each section quality-checked
+use_when: You need a long piece that stays coherent across sections, not just a fast first draft.
+time: ~10-15 min.
 steps:
   - Plan document sections from the brief
   - Write each section independently in parallel

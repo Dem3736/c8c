@@ -1,10 +1,12 @@
 id: new-vertical-to-live-campaign
 stage: outreach
 emoji: "\U0001F680"
-headline: Go from a new market thesis to a live outbound campaign without stitching the workflow by hand
+headline: Turn a market thesis into a live campaign
 how: Researches the market, builds and segments the account list, finds contacts, generates branch-specific emails, pressure-tests the copy, and prepares sequencer upload
 input: Target vertical, what you sell, geography, target roles, proof points, provider choices, and sending constraints
 output: A research-backed outbound pack with target accounts, verified contacts, branch-specific emails, a manual-review queue, and sequencer handoff
+use_when: You picked a new vertical and need the path from research to first outbound motion.
+time: ~12-18 min.
 steps:
   - Validate the market pain before building the list or writing the copy.
   - Founder approves the research hypothesis before committing to list building.

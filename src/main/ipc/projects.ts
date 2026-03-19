@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from "electron"
+import { mergeProjectOrderWithCurrent } from "@shared/project-order"
 import { loadProjectsConfig, saveProjectsConfig } from "../lib/projects-config"
 import { logInfo, logWarn } from "../lib/structured-log"
 
@@ -53,6 +54,18 @@ export function registerIpcHandlers() {
       }
       await saveProjectsConfig(config)
       logInfo("projects-ipc", "project_removed", { path })
+    })
+  })
+
+  ipcMain.handle("projects:reorder", async (_e, requestedOrder: string[]) => {
+    return runSerializedConfigOperation(async () => {
+      const config = await loadProjectsConfig()
+      config.projects = mergeProjectOrderWithCurrent(config.projects, requestedOrder)
+      await saveProjectsConfig(config)
+      logInfo("projects-ipc", "projects_reordered", {
+        projectCount: config.projects.length,
+      })
+      return config.projects
     })
   })
 

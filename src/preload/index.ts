@@ -92,6 +92,7 @@ const api: C8cApi = {
   listProjects: () => ipcRenderer.invoke("projects:list"),
   addProject: () => ipcRenderer.invoke("projects:add"),
   removeProject: (path: string) => ipcRenderer.invoke("projects:remove", path),
+  reorderProjects: (paths: string[]) => ipcRenderer.invoke("projects:reorder", paths),
   setSelectedProject: (path: string) => ipcRenderer.invoke("projects:set-selected", path),
   getSelectedProject: () => ipcRenderer.invoke("projects:get-selected"),
 
@@ -206,6 +207,12 @@ const api: C8cApi = {
     ipcRenderer.invoke("templates:record-usage", projectPath, templateId),
   saveAsTemplate: (name: string, workflow: Workflow) =>
     ipcRenderer.invoke("templates:save-user", name, workflow),
+  fetchHubTemplate: (templateId: string) =>
+    ipcRenderer.invoke("templates:fetch-hub-template", templateId),
+  refreshCatalog: () =>
+    ipcRenderer.invoke("templates:refresh-catalog"),
+  inspectCreateEntryProject: (projectPath: string) =>
+    ipcRenderer.invoke("templates:inspect-project", projectPath),
   routeCreateEntry: (input) =>
     ipcRenderer.invoke("templates:route-create-entry", input),
   generateWorkflow: (

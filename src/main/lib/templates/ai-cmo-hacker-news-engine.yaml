@@ -6,6 +6,7 @@ how: Judges whether the product is HN-worthy, chooses the strongest thread forma
 input: Website, launch context, product update, technical story, or upstream AI CMO strategy pack
 output: Hacker News launch brief, submission draft, maker comment, and reply playbook ready for review
 use_when: You want a Show HN or Ask HN motion that sounds candid and technical, with an explicit check on whether HN is even the right venue.
+time: ~8-12 min.
 steps:
   - Judge HN fit and choose the best thread type or decide to skip
   - Build the launch brief with title territory, proof needs, and skepticism triggers

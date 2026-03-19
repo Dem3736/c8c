@@ -5,6 +5,8 @@ headline: Polish a UI feature from audit to ship-ready
 how: Audits a frontend feature, then systematically normalizes, hardens, clarifies, optimizes, and polishes it
 input: A frontend feature or component to improve
 output: Ship-ready UI with accessibility, performance, and polish checks passed
+use_when: The feature works, but it still feels rough and not ready to ship.
+time: ~15-20 min.
 steps:
   - Audit the feature for design and code issues
   - Normalize, harden, and clarify the implementation

@@ -1,11 +1,12 @@
 id: gstack-release-room
 stage: operations
 emoji: "\U0001F6A2"
-headline: Refresh docs, pause for approval, then hand the branch to ship
+headline: Prep docs and hand a branch to ship
 how: Updates release-facing docs from the current branch, requires a human ship decision, and then runs gstack's ship workflow with that approved context
 input: Release context, target branch or PR framing, docs to refresh, and anything the ship operator must know
 output: Release-room summary covering docs updated, release context approved, and ship outcome
 use_when: You want a final operator flow that makes docs current before invoking a real ship step.
+time: ~5-8 min.
 steps:
   - Update release-facing docs to match the branch
   - Pause for a human ship decision with editable release context

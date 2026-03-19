@@ -630,6 +630,8 @@ export interface ProjectInspectionSummary {
 
 export type CreateEntrySeedInputMode = "text" | "directory" | "branch_or_diff"
 
+export type CreateEntryHelpModeHint = "auto" | "do" | "plan" | "review"
+
 export interface CreateEntryRouteSeed {
   primaryInputMode: CreateEntrySeedInputMode
   primaryInputValue: string
@@ -642,6 +644,7 @@ export interface CreateEntryRouteInput {
   fallbackTemplateId?: string
   draftPrompt?: string
   requestedResult?: string
+  helpModeHint?: CreateEntryHelpModeHint
   modeConfig?: Record<string, string> | null
   promptScaffold?: CreateEntryPromptScaffold | null
   allowedOptions?: CreateEntryRouteOption[]
@@ -725,7 +728,7 @@ export interface WorkflowTemplate {
   executionPolicy?: WorkflowExecutionPolicyProfile
   credits?: WorkflowTemplateCredit[]
   workflow: Workflow
-  source?: "builtin" | "plugin" | "user"
+  source?: "builtin" | "plugin" | "user" | "hub"
   pluginId?: string
   pluginName?: string
   marketplaceId?: string

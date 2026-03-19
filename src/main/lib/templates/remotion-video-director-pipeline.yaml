@@ -1,10 +1,12 @@
 id: remotion-video-director-pipeline
 stage: code
 emoji: "\U0001F3AC"
-headline: Turn a video brief into a gated Remotion delivery flow with parallel scene builds
-how: Frames the video, gates the scenario, fans out scene implementation, assembles the project, adds audio, and loops through expert review before handoff
+headline: Turn a video brief into Remotion delivery
+how: Frames the video, gates the scenario, builds each scene, assembles the project, adds audio, and loops through expert review before handoff
 input: A video brief with audience, desired action, constraints, assets, and either an existing Remotion repo path or permission to scaffold one
 output: A render-ready Remotion project, first-pass MP4 or blocked render plan, audio direction, and a scored revision list
+use_when: You have a video brief and need script, scenes, assets, and review lined up before production.
+time: ~15-25 min.
 steps:
   - Frame the brief, archetype, and creative direction
   - Design a build-ready scene system and gate it before implementation
@@ -17,7 +19,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Remotion Video Director Pipeline
-description: Turn Remotion Video Director into a production pipeline with parallel scene builds, assembly, audio integration, and explicit review gates
+description: Turn Remotion Video Director into a production pipeline with per-scene builds, assembly, audio integration, and explicit review gates
 credits:
   - label: Remotion Video Director
     href: https://github.com/BayramAnnakov/remotion-video-director

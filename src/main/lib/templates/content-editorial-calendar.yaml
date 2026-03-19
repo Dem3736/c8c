@@ -6,6 +6,7 @@ how: Sequence the idea backlog into a calendar or publishing plan with spacing, 
 input: Idea backlog, publishing cadence, and channel constraints
 output: Editorial calendar that can spawn item-level content cases
 use_when: You have enough content ideas and want to turn them into a scheduled production plan instead of drafting ad hoc.
+time: ~5-8 min.
 steps:
   - Prioritize and sequence ideas into a realistic calendar
   - Make the calendar ready to spawn item-level content cases

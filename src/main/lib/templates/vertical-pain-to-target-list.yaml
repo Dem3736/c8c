@@ -1,10 +1,12 @@
 id: vertical-pain-to-target-list
 stage: research
 emoji: "\U0001F52D"
-headline: Turn a vague vertical hunch into a first qualified account list
+headline: Turn a vertical hunch into target accounts
 how: Uses external market research to validate pain, convert it into searchable hypotheses, build the first account universe, and tier who deserves attention
 input: A target vertical, subsegments, geography, what you sell, and any suspected pains or known competitors
 output: Sourcing research, a hypothesis set, an enriched account table, and a first prioritized hunt list
+use_when: You suspect a vertical is promising and need a first list of qualified accounts.
+time: ~8-12 min.
 steps:
   - Research the market before guessing at the message or the list.
   - Distill the pain into search angles that list-building can actually run.

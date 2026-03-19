@@ -6,6 +6,7 @@ how: Turn the available context into a project brief, requirements, and roadmap,
 input: A project brief, feature request, or repo context
 output: Project brief, requirements, and roadmap ready for phase planning
 use_when: You need to turn a messy idea or repo context into a clear project shape before planning implementation.
+time: ~8-12 min.
 steps:
   - Analyze project context, constraints, and goals
   - Review for internal consistency, hidden assumptions, and scope realism
@@ -18,8 +19,8 @@ pack:
   journey_stage: shape
   entrypoint: true
   recommended_next:
-    - delivery-plan-phase
     - delivery-research-phase
+    - delivery-plan-phase
 contract_in:
   - kind: codebase_map
     title: Existing Codebase Map

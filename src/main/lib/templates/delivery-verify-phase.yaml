@@ -1,11 +1,12 @@
 id: delivery-verify-phase
 stage: operations
 emoji: "\U0001F9EA"
-headline: Verify a finished phase against its plan before calling it done
+headline: Verify a finished phase before sign-off
 how: Run automated checks first, then compare implemented outcome against the phase plan in a verification report, evaluate report quality, and require explicit human approval before completion.
 input: Implementation notes, evidence, or links that should be checked against the phase plan
 output: Approved verification report with findings, gaps, and completion decision
 use_when: A phase has been implemented and you want a visible verification pass before declaring it complete.
+time: ~5-8 min.
 steps:
   - Run automated checks (tests, types, lint) and report raw results
   - Compare delivered work against the phase plan and validation contract
@@ -15,17 +16,11 @@ pack:
   id: delivery-foundation
   label: Delivery Factory
   journey_stage: verify
-  recommended_next:
-    - gstack-preflight-gate
 contract_in:
   - kind: phase_plan
     title: Phase Plan
     description: The agreed objective, slices, and scope for the phase.
     required: true
-  - kind: implementation_report
-    title: Implementation Report
-    description: Helpful summary of changed files, checks run, and follow-up risks from the implementation stage.
-    required: false
   - kind: validation_contract
     title: Validation Contract
     description: The checks and acceptance criteria that define completion.

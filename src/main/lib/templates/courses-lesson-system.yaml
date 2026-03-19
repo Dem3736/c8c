@@ -6,6 +6,7 @@ how: Convert the curriculum into lesson briefs and delivery guidance so lesson p
 input: Curriculum map plus teaching notes, format constraints, and any lesson-level preferences
 output: Lesson system with lesson briefs, objectives, and format guidance
 use_when: You have the curriculum map and need a reusable lesson system before producing final lesson assets.
+time: ~10-15 min.
 steps:
   - Turn each curriculum module into a lesson system or lesson briefs
   - Define objectives, lesson format, and what each lesson should accomplish

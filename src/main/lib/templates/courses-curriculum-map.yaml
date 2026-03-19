@@ -6,6 +6,7 @@ how: Use the audience and promise to define the learning sequence before writing
 input: Audience and offer brief plus any format, depth, and delivery constraints
 output: Curriculum map with modules, sequence, and learning progression
 use_when: You already know the audience and promise and want a structured curriculum before creating lessons.
+time: ~8-12 min.
 steps:
   - Turn the audience and offer brief into a curriculum map
   - Define modules, sequence, and what each part should accomplish

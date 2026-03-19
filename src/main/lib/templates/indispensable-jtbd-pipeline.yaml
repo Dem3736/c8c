@@ -5,6 +5,8 @@ headline: Turn raw product data into JTBD positioning
 how: Extracts jobs, segments users, scores opportunities, distills strategy, sharpens positioning, and clarifies messaging
 input: Product descriptions, user feedback, reviews, or support tickets
 output: Focused JTBD strategy with positioning statements and rewritten messaging
+use_when: You have raw product data and need positioning built around the real job customers hire you for.
+time: ~8-12 min.
 steps:
   - Extract structured job stories from raw material
   - Map segments and score opportunities

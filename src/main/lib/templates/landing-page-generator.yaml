@@ -5,6 +5,8 @@ headline: Build landing page copy block-by-block with quality loops
 how: Constructs landing page copy section by section with per-block quality loops, then assembles with cross-block QC
 input: Product info, target audience, and value proposition
 output: Complete landing page copy with hero, features, social proof, and CTAs
+use_when: You have an offer and need a landing page draft with real structure, not a blob.
+time: ~8-12 min.
 steps:
   - Define page structure and key blocks
   - Generate copy for each block with quality loops

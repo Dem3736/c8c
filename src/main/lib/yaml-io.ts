@@ -21,9 +21,11 @@ export async function loadChainYaml(filePath: string): Promise<ChainDefinition> 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Invalid workflow YAML: expected an object")
   }
-  const candidate = parsed as Partial<ChainDefinition>
-  if (!Array.isArray(candidate.steps)) {
-    throw new Error("Invalid workflow YAML: missing steps array")
+  const candidate = parsed as Record<string, unknown>
+  const hasSteps = Array.isArray(candidate.steps)
+  const hasGraph = Array.isArray(candidate.nodes) && Array.isArray(candidate.edges)
+  if (!hasSteps && !hasGraph) {
+    throw new Error("Invalid workflow YAML: missing nodes or edges array")
   }
   return parsed as ChainDefinition
 }

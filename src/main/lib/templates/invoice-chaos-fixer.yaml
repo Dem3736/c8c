@@ -5,6 +5,8 @@ headline: Organize messy invoices into clean expense data
 how: Organizes invoices, extracts data from PDFs, creates expense spreadsheet, detects anomalies, and evaluates completeness
 input: A folder of invoice PDFs or images
 output: Clean expense spreadsheet with anomaly flags and completeness report
+use_when: You have a folder of invoices and need clean expense data, not manual cleanup.
+time: ~5-10 min.
 steps:
   - Organize and categorize invoice files
   - Extract structured data from each invoice

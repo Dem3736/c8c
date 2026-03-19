@@ -6,7 +6,7 @@ const developmentOptions: CreateEntryRouteOption[] = [
   { templateId: "delivery-map-codebase", label: "Map codebase", stageLabel: "Shape / Map" },
   { templateId: "delivery-shape-project", label: "Shape project", stageLabel: "Shape / Map" },
   { templateId: "delivery-plan-phase", label: "Plan next phase", stageLabel: "Plan" },
-  { templateId: "delivery-verify-phase", label: "Review & ship", stageLabel: "Review" },
+  { templateId: "delivery-verify-phase", label: "Verify phase", stageLabel: "Verify" },
   { templateId: "ux-ui-polish-audit", label: "Audit UX/UI polish", stageLabel: "Review" },
   { templateId: "impeccable-ui-pipeline", label: "Polish a UI feature", stageLabel: "Implement" },
   { templateId: "playwright-visual-audit", label: "Run visual UI audit", stageLabel: "Review" },
@@ -206,5 +206,42 @@ describe("buildHeuristicCreateEntryRoute", () => {
     expect(route.source).toBe("heuristic")
     expect(route.reason).toContain("browser-based visual audit")
     expect(route.seed.primaryInputMode).toBe("text")
+  })
+
+  it("respects explicit plan mode when the user wants planning without implementation", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "VIBECON landing page with hero, speakers, agenda, and pricing",
+        requestedResult: "Let's plan the landing page without implementing it yet.",
+        helpModeHint: "plan",
+      }),
+      createInspection({
+        projectKind: "greenfield_empty",
+      }),
+      developmentOptions,
+    )
+
+    expect(route.recommendedTemplateId).toBe("delivery-plan-phase")
+    expect(route.reason).toContain("plan mode")
+  })
+
+  it("respects explicit review mode when a review-ready project is selected", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "landing page ready for final check",
+        requestedResult: "Review this before ship.",
+        helpModeHint: "review",
+      }),
+      createInspection({
+        projectKind: "review_ready",
+        git: { isRepo: true, branch: "feature/vibecon", hasUncommittedDiff: true },
+        fileDensity: "active",
+        fileCountEstimate: 42,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.recommendedTemplateId).toBe("delivery-verify-phase")
+    expect(route.reason).toContain("review mode")
   })
 })

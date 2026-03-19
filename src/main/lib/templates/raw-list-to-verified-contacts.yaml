@@ -1,10 +1,12 @@
 id: raw-list-to-verified-contacts
 stage: outreach
 emoji: "\U0001F4C7"
-headline: Turn a messy account list into verified contacts your team can actually work
+headline: Turn raw accounts into verified contacts
 how: Cleans the raw list, frames fit hypotheses, enriches only the signals that matter, tiers the companies, then finds and verifies the right people
 input: A CSV, pasted account list, or existing Extruct table plus ICP notes, target roles, geography, and exclusions
 output: A clean company table, prioritized people table, verified contact CSV, and a coverage report showing who still needs manual work
+use_when: You have company names or messy leads and need reachable contacts before outreach starts.
+time: ~8-12 min.
 steps:
   - Normalize the raw list and define what "good fit" means before adding any enrichment.
   - Add the smallest useful set of fit and personalization columns, then tier the companies.

@@ -6,6 +6,7 @@ how: Researches subreddit fit and rules, selects the most credible Reddit motion
 input: Website, launch context, product brief, or upstream AI CMO strategy pack
 output: Reddit motion shortlist, post drafts, and comment playbook ready for manual review
 use_when: You want Reddit distribution to feel native to the community and you need an explicit anti-spam review step.
+time: ~8-12 min.
 steps:
   - Find subreddits that fit and document their rules, norms, and risk flags
   - Choose the most credible post angles and disclose where the product mention belongs

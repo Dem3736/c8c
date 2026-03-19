@@ -6,6 +6,7 @@ how: Extract requirements and evaluation criteria from the opportunity, tailor t
 input: An application draft and the requirements or criteria it must address
 output: Tailored application optimized for the specific opportunity
 use_when: You need to tailor an application for an accelerator, grant, partnership, or consulting opportunity.
+time: ~8-12 min.
 steps:
   - Extract evaluation criteria and requirements from the opportunity
   - Tailor application to address each criterion with evidence

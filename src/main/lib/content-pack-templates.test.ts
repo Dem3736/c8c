@@ -17,7 +17,7 @@ describe("content pack templates", () => {
   it("ships the first content pack templates with pack metadata and contracts", () => {
     const templates = getBuiltinTemplates().filter((template) => targetIds.includes(template.id as (typeof targetIds)[number]))
 
-    expect(templates.map((template) => template.id)).toEqual(targetIds)
+    expect(templates.map((template) => template.id).sort()).toEqual([...targetIds].sort())
 
     for (const template of templates) {
       expect(template.pack?.id).toBe("content-factory-alpha")

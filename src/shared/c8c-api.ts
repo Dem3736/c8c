@@ -57,6 +57,7 @@ export interface C8cApi {
   listProjects: () => Promise<string[]>
   addProject: () => Promise<string | null>
   removeProject: (path: string) => Promise<void>
+  reorderProjects: (paths: string[]) => Promise<string[]>
   setSelectedProject: (path: string) => Promise<void>
   getSelectedProject: () => Promise<string | null>
   scanSkills: (projectPath: string) => Promise<DiscoveredSkill[]>
@@ -92,6 +93,9 @@ export interface C8cApi {
   listPopularProjectTemplates: (projectPath: string, limit?: number) => Promise<WorkflowTemplate[]>
   recordProjectTemplateUsage: (projectPath: string, templateId: string) => Promise<void>
   saveAsTemplate: (name: string, workflow: Workflow) => Promise<string>
+  fetchHubTemplate: (templateId: string) => Promise<WorkflowTemplate>
+  refreshCatalog: () => Promise<void>
+  inspectCreateEntryProject: (projectPath: string) => Promise<ProjectInspectionSummary>
   routeCreateEntry: (input: CreateEntryRouteInput) => Promise<CreateEntryRouteResult>
   generateWorkflow: (
     description: string,

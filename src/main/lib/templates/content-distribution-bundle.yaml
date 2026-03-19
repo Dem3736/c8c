@@ -6,6 +6,7 @@ how: Analyze the source content, split by target channels, adapt per platform wi
 input: Approved draft and QA report
 output: Distribution bundle with final copy variants and publishing notes
 use_when: A draft has already passed review and you want a reusable bundle for publishing, scheduling, or repurposing.
+time: ~5-8 min.
 steps:
   - Analyze source content to extract key ideas, hooks, and quotable moments
   - Split into platform-specific adaptation tasks based on target channels

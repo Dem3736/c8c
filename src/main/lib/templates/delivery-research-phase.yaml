@@ -6,6 +6,7 @@ how: Gather the evidence, constraints, and unknowns that should shape the next i
 input: A scoped phase, feature, or decision that needs grounded research
 output: Research pack with evidence, constraints, risks, and open questions for the next phase
 use_when: You already know roughly what should happen next and need evidence before locking the phase plan.
+time: ~8-12 min.
 steps:
   - Gather relevant evidence, constraints, known risks, and open questions for the next phase
   - Tighten the research into a practical pack that downstream planning can use directly
