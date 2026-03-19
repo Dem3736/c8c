@@ -72,6 +72,7 @@ import type { InputNodeConfig } from "@shared/types"
 import { toast } from "sonner"
 import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
 import { resolveValidationNavigationTarget } from "@/lib/validation-navigation"
+import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
 import {
   canUndoAtom,
   canRedoAtom,
@@ -466,6 +467,8 @@ export function Toolbar({
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isShortcutConsumed(event)) return
+
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
       const isEditable = Boolean(
@@ -503,12 +506,14 @@ export function Toolbar({
       }
 
       if (event.key !== "Enter" || isEditable) return
-      event.preventDefault()
       if (isRunning) {
+        consumeShortcut(event)
         void onCancel()
       } else if (canRun) {
+        consumeShortcut(event)
         void handleRunWithValidation("edit")
       } else {
+        consumeShortcut(event)
         revealRunBlocker()
       }
     }

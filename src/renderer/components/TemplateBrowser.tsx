@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import {
   templateBrowserOpenAtom,
   currentWorkflowAtom,
+  inputAttachmentsAtom,
+  inputValueAtom,
+  selectedProjectAtom,
   selectedWorkflowPathAtom,
+  selectedResultModeIdAtom,
   setWorkflowTemplateContextForKeyAtom,
   workflowEntryStateAtom,
   webSearchBackendAtom,
@@ -21,6 +25,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { cn } from "@/lib/cn"
 import { AlertTriangle, Layers, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
@@ -29,14 +34,14 @@ import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
 import { STAGE_META } from "@/lib/template-stages"
 import {
-  buildTemplateRunContext,
-  buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateUseWhen,
 } from "@/lib/workflow-entry"
+import { getResultMode, splitTemplatesForResultMode } from "@/lib/result-modes"
 import { getReplaceCurrentWorkflowBlockedReason } from "@/lib/run-guards"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
+import { buildTemplateStartState } from "@/lib/template-start"
 
 interface TemplateBrowserProps {
   onApply?: (template: WorkflowTemplate, previousWorkflow: unknown) => void
@@ -46,7 +51,11 @@ interface TemplateBrowserProps {
 export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserProps = {}) {
   const [open, setOpen] = useAtom(templateBrowserOpenAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
+  const [, setInputValue] = useAtom(inputValueAtom)
+  const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedResultModeId] = useAtom(selectedResultModeIdAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
@@ -70,21 +79,43 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       setTemplates(await window.api.listTemplates())
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error("Failed to load templates:", err)
+      console.error("Failed to load starting points:", err)
       setTemplates([])
-      setLoadError(message || "Could not load templates.")
+      setLoadError(message || "Could not load starting points.")
     } finally {
       setIsLoading(false)
     }
   }, [initialTemplates])
+
+  const selectedMode = useMemo(
+    () => getResultMode(selectedResultModeId),
+    [selectedResultModeId],
+  )
+  const templateSplit = useMemo(
+    () => splitTemplatesForResultMode(templates, selectedResultModeId),
+    [selectedResultModeId, templates],
+  )
+  const quickStartById = useMemo(
+    () => new Map(templateSplit.quickStarts.map((entry) => [entry.template.id, entry])),
+    [templateSplit.quickStarts],
+  )
+  const orderedTemplates = useMemo(
+    () => [
+      ...templateSplit.quickStarts.map((entry) => entry.template),
+      ...templateSplit.modeTemplates,
+      ...templateSplit.otherTemplates,
+    ],
+    [templateSplit.modeTemplates, templateSplit.otherTemplates, templateSplit.quickStarts],
+  )
 
   useEffect(() => {
     if (!open) return
     void loadTemplates()
   }, [loadTemplates, open])
 
-  const selected = templates.find((t) => t.id === selectedId)
+  const selected = orderedTemplates.find((t) => t.id === selectedId)
   const selectedOptionId = selectedId ? `template-option-${selectedId}` : undefined
+  const selectedQuickStart = selected ? quickStartById.get(selected.id) || null : null
   const selectedDisciplineLabels = selected ? deriveTemplateExecutionDisciplineLabels(selected) : []
   const selectedStageLabel = selected ? STAGE_META[selected.stage].label : null
   const selectedSourceKind = selected ? getTemplateSourceKind(selected) : null
@@ -94,6 +125,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       || (selectedDisciplineLabels.length > 0 ? selectedDisciplineLabels.join(", ") : null)
     : null
   const selectedExecutionDescription = selected?.executionPolicy?.description?.trim() || null
+  const selectedPrimaryActionLabel = selectedQuickStart?.stageLabel
+    ? `Start at ${selectedQuickStart.stageLabel}`
+    : "Start here"
 
   const closeBrowser = useCallback(() => {
     setOpen(false)
@@ -104,7 +138,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
   const doApply = (previousWorkflow: unknown, templateToApply: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
-      toast.error("Cannot replace the current workflow while a run is active", {
+      toast.error("Cannot replace the current process while a run is active", {
         description: replaceCurrentBlockedReason,
       })
       return
@@ -120,22 +154,23 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     } else {
       setWorkflow(nextWorkflow)
     }
-    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
-    setWorkflowEntryState(buildTemplateWorkflowEntryState({
+    const templateStartState = buildTemplateStartState({
       template: resolvedTemplate,
       workflowPath: selectedWorkflowPath,
-    }))
+      projectPath: selectedProject,
+    })
+    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
+    setInputValue(templateStartState.initialInputValue)
+    setInputAttachments(templateStartState.initialAttachments)
+    setWorkflowEntryState(templateStartState.entryState)
     setWorkflowTemplateContextForKey({
       key: workflowKey,
-      context: buildTemplateRunContext({
-        template: resolvedTemplate,
-        workflowPath: selectedWorkflowPath,
-      }),
+      context: templateStartState.templateContext,
     })
     setOpen(false)
     setSelectedId(null)
     setConfirmPending(null)
-    toast.success(`"${templateToApply.name}" is ready to run`, {
+    toast.success(`"${templateToApply.name}" is ready in the current process`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -161,16 +196,17 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   }
 
   const handleListKeyDown = (e: React.KeyboardEvent) => {
-    const idx = templates.findIndex((t) => t.id === selectedId)
+    if (orderedTemplates.length === 0) return
+    const idx = orderedTemplates.findIndex((t) => t.id === selectedId)
     if (e.key === "ArrowDown") {
       e.preventDefault()
-      setSelectedId(templates[Math.min(idx + 1, templates.length - 1)]?.id ?? null)
+      setSelectedId(orderedTemplates[Math.min(idx + 1, orderedTemplates.length - 1)]?.id ?? null)
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      setSelectedId(templates[Math.max(idx - 1, 0)]?.id ?? null)
+      setSelectedId(orderedTemplates[Math.max(idx - 1, 0)]?.id ?? null)
     } else if (e.key === "Enter" && selectedId) {
       e.preventDefault()
-      applyTemplate(templates[idx])
+      applyTemplate(orderedTemplates[idx])
     } else if (e.key === "Escape") {
       e.preventDefault()
       closeBrowser()
@@ -190,30 +226,30 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     >
       <CanvasDialogContent size="xl" className="max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
         <CanvasDialogHeader className="surface-depth-header">
-          <DialogTitle>Choose a template</DialogTitle>
+          <DialogTitle>Choose a starting point</DialogTitle>
           <DialogDescription className="sr-only">
-            Browse ready-to-run workflow templates, preview their fit, and apply one to the current workflow.
+            Browse ready-to-run starting points, preview their fit, and apply one to the current process.
           </DialogDescription>
         </CanvasDialogHeader>
 
         <CanvasDialogBody className="grid grid-cols-1 lg:grid-cols-[1.4fr,1fr] gap-3 flex-1 min-h-0 pt-4 surface-soft">
           <div
             role="listbox"
-            aria-label="Workflow templates"
+            aria-label="Process starting points"
             aria-activedescendant={selectedOptionId}
             tabIndex={0}
             className="overflow-y-auto ui-scroll-region space-y-2 pr-1 focus:outline-none"
             onKeyDown={handleListKeyDown}
           >
             {isLoading && (
-              <p className="text-body-md text-muted-foreground px-1 py-4 text-center">Loading templates…</p>
+              <p className="text-body-md text-muted-foreground px-1 py-4 text-center">Loading starting points…</p>
             )}
             {!isLoading && loadError && (
               <div className="rounded-lg surface-danger-soft px-4 py-4 text-center">
                 <div className="ui-status-halo-danger mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-full">
                   <AlertTriangle size={18} />
                 </div>
-                <p className="mt-3 ui-body-text-medium text-foreground">Could not load templates</p>
+                <p className="mt-3 ui-body-text-medium text-foreground">Could not load starting points</p>
                 <p className="mt-1 text-body-sm text-status-danger">{loadError}</p>
                 <Button
                   type="button"
@@ -230,72 +266,194 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             {!isLoading && !loadError && templates.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                 <Layers size={24} className="opacity-40" />
-                <p className="text-body-md">No templates available</p>
+                <p className="text-body-md">No starting points available</p>
               </div>
             )}
-            {templates.map((template) => {
-              const isSelected = selectedId === template.id
-              const sourceKind = getTemplateSourceKind(template)
-
-              return (
-                <Button
-                  type="button"
-                  role="option"
-                  key={template.id}
-                  id={`template-option-${template.id}`}
-                  aria-selected={isSelected}
-                  variant="ghost"
-                  size="auto"
-                  className={cn(
-                    "ui-interactive-card h-auto w-full justify-start rounded-md surface-soft p-3 text-left whitespace-normal",
-                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
-                    isSelected && "surface-inset-card ring-2 ring-foreground/20 shadow-inset-highlight",
-                  )}
-                  onClick={() => setSelectedId(template.id)}
-                  onDoubleClick={() => {
-                    setSelectedId(template.id)
-                    applyTemplate(template)
-                  }}
-                  >
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg mt-0.5 flex-shrink-0" aria-hidden>{template.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <span className="ui-body-text-medium block truncate">{template.headline}</span>
-                      <p className="ui-meta-text mt-1">
-                        {deriveTemplateCardCopy(template)}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <Badge variant="outline" size="compact">
-                          {STAGE_META[template.stage].label}
-                        </Badge>
-                        {(sourceKind === "plugin" || sourceKind === "user") && (
-                          <Badge variant="secondary" size="compact">
-                            {getTemplateSourceLabel(template)}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+            {!isLoading && !loadError && (
+              <>
+                {templateSplit.quickStarts.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="px-1 ui-meta-label text-muted-foreground">
+                      Quick starts in {selectedMode.label}
+                    </p>
+                    {templateSplit.quickStarts.map((entry) => {
+                      const template = entry.template
+                      const isSelected = selectedId === template.id
+                      return (
+                        <Button
+                          type="button"
+                          role="option"
+                          key={template.id}
+                          id={`template-option-${template.id}`}
+                          aria-selected={isSelected}
+                          variant="ghost"
+                          size="auto"
+                          className={cn(
+                            "ui-interactive-card h-auto w-full justify-start rounded-md surface-soft p-3 text-left whitespace-normal",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                            isSelected && "surface-inset-card ring-2 ring-foreground/20 shadow-inset-highlight",
+                          )}
+                          onClick={() => setSelectedId(template.id)}
+                          onDoubleClick={() => {
+                            setSelectedId(template.id)
+                            applyTemplate(template)
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="mt-0.5 text-lg flex-shrink-0" aria-hidden>{template.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="outline" size="compact">
+                                  {entry.stageLabel}
+                                </Badge>
+                                {entry.recommended ? (
+                                  <Badge variant="secondary" size="compact">
+                                    Recommended
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <span className="mt-2 ui-body-text-medium block truncate">{entry.label}</span>
+                              <p className="ui-meta-text mt-1">{entry.summary}</p>
+                              <p className="mt-2 ui-meta-text text-muted-foreground">
+                                {template.headline || getTemplateSourceLabel(template)}
+                              </p>
+                            </div>
+                          </div>
+                        </Button>
+                      )
+                    })}
                   </div>
-                </Button>
-              )
-            })}
+                )}
+
+                {templateSplit.modeTemplates.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="px-1 ui-meta-label text-muted-foreground">
+                      More {selectedMode.label.toLowerCase()} starting points
+                    </p>
+                    {templateSplit.modeTemplates.map((template) => {
+                      const isSelected = selectedId === template.id
+                      const sourceKind = getTemplateSourceKind(template)
+
+                      return (
+                        <Button
+                          type="button"
+                          role="option"
+                          key={template.id}
+                          id={`template-option-${template.id}`}
+                          aria-selected={isSelected}
+                          variant="ghost"
+                          size="auto"
+                          className={cn(
+                            "ui-interactive-card h-auto w-full justify-start rounded-md surface-soft p-3 text-left whitespace-normal",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                            isSelected && "surface-inset-card ring-2 ring-foreground/20 shadow-inset-highlight",
+                          )}
+                          onClick={() => setSelectedId(template.id)}
+                          onDoubleClick={() => {
+                            setSelectedId(template.id)
+                            applyTemplate(template)
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="text-lg mt-0.5 flex-shrink-0" aria-hidden>{template.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <span className="ui-body-text-medium block truncate">{template.headline}</span>
+                              <p className="ui-meta-text mt-1">
+                                {deriveTemplateCardCopy(template)}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                <Badge variant="outline" size="compact">
+                                  {STAGE_META[template.stage].label}
+                                </Badge>
+                                {(sourceKind === "plugin" || sourceKind === "user") && (
+                                  <Badge variant="secondary" size="compact">
+                                    {getTemplateSourceLabel(template)}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </Button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {templateSplit.otherTemplates.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="px-1 ui-meta-label text-muted-foreground">Other starting points</p>
+                    {templateSplit.otherTemplates.map((template) => {
+                      const isSelected = selectedId === template.id
+                      const sourceKind = getTemplateSourceKind(template)
+
+                      return (
+                        <Button
+                          type="button"
+                          role="option"
+                          key={template.id}
+                          id={`template-option-${template.id}`}
+                          aria-selected={isSelected}
+                          variant="ghost"
+                          size="auto"
+                          className={cn(
+                            "ui-interactive-card h-auto w-full justify-start rounded-md surface-soft p-3 text-left whitespace-normal",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                            isSelected && "surface-inset-card ring-2 ring-foreground/20 shadow-inset-highlight",
+                          )}
+                          onClick={() => setSelectedId(template.id)}
+                          onDoubleClick={() => {
+                            setSelectedId(template.id)
+                            applyTemplate(template)
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="text-lg mt-0.5 flex-shrink-0" aria-hidden>{template.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <span className="ui-body-text-medium block truncate">{template.headline}</span>
+                              <p className="ui-meta-text mt-1">
+                                {deriveTemplateCardCopy(template)}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                <Badge variant="outline" size="compact">
+                                  {STAGE_META[template.stage].label}
+                                </Badge>
+                                {(sourceKind === "plugin" || sourceKind === "user") && (
+                                  <Badge variant="secondary" size="compact">
+                                    {getTemplateSourceLabel(template)}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </Button>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="rounded-lg surface-soft min-h-44 overflow-y-auto p-3 ui-scroll-region">
             {!selected ? (
               <p className="text-body-md text-muted-foreground">
                 {loadError
-                  ? "Retry loading templates to preview details before applying."
-                  : "Select a template to preview details before applying."}
+                  ? "Retry loading starting points to preview details before starting."
+                  : "Select a starting point to preview details before starting."}
               </p>
             ) : (
               <div className="space-y-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="ui-body-text-medium">{selected.name}</h4>
+                    <h4 className="ui-body-text-medium">{selectedQuickStart?.label || selected.name}</h4>
                     <Badge size="compact" variant="secondary">
                       {getTemplateSourceLabel(selected)}
                     </Badge>
+                    {selectedQuickStart ? (
+                      <Badge size="compact" variant="outline">
+                        {selectedQuickStart.stageLabel}
+                      </Badge>
+                    ) : null}
                     {selectedStageLabel ? (
                       <Badge size="compact" variant="outline">
                         {selectedStageLabel}
@@ -311,22 +469,22 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
                 <div className="space-y-2">
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Use this when</span>
+                    <span className="ui-meta-label text-muted-foreground">When</span>
                     <p className="text-body-sm">{deriveTemplateUseWhen(selected)}</p>
                   </div>
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">You provide</span>
+                    <span className="ui-meta-label text-muted-foreground">Input</span>
                     <p className="text-body-sm">{selected.input}</p>
                   </div>
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">You get</span>
+                    <span className="ui-meta-label text-muted-foreground">Result</span>
                     <p className="text-body-sm">{selected.output}</p>
                   </div>
                 </div>
 
                 {(selectedExecutionSummary || selectedExecutionDescription) && (
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Working style</span>
+                    <span className="ui-meta-label text-muted-foreground">Policy</span>
                     {selectedExecutionSummary ? (
                       <p className="text-body-sm text-foreground">{selectedExecutionSummary}</p>
                     ) : null}
@@ -337,7 +495,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                 )}
 
                 <div>
-                  <span className="ui-meta-label text-muted-foreground">Why this flow fits</span>
+                  <span className="ui-meta-label text-muted-foreground">Why it fits</span>
                   <p className="text-body-sm text-muted-foreground">{selected.how}</p>
                 </div>
 
@@ -351,16 +509,13 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </div>
                 )}
 
-                <details className="rounded-lg surface-soft px-3 py-3">
-                  <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">
-                    See the flow structure
-                  </summary>
+                <DisclosurePanel summary="Stage structure">
                   <ol className="list-decimal list-inside space-y-1 mt-3 text-muted-foreground">
                     {selected.steps.map((step, i) => (
                       <li key={i} className="text-body-sm">{step}</li>
                     ))}
                   </ol>
-                </details>
+                </DisclosurePanel>
               </div>
             )}
           </div>
@@ -369,7 +524,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
         {confirmPending ? (
           <div className="mx-6 mt-2 rounded-lg surface-warning-soft p-3">
             <p className="text-body-md">
-              Replace the current workflow with <strong>{confirmPending.name}</strong>?
+              Replace the current process with <strong>{confirmPending.name}</strong>?
             </p>
             <div className="flex gap-2 mt-2">
               <Button
@@ -393,7 +548,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
               onClick={() => applyTemplate()}
               disabled={!selected || Boolean(loadError)}
             >
-              Use Template
+              {selectedPrimaryActionLabel}
             </Button>
           </CanvasDialogFooter>
         )}

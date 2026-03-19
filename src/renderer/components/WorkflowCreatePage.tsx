@@ -18,6 +18,7 @@ import {
   workflowCreateModeConfigsAtom,
   workflowCreatePendingEntryAtom,
   workflowCreatePendingMessageAtom,
+  workflowCreatePromptScaffoldAtom,
   workflowEntryStateAtom,
   setWorkflowTemplateContextForKeyAtom,
   workflowDirtyAtom,
@@ -39,7 +40,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   CanvasDialogBody,
   CanvasDialogContent,
@@ -58,7 +58,6 @@ import {
   buildWorkflowCreatePrompt,
   countWorkflowCreateScaffoldFields,
   hasWorkflowCreatePromptContent,
-  type WorkflowCreatePromptScaffold,
 } from "@/lib/workflow-create-prompt"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { projectFolderName } from "@/components/sidebar/projectSidebarUtils"
@@ -74,7 +73,7 @@ import {
   Loader2,
   Sparkles,
 } from "lucide-react"
-import type { InputAttachment, ResultModeId, WorkflowTemplate } from "@shared/types"
+import type { CreateEntryRouteOption, InputAttachment, ResultModeId, WorkflowTemplate } from "@shared/types"
 import { cn } from "@/lib/cn"
 import { STAGE_META } from "@/lib/template-stages"
 import {
@@ -92,22 +91,56 @@ import {
 } from "@/lib/result-mode-config"
 import {
   getResultMode,
+  getResultModeQuickStartOptions,
   prioritizeTemplatesForResultMode,
   RESULT_MODES,
+  splitTemplatesForResultMode,
 } from "@/lib/result-modes"
+import { resolveGuidedStartTemplateId } from "@/lib/guided-start"
+import { ResultModeCard } from "@/components/ui/result-mode-card"
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 import { useBlankWorkflowCreation } from "@/hooks/useBlankWorkflowCreation"
+import { buildTemplateStartState, buildTemplateStartStateFromRoute } from "@/lib/template-start"
 
 const POPULAR_TEMPLATE_LIMIT = 12
 const CREATE_SURFACE_MAX_WIDTH = "max-w-5xl"
+const DEVELOPMENT_CREATE_QUICK_START_IDS = new Set([
+  "delivery-map-codebase",
+  "delivery-shape-project",
+  "delivery-plan-phase",
+])
+const DEVELOPMENT_CONTEXTUAL_ROUTE_OPTIONS: CreateEntryRouteOption[] = [
+  {
+    templateId: "ux-ui-polish-audit",
+    label: "Audit UX/UI polish",
+    stageLabel: "Review",
+  },
+  {
+    templateId: "impeccable-ui-pipeline",
+    label: "Polish a UI feature",
+    stageLabel: "Implement",
+  },
+  {
+    templateId: "playwright-visual-audit",
+    label: "Run visual UI audit",
+    stageLabel: "Review",
+  },
+]
 
-function buildTemplateCustomizationPrompt(template: WorkflowTemplate): string {
-  return [
-    `Use the existing "${getWorkflowTemplateDisplayName(template)}" workflow as the base workflow.`,
+function buildTemplateCustomizationPrompt(template: WorkflowTemplate, requestedResult?: string): string {
+  const lines = [
+    `Use the existing "${getWorkflowTemplateDisplayName(template)}" process as the base process.`,
     template.how,
     "Adapt it to this project and update only the steps that need to change.",
-  ].join(" ")
+  ]
+
+  const cleanRequest = requestedResult?.trim()
+  if (cleanRequest) {
+    lines.push(`Requested result: ${cleanRequest}`)
+  }
+
+  return lines.join(" ")
 }
 
 function templateCardCopy(template: WorkflowTemplate): string {
@@ -123,9 +156,17 @@ function normalizeTemplateForWorkflowUse(template: WorkflowTemplate): WorkflowTe
 function TemplateSuggestionCard({
   template,
   onSelect,
+  title,
+  summary,
+  eyebrow,
+  recommended = false,
 }: {
   template: WorkflowTemplate
   onSelect: (template: WorkflowTemplate) => void
+  title?: string
+  summary?: string
+  eyebrow?: string
+  recommended?: boolean
 }) {
   return (
     <Button
@@ -133,49 +174,67 @@ function TemplateSuggestionCard({
       variant="ghost"
       size="bare"
       onClick={() => onSelect(template)}
-      className="ui-interactive-card-subtle min-h-36 w-56 shrink-0 snap-start !flex-col !items-start !justify-start overflow-hidden rounded-lg surface-panel px-4 py-4 text-left !whitespace-normal md:w-56"
+      className="ui-interactive-card-subtle min-h-36 w-60 shrink-0 snap-start !flex-col !items-start !justify-start overflow-hidden rounded-lg surface-panel px-4 py-4 text-left !whitespace-normal md:w-60"
     >
       <div className="flex w-full items-start gap-3">
         <div className="surface-inset-card flex h-9 w-9 shrink-0 items-center justify-center p-0 text-lg">
           <span aria-hidden>{template.emoji}</span>
         </div>
         <div className="min-w-0 flex-1 space-y-1">
+          {(eyebrow || recommended) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {eyebrow ? (
+                <Badge variant="outline" size="compact">
+                  {eyebrow}
+                </Badge>
+              ) : null}
+              {recommended ? (
+                <Badge variant="secondary" size="compact">
+                  Recommended
+                </Badge>
+              ) : null}
+            </div>
+          )}
           <p className="ui-body-text-medium truncate text-foreground">
-            {getWorkflowTemplateDisplayName(template)}
+            {title || getWorkflowTemplateDisplayName(template)}
           </p>
           <p className="line-clamp-3 text-body-sm text-muted-foreground">
-            {template.headline || templateCardCopy(template)}
+            {summary || template.headline || templateCardCopy(template)}
           </p>
         </div>
       </div>
-      <p className="mt-auto ui-meta-text text-muted-foreground">{STAGE_META[template.stage].shortLabel}</p>
+      <p className="mt-auto ui-meta-text text-muted-foreground">
+        {title ? getWorkflowTemplateDisplayName(template) : STAGE_META[template.stage].shortLabel}
+      </p>
     </Button>
   )
 }
 
 function PendingTemplateDetails({
-  categoryLabel,
+  stageLabel,
   executionSummary,
 }: {
-  categoryLabel: string | null
+  stageLabel: string | null
   executionSummary: string | null
 }) {
-  if (!categoryLabel && !executionSummary) return null
+  if (!stageLabel && !executionSummary) return null
 
   return (
-    <div className="rounded-lg surface-inset-card px-3 py-3 space-y-3">
-      {categoryLabel ? (
-        <div>
-          <p className="ui-meta-text text-muted-foreground">Category</p>
-          <p className="mt-1 text-body-sm text-foreground">{categoryLabel}</p>
+    <div className="rounded-lg surface-inset-card px-3 py-3">
+      <div className="flex flex-wrap gap-3">
+      {stageLabel ? (
+        <div className="space-y-1">
+          <p className="ui-meta-text text-muted-foreground">Stage</p>
+          <p className="text-body-sm text-foreground">{stageLabel}</p>
         </div>
       ) : null}
       {executionSummary ? (
-        <div>
-          <p className="ui-meta-text text-muted-foreground">Working style</p>
-          <p className="mt-1 text-body-sm text-foreground">{executionSummary}</p>
+        <div className="space-y-1">
+          <p className="ui-meta-text text-muted-foreground">Policy</p>
+          <p className="text-body-sm text-foreground">{executionSummary}</p>
         </div>
       ) : null}
+      </div>
     </div>
   )
 }
@@ -200,11 +259,11 @@ function ScaffoldField({
       </Label>
       <Textarea
         id={id}
-        rows={3}
+        rows={2}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="min-h-24 resize-y"
+        className="min-h-20 resize-y"
       />
     </div>
   )
@@ -227,11 +286,11 @@ function ModeConfigField({
       {field.type === "textarea" ? (
         <Textarea
           id={`mode-config-${field.id}`}
-          rows={3}
+          rows={2}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={field.placeholder}
-          className="min-h-24 resize-y"
+          className="min-h-20 resize-y"
         />
       ) : (
         <Input
@@ -266,15 +325,13 @@ export function WorkflowCreatePage() {
   const [createContext, setCreateContext] = useAtom(workflowCreateContextAtom)
   const [draftPrompt, setDraftPrompt] = useAtom(workflowCreateDraftPromptAtom)
   const [modeConfigs, setModeConfigs] = useAtom(workflowCreateModeConfigsAtom)
+  const [promptScaffold, setPromptScaffold] = useAtom(workflowCreatePromptScaffoldAtom)
   const [, setPendingCreateEntry] = useAtom(workflowCreatePendingEntryAtom)
   const [, setPendingCreateMessage] = useAtom(workflowCreatePendingMessageAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const setTemplateLibraryContext = useSetAtom(templateLibraryContextAtom)
   const [promptHelperOpen, setPromptHelperOpen] = useState(false)
-  const [promptScaffold, setPromptScaffold] = useState<WorkflowCreatePromptScaffold>(
-    EMPTY_WORKFLOW_CREATE_SCAFFOLD,
-  )
   const [popularTemplates, setPopularTemplates] = useState<WorkflowTemplate[]>([])
   const [availableTemplates, setAvailableTemplates] = useState<WorkflowTemplate[]>([])
   const [popularTemplatesFromUsage, setPopularTemplatesFromUsage] = useState(false)
@@ -347,7 +404,7 @@ export function WorkflowCreatePage() {
           } catch (error) {
             const message = String(error)
             if (!message.includes("No handler registered")) {
-              toast.error(`Failed to load popular templates: ${message}`)
+              toast.error(`Failed to load popular starting points: ${message}`)
             }
           }
         }
@@ -365,7 +422,7 @@ export function WorkflowCreatePage() {
         setAvailableTemplates([])
         setPopularTemplates([])
         setPopularTemplatesFromUsage(false)
-        toast.error(`Failed to load templates: ${String(error)}`)
+        toast.error(`Failed to load starting points: ${String(error)}`)
       } finally {
         if (!cancelled) {
           setLoadingTemplates(false)
@@ -441,17 +498,102 @@ export function WorkflowCreatePage() {
   const optionalDetailCount = selectedModeConfigFieldCount + scaffoldFieldCount
   const canSubmitPrompt = hasWorkflowCreatePromptContent(draftPrompt, promptScaffold)
     || selectedModeConfigFieldCount > 0
+  const createSeedMessage = useMemo(
+    () => (
+      canSubmitPrompt
+        ? buildResultModeSeedInput(
+          selectedResultMode,
+          selectedModeConfig,
+          draftPrompt,
+          promptScaffold,
+        )
+        : ""
+    ),
+    [canSubmitPrompt, draftPrompt, promptScaffold, selectedModeConfig, selectedResultMode],
+  )
+  const modeTemplateSplit = useMemo(
+    () => splitTemplatesForResultMode(availableTemplates, selectedResultModeId),
+    [availableTemplates, selectedResultModeId],
+  )
+  const visibleQuickStarts = modeTemplateSplit.quickStarts
+  const quickStartOptions = useMemo(
+    () => getResultModeQuickStartOptions(selectedResultMode.id),
+    [selectedResultMode.id],
+  )
+  const routeOptions = useMemo<CreateEntryRouteOption[]>(
+    () => {
+      const primaryOptions = (visibleQuickStarts.length > 0 ? visibleQuickStarts : quickStartOptions).map((quickStart) => ({
+        templateId: "template" in quickStart ? quickStart.template.id : quickStart.templateId,
+        label: quickStart.label,
+        stageLabel: quickStart.stageLabel,
+        recommended: quickStart.recommended,
+      }))
+      if (selectedResultMode.id !== "development") return primaryOptions
+
+      const availableTemplateIds = new Set(availableTemplates.map((template) => template.id))
+      const contextualOptions = DEVELOPMENT_CONTEXTUAL_ROUTE_OPTIONS.filter((option) =>
+        availableTemplateIds.has(option.templateId))
+
+      return [...primaryOptions, ...contextualOptions].filter((option, index, array) =>
+        array.findIndex((candidate) => candidate.templateId === option.templateId) === index)
+    },
+    [availableTemplates, quickStartOptions, selectedResultMode.id, visibleQuickStarts],
+  )
+  const resolvedStartTemplateId = useMemo(
+    () => resolveGuidedStartTemplateId({
+      modeId: selectedResultMode.id,
+      fallbackTemplateId: selectedResultMode.startTemplateId,
+      draftPrompt,
+      modeConfig: selectedModeConfig,
+      projectPath: targetProjectPath,
+    }),
+    [draftPrompt, selectedModeConfig, selectedResultMode.id, selectedResultMode.startTemplateId, targetProjectPath],
+  )
+  const resolvedStartTemplate = useMemo(
+    () => availableTemplates.find((template) => template.id === resolvedStartTemplateId) || null,
+    [availableTemplates, resolvedStartTemplateId],
+  )
+  const submitHint = useMemo(() => {
+    if (selectedResultMode.id === "development") {
+      return "Best start chosen after submit"
+    }
+    if (resolvedStartTemplate) {
+      return `Starts with ${getWorkflowTemplateDisplayName(resolvedStartTemplate)}`
+    }
+    return null
+  }, [resolvedStartTemplate, selectedResultMode.id])
+  const displayQuickStarts = useMemo(() => {
+    if (visibleQuickStarts.length === 0) return []
+    if (selectedResultMode.id !== "development") return visibleQuickStarts
+    const entryQuickStarts = visibleQuickStarts.filter((quickStart) =>
+      DEVELOPMENT_CREATE_QUICK_START_IDS.has(quickStart.template.id))
+    return entryQuickStarts.length > 0 ? entryQuickStarts : visibleQuickStarts.slice(0, 3)
+  }, [selectedResultMode.id, visibleQuickStarts])
   const visiblePopularTemplates = useMemo(() => {
     const modeTemplates = prioritizeTemplatesForResultMode(popularTemplates, selectedResultModeId)
     return (modeTemplates.length > 0 ? modeTemplates : popularTemplates).slice(0, POPULAR_TEMPLATE_LIMIT)
   }, [popularTemplates, selectedResultModeId])
+  const useQuickStartRail = displayQuickStarts.length > 0
   const popularTemplatesTitle = useMemo(() => {
+    if (useQuickStartRail) {
+      if (selectedResultMode.id === "development") {
+        return `Starting points in ${selectedResultMode.label}`
+      }
+      return `Quick starts in ${selectedResultMode.label}`
+    }
     const baseLabel = `${selectedResultMode.label} starting points`
     if (targetProjectName && popularTemplatesFromUsage) {
       return `${baseLabel} for ${targetProjectName}`
     }
     return baseLabel
-  }, [popularTemplatesFromUsage, selectedResultMode.label, targetProjectName])
+  }, [popularTemplatesFromUsage, selectedResultMode.id, selectedResultMode.label, targetProjectName, useQuickStartRail])
+  const pendingQuickStart = useMemo(
+    () => visibleQuickStarts.find((quickStart) => quickStart.template.id === pendingTemplate?.id) || null,
+    [pendingTemplate?.id, visibleQuickStarts],
+  )
+  const pendingPrimaryActionLabel = pendingQuickStart?.stageLabel
+    ? `Start at ${pendingQuickStart.stageLabel}`
+    : "Start here"
 
   const openWorkflowFile = async (
     filePath: string,
@@ -548,7 +690,7 @@ export function WorkflowCreatePage() {
 
   const handleCreateFromTemplate = async (template: WorkflowTemplate) => {
     if (!targetProjectPath || templateAction) return
-    if (!(await confirmDiscard("create a workflow from a template", workflowDirty))) {
+    if (!(await confirmDiscard("create a process from a starting point", workflowDirty))) {
       return
     }
 
@@ -557,29 +699,26 @@ export function WorkflowCreatePage() {
       const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
       const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
       const filePath = await window.api.createWorkflow(targetProjectPath, templateForWorkflowUse.name, nextWorkflow)
+      const templateStartState = buildTemplateStartState({
+        template: {
+          ...templateForWorkflowUse,
+          workflow: nextWorkflow,
+        },
+        workflowPath: filePath,
+        projectPath: targetProjectPath,
+        requestedResult: createSeedMessage,
+      })
       await window.api.recordProjectTemplateUsage(targetProjectPath, template.id).catch(() => undefined)
       const loadedWorkflow = await openWorkflowFile(filePath, targetProjectPath, {
-        entryState: buildTemplateWorkflowEntryState({
-          template: {
-            ...templateForWorkflowUse,
-            workflow: nextWorkflow,
-          },
-          workflowPath: filePath,
-        }),
-        templateContext: buildTemplateRunContext({
-          template: {
-            ...templateForWorkflowUse,
-            workflow: nextWorkflow,
-          },
-          workflowPath: filePath,
-        }),
-        initialInputValue: "",
-        initialAttachments: [],
+        entryState: templateStartState.entryState,
+        templateContext: templateStartState.templateContext,
+        initialInputValue: templateStartState.initialInputValue,
+        initialAttachments: templateStartState.initialAttachments,
       })
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || templateForWorkflowUse.name}" is ready in ${targetProjectName || "your project"}`)
     } catch (error) {
-      toast.error(`Failed to create workflow: ${String(error)}`)
+      toast.error(`Failed to create process: ${String(error)}`)
     } finally {
       setTemplateAction(null)
     }
@@ -587,7 +726,7 @@ export function WorkflowCreatePage() {
 
   const handleCustomizeTemplate = async (template: WorkflowTemplate) => {
     if (!targetProjectPath || templateAction) return
-    if (!(await confirmDiscard("customize a template with agent", workflowDirty))) {
+    if (!(await confirmDiscard("customize a starting point with agent", workflowDirty))) {
       return
     }
 
@@ -596,51 +735,44 @@ export function WorkflowCreatePage() {
       const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
       const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
       const filePath = await window.api.createWorkflow(targetProjectPath, templateForWorkflowUse.name, nextWorkflow)
+      const templateStartState = buildTemplateStartState({
+        template: {
+          ...templateForWorkflowUse,
+          workflow: nextWorkflow,
+        },
+        workflowPath: filePath,
+        projectPath: targetProjectPath,
+        requestedResult: createSeedMessage,
+        source: "template_customize",
+      })
       await window.api.recordProjectTemplateUsage(targetProjectPath, template.id).catch(() => undefined)
       await openWorkflowFile(filePath, targetProjectPath, {
-        pendingMessage: buildTemplateCustomizationPrompt(templateForWorkflowUse),
-        entryState: buildTemplateWorkflowEntryState({
-          template: {
-            ...templateForWorkflowUse,
-            workflow: nextWorkflow,
-          },
-          workflowPath: filePath,
-          source: "template_customize",
-        }),
-        templateContext: buildTemplateRunContext({
-          template: {
-            ...templateForWorkflowUse,
-            workflow: nextWorkflow,
-          },
-          workflowPath: filePath,
-          source: "template_customize",
-        }),
-        initialInputValue: "",
-        initialAttachments: [],
+        pendingMessage: buildTemplateCustomizationPrompt(templateForWorkflowUse, createSeedMessage),
+        entryState: templateStartState.entryState,
+        templateContext: templateStartState.templateContext,
+        initialInputValue: templateStartState.initialInputValue,
+        initialAttachments: templateStartState.initialAttachments,
       })
       setPendingTemplate(null)
-      toast.success(`"${templateForWorkflowUse.name}" is open for agent refinement`)
+      toast.success(`"${templateForWorkflowUse.name}" is ready for agent refinement`)
     } catch (error) {
-      toast.error(`Failed to customize workflow: ${String(error)}`)
+      toast.error(`Failed to customize process: ${String(error)}`)
     } finally {
       setTemplateAction(null)
     }
   }
 
   const handleSend = async () => {
-    const message = buildResultModeSeedInput(
-      selectedResultMode,
-      selectedModeConfig,
-      draftPrompt,
-      promptScaffold,
-    )
+    const message = createSeedMessage
     if (!message || submitting) return
     if (!targetProjectPath) {
-      setSubmitError("Open or select a project before starting a workflow.")
+      const errorMessage = "Open or select a project before starting a process."
+      setSubmitError(errorMessage)
+      toast.error(errorMessage)
       return
     }
 
-    if (!(await confirmDiscard("start a new workflow", workflowDirty))) {
+    if (!(await confirmDiscard("start a new process", workflowDirty))) {
       return
     }
 
@@ -648,6 +780,67 @@ export function WorkflowCreatePage() {
     setSubmitError(null)
 
     try {
+      const routeCreateEntry = (window.api as typeof window.api & {
+        routeCreateEntry?: typeof window.api.routeCreateEntry
+      }).routeCreateEntry
+      const routeResult = routeCreateEntry
+        ? await routeCreateEntry({
+          modeId: selectedResultMode.id,
+          projectPath: targetProjectPath,
+          fallbackTemplateId: selectedResultMode.startTemplateId,
+          draftPrompt,
+          requestedResult: message,
+          modeConfig: selectedModeConfig,
+          promptScaffold,
+          allowedOptions: routeOptions,
+        }).catch((error) => {
+          const message = String(error)
+          if (!message.includes("No handler registered")) {
+            console.warn("[WorkflowCreatePage] routeCreateEntry failed, falling back to heuristic start", error)
+          }
+          return null
+        })
+        : null
+      const catalog = availableTemplates.length > 0 ? availableTemplates : await window.api.listTemplates()
+      const startTemplate = (routeResult
+        ? catalog.find((template) => template.id === routeResult.recommendedTemplateId)
+        : null)
+        || catalog.find((template) => template.id === resolvedStartTemplateId)
+        || null
+
+      if (startTemplate) {
+        const templateForWorkflowUse = normalizeTemplateForWorkflowUse(startTemplate)
+        const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
+        const filePath = await window.api.createWorkflow(targetProjectPath, templateForWorkflowUse.name, nextWorkflow)
+        const template = {
+          ...templateForWorkflowUse,
+          workflow: nextWorkflow,
+        }
+        const templateStartState = routeResult
+          ? buildTemplateStartStateFromRoute({
+            template,
+            workflowPath: filePath,
+            projectPath: targetProjectPath,
+            requestedResult: message,
+            routeResult,
+          })
+          : buildTemplateStartState({
+            template,
+            workflowPath: filePath,
+            projectPath: targetProjectPath,
+            requestedResult: message,
+          })
+
+        await window.api.recordProjectTemplateUsage(targetProjectPath, startTemplate.id).catch(() => undefined)
+        await openWorkflowFile(filePath, targetProjectPath, {
+          entryState: templateStartState.entryState,
+          templateContext: templateStartState.templateContext,
+          initialInputValue: templateStartState.initialInputValue,
+          initialAttachments: templateStartState.initialAttachments,
+        })
+        return
+      }
+
       const draftWorkflow = createEmptyWorkflow()
       const filePath = await window.api.createWorkflow(targetProjectPath, "new-workflow", draftWorkflow)
       await openWorkflowFile(filePath, targetProjectPath, {
@@ -688,13 +881,12 @@ export function WorkflowCreatePage() {
   return (
     <PageShell className="flex min-h-full flex-col space-y-6">
       <PageHeader
-        title="New workflow"
-        subtitle="Describe the workflow you want, or start from a template."
+        title="Start a process"
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <DropdownMenu open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="sm" aria-label="Select project">
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" aria-label="Select project" className="no-drag">
                   <Folder size={14} />
                   <span className="max-w-56 truncate">{targetProjectName || "Select project"}</span>
                   <ChevronRight
@@ -746,16 +938,6 @@ export function WorkflowCreatePage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={creatingBlankWorkflow}
-              onClick={() => void createBlankWorkflow({ projectPath: targetProjectPath })}
-            >
-              {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
-              Blank workflow
-            </Button>
           </div>
         )}
       />
@@ -764,32 +946,28 @@ export function WorkflowCreatePage() {
         <div ref={composerRef} className="mx-auto w-full">
           <div className="rounded-lg surface-elevated transition-[border-color,box-shadow] ui-motion-fast focus-within:border-ring/60 focus-within:ring-[3px] focus-within:ring-ring/20">
             <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="ui-meta-label text-muted-foreground">Category</p>
-                  <Tabs
-                    value={selectedResultMode.id}
-                    onValueChange={(value) => setSelectedResultModeId(value as ResultModeId)}
-                    className="mt-2"
-                  >
-                    <TabsList className="grid h-auto w-full max-w-[32rem] grid-cols-3 gap-2 bg-transparent p-0">
-                      {RESULT_MODES.map((mode) => (
-                        <TabsTrigger
-                          key={mode.id}
-                          value={mode.id}
-                          className="h-control-md w-full gap-2 rounded-md px-3"
-                        >
-                          <span aria-hidden className="text-base leading-none">{mode.emoji}</span>
-                          <span className="truncate">{mode.label}</span>
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </Tabs>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="ui-meta-label text-muted-foreground">Guided</p>
+                  </div>
+                  <div className="rounded-full surface-inset-card px-3 py-1.5">
+                    <p className="ui-meta-text text-muted-foreground">
+                      {targetProjectName || "Select project"}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-full surface-inset-card px-3 py-1.5">
-                  <p className="ui-meta-text text-muted-foreground">
-                    {targetProjectName ? `Will open in ${targetProjectName}` : "Select a project to continue"}
-                  </p>
+
+                <div className="grid gap-3 lg:grid-cols-3">
+                  {RESULT_MODES.map((mode) => (
+                    <ResultModeCard
+                      key={mode.id}
+                      mode={mode}
+                      selected={mode.id === selectedResultMode.id}
+                      onSelect={(nextMode) => setSelectedResultModeId(nextMode.id as ResultModeId)}
+                      compact
+                    />
+                  ))}
                 </div>
               </div>
             </div>
@@ -797,7 +975,7 @@ export function WorkflowCreatePage() {
             <div className="relative">
               <AutosizeTextarea
                 ref={textareaRef}
-                aria-label="Workflow creation prompt"
+                aria-label="Process request"
                 value={draftPrompt}
                 onChange={(event) => setDraftPrompt(event.target.value)}
                 onKeyDown={handleTextareaKeyDown}
@@ -805,7 +983,7 @@ export function WorkflowCreatePage() {
                 rows={1}
                 maxHeight={240}
                 className={cn(
-                  "min-h-28 w-full resize-none border-0 bg-transparent px-5 py-4 pr-16 shadow-none hover:border-transparent hover:bg-transparent",
+                  "min-h-24 w-full resize-none border-0 bg-transparent px-5 py-4 pr-16 shadow-none hover:border-transparent hover:bg-transparent",
                   "text-body-md text-foreground placeholder:text-muted-foreground/80 focus-visible:border-transparent focus-visible:ring-transparent",
                 )}
               />
@@ -817,6 +995,8 @@ export function WorkflowCreatePage() {
                   variant="send"
                   size="icon"
                   className="h-control-lg w-control-lg rounded-full"
+                  aria-label={selectedResultMode.startActionLabel || "Start process"}
+                  title={selectedResultMode.startActionLabel || "Start process"}
                 >
                   {submitting ? (
                     <Loader2 size={16} className="animate-spin" />
@@ -831,11 +1011,8 @@ export function WorkflowCreatePage() {
                 <div className="px-4 pt-3">
                   <div ref={promptHelperRef} className="surface-inset-card overflow-hidden">
                     <div className="flex flex-wrap items-start justify-between gap-3 px-3 pb-0 pt-3">
-                      <div className="space-y-1">
-                        <p className="section-kicker">Optional details</p>
-                        <p className="ui-meta-text text-muted-foreground">
-                          Add structure only when the main prompt is not enough.
-                        </p>
+                      <div>
+                        <p className="section-kicker">Details</p>
                       </div>
                       {optionalDetailCount > 0 ? (
                         <Button
@@ -856,12 +1033,7 @@ export function WorkflowCreatePage() {
                     >
                       <div className="space-y-5">
                         <div className="space-y-3">
-                          <div className="space-y-1">
-                            <p className="ui-meta-label text-muted-foreground">Mode details</p>
-                            <p className="ui-meta-text text-muted-foreground">
-                              A few structured fields for {selectedResultMode.label.toLowerCase()} work.
-                            </p>
-                          </div>
+                          <p className="ui-meta-label text-muted-foreground">Mode details</p>
                           <div className="grid gap-3 sm:grid-cols-2">
                             {selectedModeConfigFields.map((field) => (
                               <ModeConfigField
@@ -875,12 +1047,7 @@ export function WorkflowCreatePage() {
                         </div>
 
                         <div className="space-y-3 border-t border-hairline/70 pt-4">
-                          <div className="space-y-1">
-                            <p className="ui-meta-label text-muted-foreground">Prompt helper</p>
-                            <p className="ui-meta-text text-muted-foreground">
-                              Use this only if the main message still feels too vague.
-                            </p>
-                          </div>
+                          <p className="ui-meta-label text-muted-foreground">Request scaffold</p>
                           <div className="grid gap-3 sm:grid-cols-2">
                             <ScaffoldField
                               id="workflow-helper-goal"
@@ -930,7 +1097,7 @@ export function WorkflowCreatePage() {
                     onClick={() => setPromptHelperOpen((prev) => !prev)}
                   >
                     <Sparkles size={14} />
-                    {promptHelperOpen ? "Hide details" : "Add details"}
+                    {promptHelperOpen ? "Hide details" : "Details"}
                   </Button>
                   <Button
                     variant="ghost"
@@ -938,16 +1105,34 @@ export function WorkflowCreatePage() {
                     onClick={openTemplateLibrary}
                     className="text-muted-foreground"
                   >
-                    Browse templates
+                    Process library
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={creatingBlankWorkflow || !targetProjectPath}
+                    onClick={() => void createBlankWorkflow({ projectPath: targetProjectPath })}
+                    className="text-muted-foreground"
+                  >
+                    {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
+                    Blank process
                   </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {optionalDetailCount > 0 ? (
+                  {submitHint ? (
                     <Badge variant="secondary" size="pill">
-                      {optionalDetailCount} detail{optionalDetailCount === 1 ? "" : "s"}
+                      {submitHint}
                     </Badge>
                   ) : null}
-                  <p className="ui-meta-text text-muted-foreground">Press Enter to start</p>
+                  {optionalDetailCount > 0 ? (
+                    <Badge variant="secondary" size="pill">
+                      {optionalDetailCount} field{optionalDetailCount === 1 ? "" : "s"}
+                    </Badge>
+                  ) : null}
+                  <p className="ui-meta-text text-muted-foreground">
+                    {submitting ? "Choosing the best start..." : "Enter to start · Shift+Enter for new line"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -960,10 +1145,10 @@ export function WorkflowCreatePage() {
           )}
         </div>
 
-        {visiblePopularTemplates.length > 0 && (
+        {(loadingTemplates || useQuickStartRail || visiblePopularTemplates.length > 0) && (
           <section aria-label={popularTemplatesTitle} className="w-full">
             <SectionHeading
-              title="Suggested templates"
+              title={popularTemplatesTitle}
               meta={(
                 <div className="control-cluster flex items-center gap-1 rounded-lg p-1">
                   <Button
@@ -971,7 +1156,7 @@ export function WorkflowCreatePage() {
                     size="icon"
                     onClick={() => scrollTemplates("left")}
                     className="text-muted-foreground"
-                    aria-label="Scroll templates left"
+                    aria-label="Scroll starting points left"
                   >
                     <ChevronLeft size={16} />
                   </Button>
@@ -980,7 +1165,7 @@ export function WorkflowCreatePage() {
                     size="icon"
                     onClick={() => scrollTemplates("right")}
                     className="text-muted-foreground"
-                    aria-label="Scroll templates right"
+                    aria-label="Scroll starting points right"
                   >
                     <ChevronRight size={16} />
                   </Button>
@@ -990,13 +1175,13 @@ export function WorkflowCreatePage() {
                     onClick={openTemplateLibrary}
                     className="rounded-md text-muted-foreground"
                   >
-                    All templates
+                    Process library
                   </Button>
                 </div>
               )}
             />
 
-            {loadingTemplates ? (
+                {loadingTemplates ? (
               <div className="mt-4 flex gap-3 overflow-hidden pb-3 pt-1">
                 {Array.from({ length: 5 }).map((_, index) => (
                   <div
@@ -1011,13 +1196,25 @@ export function WorkflowCreatePage() {
                 aria-label={popularTemplatesTitle}
                 className="ui-scroll-region ui-scrollbar-hidden mt-4 flex items-stretch snap-x snap-mandatory gap-3 overflow-x-auto pb-3 pt-1"
               >
-                {visiblePopularTemplates.map((template) => (
-                  <TemplateSuggestionCard
-                    key={template.id}
-                    template={template}
-                    onSelect={handleTemplateSelect}
-                  />
-                ))}
+                {useQuickStartRail
+                  ? displayQuickStarts.map((quickStart) => (
+                    <TemplateSuggestionCard
+                      key={quickStart.template.id}
+                      template={quickStart.template}
+                      title={quickStart.label}
+                      summary={quickStart.summary}
+                      eyebrow={quickStart.stageLabel}
+                      recommended={quickStart.recommended}
+                      onSelect={handleTemplateSelect}
+                    />
+                  ))
+                  : visiblePopularTemplates.map((template) => (
+                    <TemplateSuggestionCard
+                      key={template.id}
+                      template={template}
+                      onSelect={handleTemplateSelect}
+                    />
+                  ))}
               </div>
             )}
           </section>
@@ -1026,11 +1223,11 @@ export function WorkflowCreatePage() {
 
       {unsavedChangesDialog}
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
-        <CanvasDialogContent showCloseButton={false}>
+        <CanvasDialogContent showCloseButton={false} size="lg">
           <CanvasDialogHeader>
-            <DialogTitle>Use this template</DialogTitle>
+            <DialogTitle>{pendingQuickStart?.stageLabel ? `Start at ${pendingQuickStart.stageLabel}` : "Start from this starting point"}</DialogTitle>
             <DialogDescription>
-              &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready to use. Start with it directly, or open it with the agent and tailor it first.
+              &ldquo;{pendingQuickStart?.label || (pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : "")}&rdquo; is ready in the selected project.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody className="space-y-3">
@@ -1038,17 +1235,14 @@ export function WorkflowCreatePage() {
               <div className="rounded-lg surface-inset-card px-3 py-3">
                 <p className="ui-meta-text text-muted-foreground">Selected project</p>
                 <p className="mt-1 ui-body-text-medium text-foreground">{targetProjectName}</p>
-                <p className="mt-1 text-body-sm text-muted-foreground">
-                  It will open here ready to run or refine.
-                </p>
               </div>
             ) : (
               <div className="rounded-lg surface-inset-card px-3 py-3 text-body-sm text-muted-foreground">
-                Select or add a project first so this template has somewhere to open.
+                Select or add a project first so this starting point has somewhere to start.
               </div>
             )}
             <PendingTemplateDetails
-              categoryLabel={pendingTemplateCategoryLabel}
+              stageLabel={pendingQuickStart?.stageLabel || pendingTemplateCategoryLabel}
               executionSummary={pendingTemplateExecutionSummary}
             />
           </CanvasDialogBody>
@@ -1075,16 +1269,16 @@ export function WorkflowCreatePage() {
               loadingText="Opening with agent"
               onClick={() => pendingTemplate && void handleCustomizeTemplate(pendingTemplate)}
             >
-              Customize with agent
+              Refine with agent
             </Button>
             <Button
               size="sm"
               disabled={!pendingTemplate || !targetProjectPath || templateAction !== null}
               isLoading={templateAction === "create"}
-              loadingText="Creating workflow"
+              loadingText="Creating process"
               onClick={() => pendingTemplate && void handleCreateFromTemplate(pendingTemplate)}
             >
-              Use now
+              {pendingPrimaryActionLabel}
             </Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>

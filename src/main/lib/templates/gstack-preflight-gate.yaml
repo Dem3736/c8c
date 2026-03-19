@@ -21,6 +21,19 @@ credits:
   - label: gstack
     href: https://github.com/garrytan/gstack
     note: Built around Garry Tan's gstack skill pack.
+contract_in:
+  - kind: verification_report
+    title: Verification Report
+    description: Helpful upstream verification evidence for the preflight review.
+    required: false
+  - kind: phase_plan
+    title: Phase Plan
+    description: Helpful scope context for what the branch was supposed to accomplish.
+    required: false
+  - kind: validation_contract
+    title: Validation Contract
+    description: Helpful acceptance criteria and checks to keep in view during preflight.
+    required: false
 contract_out:
   - kind: validation_contract
     title: Preflight Gate

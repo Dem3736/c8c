@@ -21,10 +21,11 @@ export function ResultModeCard({
       variant="ghost"
       size="bare"
       onClick={() => onSelect(mode)}
+      aria-pressed={selected}
       className={cn(
-        "ui-interactive-card-subtle w-full rounded-xl surface-panel text-left !whitespace-normal",
-        compact ? "px-3 py-3 !items-start !justify-start" : "px-4 py-4 !items-start !justify-start",
-        selected && "ring-2 ring-foreground/20 bg-surface-3",
+        "ui-interactive-card-subtle w-full rounded-xl surface-panel text-left !whitespace-normal !flex-col !items-start !justify-start",
+        compact ? "min-h-[12.5rem] gap-2.5 px-3 py-3" : "px-4 py-4",
+        selected && "bg-surface-3 ring-2 ring-foreground/20",
       )}
     >
       <div className="flex w-full items-start gap-3">
@@ -41,21 +42,39 @@ export function ResultModeCard({
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2">
             <h3 className="text-body-md font-semibold text-foreground">{mode.label}</h3>
-            {selected ? (
-              <span className="rounded-full bg-foreground px-2 py-0.5 ui-meta-text text-background">
-                Selected
+            {mode.id === "development" ? (
+              <span className="rounded-full surface-inset-card px-2 py-0.5 ui-meta-text text-foreground">
+                Primary
               </span>
             ) : null}
           </div>
-          <p className={cn("text-body-sm text-foreground", compact && "line-clamp-2 text-muted-foreground")}>
-            {mode.summary}
-          </p>
+          {compact ? (
+            <p className="ui-meta-text text-muted-foreground">
+              {mode.runtimeLine || mode.summary}
+            </p>
+          ) : (
+            <p className="text-body-sm text-foreground">
+              {mode.summary}
+            </p>
+          )}
         </div>
       </div>
 
       {compact ? (
-        <div className="mt-3 w-full">
-          <p className="line-clamp-2 text-body-sm text-muted-foreground">{mode.youGetFirst}</p>
+        <div className="mt-1 w-full space-y-2">
+          <p className="line-clamp-2 text-body-sm text-foreground">{mode.youGetFirst}</p>
+          {mode.guidedPath?.length ? (
+            <div className="flex flex-wrap gap-1">
+                {mode.guidedPath.map((stage) => (
+                  <span
+                    key={`${mode.id}-${stage}`}
+                    className="rounded-full border border-hairline bg-surface-2/80 px-2 py-0.5 ui-meta-text text-muted-foreground"
+                  >
+                    {stage}
+                  </span>
+                ))}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className={cn("mt-4 grid w-full gap-3", "grid-cols-1 md:grid-cols-2 xl:grid-cols-4")}>
@@ -77,6 +96,22 @@ export function ResultModeCard({
           </div>
         </div>
       )}
+
+      {!compact && mode.guidedPath?.length ? (
+        <div className="mt-4 w-full space-y-1.5">
+          <p className="ui-meta-label text-muted-foreground">Stages</p>
+          <div className="flex flex-wrap gap-1.5">
+            {mode.guidedPath.map((stage) => (
+              <span
+                key={`${mode.id}-${stage}`}
+                className="rounded-full border border-hairline bg-surface-2/80 px-2.5 py-1 ui-meta-text text-muted-foreground"
+              >
+                {stage}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </Button>
   )
 }

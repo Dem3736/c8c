@@ -18,8 +18,8 @@ pack:
   journey_stage: shape
   entrypoint: true
   recommended_next:
-    - delivery-research-phase
     - delivery-plan-phase
+    - delivery-research-phase
 contract_in:
   - kind: codebase_map
     title: Existing Codebase Map

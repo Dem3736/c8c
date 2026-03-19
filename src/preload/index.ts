@@ -206,6 +206,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("templates:record-usage", projectPath, templateId),
   saveAsTemplate: (name: string, workflow: Workflow) =>
     ipcRenderer.invoke("templates:save-user", name, workflow),
+  routeCreateEntry: (input) =>
+    ipcRenderer.invoke("templates:route-create-entry", input),
   generateWorkflow: (
     description: string,
     availableSkills: Pick<DiscoveredSkill, "name" | "category" | "description">[],

@@ -14,8 +14,21 @@ export interface WorkflowResultMode extends ResultModeDefinition {
   startTemplateId?: string
   startActionLabel?: string
   guidedPath?: string[]
+  runtimeLine?: string
   composerPlaceholder: string
   scaffoldPlaceholders: WorkflowCreatePromptScaffold
+}
+
+export interface WorkflowResultModeQuickStart {
+  templateId: string
+  label: string
+  summary: string
+  stageLabel: string
+  recommended?: boolean
+}
+
+export interface ResolvedWorkflowResultModeQuickStart extends WorkflowResultModeQuickStart {
+  template: WorkflowTemplate
 }
 
 const DEVELOPMENT_PACK_IDS = new Set([
@@ -27,6 +40,7 @@ const DEVELOPMENT_TEMPLATE_IDS = new Set([
   "delivery-map-codebase",
   "delivery-shape-project",
   "delivery-plan-phase",
+  "delivery-implement-phase",
   "delivery-research-phase",
   "delivery-verify-phase",
   "full-stack-code-audit",
@@ -95,6 +109,45 @@ const DEVELOPMENT_TEXT_RE = /\b(codebase|repository|repo|feature|implementation|
 const CONTENT_TEXT_RE = /\b(marketing|growth|seo|geo|reddit|hacker news|trend|campaign|landing page|positioning|messaging|outreach|lead|prospect|segment|audience|jtbd|competitive|ads?)\b/i
 const COURSES_TEXT_RE = /\b(content|post|copy|editorial|newsletter|draft|publish|course|curriculum|lesson|module|education|workshop|cohort|training|launch bundle|transformation|video|script)\b/i
 
+const QUICK_STARTS_BY_MODE: Partial<Record<ResultModeId, WorkflowResultModeQuickStart[]>> = {
+  development: [
+    {
+      templateId: "delivery-map-codebase",
+      label: "Map codebase",
+      summary: "Start on the repo map before shaping changes.",
+      stageLabel: "Shape / Map",
+    },
+    {
+      templateId: "delivery-shape-project",
+      label: "Shape project",
+      summary: "Turn a feature brief or messy context into a scoped project shape.",
+      stageLabel: "Shape / Map",
+    },
+    {
+      templateId: "delivery-plan-phase",
+      label: "Plan next phase",
+      summary: "Convert the shaped work into a small-task phase plan.",
+      stageLabel: "Plan",
+    },
+    {
+      templateId: "delivery-implement-phase",
+      label: "Implement phase",
+      summary: "Apply the approved phase plan in the repo and capture what changed.",
+      stageLabel: "Implement",
+    },
+    {
+      templateId: "delivery-verify-phase",
+      label: "Review & ship",
+      summary: "Check the delivered work, fix issues, and continue toward the ship decision.",
+      stageLabel: "Review",
+    },
+  ],
+}
+
+export function getResultModeQuickStartOptions(modeId: ResultModeId): WorkflowResultModeQuickStart[] {
+  return [...(QUICK_STARTS_BY_MODE[modeId] || [])]
+}
+
 function compactText(values: Array<string | undefined | null>): string {
   return values
     .map((value) => (typeof value === "string" ? value.trim() : ""))
@@ -123,20 +176,21 @@ function metadataText(template: WorkflowTemplate): string {
 export const RESULT_MODES: WorkflowResultMode[] = [
   {
     id: "development",
-    label: "Product",
+    label: "Dev Process",
     emoji: "🧩",
-    summary: "Shape, build, audit, or verify product work with visible checkpoints.",
-    useFor: "Development, research, design, repo mapping, product specs, and QA.",
-    youProvide: "A repo, feature request, bug, PRD, or product goal.",
-    youGetFirst: "A codebase map, project shape, or product plan you can pressure-test.",
-    userRole: "Approve scope, decisions, and quality at a few high-leverage checkpoints.",
+    summary: "Map context, shape scope, plan delivery, and move toward implementation with visible checkpoints.",
+    useFor: "Repo-first development, brief-first shaping, implementation planning, review, and verification.",
+    youProvide: "A repo, feature brief, bug, PRD, or delivery goal.",
+    youGetFirst: "Codebase map, project shape, or phase plan.",
+    userRole: "Approve scope, risky execution, and quality at a few high-leverage checkpoints.",
     packIds: ["delivery-foundation", "gstack-team"],
     templateIds: Array.from(DEVELOPMENT_TEMPLATE_IDS),
     stagePreferences: ["research", "strategy", "code", "operations"],
     startTemplateId: "delivery-map-codebase",
-    startActionLabel: "Start guided path",
-    guidedPath: ["Map context", "Shape the work", "Plan delivery"],
-    composerPlaceholder: "Describe the product result you want, the repo or context you have, and any quality or delivery constraints...",
+    startActionLabel: "Start Dev Process",
+    guidedPath: ["Shape / Map", "Plan", "Implement", "Review", "Ship"],
+    runtimeLine: "Stops at approval before risky work.",
+    composerPlaceholder: "Describe the result, repo or context, and any delivery constraints...",
     scaffoldPlaceholders: {
       goal: "What product or feature outcome should this workflow drive?",
       input: "Repository path, issue, PRD, user flow, or technical context.",
@@ -151,7 +205,7 @@ export const RESULT_MODES: WorkflowResultMode[] = [
     summary: "Research a market, choose angles, and turn them into campaigns, pages, or growth loops.",
     useFor: "Research, positioning, trends, SEO, messaging, outreach, and marketing audits.",
     youProvide: "A product, market, audience, channel, competitor set, or growth question.",
-    youGetFirst: "A segment map, growth thesis, trend digest, or campaign plan.",
+    youGetFirst: "Segment map, growth thesis, or campaign plan.",
     userRole: "Approve audience choice, angle, and sample quality before scaling.",
     packIds: ["ai-cmo"],
     templateIds: Array.from(CONTENT_TEMPLATE_IDS),
@@ -159,7 +213,8 @@ export const RESULT_MODES: WorkflowResultMode[] = [
     startTemplateId: "segment-research-gate",
     startActionLabel: "Start guided path",
     guidedPath: ["Research the market", "Choose the angle", "Ship the assets"],
-    composerPlaceholder: "Describe the marketing result you want, the audience or segment, the channel, and any quality or brand constraints...",
+    runtimeLine: "Approves angle and sample quality before scaling.",
+    composerPlaceholder: "Describe the marketing result, audience, channel, and any brand constraints...",
     scaffoldPlaceholders: {
       goal: "What marketing outcome should this workflow create?",
       input: "Product context, market notes, competitors, audience signals, links, or campaign context.",
@@ -174,7 +229,7 @@ export const RESULT_MODES: WorkflowResultMode[] = [
     summary: "Turn ideas or expertise into publishable text systems, lessons, and launch-ready assets.",
     useFor: "Texts, newsletters, post systems, course material, lesson production, and content operations.",
     youProvide: "A topic, source material, audience, offer, or expertise you want packaged.",
-    youGetFirst: "A draft plan, publishing system, or curriculum direction ready to refine.",
+    youGetFirst: "Draft plan, publishing system, or curriculum direction.",
     userRole: "Approve voice, structure, and sample quality before output scales.",
     packIds: ["content-factory-alpha", "courses-factory-alpha"],
     templateIds: Array.from(COURSES_TEMPLATE_IDS),
@@ -182,7 +237,8 @@ export const RESULT_MODES: WorkflowResultMode[] = [
     startTemplateId: "content-trend-watch",
     startActionLabel: "Start guided path",
     guidedPath: ["Clarify audience", "Plan the structure", "Produce the assets"],
-    composerPlaceholder: "Describe the content system, text output, or course-style asset you want to create, who it is for, and what good looks like...",
+    runtimeLine: "Approves voice and sample quality before output scales.",
+    composerPlaceholder: "Describe the content result, audience, and what good looks like...",
     scaffoldPlaceholders: {
       goal: "What content or education outcome should this workflow create?",
       input: "Source docs, notes, transcripts, audience context, offer material, or existing drafts.",
@@ -198,6 +254,20 @@ const MODE_BY_ID = new Map<ResultModeId, WorkflowResultMode>(
 
 export function getResultMode(modeId: ResultModeId): WorkflowResultMode {
   return MODE_BY_ID.get(modeId) || RESULT_MODES[0]
+}
+
+export function getResultModeQuickStarts(
+  templates: WorkflowTemplate[],
+  modeId: ResultModeId,
+): ResolvedWorkflowResultModeQuickStart[] {
+  const quickStarts = getResultModeQuickStartOptions(modeId)
+  if (quickStarts.length === 0) return []
+
+  const templatesById = new Map(templates.map((template) => [template.id, template]))
+  return quickStarts.flatMap((quickStart) => {
+    const template = templatesById.get(quickStart.templateId)
+    return template ? [{ ...quickStart, template }] : []
+  })
 }
 
 function templateScoreForMode(template: WorkflowTemplate, modeId: ResultModeId): number {
@@ -265,4 +335,21 @@ export function prioritizeTemplatesForResultMode(
       return left.index - right.index
     })
     .map((entry) => entry.template)
+}
+
+export function splitTemplatesForResultMode(
+  templates: WorkflowTemplate[],
+  modeId: ResultModeId,
+) {
+  const prioritizedModeTemplates = prioritizeTemplatesForResultMode(templates, modeId)
+  const quickStarts = getResultModeQuickStarts(prioritizedModeTemplates, modeId)
+  const quickStartIds = new Set(quickStarts.map((quickStart) => quickStart.template.id))
+  const modeTemplates = prioritizedModeTemplates.filter((template) => !quickStartIds.has(template.id))
+  const otherTemplates = templates.filter((template) => !templateMatchesResultMode(template, modeId))
+
+  return {
+    quickStarts,
+    modeTemplates,
+    otherTemplates,
+  }
 }

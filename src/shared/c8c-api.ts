@@ -6,6 +6,8 @@ import type {
   ChatEvent,
   ChatSessionSnapshot,
   ClaudeCodeSubscriptionStatus,
+  CreateEntryRouteInput,
+  CreateEntryRouteResult,
   DesktopRuntimeInfo,
   DiscoveredSkill,
   ProjectFactoryBlueprint,
@@ -90,6 +92,7 @@ export interface C8cApi {
   listPopularProjectTemplates: (projectPath: string, limit?: number) => Promise<WorkflowTemplate[]>
   recordProjectTemplateUsage: (projectPath: string, templateId: string) => Promise<void>
   saveAsTemplate: (name: string, workflow: Workflow) => Promise<string>
+  routeCreateEntry: (input: CreateEntryRouteInput) => Promise<CreateEntryRouteResult>
   generateWorkflow: (
     description: string,
     availableSkills: Pick<DiscoveredSkill, "name" | "category" | "description">[],

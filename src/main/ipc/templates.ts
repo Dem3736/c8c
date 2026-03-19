@@ -23,6 +23,9 @@ import { withExecutionSlot } from "../lib/execution-pool"
 import { prepareTemporaryMcpConfig } from "../lib/mcp-config"
 import { getProviderSettings } from "../lib/provider-settings"
 import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-runtime"
+import { inspectProjectForCreateEntry } from "../lib/create-entry-inspection"
+import { routeCreateEntry } from "../lib/create-entry-router"
+import type { CreateEntryRouteInput, CreateEntryRouteResult } from "@shared/types"
 
 const activeGenerateControllers = new Map<number, AbortController>()
 const generateLifecycleBindings = new Set<number>()
@@ -109,6 +112,23 @@ export function registerTemplateHandlers() {
       await saveChain(filePath, { ...workflow, name })
       logInfo("templates-ipc", "user_template_saved", { name, filePath })
       return filePath
+    },
+  )
+
+  ipcMain.handle(
+    "templates:route-create-entry",
+    async (_event, input: CreateEntryRouteInput): Promise<CreateEntryRouteResult> => {
+      const safeProjectPath = await resolveGenerateWorkdir(input.projectPath)
+      const templates = await listTemplateCatalog()
+      const inspection = await inspectProjectForCreateEntry(safeProjectPath)
+      return routeCreateEntry(
+        {
+          ...input,
+          projectPath: safeProjectPath,
+        },
+        inspection,
+        templates,
+      )
     },
   )
 

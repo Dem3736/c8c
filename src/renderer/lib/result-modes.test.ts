@@ -3,8 +3,10 @@ import type { WorkflowTemplate } from "@shared/types"
 import {
   filterTemplatesForResultMode,
   getResultMode,
+  getResultModeQuickStarts,
   prioritizeTemplatesForResultMode,
   RESULT_MODES,
+  splitTemplatesForResultMode,
   templateMatchesResultMode,
 } from "./result-modes"
 
@@ -116,5 +118,81 @@ describe("result-modes", () => {
 
   it("falls back to development for unknown mode ids", () => {
     expect(getResultMode("unknown-mode").id).toBe("development")
+  })
+
+  it("resolves development quick starts in canonical order", () => {
+    const templates = [
+      createTemplate({ id: "delivery-plan-phase", name: "Plan" }),
+      createTemplate({ id: "delivery-implement-phase", name: "Implement" }),
+      createTemplate({ id: "delivery-map-codebase", name: "Map" }),
+      createTemplate({ id: "delivery-shape-project", name: "Shape" }),
+      createTemplate({ id: "delivery-verify-phase", name: "Verify" }),
+    ]
+
+    expect(getResultModeQuickStarts(templates, "development").map((entry) => entry.template.id)).toEqual([
+      "delivery-map-codebase",
+      "delivery-shape-project",
+      "delivery-plan-phase",
+      "delivery-implement-phase",
+      "delivery-verify-phase",
+    ])
+  })
+
+  it("separates quick starts from the rest of the selected mode templates", () => {
+    const templates = [
+      createTemplate({
+        id: "delivery-map-codebase",
+        name: "Map",
+        stage: "research",
+        pack: {
+          id: "delivery-foundation",
+          label: "Delivery Factory",
+          journeyStage: "map",
+        },
+      }),
+      createTemplate({
+        id: "delivery-shape-project",
+        name: "Shape",
+        stage: "strategy",
+        pack: {
+          id: "delivery-foundation",
+          label: "Delivery Factory",
+          journeyStage: "shape",
+        },
+      }),
+      createTemplate({
+        id: "delivery-research-phase",
+        name: "Research",
+        stage: "research",
+        pack: {
+          id: "delivery-foundation",
+          label: "Delivery Factory",
+          journeyStage: "research",
+        },
+      }),
+      createTemplate({
+        id: "content-ready-posts",
+        name: "Posts",
+        stage: "content",
+        pack: {
+          id: "content-factory-alpha",
+          label: "Content Factory",
+          journeyStage: "execute",
+        },
+      }),
+    ]
+
+    const split = splitTemplatesForResultMode(templates, "development")
+
+    expect(split.quickStarts.map((entry) => entry.template.id)).toEqual([
+      "delivery-map-codebase",
+      "delivery-shape-project",
+    ])
+    expect(split.modeTemplates.map((template) => template.id)).toEqual([
+      "delivery-research-phase",
+    ])
+    expect(split.otherTemplates.map((template) => template.id)).toEqual([
+      "content-ready-posts",
+    ])
   })
 })

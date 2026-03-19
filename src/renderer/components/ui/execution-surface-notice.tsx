@@ -2,6 +2,7 @@ import { cn } from "@/lib/cn"
 import type { ExecutionSurfaceNotice } from "@/lib/workflow-execution"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, CheckCircle2, CircleAlert, Info, X } from "lucide-react"
+import type { ReactNode } from "react"
 
 function resolveNoticeTone(level: ExecutionSurfaceNotice["level"]) {
   switch (level) {
@@ -37,11 +38,15 @@ export function ExecutionSurfaceNoticeBanner({
   onAction,
   onDismiss,
   className,
+  actions,
+  children,
 }: {
   notice: ExecutionSurfaceNotice
   onAction?: (() => void) | null
   onDismiss?: (() => void) | null
   className?: string
+  actions?: ReactNode
+  children?: ReactNode
 }) {
   const tone = resolveNoticeTone(notice.level)
 
@@ -54,20 +59,27 @@ export function ExecutionSurfaceNoticeBanner({
             {notice.title}
           </div>
           <p className="mt-1 text-body-sm text-foreground">{notice.description}</p>
+          {children ? <div className="mt-2">{children}</div> : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {onAction && (
-            <Button type="button" variant="outline" size="sm" onClick={onAction}>
-              {notice.actionLabel}
-            </Button>
-          )}
-          {onDismiss && (
-            <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
-              <X size={14} />
-              Dismiss
-            </Button>
-          )}
-        </div>
+        {(actions || onAction || onDismiss) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {actions || (
+              <>
+                {onAction && (
+                  <Button type="button" variant="outline" size="sm" onClick={onAction}>
+                    {notice.actionLabel}
+                  </Button>
+                )}
+                {onDismiss && (
+                  <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+                    <X size={14} />
+                    Dismiss
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

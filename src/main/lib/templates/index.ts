@@ -6,6 +6,7 @@ import deliveryMapCodebaseRaw from "./delivery-map-codebase.yaml?raw"
 import deliveryShapeProjectRaw from "./delivery-shape-project.yaml?raw"
 import deliveryResearchPhaseRaw from "./delivery-research-phase.yaml?raw"
 import deliveryPlanPhaseRaw from "./delivery-plan-phase.yaml?raw"
+import deliveryImplementPhaseRaw from "./delivery-implement-phase.yaml?raw"
 import deliveryVerifyPhaseRaw from "./delivery-verify-phase.yaml?raw"
 import contentTrendWatchRaw from "./content-trend-watch.yaml?raw"
 import contentPostCalendarRaw from "./content-post-calendar.yaml?raw"
@@ -66,6 +67,7 @@ const builtinTemplates: WorkflowTemplate[] = [
   parseTemplate(deliveryShapeProjectRaw, { source: "builtin" }),
   parseTemplate(deliveryResearchPhaseRaw, { source: "builtin" }),
   parseTemplate(deliveryPlanPhaseRaw, { source: "builtin" }),
+  parseTemplate(deliveryImplementPhaseRaw, { source: "builtin" }),
   parseTemplate(deliveryVerifyPhaseRaw, { source: "builtin" }),
   parseTemplate(contentTrendWatchRaw, { source: "builtin" }),
   parseTemplate(contentPostCalendarRaw, { source: "builtin" }),

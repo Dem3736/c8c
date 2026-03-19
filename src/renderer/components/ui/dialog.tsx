@@ -136,7 +136,7 @@ const CanvasDialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "ui-dialog-gutter bg-surface-2/80 py-3 flex justify-end gap-2 border-t border-border",
+      "ui-dialog-gutter bg-surface-2/80 py-3 flex flex-wrap items-center justify-end gap-2 border-t border-border",
       className,
     )}
     {...props}

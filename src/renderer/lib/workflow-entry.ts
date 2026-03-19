@@ -28,6 +28,11 @@ export interface WorkflowEntryState {
   inputText: string
   outputText: string
   readinessText: string
+  routing?: {
+    source: "agent" | "heuristic"
+    reason?: string
+    confidence?: number
+  }
 }
 
 export interface WorkflowTemplateRunContext {
@@ -78,6 +83,15 @@ function titleCaseFromIdentifier(value: string) {
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function stripPackPrefix(name: string, packLabel?: string | null) {
+  const trimmedName = collapseWhitespace(name)
+  const trimmedPackLabel = collapseWhitespace(packLabel || "")
+  if (trimmedPackLabel && trimmedName.startsWith(`${trimmedPackLabel}: `)) {
+    return trimmedName.slice(trimmedPackLabel.length + 2).trim()
+  }
+  return trimmedName
 }
 
 function createFactoryCaseId(seed: string) {
@@ -171,6 +185,17 @@ const JOURNEY_STAGE_LABELS: Record<string, string> = {
   operate: "Operate",
 }
 
+const TEMPLATE_STAGE_LABELS: Record<string, string> = {
+  "delivery-map-codebase": "Shape / Map",
+  "delivery-shape-project": "Shape / Map",
+  "gstack-feature-squad": "Shape / Map",
+  "delivery-plan-phase": "Plan",
+  "delivery-implement-phase": "Implement",
+  "delivery-verify-phase": "Review",
+  "gstack-preflight-gate": "Ship",
+  "gstack-release-room": "Ship",
+}
+
 const EXECUTION_POLICY_TAG_LABELS: Record<string, string> = {
   evidence_first: "Evidence-first",
   spec_first: "Spec-first",
@@ -220,9 +245,40 @@ export function deriveTemplateCardCopy(template: WorkflowTemplate) {
 }
 
 export function deriveTemplateJourneyStageLabel(template: WorkflowTemplate) {
+  const explicitTemplateLabel = TEMPLATE_STAGE_LABELS[template.id]
+  if (explicitTemplateLabel) return explicitTemplateLabel
   const stage = template.pack?.journeyStage
   if (!stage) return null
   return JOURNEY_STAGE_LABELS[stage] ?? titleCaseFromIdentifier(stage)
+}
+
+export function deriveTemplateContextJourneyStageLabel(
+  context?: Pick<WorkflowTemplateRunContext, "templateId" | "pack"> | null,
+) {
+  if (!context) return null
+  const explicitTemplateLabel = TEMPLATE_STAGE_LABELS[context.templateId]
+  if (explicitTemplateLabel) return explicitTemplateLabel
+  const stage = context.pack?.journeyStage
+  if (!stage) return null
+  return JOURNEY_STAGE_LABELS[stage] ?? titleCaseFromIdentifier(stage)
+}
+
+export function deriveTemplateDisplayLabel(
+  template?: Pick<WorkflowTemplate, "id" | "name" | "pack"> | null,
+) {
+  if (!template) return null
+  return TEMPLATE_STAGE_LABELS[template.id]
+    || stripPackPrefix(template.name, template.pack?.label)
+    || deriveTemplateJourneyStageLabel(template as WorkflowTemplate)
+}
+
+export function deriveTemplateContextDisplayLabel(
+  context?: Pick<WorkflowTemplateRunContext, "templateId" | "templateName" | "pack"> | null,
+) {
+  if (!context) return null
+  return TEMPLATE_STAGE_LABELS[context.templateId]
+    || stripPackPrefix(context.templateName, context.pack?.label)
+    || deriveTemplateContextJourneyStageLabel(context)
 }
 
 export function deriveTemplateExecutionDisciplineLabels(template: WorkflowTemplate) {
@@ -454,12 +510,11 @@ export function selectArtifactsForTemplateContracts(
   artifacts: ArtifactRecord[],
 ) {
   if (!contracts?.length) return artifacts
-  const latestArtifactByKind = new Map<string, ArtifactRecord>()
-  const sortedArtifacts = [...artifacts].sort((left, right) => right.updatedAt - left.updatedAt)
+  const firstArtifactByKind = new Map<string, ArtifactRecord>()
 
-  for (const artifact of sortedArtifacts) {
-    if (!latestArtifactByKind.has(artifact.kind)) {
-      latestArtifactByKind.set(artifact.kind, artifact)
+  for (const artifact of artifacts) {
+    if (!firstArtifactByKind.has(artifact.kind)) {
+      firstArtifactByKind.set(artifact.kind, artifact)
     }
   }
 
@@ -468,13 +523,50 @@ export function selectArtifactsForTemplateContracts(
   for (const contract of contracts) {
     if (seenKinds.has(contract.kind)) continue
     seenKinds.add(contract.kind)
-    const artifact = latestArtifactByKind.get(contract.kind)
+    const artifact = firstArtifactByKind.get(contract.kind)
     if (artifact) {
       selected.push(artifact)
     }
   }
 
   return selected
+}
+
+export function buildContinuationArtifactPool({
+  currentArtifacts,
+  projectArtifacts,
+  context,
+}: {
+  currentArtifacts: ArtifactRecord[]
+  projectArtifacts: ArtifactRecord[]
+  context?: Pick<WorkflowTemplateRunContext, "caseId" | "sourceArtifactIds"> | null
+}) {
+  const pool: ArtifactRecord[] = []
+  const seenIds = new Set<string>()
+  const orderedCurrentArtifacts = [...currentArtifacts].sort((left, right) => right.updatedAt - left.updatedAt)
+  const orderedProjectArtifacts = [...projectArtifacts].sort((left, right) => right.updatedAt - left.updatedAt)
+  const sourceArtifactIds = new Set((context?.sourceArtifactIds || []).filter(Boolean))
+  const caseId = context?.caseId?.trim()
+
+  const pushUnique = (artifacts: ArtifactRecord[]) => {
+    for (const artifact of artifacts) {
+      if (seenIds.has(artifact.id)) continue
+      seenIds.add(artifact.id)
+      pool.push(artifact)
+    }
+  }
+
+  pushUnique(orderedCurrentArtifacts)
+
+  if (sourceArtifactIds.size > 0) {
+    pushUnique(orderedProjectArtifacts.filter((artifact) => sourceArtifactIds.has(artifact.id)))
+  }
+
+  if (caseId) {
+    pushUnique(orderedProjectArtifacts.filter((artifact) => artifact.caseId === caseId))
+  }
+
+  return pool
 }
 
 export function buildArtifactAttachmentSeedInput(artifactAttachments: InputAttachment[]) {

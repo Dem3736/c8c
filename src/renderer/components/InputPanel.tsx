@@ -34,9 +34,14 @@ import { MOTION_BASE_MS } from "@/lib/tokens"
 interface InputPanelProps {
   label?: string
   compact?: boolean
+  showTemplateContext?: boolean
 }
 
-export function InputPanel({ label = "Input", compact = false }: InputPanelProps = {}) {
+export function InputPanel({
+  label = "Input",
+  compact = false,
+  showTemplateContext = true,
+}: InputPanelProps = {}) {
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
   const { setWorkflow } = useWorkflowWithUndo()
@@ -155,7 +160,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
         {label}
       </label>
 
-      {(selectedWorkflowTemplateContext?.useWhen || selectedWorkflowTemplateContext?.inputText || templateContracts.length > 0) && (
+      {showTemplateContext && (selectedWorkflowTemplateContext?.useWhen || selectedWorkflowTemplateContext?.inputText || templateContracts.length > 0) && (
         <div className={cn(
           "rounded-lg surface-inset-card ui-fade-slide-in",
           compact ? "space-y-2 px-3 py-2.5" : "space-y-3 px-3 py-3",
@@ -283,7 +288,7 @@ export function InputPanel({ label = "Input", compact = false }: InputPanelProps
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setRunPickerOpen(true)}>
                 <History size={13} className="mr-2" />
-                Attach run output
+                Attach result artifact
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={handleAddText}>
                 <Type size={13} className="mr-2" />

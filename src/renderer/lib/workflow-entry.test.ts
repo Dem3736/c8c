@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest"
 import type { WorkflowTemplate } from "@shared/types"
 import {
   areTemplateContractsSatisfied,
+  buildContinuationArtifactPool,
   buildArtifactAttachmentSeedInput,
   buildTemplateRunContext,
+  deriveTemplateDisplayLabel,
+  deriveTemplateContextDisplayLabel,
+  deriveTemplateContextJourneyStageLabel,
+  deriveTemplateJourneyStageLabel,
   selectArtifactsForTemplateContracts,
 } from "./workflow-entry"
 
-function createTemplate(): WorkflowTemplate {
+function createTemplate(overrides: Partial<WorkflowTemplate> = {}): WorkflowTemplate {
   return {
     id: "delivery-plan-phase",
     name: "Delivery Factory: Plan Phase",
@@ -38,6 +43,7 @@ function createTemplate(): WorkflowTemplate {
       nodes: [],
       edges: [],
     },
+    ...overrides,
   }
 }
 
@@ -102,7 +108,7 @@ describe("workflow-entry factory helpers", () => {
 
     expect(areTemplateContractsSatisfied(template.contractIn, artifacts)).toBe(true)
     expect(selectArtifactsForTemplateContracts(template.contractIn, artifacts).map((artifact) => artifact.id))
-      .toEqual(["artifact-1b", "artifact-2"])
+      .toEqual(["artifact-1", "artifact-2"])
 
     const context = buildTemplateRunContext({
       template,
@@ -204,5 +210,185 @@ describe("workflow-entry factory helpers", () => {
       { kind: "file", path: ".c8c/artifacts/project-brief.md", name: "Project Brief" },
       { kind: "file", path: ".c8c/artifacts/roadmap.md", name: "Roadmap" },
     ])).toContain("attached artifacts as the primary context")
+  })
+
+  it("maps core development templates to user-facing stage families", () => {
+    expect(deriveTemplateJourneyStageLabel(createTemplate({
+      id: "delivery-map-codebase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "map",
+      },
+    }))).toBe("Shape / Map")
+
+    expect(deriveTemplateJourneyStageLabel(createTemplate({
+      id: "delivery-verify-phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "verify",
+      },
+    }))).toBe("Review")
+
+    expect(deriveTemplateJourneyStageLabel(createTemplate({
+      id: "delivery-implement-phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "execute",
+      },
+    }))).toBe("Implement")
+
+    expect(deriveTemplateContextJourneyStageLabel({
+      templateId: "gstack-preflight-gate",
+      workflowPath: "/tmp/preflight.chain",
+      workflowName: "Preflight",
+      source: "template",
+      pack: {
+        id: "gstack-team",
+        label: "Gstack Team",
+        journeyStage: "verify",
+      },
+    })).toBe("Ship")
+
+    expect(deriveTemplateDisplayLabel(createTemplate({
+      id: "delivery-plan-phase",
+      name: "Delivery Factory: Plan Phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+      },
+    }))).toBe("Plan")
+
+    expect(deriveTemplateContextDisplayLabel({
+      templateId: "gstack-preflight-gate",
+      templateName: "Gstack Team: Preflight Gate",
+      workflowPath: "/tmp/preflight.chain",
+      workflowName: "Preflight",
+      source: "template",
+      pack: {
+        id: "gstack-team",
+        label: "Gstack Team",
+        journeyStage: "verify",
+      },
+    })).toBe("Ship")
+  })
+
+  it("prefers current run and current case artifacts for continuation", () => {
+    const pool = buildContinuationArtifactPool({
+      currentArtifacts: [
+        {
+          id: "artifact-current-plan",
+          kind: "phase_plan",
+          title: "Current Phase Plan",
+          caseId: "case:delivery-foundation:abc123",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-current",
+          relativePath: ".c8c/artifacts/run-current-phase-plan.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-current-phase-plan.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-current-phase-plan.json",
+          createdAt: 5,
+          updatedAt: 5,
+        },
+      ],
+      projectArtifacts: [
+        {
+          id: "artifact-unrelated-plan",
+          kind: "phase_plan",
+          title: "Older unrelated plan",
+          caseId: "case:delivery-foundation:other",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-other",
+          relativePath: ".c8c/artifacts/run-other-phase-plan.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-other-phase-plan.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-other-phase-plan.json",
+          createdAt: 10,
+          updatedAt: 10,
+        },
+        {
+          id: "artifact-source-brief",
+          kind: "project_brief",
+          title: "Source brief",
+          caseId: "case:delivery-foundation:abc123",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-source",
+          relativePath: ".c8c/artifacts/run-source-project-brief.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-source-project-brief.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-source-project-brief.json",
+          createdAt: 3,
+          updatedAt: 3,
+        },
+        {
+          id: "artifact-case-roadmap",
+          kind: "roadmap",
+          title: "Same case roadmap",
+          caseId: "case:delivery-foundation:abc123",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-case",
+          relativePath: ".c8c/artifacts/run-case-roadmap.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-case-roadmap.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-case-roadmap.json",
+          createdAt: 4,
+          updatedAt: 4,
+        },
+      ],
+      context: {
+        caseId: "case:delivery-foundation:abc123",
+        sourceArtifactIds: ["artifact-source-brief"],
+      },
+    })
+
+    expect(pool.map((artifact) => artifact.id)).toEqual([
+      "artifact-current-plan",
+      "artifact-source-brief",
+      "artifact-case-roadmap",
+    ])
+  })
+
+  it("keeps caller priority when selecting continuation artifacts", () => {
+    const selected = selectArtifactsForTemplateContracts(
+      [
+        { kind: "phase_plan", title: "Phase Plan" },
+        { kind: "roadmap", title: "Roadmap", required: false },
+      ],
+      [
+        {
+          id: "artifact-current-plan",
+          kind: "phase_plan",
+          title: "Current Phase Plan",
+          caseId: "case:delivery-foundation:abc123",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-current",
+          relativePath: ".c8c/artifacts/run-current-phase-plan.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-current-phase-plan.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-current-phase-plan.json",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "artifact-unrelated-plan",
+          kind: "phase_plan",
+          title: "Newer Unrelated Plan",
+          caseId: "case:delivery-foundation:other",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-other",
+          relativePath: ".c8c/artifacts/run-other-phase-plan.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-other-phase-plan.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-other-phase-plan.json",
+          createdAt: 9,
+          updatedAt: 9,
+        },
+      ],
+    )
+
+    expect(selected.map((artifact) => artifact.id)).toEqual(["artifact-current-plan"])
   })
 })

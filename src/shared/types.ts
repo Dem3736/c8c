@@ -404,6 +404,7 @@ export type KnownArtifactKind =
   | "roadmap"
   | "research_pack"
   | "phase_plan"
+  | "implementation_report"
   | "validation_contract"
   | "verification_report"
   | "audience_offer_brief"
@@ -581,6 +582,13 @@ export type ResultModeId =
   | "courses"
   | (string & {})
 
+export interface CreateEntryPromptScaffold {
+  goal: string
+  input: string
+  constraints: string
+  successCriteria: string
+}
+
 export interface ResultModeDefinition {
   id: ResultModeId
   label: string
@@ -590,6 +598,63 @@ export interface ResultModeDefinition {
   youProvide: string
   youGetFirst: string
   userRole: string
+}
+
+export interface CreateEntryRouteOption {
+  templateId: string
+  label: string
+  stageLabel?: string
+  recommended?: boolean
+}
+
+export type ProjectInspectionKind =
+  | "greenfield_empty"
+  | "greenfield_scaffold"
+  | "existing_repo"
+  | "review_ready"
+  | "ambiguous"
+
+export interface ProjectInspectionSummary {
+  projectPath: string
+  git: {
+    isRepo: boolean
+    branch: string | null
+    hasUncommittedDiff: boolean
+  }
+  manifests: string[]
+  codeDirs: string[]
+  fileDensity: "empty" | "scaffold" | "active"
+  fileCountEstimate: number
+  projectKind: ProjectInspectionKind
+}
+
+export type CreateEntrySeedInputMode = "text" | "directory" | "branch_or_diff"
+
+export interface CreateEntryRouteSeed {
+  primaryInputMode: CreateEntrySeedInputMode
+  primaryInputValue: string
+  attachments: InputAttachment[]
+}
+
+export interface CreateEntryRouteInput {
+  modeId: ResultModeId
+  projectPath: string
+  fallbackTemplateId?: string
+  draftPrompt?: string
+  requestedResult?: string
+  modeConfig?: Record<string, string> | null
+  promptScaffold?: CreateEntryPromptScaffold | null
+  allowedOptions?: CreateEntryRouteOption[]
+}
+
+export interface CreateEntryRouteResult {
+  recommendedTemplateId: string
+  alternateTemplateIds: string[]
+  reason: string
+  projectInspection: ProjectInspectionSummary
+  seed: CreateEntryRouteSeed
+  confidence: number
+  source: "agent" | "heuristic"
 }
 
 export type WorkflowTemplateJourneyStage =

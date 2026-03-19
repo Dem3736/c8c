@@ -2,6 +2,10 @@ import { atom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
 import { SIDEBAR_DEFAULT_WIDTH } from "@/lib/sidebar-layout"
 import type { TemplateLibraryContextState } from "./template-library-context"
+import {
+  EMPTY_WORKFLOW_CREATE_SCAFFOLD,
+  type WorkflowCreatePromptScaffold,
+} from "./workflow-create-prompt"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { toWorkflowExecutionKey } from "./workflow-execution"
@@ -482,6 +486,9 @@ export const workflowCreateModeConfigsAtom = atomWithStorage<Record<string, Reco
   {},
 )
 export const workflowCreateDraftPromptAtom = atom("")
+export const workflowCreatePromptScaffoldAtom = atom<WorkflowCreatePromptScaffold>(
+  EMPTY_WORKFLOW_CREATE_SCAFFOLD,
+)
 export const workflowCreatePendingMessageAtom = atom<Record<string, string>>({})
 export const workflowCreatePendingEntryAtom = atom<Record<string, string>>({})
 export const workflowEntryStateAtom = atom<WorkflowEntryState | null>(null)

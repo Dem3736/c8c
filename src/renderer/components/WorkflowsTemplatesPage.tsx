@@ -3,6 +3,7 @@ import { useAtom, useSetAtom } from "jotai"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import {
   Dialog,
   CanvasDialogBody,
@@ -22,6 +23,8 @@ import {
 } from "@/components/ui/select"
 import {
   currentWorkflowAtom,
+  inputAttachmentsAtom,
+  inputValueAtom,
   mainViewAtom,
   projectsAtom,
   selectedResultModeIdAtom,
@@ -29,6 +32,9 @@ import {
   selectedWorkflowPathAtom,
   setWorkflowTemplateContextForKeyAtom,
   templateLibraryContextAtom,
+  workflowCreateDraftPromptAtom,
+  workflowCreateModeConfigsAtom,
+  workflowCreatePromptScaffoldAtom,
   workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
@@ -60,13 +66,19 @@ import { useBlankWorkflowCreation } from "@/hooks/useBlankWorkflowCreation"
 import { STAGE_ORDER, STAGE_META } from "@/lib/template-stages"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 import {
-  buildTemplateRunContext,
-  buildTemplateWorkflowEntryState,
   deriveTemplateCardCopy,
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateUseWhen,
 } from "@/lib/workflow-entry"
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
+import {
+  buildResultModeSeedInput,
+  countResultModeConfigFields,
+  normalizeResultModeConfig,
+} from "@/lib/result-mode-config"
+import { getResultMode } from "@/lib/result-modes"
+import { buildTemplateStartState } from "@/lib/template-start"
+import { hasWorkflowCreatePromptContent } from "@/lib/workflow-create-prompt"
 import {
   resolveTemplateLibraryProjectPath,
   templateLibraryRequiresProjectCreation,
@@ -176,9 +188,9 @@ const TEMPLATE_CATEGORY_META: Record<TemplateCategoryKey, {
   detail: string
 }> = {
   all: {
-    label: "All templates",
+    label: "All starting points",
     summary: "See the whole library first, then narrow it only if that helps.",
-    detail: "Product, Marketing, and Content overlap on purpose, so edge-case workflows stay discoverable.",
+    detail: "Product, Marketing, and Content overlap on purpose, so edge-case starting points stay discoverable.",
   },
   product: {
     label: "Product",
@@ -187,13 +199,13 @@ const TEMPLATE_CATEGORY_META: Record<TemplateCategoryKey, {
   },
   marketing: {
     label: "Marketing",
-    summary: "Research, positioning, trend, SEO, funnel, and audit workflows.",
+    summary: "Research, positioning, trend, SEO, funnel, and audit processes.",
     detail: "This includes segment work, messaging, GTM research, landing-page work, and other growth loops.",
   },
   content: {
     label: "Content",
-    summary: "Texts, publishing systems, course-shaped flows, and launch assets.",
-    detail: "Use this for post pipelines, copy cleanup, editorial systems, curriculum work, and other publish-ready outputs.",
+    summary: "Texts, publishing systems, course-shaped processes, and launch assets.",
+    detail: "Use this for post pipelines, copy cleanup, editorial systems, curriculum work, and other publish-ready results.",
   },
 }
 
@@ -256,7 +268,7 @@ function TemplateDetailPanel({
             type="button"
             onClick={onClose}
             className="ui-icon-button shrink-0"
-            aria-label="Close template details"
+            aria-label="Close details"
           >
             <X size={16} />
           </button>
@@ -265,15 +277,15 @@ function TemplateDetailPanel({
 
       <div className="border-b border-border px-4 py-3 space-y-3">
         <div>
-          <span className="ui-meta-label text-muted-foreground">Use this when</span>
+          <span className="ui-meta-label text-muted-foreground">Need</span>
           <p className="mt-1 text-body-sm">{deriveTemplateUseWhen(template)}</p>
         </div>
         <div>
-          <span className="ui-meta-label text-muted-foreground">You provide</span>
+          <span className="ui-meta-label text-muted-foreground">Input</span>
           <p className="mt-1 text-body-sm">{template.input}</p>
         </div>
         <div>
-          <span className="ui-meta-label text-muted-foreground">You get</span>
+          <span className="ui-meta-label text-muted-foreground">Result</span>
           <p className="mt-1 text-body-sm">{template.output}</p>
         </div>
       </div>
@@ -293,20 +305,17 @@ function TemplateDetailPanel({
           )}
 
           <div>
-            <span className="ui-meta-label text-muted-foreground">Why this flow fits</span>
+            <span className="ui-meta-label text-muted-foreground">Why it fits</span>
             <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
           </div>
 
-          <details className="rounded-lg surface-soft px-3 py-3">
-            <summary className="cursor-pointer list-none text-body-sm font-medium text-foreground">
-              See the flow structure
-            </summary>
+          <DisclosurePanel title="Process outline">
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
               {template.steps.map((step, i) => (
                 <li key={i}>{step}</li>
               ))}
             </ol>
-          </details>
+          </DisclosurePanel>
 
           {(sourceKind === "plugin" || sourceKind === "user") && (
             <div>
@@ -322,7 +331,7 @@ function TemplateDetailPanel({
 
       <div className="border-t border-border px-4 py-3">
         <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
-          Use template
+          Start here
         </Button>
       </div>
     </aside>
@@ -336,9 +345,14 @@ export function WorkflowsTemplatesPage() {
   const [activeCategory, setActiveCategory] = useState<TemplateCategoryKey>("all")
   const [activeFilter, setActiveFilter] = useState<TemplateLibraryFilterKey>("all")
   const [selectedResultModeId] = useAtom(selectedResultModeIdAtom)
+  const [draftPrompt] = useAtom(workflowCreateDraftPromptAtom)
+  const [modeConfigs] = useAtom(workflowCreateModeConfigsAtom)
+  const [promptScaffold] = useAtom(workflowCreatePromptScaffoldAtom)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
+  const [, setInputValue] = useAtom(inputValueAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
@@ -378,7 +392,7 @@ export function WorkflowsTemplatesPage() {
       const loaded = await window.api.listTemplates()
       setTemplates(loaded)
     } catch (error) {
-      toast.error(`Failed to load templates: ${String(error)}`)
+      toast.error(`Failed to load starting points: ${String(error)}`)
     } finally {
       setLoading(false)
     }
@@ -430,6 +444,37 @@ export function WorkflowsTemplatesPage() {
     () => deriveCreateModeId(activeCategory, selectedResultModeId, selectedTemplate),
     [activeCategory, selectedResultModeId, selectedTemplate],
   )
+  const selectedResultMode = useMemo(
+    () => getResultMode(selectedResultModeId),
+    [selectedResultModeId],
+  )
+  const selectedModeConfig = useMemo(
+    () => normalizeResultModeConfig(selectedResultModeId, modeConfigs[selectedResultModeId]),
+    [modeConfigs, selectedResultModeId],
+  )
+  const selectedModeConfigFieldCount = useMemo(
+    () => countResultModeConfigFields(selectedResultModeId, selectedModeConfig),
+    [selectedModeConfig, selectedResultModeId],
+  )
+  const requestedResult = useMemo(() => {
+    if (!templateLibraryContext) return ""
+    const canSeedIntent = hasWorkflowCreatePromptContent(draftPrompt, promptScaffold)
+      || selectedModeConfigFieldCount > 0
+    if (!canSeedIntent) return ""
+    return buildResultModeSeedInput(
+      selectedResultMode,
+      selectedModeConfig,
+      draftPrompt,
+      promptScaffold,
+    )
+  }, [
+    draftPrompt,
+    promptScaffold,
+    selectedModeConfig,
+    selectedModeConfigFieldCount,
+    selectedResultMode,
+    templateLibraryContext,
+  ])
   const hasActiveFilters = activeCategory !== "all" || activeFilter !== "all" || query.trim().length > 0
 
   useEffect(() => {
@@ -453,7 +498,7 @@ export function WorkflowsTemplatesPage() {
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
     if (createInProjectOnly) {
       if (!preferredProjectPath) {
-        toast.error("Open or select a project before using a template")
+        toast.error("Open or select a project before starting here")
         return
       }
       void doCreateFromTemplate(template, preferredProjectPath)
@@ -471,7 +516,7 @@ export function WorkflowsTemplatesPage() {
 
   const doApplyTemplate = (template: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
-      toast.error("Cannot replace the current workflow while a run is active", {
+      toast.error("Cannot replace the current process while a run is active", {
         description: replaceCurrentBlockedReason,
       })
       return
@@ -480,28 +525,27 @@ export function WorkflowsTemplatesPage() {
     const previousWorkflow = structuredClone(workflow)
     const templateForWorkflowUse = normalizeTemplateForWorkflowUse(template)
     const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
-    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
-    setWorkflow(nextWorkflow)
-    setWorkflowEntryState(buildTemplateWorkflowEntryState({
+    const templateStartState = buildTemplateStartState({
       template: {
         ...templateForWorkflowUse,
         workflow: nextWorkflow,
       },
       workflowPath: selectedWorkflowPath,
-    }))
+      projectPath: preferredProjectPath,
+      requestedResult,
+    })
+    const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
+    setWorkflow(nextWorkflow)
+    setInputValue(templateStartState.initialInputValue)
+    setInputAttachments(templateStartState.initialAttachments)
+    setWorkflowEntryState(templateStartState.entryState)
     setWorkflowTemplateContextForKey({
       key: workflowKey,
-      context: buildTemplateRunContext({
-        template: {
-          ...templateForWorkflowUse,
-          workflow: nextWorkflow,
-        },
-        workflowPath: selectedWorkflowPath,
-      }),
+      context: templateStartState.templateContext,
     })
     setMainView("thread")
     setPendingTemplate(null)
-    toast.success(`"${templateForWorkflowUse.name}" is ready to run`, {
+    toast.success(`"${templateForWorkflowUse.name}" is ready in the current process`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -519,35 +563,34 @@ export function WorkflowsTemplatesPage() {
     try {
       const filePath = await window.api.createWorkflow(projectPath, templateForWorkflowUse.name, nextWorkflow)
       const loadedWorkflow = await window.api.loadWorkflow(filePath)
+      const templateStartState = buildTemplateStartState({
+        template: {
+          ...templateForWorkflowUse,
+          workflow: loadedWorkflow,
+        },
+        workflowPath: filePath,
+        projectPath,
+        requestedResult,
+      })
       const refreshed = await window.api.listProjectWorkflows(projectPath)
       await window.api.recordProjectTemplateUsage(projectPath, template.id).catch(() => undefined)
       setWorkflows(refreshed)
       setSelectedProject(projectPath)
       setSelectedWorkflowPath(filePath)
       setWorkflow(loadedWorkflow)
+      setInputValue(templateStartState.initialInputValue)
+      setInputAttachments(templateStartState.initialAttachments)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
-      setWorkflowEntryState(buildTemplateWorkflowEntryState({
-        template: {
-          ...templateForWorkflowUse,
-          workflow: loadedWorkflow,
-        },
-        workflowPath: filePath,
-      }))
+      setWorkflowEntryState(templateStartState.entryState)
       setWorkflowTemplateContextForKey({
         key: toWorkflowExecutionKey(filePath),
-        context: buildTemplateRunContext({
-          template: {
-            ...templateForWorkflowUse,
-            workflow: loadedWorkflow,
-          },
-          workflowPath: filePath,
-        }),
+        context: templateStartState.templateContext,
       })
       setMainView("thread")
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || templateForWorkflowUse.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
     } catch (error) {
-      toast.error(`Failed to create workflow: ${String(error)}`)
+      toast.error(`Failed to create process: ${String(error)}`)
     }
   }
 
@@ -573,15 +616,16 @@ export function WorkflowsTemplatesPage() {
         disabled={creatingBlankWorkflow}
       >
         {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
-        Blank workflow
+        Blank process
       </Button>
       <Button
         size="sm"
         variant="outline"
         onClick={() => openWorkflowCreate({
-          modeId: createModeId,
+          modeId: templateLibraryContext ? selectedResultModeId : createModeId,
           projectPath: preferredProjectPath,
           locked: createInProjectOnly,
+          prompt: templateLibraryContext ? draftPrompt : "",
         })}
       >
         <Sparkles size={14} />
@@ -593,17 +637,17 @@ export function WorkflowsTemplatesPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Templates"
-        subtitle="Browse workflow templates for a concrete starting point, or start from blank if you want to build the flow yourself."
+        title="Process library"
+        subtitle="Browse starting points for a concrete process, or start from blank if you want to shape it yourself."
         actions={headerActions}
       />
 
-      <section aria-label="Template categories" className="overflow-hidden rounded-xl surface-elevated">
+      <section aria-label="Starting point categories" className="overflow-hidden rounded-xl surface-elevated">
         <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
-          <p className="section-kicker">Template categories</p>
+          <p className="section-kicker">Process library</p>
           <h2 className="mt-1 ui-title-text text-foreground">Browse by category</h2>
           <p className="mt-2 text-body-sm text-muted-foreground">
-            Categories overlap on purpose. Start broad, then refine by workflow stage only if it helps.
+            Categories overlap on purpose. Start broad, then refine by stage only if it helps.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -641,18 +685,18 @@ export function WorkflowsTemplatesPage() {
       </section>
 
       <CollectionToolbar
-        ariaLabel="Template controls"
+        ariaLabel="Starting point controls"
         query={query}
         onQueryChange={setQuery}
-        searchPlaceholder="Search templates"
-        searchAriaLabel="Search templates"
-        summary={`${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`}
+        searchPlaceholder="Search starting points"
+        searchAriaLabel="Search starting points"
+        summary={`${filteredTemplates.length} starting point${filteredTemplates.length === 1 ? "" : "s"}`}
         filters={(
           <>
             <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">
               {activeCategory === "all"
-                ? "Refine by workflow stage"
-                : `Refine ${selectedCategoryMeta.label.toLowerCase()} templates`}
+                ? "Refine by process stage"
+                : `Refine ${selectedCategoryMeta.label.toLowerCase()} starting points`}
             </span>
             <Button
               variant={activeFilter === "all" ? "secondary" : "outline"}
@@ -702,8 +746,8 @@ export function WorkflowsTemplatesPage() {
             ) : filteredTemplates.length === 0 ? (
               <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
                 {activeCategory === "all"
-                  ? "No templates match these filters."
-                  : `No ${selectedCategoryMeta.label.toLowerCase()} templates match these filters.`}
+                  ? "No starting points match these filters."
+                  : `No ${selectedCategoryMeta.label.toLowerCase()} starting points match these filters.`}
               </div>
             ) : (
               renderTemplateGrid(filteredTemplates)
@@ -723,11 +767,11 @@ export function WorkflowsTemplatesPage() {
       </section>
 
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
-        <CanvasDialogContent showCloseButton={false}>
+        <CanvasDialogContent showCloseButton={false} size="lg">
           <CanvasDialogHeader>
-            <DialogTitle>Use this template</DialogTitle>
+            <DialogTitle>Start from this point</DialogTitle>
             <DialogDescription>
-              &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready to use. Pick whether to open it in the selected project or reuse the current draft.
+              &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready. Pick whether to create it in the selected project or replace the current draft.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody className="space-y-2">
@@ -755,7 +799,7 @@ export function WorkflowsTemplatesPage() {
               </div>
             ) : (
               <p className="text-body-sm text-muted-foreground">
-                Add a project in the sidebar to use this template there.
+                Add a project in the sidebar to create this process there.
               </p>
             )}
           </CanvasDialogBody>
@@ -768,7 +812,7 @@ export function WorkflowsTemplatesPage() {
               disabled={!targetProjectPath}
               onClick={() => pendingTemplate && targetProjectPath && void doCreateFromTemplate(pendingTemplate, targetProjectPath)}
             >
-              Use in selected project
+              Create in selected project
             </Button>
             <Button
               variant="outline"
@@ -777,7 +821,7 @@ export function WorkflowsTemplatesPage() {
               title={replaceCurrentBlockedReason || undefined}
               onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}
             >
-              Use current draft
+              Replace current draft
             </Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>

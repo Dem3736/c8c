@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { useAtom } from "jotai"
 import { cn } from "@/lib/cn"
 import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
@@ -23,6 +23,7 @@ import {
   workflowOpenStateAtom,
   webSearchBackendAtom,
   workflowsAtom,
+  desktopRuntimeAtom,
 } from "@/lib/store"
 import {
   activeNodeIdAtom,
@@ -78,21 +79,38 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
-import type { WorkflowEntryState } from "@/lib/workflow-entry"
+import type { WorkflowEntryState, WorkflowTemplateRunContext } from "@/lib/workflow-entry"
 import {
   areTemplateContractsSatisfied,
+  buildContinuationArtifactPool,
+  deriveTemplateDisplayLabel,
+  deriveTemplateContextJourneyStageLabel,
   formatArtifactContractLabel,
   selectArtifactsForTemplateContracts,
 } from "@/lib/workflow-entry"
+import {
+  contextAutoRunsOnContinue,
+  contextRequiresStartApproval,
+} from "@/lib/stage-run-policy"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
-import type { ArtifactContract, ArtifactRecord, WorkflowTemplate } from "@shared/types"
+import type { ArtifactContract, ArtifactRecord, InputAttachment, PermissionMode, Workflow, WorkflowTemplate } from "@shared/types"
 import { buildRunProgressSummary, formatElapsedTime, type RunProgressSummary } from "@/lib/run-progress"
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
+import { DisclosurePanel } from "@/components/ui/disclosure-panel"
+import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
 
 function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
   return (
@@ -119,10 +137,10 @@ function WorkflowDraftSkeleton() {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-title-sm text-foreground">
             <Loader2 size={14} className="animate-spin text-status-info" />
-            Building the first workflow draft
+            Preparing the first process draft
           </div>
           <p className="mt-2 text-body-sm text-muted-foreground">
-            The agent is turning your prompt into a runnable flow. This view will populate as soon as the draft is ready.
+            The agent is turning your prompt into a runnable process. This view will populate as soon as the draft is ready.
           </p>
         </div>
       </div>
@@ -142,10 +160,58 @@ function WorkflowDraftSkeleton() {
   )
 }
 
+function collapseInlineText(value: string | null | undefined) {
+  return (value || "").trim().replace(/\s+/g, " ")
+}
+
+function takeLeadingSentence(value: string | null | undefined, fallback: string) {
+  const clean = collapseInlineText(value)
+  if (!clean) return fallback
+  const match = clean.match(/^.*?[.!?](?=\s|$)/)
+  return match ? match[0] : clean
+}
+
+function deriveEntryPolicySummary(workflow: Workflow, templateContext: WorkflowTemplateRunContext | null) {
+  const explicitSummary = takeLeadingSentence(templateContext?.executionPolicy?.summary, "")
+  if (explicitSummary) return explicitSummary
+
+  const approvalCount = workflow.nodes.filter((node) => node.type === "approval").length
+  if (approvalCount > 0) {
+    return approvalCount === 1
+      ? "Stops for one approval gate."
+      : `Stops for ${approvalCount} approval gates.`
+  }
+
+  return "Runs to the next decision."
+}
+
+function deriveEntryNextStepLabel({
+  readyToRun,
+  nextStageTemplate,
+}: {
+  readyToRun: boolean
+  nextStageTemplate: WorkflowTemplate | null
+}) {
+  if (!readyToRun) return "Add stage input."
+  if (nextStageTemplate) return `Continue with ${deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}.`
+  return "Review the result."
+}
+
+function formatInputAttachmentLabel(attachment: InputAttachment) {
+  if (attachment.kind === "file") return attachment.name
+  if (attachment.kind === "run") return attachment.workflowName
+  return attachment.label
+}
+
 function WorkflowEntryLanding({
   entry,
   displayTitle,
   readyToRun,
+  startApprovalRequired,
+  stageLabel,
+  policySummary,
+  nextStepLabel,
+  inputLabels,
   onPrimaryAction,
   primaryActionLabel,
   onRefine,
@@ -157,6 +223,11 @@ function WorkflowEntryLanding({
   entry: WorkflowEntryState
   displayTitle: string
   readyToRun: boolean
+  startApprovalRequired: boolean
+  stageLabel?: string | null
+  policySummary: string
+  nextStepLabel: string
+  inputLabels: string[]
   onPrimaryAction: () => void
   primaryActionLabel: string
   onRefine: () => void
@@ -166,68 +237,235 @@ function WorkflowEntryLanding({
   onDismiss: () => void
 }) {
   return (
-    <section className="rounded-xl surface-panel p-5 ui-fade-slide-in">
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-hairline bg-surface-2 text-foreground ui-elevation-inset">
+    <section className="rounded-xl surface-panel p-4 ui-fade-slide-in">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-hairline bg-surface-2 text-foreground ui-elevation-inset">
           <Sparkles size={18} aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={readyToRun ? "success" : "secondary"} className="ui-meta-text px-2 py-1">
-              {readyToRun ? "Ready to run" : "Add input to run"}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {stageLabel && (
+              <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                {stageLabel}
+              </Badge>
+            )}
+            <Badge variant={readyToRun ? "success" : "secondary"} className="ui-meta-text px-2 py-0">
+              {readyToRun ? "Ready" : "Needs input"}
+            </Badge>
+            {startApprovalRequired && (
+              <Badge variant="warning" className="ui-meta-text px-2 py-0">
+                Approval before run
+              </Badge>
+            )}
+            <Badge variant="outline" className="ui-meta-text px-2 py-0">
+              {policySummary}
             </Badge>
             <span className="ui-meta-text text-muted-foreground">{entry.readinessText}</span>
           </div>
-          <div>
-            <h2 className="text-title-md text-foreground">{displayTitle}</h2>
-            <p className="mt-1 text-body-md text-muted-foreground">{entry.summary}</p>
+          <h2 className="text-title-md text-foreground">{displayTitle}</h2>
+          {entry.routing && (
+            <DisclosurePanel
+              summary="Why this start?"
+              className="max-w-full"
+              summaryClassName="px-0 py-0 text-muted-foreground"
+              contentClassName="space-y-2 px-0 pb-0 pt-2 border-0"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                  Chosen after submit
+                </Badge>
+                <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                  {entry.routing.source === "agent" ? "Agent route" : "Fallback route"}
+                </Badge>
+              </div>
+              {entry.routing.reason ? (
+                <p className="ui-meta-text text-muted-foreground">{entry.routing.reason}</p>
+              ) : null}
+            </DisclosurePanel>
+          )}
+          <div className="grid gap-1.5 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+              <p className="ui-meta-label text-muted-foreground">{entry.contractLabel}</p>
+              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{entry.contractText}</p>
+            </div>
+            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+              <p className="ui-meta-label text-muted-foreground">Need</p>
+              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{entry.inputText}</p>
+              {inputLabels.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {inputLabels.slice(0, 4).map((label) => (
+                    <Badge key={label} variant="outline" className="ui-meta-text px-2 py-0">
+                      {label}
+                    </Badge>
+                  ))}
+                  {inputLabels.length > 4 && (
+                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                      +{inputLabels.length - 4} more
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+              <p className="ui-meta-label text-muted-foreground">Result</p>
+              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{entry.outputText}</p>
+            </div>
+            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+              <p className="ui-meta-label text-muted-foreground">Next</p>
+              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">
+                {startApprovalRequired
+                  ? "Review the gate, then run this stage."
+                  : nextStepLabel}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={onPrimaryAction}>
+              <Play size={14} />
+              {primaryActionLabel}
+            </Button>
+            {canRefine && (
+              <Button variant="outline" size="sm" onClick={onRefine}>
+                <MessageSquare size={14} />
+                Refine
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onToggleEditor}>
+              <PencilLine size={14} />
+              {showEditor ? "Hide editor" : "Edit"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDismiss}>
+              Dismiss
+            </Button>
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap gap-2">
-          <Button size="sm" onClick={onPrimaryAction}>
-            <Play size={14} />
-            {primaryActionLabel}
-          </Button>
-          {canRefine && (
-            <Button variant="outline" size="sm" onClick={onRefine}>
-              <MessageSquare size={14} />
-              Refine with agent
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={onToggleEditor}>
-            <PencilLine size={14} />
-            {showEditor ? "Hide editor" : "Edit flow"}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onDismiss}>
-            Dismiss
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-3 lg:grid-cols-3">
-        <div className="rounded-lg border border-hairline bg-surface-2/70 px-4 py-3">
-          <p className="ui-meta-label text-muted-foreground">{entry.contractLabel}</p>
-          <p className="mt-2 text-body-sm text-foreground">{entry.contractText}</p>
-        </div>
-        <div className="rounded-lg border border-hairline bg-surface-2/70 px-4 py-3">
-          <p className="ui-meta-label text-muted-foreground">You provide</p>
-          <p className="mt-2 text-body-sm text-foreground">{entry.inputText}</p>
-        </div>
-        <div className="rounded-lg border border-hairline bg-surface-2/70 px-4 py-3">
-          <p className="ui-meta-label text-muted-foreground">You get</p>
-          <p className="mt-2 text-body-sm text-foreground">{entry.outputText}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-hairline bg-surface-2/40 px-4 py-3">
-        <Play size={14} className="text-muted-foreground" />
-        <p className="text-body-sm text-muted-foreground">
-          {readyToRun
-            ? "This flow is ready. You can press Run in the toolbar now, or refine it first."
-            : "Add the input below, then press Run in the toolbar when you are ready."}
-        </p>
       </div>
     </section>
+  )
+}
+
+function StageStartApprovalDialog({
+  open,
+  title,
+  stageLabel,
+  policySummary,
+  expectedArtifact,
+  inputLabels,
+  notes,
+  shortcutLabel,
+  primaryModifierKey,
+  onApprove,
+  onCancel,
+}: {
+  open: boolean
+  title: string
+  stageLabel?: string | null
+  policySummary: string
+  expectedArtifact: string
+  inputLabels: string[]
+  notes: string[]
+  shortcutLabel: string
+  primaryModifierKey: "meta" | "ctrl"
+  onApprove: () => Promise<void> | void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    if (!open) return
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isShortcutConsumed(event)) return
+
+      const usesPrimaryModifier = primaryModifierKey === "meta"
+        ? event.metaKey
+        : event.ctrlKey
+      if (!usesPrimaryModifier || event.key !== "Enter") return
+      consumeShortcut(event)
+      void Promise.resolve(onApprove())
+    }
+
+    window.addEventListener("keydown", handler, true)
+    return () => {
+      window.removeEventListener("keydown", handler, true)
+    }
+  }, [onApprove, open, primaryModifierKey])
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel() }}>
+      <DialogContent className="max-w-xl" showCloseButton={false} aria-describedby="stage-start-approval-description">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            Approval before run
+            <Badge variant="outline" size="compact">{shortcutLabel}</Badge>
+          </DialogTitle>
+          <DialogDescription id="stage-start-approval-description">
+            Review this stage before execution begins.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <ExecutionSurfaceNoticeBanner
+            notice={{
+              level: "warning",
+              title: "Human gate required",
+              description: policySummary,
+              actionLabel: "",
+              actionTarget: "result",
+            }}
+            children={(
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {stageLabel && (
+                    <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                      {stageLabel}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-body-sm font-medium text-foreground">{title}</p>
+              </div>
+            )}
+          />
+
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+              <p className="ui-meta-label text-muted-foreground">Stage result</p>
+              <p className="mt-1 text-body-sm text-foreground">{expectedArtifact}</p>
+            </div>
+            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
+              <p className="ui-meta-label text-muted-foreground">Stage input</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {inputLabels.length > 0 ? inputLabels.map((label) => (
+                  <Badge key={label} variant="outline" className="ui-meta-text px-2 py-0">
+                    {label}
+                  </Badge>
+                )) : (
+                  <span className="ui-meta-text text-muted-foreground">Review the current stage input.</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {notes.length > 0 && (
+            <DisclosurePanel summary="Policy notes">
+              <div className="space-y-2">
+                {notes.map((note, index) => (
+                  <p key={`${note}-${index}`} className="text-body-sm text-foreground">{note}</p>
+                ))}
+              </div>
+            </DisclosurePanel>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => { void Promise.resolve(onApprove()) }}>
+            <Play size={14} />
+            Run
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -259,7 +497,7 @@ function RunStrip({
     ? summary.phaseLabel === "Completed"
       ? "View result"
       : "Open result"
-    : "Open details"
+    : "View activity"
 
   return (
     <div className="border-b border-hairline bg-surface-1/90">
@@ -307,56 +545,60 @@ function ProjectArtifactsPanel({
   requiredContracts?: ArtifactContract[]
   onOpenArtifact: (artifact: ArtifactRecord) => void
 }) {
-  const latestArtifacts = artifacts.slice(0, 6)
+  const latestArtifacts = artifacts.slice(0, 4)
   const availableKinds = new Set(artifacts.map((artifact) => artifact.kind))
   const requiredLabels = (requiredContracts || []).map((contract) => ({
     label: formatArtifactContractLabel(contract),
     satisfied: availableKinds.has(contract.kind),
     optional: contract.required === false,
   }))
+  const shouldRender = loading || Boolean(error) || latestArtifacts.length > 0 || requiredLabels.length > 0
+
+  if (!shouldRender) {
+    return null
+  }
 
   return (
     <section className="rounded-lg border border-hairline bg-surface-1/70 px-4 py-3 ui-fade-slide-in">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="section-kicker">Saved results</div>
-          <p className="mt-1 text-body-sm text-muted-foreground">
-            Saved outputs from this project that compatible workflows can reuse.
-          </p>
+          <div className="section-kicker">Artifacts</div>
         </div>
-        <div className="flex items-center">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="outline" className="ui-meta-text px-2 py-0">
             {artifacts.length} saved
           </Badge>
+          {requiredLabels.length > 0 && (
+            <Badge variant="outline" className="ui-meta-text px-2 py-0">
+              {requiredLabels.length} reusable
+            </Badge>
+          )}
         </div>
       </div>
 
       {requiredLabels.length > 0 && (
-        <div className="mt-3 space-y-2">
-          <div className="ui-meta-label text-muted-foreground">This workflow can use</div>
-          <div className="flex flex-wrap gap-1.5">
-            {requiredLabels.map((item) => (
-              <Badge
-                key={`${item.label}-${item.optional ? "optional" : "required"}`}
-                variant={item.satisfied ? "success" : "outline"}
-                className="ui-meta-text px-2 py-0"
-              >
-                {item.label}{item.optional ? " (optional)" : ""}
-              </Badge>
-            ))}
-          </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {requiredLabels.map((item) => (
+            <Badge
+              key={`${item.label}-${item.optional ? "optional" : "required"}`}
+              variant={item.satisfied ? "success" : "outline"}
+              className="ui-meta-text px-2 py-0"
+            >
+              {item.label}{item.optional ? " (optional)" : ""}
+            </Badge>
+          ))}
         </div>
       )}
 
       <div className="mt-3">
         {loading ? (
-          <div className="ui-meta-text text-muted-foreground">Loading project artifacts...</div>
+          <div className="ui-meta-text text-muted-foreground">Loading artifacts...</div>
         ) : error ? (
           <div role="alert" className="ui-meta-text text-status-danger">{error}</div>
         ) : latestArtifacts.length === 0 ? (
-          <div className="ui-meta-text text-muted-foreground">No saved results yet.</div>
+          <div className="ui-meta-text text-muted-foreground">No saved artifacts yet.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {latestArtifacts.map((artifact) => (
               <div
                 key={artifact.id}
@@ -386,12 +628,49 @@ function ProjectArtifactsPanel({
   )
 }
 
+function StageInputSection({
+  inputPanelRef,
+  showTemplateContext = true,
+  showProjectArtifactsPanel,
+  artifacts,
+  loading,
+  error,
+  requiredContracts,
+  onOpenArtifact,
+}: {
+  inputPanelRef: RefObject<HTMLDivElement | null>
+  showTemplateContext?: boolean
+  showProjectArtifactsPanel: boolean
+  artifacts: ArtifactRecord[]
+  loading: boolean
+  error: string | null
+  requiredContracts?: ArtifactContract[]
+  onOpenArtifact: (artifact: ArtifactRecord) => void
+}) {
+  return (
+    <>
+      <div ref={inputPanelRef}>
+        <InputPanel label="Stage input" compact showTemplateContext={showTemplateContext} />
+      </div>
+      {showProjectArtifactsPanel && (
+        <ProjectArtifactsPanel
+          artifacts={artifacts}
+          loading={loading}
+          error={error}
+          requiredContracts={requiredContracts}
+          onOpenArtifact={onOpenArtifact}
+        />
+      )}
+    </>
+  )
+}
+
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
-  const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
+  const [inputAttachments, setInputAttachments] = useAtom(inputAttachmentsAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [chatPanelWidth] = useAtom(chatPanelWidthAtom)
@@ -438,10 +717,14 @@ export function WorkflowPanel() {
   const [elapsed, setElapsed] = useState("")
   const [outputTabRequest, setOutputTabRequest] = useState<{ tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null>(null)
   const [flowSurfaceMode, setFlowSurfaceMode] = useAtom(flowSurfaceModeAtom)
+  const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const previousRunStatusRef = useRef(runStatus)
   const completionSurfaceRef = useRef<string | null>(null)
   const pendingListAutoScrollRef = useRef(false)
   const resetExecution = useExecutionReset({ preserveCompletedWork: true })
+  const [stageStartGateOpen, setStageStartGateOpen] = useState(false)
+  const [pendingRunMode, setPendingRunMode] = useState<PermissionMode>("edit")
+  const [pendingAutoRunPath, setPendingAutoRunPath] = useState<string | null>(null)
 
   useWorkflowReset()
   useWorkflowValidation()
@@ -467,8 +750,8 @@ export function WorkflowPanel() {
   }, [setWorkflowOpenState])
 
   const workflowTitleFromPath = useCallback((path: string | null) => {
-    if (!path) return "workflow"
-    return path.split(/[\\/]/).pop()?.replace(/\.(chain|yaml|yml)$/i, "") || "workflow"
+    if (!path) return "process"
+    return path.split(/[\\/]/).pop()?.replace(/\.(chain|yaml|yml)$/i, "") || "process"
   }, [])
 
   useEffect(() => {
@@ -607,19 +890,63 @@ export function WorkflowPanel() {
     }
     return Array.from(byId.values()).sort((left, right) => right.updatedAt - left.updatedAt)
   }, [artifactRecords, projectArtifacts])
-  const nextStageTemplate = useMemo(() => {
+  const continuationArtifactRecords = useMemo(
+    () => buildContinuationArtifactPool({
+      currentArtifacts: artifactRecords,
+      projectArtifacts,
+      context: selectedWorkflowTemplateContext,
+    }),
+    [artifactRecords, projectArtifacts, selectedWorkflowTemplateContext],
+  )
+  const nextStageSelection = useMemo(() => {
     const recommendedNext = selectedWorkflowTemplateContext?.pack?.recommendedNext || []
-    if (recommendedNext.length === 0 || packTemplates.length === 0) return null
+    if (recommendedNext.length === 0 || packTemplates.length === 0) {
+      return { template: null, artifacts: [] as ArtifactRecord[] }
+    }
 
-    return recommendedNext
+    const orderedCandidates = recommendedNext
       .map((templateId) => packTemplates.find((template) => template.id === templateId) || null)
-      .find((template): template is WorkflowTemplate =>
-        template !== null && areTemplateContractsSatisfied(template.contractIn, combinedArtifactRecords),
-      ) || null
-  }, [combinedArtifactRecords, packTemplates, selectedWorkflowTemplateContext])
-  const nextStageArtifacts = useMemo(
-    () => selectArtifactsForTemplateContracts(nextStageTemplate?.contractIn, combinedArtifactRecords),
-    [combinedArtifactRecords, nextStageTemplate],
+      .filter((template): template is WorkflowTemplate => template !== null)
+
+    const preferredTemplate = orderedCandidates.find((template) =>
+      areTemplateContractsSatisfied(template.contractIn, continuationArtifactRecords),
+    ) || null
+    if (preferredTemplate) {
+      return {
+        template: preferredTemplate,
+        artifacts: selectArtifactsForTemplateContracts(preferredTemplate.contractIn, continuationArtifactRecords),
+      }
+    }
+
+    return { template: null, artifacts: [] as ArtifactRecord[] }
+  }, [continuationArtifactRecords, packTemplates, selectedWorkflowTemplateContext])
+  const nextStageTemplate = nextStageSelection.template
+  const nextStageArtifacts = nextStageSelection.artifacts
+  const entryStageLabel = useMemo(
+    () => deriveTemplateContextJourneyStageLabel(selectedWorkflowTemplateContext),
+    [selectedWorkflowTemplateContext],
+  )
+  const entryPolicySummary = useMemo(
+    () => deriveEntryPolicySummary(workflow, selectedWorkflowTemplateContext),
+    [selectedWorkflowTemplateContext, workflow],
+  )
+  const startApprovalRequired = useMemo(
+    () => runStatus === "idle" && contextRequiresStartApproval(selectedWorkflowTemplateContext),
+    [runStatus, selectedWorkflowTemplateContext],
+  )
+  const entryNextStepLabel = useMemo(
+    () => deriveEntryNextStepLabel({ readyToRun, nextStageTemplate }),
+    [nextStageTemplate, readyToRun],
+  )
+  const stageStartInputLabels = useMemo(() => {
+    if (inputAttachments.length > 0) {
+      return inputAttachments.map(formatInputAttachmentLabel)
+    }
+    return (selectedWorkflowTemplateContext?.contractIn || []).map((contract) => formatArtifactContractLabel(contract))
+  }, [inputAttachments, selectedWorkflowTemplateContext])
+  const stageStartPolicyNotes = useMemo(
+    () => (selectedWorkflowTemplateContext?.executionPolicy?.notes || []).slice(0, 3),
+    [selectedWorkflowTemplateContext],
   )
   const showCreateDraftSkeleton = (
     viewMode === "list"
@@ -639,8 +966,7 @@ export function WorkflowPanel() {
     && !showCreateDraftSkeleton
   )
   const showIdleReviewMode = (
-    viewMode === "list"
-    && runStatus === "idle"
+    runStatus === "idle"
     && activeEntryState === null
     && !showCreateDraftSkeleton
     && workflowPastRuns.length > 0
@@ -653,6 +979,15 @@ export function WorkflowPanel() {
     && !showCreateDraftSkeleton
     && !showEntryLanding
     && !showIdleReviewMode
+  )
+  const showProjectArtifactsPanel = (
+    Boolean(selectedProject)
+    && (
+      projectArtifactsLoading
+      || Boolean(projectArtifactsError)
+      || combinedArtifactRecords.length > 0
+      || (selectedWorkflowTemplateContext?.contractIn?.length ?? 0) > 0
+    )
   )
   const {
     reviewedRun,
@@ -749,6 +1084,26 @@ export function WorkflowPanel() {
     })
   }
 
+  const handleRunRequest = useCallback(async (mode: PermissionMode = "edit") => {
+    if (startApprovalRequired) {
+      setPendingRunMode(mode)
+      setStageStartGateOpen(true)
+      return
+    }
+    await run(mode)
+  }, [run, startApprovalRequired])
+
+  const handleApproveStageStart = useCallback(async () => {
+    const mode = pendingRunMode
+    setStageStartGateOpen(false)
+    await run(mode)
+  }, [pendingRunMode, run])
+
+  const handleCancelStageStart = useCallback(() => {
+    setStageStartGateOpen(false)
+    setPendingRunMode("edit")
+  }, [])
+
   const handleRunNextStage = useCallback(async () => {
     if (!selectedProject || !nextStageTemplate || launchingNextStage) return
 
@@ -776,12 +1131,20 @@ export function WorkflowPanel() {
       setMainView("thread")
       setViewMode("list")
       setOutputTabRequest(null)
+      setInputAttachments(launch.artifactAttachments)
+      const nextStageNeedsApproval = contextRequiresStartApproval(launch.templateContext)
+      setPendingAutoRunPath(nextStageNeedsApproval ? null : launch.filePath)
 
-      toast.success(`Opened next step: ${nextStageTemplate.name}`)
+      toast.success(
+        nextStageNeedsApproval
+          ? `Opened gated stage: ${deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`
+          : `Continuing with ${deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`,
+      )
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          setInputAttachments(launch.artifactAttachments)
-          focusInputPanel()
+          if (nextStageNeedsApproval) {
+            focusInputPanel()
+          }
         })
       })
     } catch (error) {
@@ -812,6 +1175,28 @@ export function WorkflowPanel() {
     setWorkflows,
     webSearchBackend,
   ])
+
+  useEffect(() => {
+    if (runStatus === "idle") return
+    setStageStartGateOpen(false)
+  }, [runStatus])
+
+  useEffect(() => {
+    if (!stageStartGateOpen) return
+    if (startApprovalRequired) return
+    setStageStartGateOpen(false)
+    setPendingRunMode("edit")
+  }, [stageStartGateOpen, startApprovalRequired])
+
+  useEffect(() => {
+    if (!pendingAutoRunPath) return
+    if (selectedWorkflowPath !== pendingAutoRunPath) return
+    if (runStatus !== "idle") return
+    if (!contextAutoRunsOnContinue(selectedWorkflowTemplateContext)) return
+
+    setPendingAutoRunPath(null)
+    void handleRunRequest()
+  }, [handleRunRequest, pendingAutoRunPath, runStatus, selectedWorkflowPath, selectedWorkflowTemplateContext])
 
   useEffect(() => {
     if (runStatus !== "done" || runOutcome !== "completed" || !hasResult || viewMode !== "list") {
@@ -904,12 +1289,12 @@ export function WorkflowPanel() {
     return (
       <EmptyState
         icon={FileStack}
-        title="Pick a workflow"
-        description="Choose an existing workflow or create a new one from the sidebar"
+        title="Pick a process"
+        description="Choose an existing process or start a new one from the sidebar"
       >
         <Button variant="outline" size="sm" onClick={() => setMainView("templates")}>
           <LayoutTemplate size={14} />
-          Start from template
+          Open a starting point
         </Button>
       </EmptyState>
     )
@@ -918,8 +1303,8 @@ export function WorkflowPanel() {
   return (
     <div className="flex-1 min-h-0 flex overflow-hidden">
       {/* Main workflow editor area */}
-      <div role="region" aria-label="Workflow editor" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
-        <Toolbar onRun={run} onCancel={cancel} agentToggleRef={chatPanelToggleRef} />
+      <div role="region" aria-label="Process workspace" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
+        <Toolbar onRun={handleRunRequest} onCancel={cancel} agentToggleRef={chatPanelToggleRef} />
 
         {workflowOpenState.status === "loading" ? (
           <div className="flex-1 min-h-0 flex items-center justify-center px-[var(--content-gutter)]">
@@ -933,7 +1318,7 @@ export function WorkflowPanel() {
                     Opening {workflowTitleFromPath(workflowOpenState.targetPath)}
                   </div>
                   <p className="mt-1 text-body-sm text-muted-foreground">
-                    Loading the workflow file and restoring its editor state.
+                    Loading the process and restoring its stage state.
                   </p>
                 </div>
               </div>
@@ -945,9 +1330,9 @@ export function WorkflowPanel() {
               <div className="surface-danger-soft px-[var(--content-gutter)] py-2.5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="ui-meta-label text-status-danger">Could not open workflow</div>
+                    <div className="ui-meta-label text-status-danger">Could not open process</div>
                     <p className="mt-1 text-body-sm text-status-danger">
-                      Failed to open {workflowTitleFromPath(workflowOpenState.targetPath)}. The previous workflow remains open.
+                      Failed to open {workflowTitleFromPath(workflowOpenState.targetPath)}. The previous process remains open.
                     </p>
                     {workflowOpenState.message && (
                       <p className="mt-1 ui-meta-text text-status-danger/90">
@@ -974,11 +1359,11 @@ export function WorkflowPanel() {
                   className="inline-flex h-control-sm w-control-sm shrink-0 items-center justify-center rounded-md border border-hairline bg-surface-2/80 text-muted-foreground ui-elevation-inset"
                   aria-hidden="true"
                 >
-                  <PencilLine size={13} />
+                  {showEntryLanding && !showEntryEditor ? <Sparkles size={13} /> : <PencilLine size={13} />}
                 </span>
-                {runStatus === "idle" ? (
+                {runStatus === "idle" && !(showEntryLanding && !showEntryEditor) ? (
                   <>
-                    <Label htmlFor="workflow-name" className="sr-only">Workflow name</Label>
+                    <Label htmlFor="workflow-name" className="sr-only">Process name</Label>
                     <Input
                       id="workflow-name"
                       type="text"
@@ -986,14 +1371,14 @@ export function WorkflowPanel() {
                       onChange={(e) =>
                         setWorkflow((prev) => ({ ...prev, name: e.target.value }), { coalesceKey: "workflow-name" })
                       }
-                      placeholder="Workflow name"
+                      placeholder="Process name"
                       className="h-auto min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-title-md font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                     />
                   </>
                 ) : (
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-title-md font-semibold text-foreground">
-                      {workflow.name || "Untitled flow"}
+                      {workflow.name || activeEntryState?.title || "Untitled process"}
                     </div>
                   </div>
                 )}
@@ -1004,20 +1389,26 @@ export function WorkflowPanel() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-              <TabsList className="h-control-md shrink-0" aria-label="View mode">
-                <TabsTrigger value="list" className="px-3 py-1">
-                  <List size={13} aria-hidden="true" className="mr-1.5" />
-                  Flow
-                </TabsTrigger>
-                <TabsTrigger value="canvas" className="px-3 py-1">
-                  <LayoutGrid size={13} aria-hidden="true" className="mr-1.5" />
-                  Graph
-                </TabsTrigger>
-                <TabsTrigger value="settings" className="px-3 py-1">
-                  <SlidersHorizontal size={13} aria-hidden="true" className="mr-1.5" />
-                  Defaults
-                </TabsTrigger>
-              </TabsList>
+                {showEntryLanding && !showEntryEditor ? (
+                  <Badge variant="outline" className="ui-meta-text shrink-0 px-2.5 py-1">
+                    Stage shell
+                  </Badge>
+                ) : (
+                  <TabsList className="h-control-md shrink-0" aria-label="View mode">
+                    <TabsTrigger value="list" className="px-3 py-1">
+                      <List size={13} aria-hidden="true" className="mr-1.5" />
+                      Process
+                    </TabsTrigger>
+                    <TabsTrigger value="canvas" className="px-3 py-1">
+                      <LayoutGrid size={13} aria-hidden="true" className="mr-1.5" />
+                      Graph
+                    </TabsTrigger>
+                    <TabsTrigger value="settings" className="px-3 py-1">
+                      <SlidersHorizontal size={13} aria-hidden="true" className="mr-1.5" />
+                      Defaults
+                    </TabsTrigger>
+                  </TabsList>
+                )}
                 {viewMode === "list" && runStatus === "idle" && !showEntryLanding && (
                   <Button
                     variant={flowSurfaceMode === "edit" ? "secondary" : "ghost"}
@@ -1026,7 +1417,7 @@ export function WorkflowPanel() {
                     onClick={() => setFlowSurfaceMode((prev) => (prev === "edit" ? "outline" : "edit"))}
                   >
                     <PencilLine size={13} />
-                    {flowSurfaceMode === "edit" ? "Preview" : "Edit flow"}
+                    {flowSurfaceMode === "edit" ? "View process" : "Edit process"}
                   </Button>
                 )}
               </div>
@@ -1070,12 +1461,18 @@ export function WorkflowPanel() {
                     onRerunFrom={rerunFrom}
                     onContinueRun={continueRun}
                     requestedTab={outputTabRequest}
+                    reviewingPastRun={showIdleReviewMode}
                     reviewedRun={reviewedRun}
                     reviewedRunDetails={reviewedRunDetails}
                     reviewedRunLoading={reviewedRunLoading}
                     reviewedRunError={reviewedRunError}
                     onStartNewRun={handleStartNewRun}
                     onOpenInbox={() => setMainView("inbox")}
+                    onOpenArtifacts={() => setMainView("artifacts")}
+                    nextStageTemplate={nextStageTemplate}
+                    nextStageArtifacts={nextStageArtifacts}
+                    onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
+                    nextStagePending={launchingNextStage}
                   />
                 </SectionErrorBoundary>
               </div>
@@ -1111,49 +1508,47 @@ export function WorkflowPanel() {
                         entry={activeEntryState}
                         displayTitle={workflow.name || activeEntryState.title}
                         readyToRun={readyToRun}
+                        startApprovalRequired={startApprovalRequired}
+                        stageLabel={entryStageLabel}
+                        policySummary={entryPolicySummary}
+                        nextStepLabel={entryNextStepLabel}
+                        inputLabels={stageStartInputLabels}
                         onPrimaryAction={() => {
                           if (readyToRun) {
-                            void run()
+                            void handleRunRequest()
                             return
                           }
                           focusInputPanel()
                         }}
-                        primaryActionLabel={readyToRun ? "Run now" : "Add input to run"}
+                        primaryActionLabel={readyToRun ? "Run" : "Add input"}
                         onRefine={() => setChatOpen(true)}
                         onToggleEditor={() => setShowEntryEditor((prev) => !prev)}
                         showEditor={showEntryEditor}
                         canRefine={canShowAgentPanel}
                         onDismiss={() => setWorkflowEntryState(null)}
                       />
-                      <div ref={inputPanelRef}>
-                        <InputPanel label="What to provide" />
-                      </div>
-                      {selectedProject && (
-                        <ProjectArtifactsPanel
-                          artifacts={combinedArtifactRecords}
-                          loading={projectArtifactsLoading}
-                          error={projectArtifactsError}
-                          requiredContracts={selectedWorkflowTemplateContext?.contractIn}
-                          onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
-                        />
-                      )}
+                      <StageInputSection
+                        inputPanelRef={inputPanelRef}
+                        showTemplateContext={false}
+                        showProjectArtifactsPanel={showProjectArtifactsPanel}
+                        artifacts={combinedArtifactRecords}
+                        loading={projectArtifactsLoading}
+                        error={projectArtifactsError}
+                        requiredContracts={selectedWorkflowTemplateContext?.contractIn}
+                        onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
+                      />
                     </>
                   )}
                   {showIdleInputPanel && (
-                    <>
-                      <div ref={inputPanelRef}>
-                        <InputPanel label="Input to run" compact />
-                      </div>
-                      {selectedProject && (
-                        <ProjectArtifactsPanel
-                          artifacts={combinedArtifactRecords}
-                          loading={projectArtifactsLoading}
-                          error={projectArtifactsError}
-                          requiredContracts={selectedWorkflowTemplateContext?.contractIn}
-                          onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
-                        />
-                      )}
-                    </>
+                    <StageInputSection
+                      inputPanelRef={inputPanelRef}
+                      showProjectArtifactsPanel={showProjectArtifactsPanel}
+                      artifacts={combinedArtifactRecords}
+                      loading={projectArtifactsLoading}
+                      error={projectArtifactsError}
+                      requiredContracts={selectedWorkflowTemplateContext?.contractIn}
+                      onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
+                    />
                   )}
                   {(!showEntryLanding || showEntryEditor) && (
                     <SectionErrorBoundary sectionName="chain builder">
@@ -1183,7 +1578,9 @@ export function WorkflowPanel() {
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
+                          onOpenArtifacts={() => setMainView("artifacts")}
                           nextStageTemplate={nextStageTemplate}
+                          nextStageArtifacts={nextStageArtifacts}
                           onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
                           nextStagePending={launchingNextStage}
                         />
@@ -1207,7 +1604,9 @@ export function WorkflowPanel() {
                           reviewedRunError={reviewedRunError}
                           onStartNewRun={handleStartNewRun}
                           onOpenInbox={() => setMainView("inbox")}
+                          onOpenArtifacts={() => setMainView("artifacts")}
                           nextStageTemplate={nextStageTemplate}
+                          nextStageArtifacts={nextStageArtifacts}
                           onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
                           nextStagePending={launchingNextStage}
                         />
@@ -1223,6 +1622,19 @@ export function WorkflowPanel() {
         )}
 
         <BatchPanel />
+        <StageStartApprovalDialog
+          open={stageStartGateOpen}
+          title={workflow.name || activeEntryState?.title || selectedWorkflowTemplateContext?.templateName || "This stage"}
+          stageLabel={entryStageLabel}
+          policySummary={entryPolicySummary}
+          expectedArtifact={selectedWorkflowTemplateContext?.outputText || activeEntryState?.outputText || "A reviewable result"}
+          inputLabels={stageStartInputLabels}
+          notes={stageStartPolicyNotes}
+          shortcutLabel={`${desktopRuntime.primaryModifierLabel}↵`}
+          primaryModifierKey={desktopRuntime.primaryModifierKey}
+          onApprove={handleApproveStageStart}
+          onCancel={handleCancelStageStart}
+        />
         <ApprovalDialog />
       </div>
 

@@ -14,6 +14,7 @@ pack:
   label: Delivery Factory
   journey_stage: plan
   recommended_next:
+    - delivery-implement-phase
     - delivery-verify-phase
 contract_in:
   - kind: project_brief
