@@ -212,13 +212,13 @@ export function useWorkflowCrud({
         targetPath: workflow.path,
         message: String(error),
       })
-      toast.error(`Failed to open workflow: ${String(error)}`)
+      toast.error(`Failed to open flow: ${String(error)}`)
     }
   }
 
   const createWorkflow = async (projectPath: string) => {
     if (creatingWorkflow) return
-    if (!(await confirmDiscard("create a new workflow", workflowDirty))) {
+    if (!(await confirmDiscard("create a new flow", workflowDirty))) {
       return
     }
 
@@ -252,7 +252,7 @@ export function useWorkflowCrud({
         updatedAt: Date.now(),
       })
     } catch (error) {
-      toast.error(`Failed to create workflow: ${String(error)}`)
+      toast.error(`Failed to create flow: ${String(error)}`)
     } finally {
       setCreatingWorkflow(false)
     }
@@ -314,13 +314,13 @@ export function useWorkflowCrud({
         targetPath: workflow.path,
         message: String(error),
       })
-      toast.error(`Failed to open workflow: ${String(error)}`)
+      toast.error(`Failed to open flow: ${String(error)}`)
     }
   }
 
   const requestRenameWorkflow = (workflow: WorkflowFile) => {
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the workflow before renaming it")
+      toast.error("Stop the flow before renaming it")
       return
     }
     setRenameInput(workflow.name)
@@ -336,7 +336,7 @@ export function useWorkflowCrud({
       return
     }
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the workflow before renaming it")
+      toast.error("Stop the flow before renaming it")
       setPendingRenameWorkflow(null)
       return
     }
@@ -361,9 +361,9 @@ export function useWorkflowCrud({
       }
 
       setPendingRenameWorkflow(null)
-      toast.success(`Workflow renamed: ${nextName}`)
+      toast.success(`Flow renamed: ${nextName}`)
     } catch (error) {
-      toast.error(`Failed to rename workflow: ${String(error)}`)
+      toast.error(`Failed to rename flow: ${String(error)}`)
       return
     }
 
@@ -422,9 +422,9 @@ export function useWorkflowCrud({
         )
       }
 
-      toast.success(`Workflow deleted: ${workflow.name}`)
+      toast.success(`Flow deleted: ${workflow.name}`)
     } catch (error) {
-      toast.error(`Failed to delete workflow: ${String(error)}`)
+      toast.error(`Failed to delete flow: ${String(error)}`)
     }
   }
 

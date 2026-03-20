@@ -1,0 +1,154 @@
+import { Inbox } from "lucide-react"
+import type { HumanTaskField, HumanTaskSnapshot, HumanTaskSummary } from "@shared/types"
+import { Badge } from "@/components/ui/badge"
+import { SectionHeading } from "@/components/ui/page-shell"
+import { cn } from "@/lib/cn"
+import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
+import { SelectedTaskPanel } from "./SelectedTaskPanel"
+import { taskCardPreview, taskKindLabel, taskSelectionKey, taskStageKey, type TaskStageMeta } from "./task-ui"
+
+interface HumanTaskInboxSectionProps {
+  humanTasksLoading: boolean
+  humanTasksError: string | null
+  openHumanTaskCount: number
+  visibleHumanTasks: HumanTaskSummary[]
+  selectedTaskId: string | null
+  selectedCaseId: string | null
+  taskStageMetaByKey: Record<string, TaskStageMeta>
+  caseIdByTaskKey: Map<string, string>
+  caseLabelById: Map<string, string>
+  onSelectTaskId: (taskKey: string) => void
+  selectedTask: HumanTaskSnapshot | null
+  taskLoading: boolean
+  taskSubmitting: boolean
+  taskAnswers: Record<string, unknown>
+  selectedTaskStageMeta: TaskStageMeta | null
+  onOpenWorkflow: () => void
+  onFieldChange: (field: HumanTaskField, value: unknown) => void
+  onSubmit: () => void
+  onSubmitAndContinue: () => void
+  onReject: () => void
+}
+
+export function HumanTaskInboxSection({
+  humanTasksLoading,
+  humanTasksError,
+  openHumanTaskCount,
+  visibleHumanTasks,
+  selectedTaskId,
+  selectedCaseId,
+  taskStageMetaByKey,
+  caseIdByTaskKey,
+  caseLabelById,
+  onSelectTaskId,
+  selectedTask,
+  taskLoading,
+  taskSubmitting,
+  taskAnswers,
+  selectedTaskStageMeta,
+  onOpenWorkflow,
+  onFieldChange,
+  onSubmit,
+  onSubmitAndContinue,
+  onReject,
+}: HumanTaskInboxSectionProps) {
+  return (
+    <section className="rounded-xl surface-panel p-5 space-y-4">
+      <SectionHeading
+        title="Needs your input"
+        meta={(
+          <span className="control-badge border border-hairline bg-surface-2/70 ui-meta-text text-muted-foreground">
+            {humanTasksLoading ? "Loading..." : `${openHumanTaskCount} open`}
+          </span>
+        )}
+      />
+      <p className="text-body-sm text-muted-foreground">
+        Open approvals and structured input requests appear here while a flow is waiting on you.
+      </p>
+
+      {humanTasksError ? (
+        <article className="rounded-lg surface-danger-soft px-4 py-3 text-body-sm text-status-danger">
+          {humanTasksError}
+        </article>
+      ) : openHumanTaskCount === 0 && !humanTasksLoading ? (
+        <article className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-5 py-10 text-center">
+          <div className="mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-lg border border-hairline bg-surface-2/80">
+            <Inbox size={20} className="text-muted-foreground" />
+          </div>
+          <p className="mt-4 text-body-md font-medium text-foreground">
+            {selectedCaseId ? "No open decisions for this flow" : "No open review or input tasks"}
+          </p>
+          <p className="mt-1 text-body-sm text-muted-foreground">
+            {selectedCaseId
+              ? "Switch to all flows or continue the related flow if you want to move it forward."
+              : "Flows that need structured answers or approvals will appear here."}
+          </p>
+        </article>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-lg surface-soft">
+            {visibleHumanTasks.map((task) => {
+              const stageMeta = taskStageMetaByKey[taskStageKey(task) || ""] || null
+              const taskCaseId = caseIdByTaskKey.get(taskSelectionKey(task)) || null
+              const taskCaseLabel = taskCaseId ? caseLabelById.get(taskCaseId) || null : null
+              return (
+                <button
+                  key={`${task.workspace}:${task.taskId}`}
+                  type="button"
+                  onClick={() => onSelectTaskId(taskSelectionKey(task))}
+                  className={cn(
+                    "ui-interactive-card-subtle w-full border-b border-hairline px-4 py-3 text-left last:border-b-0",
+                    selectedTaskId === taskSelectionKey(task)
+                      ? "bg-surface-1 ring-1 ring-primary/15"
+                      : "bg-transparent hover:bg-surface-1/70",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="min-w-0 flex-1 truncate text-body-md font-semibold text-foreground">{task.title}</h2>
+                        <Badge variant={task.kind === "approval" ? "warning" : "info"} size="pill">
+                          {taskKindLabel(task)}
+                        </Badge>
+                        {!selectedCaseId && taskCaseLabel && (
+                          <Badge variant="outline" size="pill" className="text-muted-foreground">
+                            {taskCaseLabel}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
+                        <span>{task.workflowName}</span>
+                        {stageMeta && <span>· {stageMeta.title}</span>}
+                        {!stageMeta && task.kind === "approval" && <span>· Approval</span>}
+                      </div>
+                      {stageMeta && (
+                        <p className="mt-1 ui-meta-text text-muted-foreground">{stageMeta.group}</p>
+                      )}
+                      {taskCardPreview(task) && (
+                        <p className="mt-2 line-clamp-2 text-body-sm text-muted-foreground">{taskCardPreview(task)}</p>
+                      )}
+                    </div>
+                    <span className="shrink-0 ui-meta-text text-muted-foreground">{formatRelativeTime(task.createdAt)}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          <SelectedTaskPanel
+            selectedTask={selectedTask}
+            taskLoading={taskLoading}
+            taskSubmitting={taskSubmitting}
+            taskAnswers={taskAnswers}
+            selectedTaskStageMeta={selectedTaskStageMeta}
+            onOpenWorkflow={onOpenWorkflow}
+            onFieldChange={onFieldChange}
+            onSubmit={onSubmit}
+            onSubmitAndContinue={onSubmitAndContinue}
+            onReject={onReject}
+          />
+        </div>
+      )}
+    </section>
+  )
+}
