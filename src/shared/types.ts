@@ -464,6 +464,46 @@ export interface ArtifactRecord {
   updatedAt: number
 }
 
+export type ContinuationStatus =
+  | "ready"
+  | "missing_result"
+  | "blocked_by_check"
+  | "awaiting_approval"
+  | "superseded"
+  | "paused"
+  | "completed"
+
+export type DurableGateOutcome = "passed" | "returned" | "awaiting_human" | "rejected" | "blocked"
+
+export type DurableGateFamily = "approval" | "input" | "review_check" | "verification_check" | "ship_decision"
+
+export interface DurableGateRecord {
+  family: DurableGateFamily
+  outcome: DurableGateOutcome
+  summaryText: string
+  reasonText?: string
+  stepLabel?: string
+  happenedAt: number
+}
+
+export interface CaseStateRecord {
+  version: 1
+  caseId: string
+  projectPath: string
+  workLabel: string
+  caseLabel?: string
+  factoryId?: string
+  factoryLabel?: string
+  workflowPath?: string
+  workflowName?: string
+  continuationStatus: ContinuationStatus
+  nextStepLabel?: string
+  artifactIds: string[]
+  lastGate: DurableGateRecord | null
+  createdAt: number
+  updatedAt: number
+}
+
 export interface PersistArtifactsFromRunRequest {
   projectPath: string
   workspace: string
@@ -788,7 +828,7 @@ export interface NodeInput {
   }
 }
 
-export type ErrorKind = "tool" | "model" | "timeout" | "policy" | "unknown"
+export type ErrorKind = "tool" | "model" | "timeout" | "policy" | "network" | "unknown"
 
 export interface NodeMetrics {
   tokens_in: number

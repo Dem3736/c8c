@@ -8,6 +8,23 @@ export function classifyError(err: unknown, timedOut: boolean): ErrorKind {
 
   const msg = String(err).toLowerCase()
 
+  // Network errors: connection lost, DNS failure, socket issues
+  if (
+    msg.includes("econnreset") ||
+    msg.includes("econnrefused") ||
+    msg.includes("enotfound") ||
+    msg.includes("enetdown") ||
+    msg.includes("enetunreach") ||
+    msg.includes("eai_again") ||
+    msg.includes("socket hang up") ||
+    msg.includes("fetch failed") ||
+    msg.includes("network") ||
+    msg.includes("etimedout") ||
+    msg.includes("ehostunreach")
+  ) {
+    return "network"
+  }
+
   // Policy errors: budget, throttling, account limits
   if (
     msg.includes("budget") ||
