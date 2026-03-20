@@ -170,7 +170,7 @@ export function deriveWorkflowCreateContinuations({
     entry.tasks.push(task)
   }
 
-  const candidates = Array.from(entries.values()).map((entry) => {
+  const candidates = Array.from(entries.values()).map<WorkflowCreateContinuationCandidate | null>((entry) => {
     const caseArtifacts = [...entry.artifacts].sort((left, right) => right.updatedAt - left.updatedAt)
     const openTasks = [...entry.tasks].sort((left, right) => right.updatedAt - left.updatedAt)
     const latestArtifact = caseArtifacts[0] || null

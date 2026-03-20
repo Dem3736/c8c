@@ -4,6 +4,8 @@ import {
   buildInitialHumanTaskAnswers,
   deriveTaskCardContext,
   hasMissingRequiredTaskAnswers,
+  sortHumanTasksByActivity,
+  taskActivityAt,
   toContinuationRun,
 } from "./task-ui"
 
@@ -118,5 +120,43 @@ describe("task-ui", () => {
       statusText: "Blocked: awaiting your approval before Ship can continue.",
       detailText: "Latest result: Verification Report. · Final release decision is still waiting on you.",
     })
+  })
+
+  it("derives task activity from the latest update when available", () => {
+    expect(taskActivityAt(createTask({
+      createdAt: 5,
+      updatedAt: 20,
+    }))).toBe(20)
+
+    expect(taskActivityAt(createTask({
+      createdAt: 7,
+      updatedAt: 0,
+    }))).toBe(7)
+  })
+
+  it("sorts human tasks by recent activity instead of API order", () => {
+    const tasks = [
+      createTask({
+        taskId: "task-older",
+        createdAt: 10,
+        updatedAt: 10,
+      }),
+      createTask({
+        taskId: "task-newer",
+        createdAt: 5,
+        updatedAt: 30,
+      }),
+      createTask({
+        taskId: "task-created-later",
+        createdAt: 20,
+        updatedAt: 20,
+      }),
+    ]
+
+    expect(sortHumanTasksByActivity(tasks).map((task) => task.taskId)).toEqual([
+      "task-newer",
+      "task-created-later",
+      "task-older",
+    ])
   })
 })

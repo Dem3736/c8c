@@ -34,7 +34,7 @@ import { useChainExecution } from "@/hooks/useChainExecution"
 import { getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { selectedPastRunAtom } from "@/features/execution"
-import type { ArtifactRecord, CaseStateRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, Workflow } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult, Workflow } from "@shared/types"
 import {
   buildInitialHumanTaskAnswers,
   hasMissingRequiredTaskAnswers,
@@ -68,6 +68,11 @@ const LEVEL_META: Record<InboxNotification["level"], { icon: typeof CheckCircle2
     tone: "text-status-danger",
     badgeClass: "ui-status-badge-danger",
   },
+}
+
+interface OpenWorkflowPathOptions {
+  preserveSelectedTask?: boolean
+  pastRun?: RunResult | null
 }
 
 function deriveTaskStageMeta(workflow: Workflow, nodeId: string): TaskStageMeta | null {
@@ -332,27 +337,24 @@ export function NotificationsPage() {
   const unreadCount = notifications.filter((notification) => !notification.read).length
   const openHumanTaskCount = visibleHumanTasks.length
   const selectedTaskStageMeta = selectedTask ? taskStageMetaByKey[taskStageKey(selectedTask) || ""] || null : null
-  const openWorkflowPath = useCallback(async (workflowPath: string) => {
+  const openWorkflowPath = useCallback(async (workflowPath: string, options?: OpenWorkflowPathOptions) => {
     const workflow = await window.api.loadWorkflow(workflowPath)
     setWorkflow(workflow)
     setWorkflowSavedSnapshot(workflowSnapshot(workflow))
     setSelectedWorkflowPath(workflowPath)
-    setSelectedPastRun(null)
+    if (!options?.preserveSelectedTask) {
+      setSelectedTaskId(null)
+    }
+    setSelectedPastRun(options?.pastRun ?? null)
     setMainView("thread")
-  }, [setMainView, setSelectedPastRun, setSelectedWorkflowPath, setWorkflow, setWorkflowSavedSnapshot])
+    return workflow
+  }, [setMainView, setSelectedPastRun, setSelectedTaskId, setSelectedWorkflowPath, setWorkflow, setWorkflowSavedSnapshot])
 
   const handleOpenWorkflow = async () => {
     if (!selectedTask?.workflowPath) return
-    await openWorkflowPath(selectedTask.workflowPath)
-    setSelectedPastRun({
-      runId: selectedTask.sourceRunId,
-      status: "blocked",
-      workflowName: selectedTask.workflowName,
-      workflowPath: selectedTask.workflowPath,
-      startedAt: selectedTask.createdAt,
-      completedAt: selectedTask.updatedAt,
-      reportPath: "",
-      workspace: selectedTask.workspace,
+    await openWorkflowPath(selectedTask.workflowPath, {
+      preserveSelectedTask: true,
+      pastRun: toContinuationRun(selectedTask),
     })
   }
 
@@ -405,13 +407,12 @@ export function NotificationsPage() {
     try {
       const ok = await submitSelectedTask()
       if (!ok) return
-      const workflow = await window.api.loadWorkflow(selectedTask.workflowPath)
-      setWorkflow(workflow)
-      setWorkflowSavedSnapshot(workflowSnapshot(workflow))
-      setSelectedWorkflowPath(selectedTask.workflowPath)
-      setSelectedPastRun(toContinuationRun(selectedTask))
+      const continuationRun = toContinuationRun(selectedTask)
+      const workflow = await openWorkflowPath(selectedTask.workflowPath, {
+        pastRun: continuationRun,
+      })
       const started = await continueWithWorkflow(
-        toContinuationRun(selectedTask),
+        continuationRun,
         workflow,
         selectedTask.workflowPath,
       )

@@ -696,7 +696,7 @@ describe("workflow-runner evaluator loop", () => {
     expect(retryPrompt).toContain("What to fix")
   })
 
-  it("exhausts max retries and passes through", async () => {
+  it("exhausts max retries and waits for override", async () => {
     let spawnCount = 0
     mockedSpawn.mockImplementation(async (opts: any) => {
       spawnCount++
@@ -718,16 +718,32 @@ describe("workflow-runner evaluator loop", () => {
       return { success: true, exitCode: 0, signal: null, killed: false, aborted: false, durationMs: 100 }
     })
 
-    const { runWorkflow } = await import("./workflow-runner")
+    const { runWorkflow, resolveEvalOverride } = await import("./workflow-runner")
+
+    // Auto-override when eval-exhausted event arrives
+    const originalSend = mockWindow.webContents.send
+    mockWindow.webContents.send = (_channel: string, event: WorkflowEvent) => {
+      events.push(event)
+      if (event.type === "eval-exhausted") {
+        // Simulate user clicking "Override" after a tick
+        setTimeout(() => resolveEvalOverride(event.runId, event.nodeId), 10)
+      }
+    }
+
     await runWorkflow("run-3", EVAL_WORKFLOW, { type: "text", value: "test" }, mockWindow)
+
+    mockWindow.webContents.send = originalSend
 
     const evalResults = events.filter((e) => e.type === "eval-result")
     // maxRetries=3: first attempt + 2 retries = 3 eval attempts
-    // Then on 3rd fail, attempts (3) >= maxRetries (3), so it passes through
     expect(evalResults.length).toBe(3)
     expect(evalResults.every((e: any) => !e.passed)).toBe(true)
 
-    // Run should still complete (passes through on exhaustion)
+    // Override event should have been emitted
+    const overrideEvent = events.find((e) => e.type === "eval-overridden")
+    expect(overrideEvent).toBeDefined()
+
+    // Run should complete after override
     const runDone = events.find((e) => e.type === "run-done")
     expect(runDone).toBeDefined()
     expect((runDone as any).status).toBe("completed")

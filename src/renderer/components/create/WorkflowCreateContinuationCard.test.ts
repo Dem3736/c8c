@@ -13,6 +13,7 @@ function createContinuation(overrides: Partial<WorkflowCreateContinuationCandida
     status: "ready",
     readinessText: "Ready to continue to Plan the change.",
     supportText: "Using saved Feature Spec from Shape / Map.",
+    lastGateText: null,
     latestResultLabel: "Feature Spec",
     latestStepLabel: "Shape / Map",
     nextStepLabel: "Plan the change",

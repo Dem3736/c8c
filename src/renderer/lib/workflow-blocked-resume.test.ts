@@ -10,7 +10,12 @@ function createWorkflow(): Workflow {
     defaults: { model: "sonnet", maxTurns: 40, timeout_minutes: 30, maxParallel: 4 },
     nodes: [
       { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: { inputType: "text", required: true } },
-      { id: "approval-1", type: "approval", position: { x: 120, y: 0 }, config: { message: "Ship" } },
+      {
+        id: "approval-1",
+        type: "approval",
+        position: { x: 120, y: 0 },
+        config: { message: "Ship", show_content: true, allow_edit: false },
+      },
       { id: "output-1", type: "output", position: { x: 240, y: 0 }, config: { title: "Verification report" } },
     ],
     edges: [

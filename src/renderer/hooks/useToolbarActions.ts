@@ -7,10 +7,12 @@ import { toastError } from "@/lib/toast-error"
 import {
   clearWorkflowTemplateContextForKeyAtom,
   moveWorkflowTemplateContextAtom,
+  selectedInboxTaskKeyAtom,
 } from "@/lib/store"
 import {
   clearWorkflowExecutionStateAtom,
   moveWorkflowExecutionStateAtom,
+  selectedPastRunAtom,
   toWorkflowExecutionKey,
 } from "@/features/execution"
 import {
@@ -45,6 +47,8 @@ export function useToolbarActions({
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const moveWorkflowTemplateContext = useSetAtom(moveWorkflowTemplateContextAtom)
   const clearWorkflowTemplateContextForKey = useSetAtom(clearWorkflowTemplateContextForKeyAtom)
+  const setSelectedInboxTaskKey = useSetAtom(selectedInboxTaskKeyAtom)
+  const setSelectedPastRun = useSetAtom(selectedPastRunAtom)
   const refreshProjectData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!selectedProject) return
     try {
@@ -142,6 +146,8 @@ export function useToolbarActions({
         toKey: toWorkflowExecutionKey(filePath),
       })
       setSelectedWorkflowPath(filePath)
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       if (selectedProject) {
         const wfs = await window.api.listProjectWorkflows(selectedProject)
@@ -153,7 +159,7 @@ export function useToolbarActions({
       toastError(errorToUserMessage(error, "Could not save flow"))
       return false
     }
-  }, [deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
+  }, [deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedInboxTaskKey, setSelectedPastRun, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
 
   const exportCopy = useCallback(async () => {
     const loadingToastId = toast.loading("Exporting flow copy...")
@@ -183,6 +189,8 @@ export function useToolbarActions({
       clearWorkflowTemplateContextForKey(toWorkflowExecutionKey(null))
       setCurrentWorkflow(result.chain)
       setSelectedWorkflowPath(null)
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
       clearWorkflowTemplateContextForKey(toWorkflowExecutionKey(result.filePath))
       if (selectedProject) {
@@ -199,7 +207,7 @@ export function useToolbarActions({
       toastError(errorToUserMessage(error, "Could not import flow"))
       return false
     }
-  }, [clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
+  }, [clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, selectedProject, setCurrentWorkflow, setSelectedInboxTaskKey, setSelectedPastRun, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
 
   const renameWorkflow = useCallback(async (nextName: string) => {
     if (!workflowPath) return false
@@ -238,6 +246,8 @@ export function useToolbarActions({
       clearWorkflowExecutionState(toWorkflowExecutionKey(workflowPath))
       clearWorkflowTemplateContextForKey(toWorkflowExecutionKey(workflowPath))
       setSelectedWorkflowPath(null)
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
       setCurrentWorkflow(createEmptyWorkflow())
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
       await refreshProjectData({ silent: true })
@@ -247,7 +257,7 @@ export function useToolbarActions({
       toastError(errorToUserMessage(error, "Could not delete flow"))
       return false
     }
-  }, [clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
+  }, [clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedInboxTaskKey, setSelectedPastRun, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
 
   return {
     refreshProjectData,

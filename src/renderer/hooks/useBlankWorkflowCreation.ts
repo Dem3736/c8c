@@ -8,6 +8,7 @@ import {
   currentWorkflowAtom,
   mainViewAtom,
   projectsAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   setWorkflowTemplateContextForKeyAtom,
@@ -21,6 +22,7 @@ import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import {
   clearWorkflowExecutionStateAtom,
+  selectedPastRunAtom,
   toWorkflowExecutionKey,
 } from "@/features/execution"
 
@@ -41,6 +43,8 @@ export function useBlankWorkflowCreation({
   const [, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setViewMode] = useAtom(viewModeAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
@@ -95,6 +99,8 @@ export function useBlankWorkflowCreation({
       setSelectedWorkflowPath(filePath)
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
       setViewMode("list")
       setMainView("thread")
       setWorkflowOpenState({
@@ -126,6 +132,8 @@ export function useBlankWorkflowCreation({
     projects,
     selectedProject,
     setCurrentWorkflow,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
     setMainView,
     setProjects,
     setSelectedProject,

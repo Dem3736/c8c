@@ -130,6 +130,7 @@ export const artifactRecordsAtom = createSelectedWorkflowExecutionFieldAtom("art
 export const artifactPersistenceStatusAtom = createSelectedWorkflowExecutionFieldAtom("artifactPersistenceStatus")
 export const artifactPersistenceErrorAtom = createSelectedWorkflowExecutionFieldAtom("artifactPersistenceError")
 export const surfaceNoticeAtom = createSelectedWorkflowExecutionFieldAtom("surfaceNotice")
+export const evalOverrideNodeIdsAtom = createSelectedWorkflowExecutionFieldAtom("evalOverrideNodeIds")
 
 export const runsByWorkflowPathAtom = atom<Record<string, RunResult[]>>((get) => {
   const runs = get(pastRunsAtom)

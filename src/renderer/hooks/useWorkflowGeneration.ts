@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { DiscoveredSkill, GenerationProgress, Workflow, WorkflowFile } from "@shared/types"
+import type { DiscoveredSkill, GenerationProgress, RunResult, Workflow, WorkflowFile } from "@shared/types"
 import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
@@ -13,6 +13,8 @@ interface UseWorkflowGenerationArgs {
   setSelectedWorkflowPath: (next: string | null) => void
   setWorkflowSavedSnapshot: (next: string) => void
   setWorkflows: (next: WorkflowFile[]) => void
+  setSelectedInboxTaskKey: (next: string | null) => void
+  setSelectedPastRun: (next: RunResult | null) => void
   skills: DiscoveredSkill[]
   setSkills: (next: DiscoveredSkill[]) => void
   selectedProject: string | null
@@ -33,6 +35,8 @@ export function useWorkflowGeneration({
   setSelectedWorkflowPath,
   setWorkflowSavedSnapshot,
   setWorkflows,
+  setSelectedInboxTaskKey,
+  setSelectedPastRun,
   skills,
   setSkills,
   selectedProject,
@@ -125,6 +129,8 @@ export function useWorkflowGeneration({
         setSelectedWorkflowPath(createdPath)
         setWorkflow(savedWorkflow)
         setWorkflowSavedSnapshot(workflowSnapshot(savedWorkflow))
+        setSelectedInboxTaskKey(null)
+        setSelectedPastRun(null)
         onGenerated?.({
           workflow: savedWorkflow,
           workflowPath: createdPath,

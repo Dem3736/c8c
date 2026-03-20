@@ -53,6 +53,7 @@ import type {
   CreateEntryRouteOption,
   InputAttachment,
   ProjectInspectionSummary,
+  RunResult,
   ResultModeId,
   WorkflowTemplate,
 } from "@shared/types"
@@ -391,7 +392,7 @@ export function WorkflowCreatePage() {
   const routeOptions = useMemo<CreateEntryRouteOption[]>(
     () => {
       const basePrimaryOptions = (visibleQuickStarts.length > 0 ? visibleQuickStarts : quickStartOptions).map((quickStart) => ({
-        templateId: "template" in quickStart ? quickStart.template.id : quickStart.templateId,
+        templateId: quickStart.templateId,
         label: quickStart.label,
         intentLabel: quickStart.intentLabel,
         recommended: quickStart.recommended,
@@ -543,16 +544,7 @@ export function WorkflowCreatePage() {
     filePath: string,
     projectPath: string | null,
     options?: {
-      pastRun?: {
-        runId: string
-        status: "blocked"
-        workflowName: string
-        workflowPath?: string
-        startedAt: number
-        completedAt: number
-        reportPath: string
-        workspace: string
-      } | null
+      pastRun?: RunResult | null
     },
   ) => {
     const loadedWorkflow = await window.api.loadWorkflow(filePath)

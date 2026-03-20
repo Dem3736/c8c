@@ -373,34 +373,34 @@ async function writeApprovalTaskFixture({
 
 async function seedCreateReadyContinuationProject(projectPath, updatedAtMs) {
   const caseId = "case:delivery-foundation:checkout-polish"
-  const workflowName = "Delivery Lab: Research the Change"
+  const workflowName = "Delivery Lab: Shape Project"
   const { workspace } = await writeRunWorkspaceFixture(projectPath, {
-    runId: "run-ready-research",
+    runId: "run-ready-shape",
     workflowName,
-    workflowPath: join(projectPath, ".c8c", "delivery-research-phase.chain"),
+    workflowPath: join(projectPath, ".c8c", "delivery-shape-project.chain"),
     status: "completed",
     updatedAtMs,
-    reportBody: "# Research Pack\n\nCheckout polish constraints and open questions.\n",
+    reportBody: "# Project Brief\n\nCheckout polish scope, constraints, and goals.\n",
   })
 
   const artifact = await writeArtifactFixture(projectPath, {
-    baseName: "run-ready-research-research-pack",
-    id: "run-ready-research:research_pack",
-    kind: "research_pack",
-    title: "Research Pack",
-    description: "Evidence and constraints for checkout polish.",
+    baseName: "run-ready-shape-project-brief",
+    id: "run-ready-shape:project_brief",
+    kind: "project_brief",
+    title: "Project Brief",
+    description: "Scoped project brief for checkout polish.",
     workspace,
-    runId: "run-ready-research",
-    templateId: "delivery-research-phase",
+    runId: "run-ready-shape",
+    templateId: "delivery-shape-project",
     templateName: workflowName,
-    workflowPath: join(projectPath, ".c8c", "delivery-research-phase.chain"),
+    workflowPath: join(projectPath, ".c8c", "delivery-shape-project.chain"),
     workflowName,
     caseId,
     caseLabel: "Checkout polish",
     factoryId: "factory:delivery-foundation",
     factoryLabel: "Delivery Lab",
     updatedAtMs,
-    content: "# Research Pack\n\nEvidence and risks for checkout polish.\n",
+    content: "# Project Brief\n\nCheckout polish scope, goals, and constraints.\n",
   })
 
   await writeCaseStateFixture(projectPath, "checkout-polish-ready", {
@@ -413,14 +413,14 @@ async function seedCreateReadyContinuationProject(projectPath, updatedAtMs) {
     workflowPath: artifact.workflowPath,
     workflowName,
     continuationStatus: "ready",
-    nextStepLabel: "Plan the Change",
+    nextStepLabel: "Research the Change",
     artifactIds: [artifact.id],
     lastGate: {
-      family: "review_check",
+      family: "approval",
       outcome: "passed",
-      summaryText: "Research pack saved. Planning can continue.",
-      reasonText: "The latest research pass completed successfully.",
-      stepLabel: "Plan the Change",
+      summaryText: "Project brief saved. Research can continue.",
+      reasonText: "The latest project shaping pass completed successfully.",
+      stepLabel: "Research the Change",
       happenedAt: updatedAtMs,
     },
     createdAt: updatedAtMs - 2_000,

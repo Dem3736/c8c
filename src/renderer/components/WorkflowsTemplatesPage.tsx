@@ -28,6 +28,7 @@ import {
   mainViewAtom,
   projectsAtom,
   selectedResultModeIdAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   setWorkflowTemplateContextForKeyAtom,
@@ -41,7 +42,7 @@ import {
   workflowsAtom,
   type WorkflowTemplate,
 } from "@/lib/store"
-import { runStatusAtom } from "@/features/execution"
+import { runStatusAtom, selectedPastRunAtom } from "@/features/execution"
 import { toast } from "sonner"
 import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import {
@@ -298,12 +299,12 @@ function TemplateDetailPanel({
           )}
 
           {template.how ? (
-            <DisclosurePanel title="Why this start works">
+            <DisclosurePanel summary="Why this start works">
               <p className="mt-3 text-body-sm text-muted-foreground">{template.how}</p>
             </DisclosurePanel>
           ) : null}
 
-          <DisclosurePanel title="Inside this flow">
+          <DisclosurePanel summary="Inside this flow">
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
               {template.steps.map((step, i) => (
                 <li key={i}>{step}</li>
@@ -351,9 +352,11 @@ export function WorkflowsTemplatesPage() {
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
   const [templateLibraryContext, setTemplateLibraryContext] = useAtom(templateLibraryContextAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [, setMainView] = useAtom(mainViewAtom)
@@ -584,10 +587,12 @@ export function WorkflowsTemplatesPage() {
       setWorkflows(refreshed)
       setSelectedProject(projectPath)
       setSelectedWorkflowPath(filePath)
+      setSelectedInboxTaskKey(null)
       setWorkflow(loadedWorkflow)
       setInputValue(templateStartState.initialInputValue)
       setInputAttachments(templateStartState.initialAttachments)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      setSelectedPastRun(null)
       setWorkflowEntryState(templateStartState.entryState)
       setWorkflowTemplateContextForKey({
         key: toWorkflowExecutionKey(filePath),

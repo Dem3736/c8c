@@ -23,6 +23,7 @@ import {
   workspaceAtom,
   type WorkflowExecutionState,
 } from "@/features/execution"
+import type { PreflightWarning } from "@/features/execution/preflight"
 import type { RunResult, Workflow } from "@shared/types"
 
 interface ExecutionActionsContextValue {
@@ -39,7 +40,12 @@ interface ExecutionActionsContextValue {
 
 const ExecutionActionsContext = createContext<ExecutionActionsContextValue | null>(null)
 
-export function ExecutionProvider({ children }: { children: ReactNode }) {
+interface ExecutionProviderProps {
+  children: ReactNode
+  onPreflightWarnings?: (warnings: PreflightWarning[]) => Promise<boolean>
+}
+
+export function ExecutionProvider({ children, onPreflightWarnings }: ExecutionProviderProps) {
   const [runStatus] = useAtom(runStatusAtom)
   const [workspace] = useAtom(workspaceAtom)
   const setPastRuns = useSetAtom(pastRunsAtom)
@@ -79,6 +85,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     webSearchBackend,
     workflow,
     workspace,
+    onPreflightWarnings,
   })
 
   return createElement(

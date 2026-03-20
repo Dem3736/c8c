@@ -119,6 +119,13 @@ export async function resolveApproval(
   })
 }
 
+export async function resolveEvalOverride(
+  runId: string,
+  nodeId: string,
+): Promise<boolean> {
+  return workflowRunner.resolveEvalOverride({ runId, nodeId })
+}
+
 export function cancelWorkflowRun(runId: string): boolean {
   const handle = activeHandles.get(runId)
   if (!handle) {

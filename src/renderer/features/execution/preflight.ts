@@ -2,10 +2,13 @@ import type { C8cApi } from "@shared/c8c-api"
 import { PROVIDER_LABELS, resolveWorkflowProvider } from "@shared/provider-metadata"
 import type {
   ClaudeCodeSubscriptionStatus,
+  EvaluatorNodeConfig,
   ProviderDiagnostics,
   ProviderId,
   ProviderSettings,
+  SplitterNodeConfig,
   Workflow,
+  WorkflowNode,
 } from "@shared/types"
 
 export interface ExecutionPreflightSnapshot {
@@ -13,10 +16,19 @@ export interface ExecutionPreflightSnapshot {
   cliStatus: ClaudeCodeSubscriptionStatus | null
 }
 
+export interface PreflightWarning {
+  kind: "token_budget"
+  title: string
+  message: string
+  detail: string
+  estimatedCostUsd: number
+}
+
 export interface ExecutionPreflightSuccess {
   ok: true
   effectiveProvider: ProviderId
   snapshot: ExecutionPreflightSnapshot
+  warnings: PreflightWarning[]
 }
 
 export interface ExecutionPreflightFailure {
@@ -148,10 +160,12 @@ export function evaluateExecutionStartPreflight(
 
   // Codex can legitimately return unknown auth state when ACP/API-key-backed flows are available.
   if (effectiveProvider === "codex" && providerAuth?.state === "unknown") {
+    const warnings = collectPreflightWarnings(workflow, snapshot.diagnostics.settings)
     return {
       ok: true,
       effectiveProvider,
       snapshot,
+      warnings,
     }
   }
 
@@ -165,11 +179,27 @@ export function evaluateExecutionStartPreflight(
     }
   }
 
+  const warnings = collectPreflightWarnings(workflow, snapshot.diagnostics.settings)
   return {
     ok: true,
     effectiveProvider,
     snapshot,
+    warnings,
   }
+}
+
+function collectPreflightWarnings(
+  workflow: Workflow,
+  settings: ProviderSettings,
+): PreflightWarning[] {
+  const warnings: PreflightWarning[] = []
+  const defaultModel = workflow.defaults?.model
+    ?? (settings.defaultProvider === "claude" ? "sonnet" : undefined)
+  const budgetWarning = evaluateTokenBudgetWarning(workflow, defaultModel)
+  if (budgetWarning) {
+    warnings.push(budgetWarning)
+  }
+  return warnings
 }
 
 export async function loadExecutionStartPreflight(
@@ -193,4 +223,290 @@ export function formatExecutionPreflightTitle(provider: ProviderId, reason: Exec
   if (reason === "cli_unavailable") return `${providerLabel} unavailable`
   if (reason === "cli_version_unsupported") return `${providerLabel} update required`
   return `${providerLabel} login required`
+}
+
+// ── Token Budget Estimation ─────────────────────────────
+
+/**
+ * Approximate pricing per 1M tokens (USD).
+ * Mirrors MODEL_PRICING in packages/workflow-runner/src/lib/observability.ts.
+ */
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  sonnet: { input: 3, output: 15 },
+  opus: { input: 15, output: 75 },
+  haiku: { input: 0.25, output: 1.25 },
+}
+
+/**
+ * Conservative average tokens per skill invocation, keyed by model family.
+ * Used for worst-case estimation when no historical data is available.
+ */
+const AVG_TOKENS_PER_INVOCATION: Record<string, number> = {
+  opus: 50_000,
+  sonnet: 20_000,
+  haiku: 10_000,
+}
+
+const DEFAULT_SPLITTER_MAX_BRANCHES = 3
+const DEFAULT_EVALUATOR_MAX_RETRIES = 0
+
+/** Default cost threshold (USD) above which a preflight warning is emitted. */
+export const DEFAULT_COST_WARNING_THRESHOLD_USD = 5
+
+function resolveModelFamily(model: string | undefined): string {
+  if (!model) return "sonnet"
+  const lower = model.toLowerCase()
+  if (lower.includes("opus")) return "opus"
+  if (lower.includes("haiku")) return "haiku"
+  return "sonnet"
+}
+
+export interface FlowCostEstimate {
+  totalSkillNodes: number
+  worstCaseInvocations: number
+  estimatedCostUsd: number
+  modelFamily: string
+  breakdown: FlowCostBreakdownItem[]
+}
+
+export interface FlowCostBreakdownItem {
+  label: string
+  kind: "skill" | "splitter" | "evaluator"
+  multiplier: number
+}
+
+/**
+ * Analyze a workflow graph and estimate worst-case cost.
+ *
+ * The algorithm:
+ * 1. Counts all skill nodes (base invocations).
+ * 2. For each splitter, finds downstream skill nodes (up to the next merger)
+ *    and multiplies those by `maxBranches`.
+ * 3. For each evaluator with retries, finds the retry-from node (or the node
+ *    feeding the evaluator) and counts downstream skill nodes between that
+ *    point and the evaluator, multiplied by `maxRetries`.
+ * 4. Estimates cost using conservative per-invocation token averages.
+ */
+export function estimateFlowCost(workflow: Workflow, defaultModel?: string): FlowCostEstimate {
+  const modelFamily = resolveModelFamily(defaultModel || workflow.defaults?.model)
+  const nodeMap = new Map<string, WorkflowNode>()
+  for (const node of workflow.nodes) {
+    nodeMap.set(node.id, node)
+  }
+
+  // Build adjacency list for downstream traversal
+  const outgoing = new Map<string, string[]>()
+  for (const edge of workflow.edges) {
+    const targets = outgoing.get(edge.source) ?? []
+    targets.push(edge.target)
+    outgoing.set(edge.source, targets)
+  }
+
+  const skillNodes = workflow.nodes.filter((n) => n.type === "skill")
+  const splitterNodes = workflow.nodes.filter((n) => n.type === "splitter")
+  const evaluatorNodes = workflow.nodes.filter((n) => n.type === "evaluator")
+
+  const totalSkillNodes = skillNodes.length
+  const breakdown: FlowCostBreakdownItem[] = []
+
+  if (totalSkillNodes > 0) {
+    breakdown.push({
+      label: `${totalSkillNodes} skill step${totalSkillNodes === 1 ? "" : "s"}`,
+      kind: "skill",
+      multiplier: 1,
+    })
+  }
+
+  // Start with base skill count
+  let worstCaseInvocations = totalSkillNodes
+
+  // Splitter fan-out: each splitter multiplies downstream skills
+  for (const splitter of splitterNodes) {
+    const config = splitter.config as SplitterNodeConfig
+    const maxBranches = config.maxBranches ?? DEFAULT_SPLITTER_MAX_BRANCHES
+
+    // Find skill nodes downstream of this splitter (BFS, stop at merger)
+    const downstreamSkills = countDownstreamSkillNodes(splitter.id, nodeMap, outgoing)
+
+    if (downstreamSkills > 0 && maxBranches > 1) {
+      // The downstream skills are already counted once in totalSkillNodes.
+      // The splitter creates (maxBranches - 1) additional copies of each.
+      const additionalInvocations = downstreamSkills * (maxBranches - 1)
+      worstCaseInvocations += additionalInvocations
+
+      breakdown.push({
+        label: `1 splitter (\u00d7${maxBranches} branches, ${downstreamSkills} downstream skill${downstreamSkills === 1 ? "" : "s"})`,
+        kind: "splitter",
+        multiplier: maxBranches,
+      })
+    }
+  }
+
+  // Evaluator retries: each retry re-runs upstream skill nodes
+  for (const evaluator of evaluatorNodes) {
+    const config = evaluator.config as EvaluatorNodeConfig
+    const maxRetries = config.maxRetries ?? DEFAULT_EVALUATOR_MAX_RETRIES
+
+    if (maxRetries > 0) {
+      // The retryFrom node is the starting point of the retry loop.
+      // If not specified, the immediate upstream skill node is retried.
+      const retryScope = countRetrySkillNodes(evaluator.id, config.retryFrom, nodeMap, outgoing, workflow)
+
+      if (retryScope > 0) {
+        const additionalInvocations = retryScope * maxRetries
+        worstCaseInvocations += additionalInvocations
+
+        breakdown.push({
+          label: `1 check (\u00d7${maxRetries} retries, ${retryScope} skill${retryScope === 1 ? "" : "s"} per retry)`,
+          kind: "evaluator",
+          multiplier: 1 + maxRetries,
+        })
+      }
+    }
+  }
+
+  // Estimate cost
+  const avgTokens = AVG_TOKENS_PER_INVOCATION[modelFamily] ?? AVG_TOKENS_PER_INVOCATION.sonnet
+  // Assume roughly equal input/output token split
+  const inputTokens = avgTokens * 0.6
+  const outputTokens = avgTokens * 0.4
+  const pricing = MODEL_PRICING[modelFamily] ?? MODEL_PRICING.sonnet
+  const costPerInvocation = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000
+  const estimatedCostUsd = worstCaseInvocations * costPerInvocation
+
+  return {
+    totalSkillNodes,
+    worstCaseInvocations,
+    estimatedCostUsd,
+    modelFamily,
+    breakdown,
+  }
+}
+
+/**
+ * BFS from a splitter to find downstream skill nodes.
+ * Stops traversal at merger nodes (they represent the end of the fan-out region).
+ */
+function countDownstreamSkillNodes(
+  splitterId: string,
+  nodeMap: Map<string, WorkflowNode>,
+  outgoing: Map<string, string[]>,
+): number {
+  const visited = new Set<string>()
+  const queue = outgoing.get(splitterId) ?? []
+  let skillCount = 0
+
+  const pending = [...queue]
+  while (pending.length > 0) {
+    const id = pending.shift()!
+    if (visited.has(id)) continue
+    visited.add(id)
+
+    const node = nodeMap.get(id)
+    if (!node) continue
+
+    if (node.type === "skill") {
+      skillCount++
+    }
+
+    // Stop at merger — it's the convergence point
+    if (node.type === "merger") continue
+
+    for (const next of outgoing.get(id) ?? []) {
+      pending.push(next)
+    }
+  }
+
+  return skillCount
+}
+
+/**
+ * Count skill nodes in the retry scope of an evaluator.
+ *
+ * If `retryFrom` is specified, count skills between retryFrom and the evaluator.
+ * Otherwise, count immediate upstream skill nodes of the evaluator.
+ */
+function countRetrySkillNodes(
+  evaluatorId: string,
+  retryFrom: string | undefined,
+  nodeMap: Map<string, WorkflowNode>,
+  outgoing: Map<string, string[]>,
+  workflow: Workflow,
+): number {
+  // Build reverse adjacency (incoming edges)
+  const incoming = new Map<string, string[]>()
+  for (const edge of workflow.edges) {
+    const sources = incoming.get(edge.target) ?? []
+    sources.push(edge.source)
+    incoming.set(edge.target, sources)
+  }
+
+  if (retryFrom) {
+    // BFS forward from retryFrom, counting skills, stopping at (but not including) evaluator
+    const visited = new Set<string>()
+    const pending = [retryFrom]
+    let skillCount = 0
+
+    while (pending.length > 0) {
+      const id = pending.shift()!
+      if (visited.has(id) || id === evaluatorId) continue
+      visited.add(id)
+
+      const node = nodeMap.get(id)
+      if (!node) continue
+
+      if (node.type === "skill") {
+        skillCount++
+      }
+
+      for (const next of outgoing.get(id) ?? []) {
+        pending.push(next)
+      }
+    }
+
+    return skillCount
+  }
+
+  // No retryFrom: count immediate upstream skill nodes
+  const upstreamIds = incoming.get(evaluatorId) ?? []
+  let count = 0
+  for (const id of upstreamIds) {
+    const node = nodeMap.get(id)
+    if (node?.type === "skill") count++
+  }
+  return Math.max(count, 1) // At least 1 skill is retried
+}
+
+/**
+ * Build a human-readable breakdown string for the cost warning.
+ */
+export function formatCostBreakdown(estimate: FlowCostEstimate): string {
+  const parts = estimate.breakdown.map((item) => item.label)
+  return `${parts.join(", ")} = up to ${estimate.worstCaseInvocations} invocations`
+}
+
+/**
+ * Evaluate a workflow for token budget warnings.
+ * Returns a PreflightWarning if the estimated cost exceeds the threshold.
+ */
+export function evaluateTokenBudgetWarning(
+  workflow: Workflow,
+  defaultModel?: string,
+  thresholdUsd: number = DEFAULT_COST_WARNING_THRESHOLD_USD,
+): PreflightWarning | null {
+  const estimate = estimateFlowCost(workflow, defaultModel)
+
+  if (estimate.estimatedCostUsd <= thresholdUsd) return null
+  if (estimate.worstCaseInvocations <= 1) return null
+
+  const costFormatted = estimate.estimatedCostUsd.toFixed(2)
+  const detail = formatCostBreakdown(estimate)
+
+  return {
+    kind: "token_budget",
+    title: "High estimated cost",
+    message: `This flow could use up to ~$${costFormatted} in the worst case (${estimate.worstCaseInvocations} skill invocations). Continue?`,
+    detail,
+    estimatedCostUsd: estimate.estimatedCostUsd,
+  }
 }

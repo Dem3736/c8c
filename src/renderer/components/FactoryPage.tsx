@@ -92,7 +92,7 @@ import type {
   RunResult,
   WorkflowTemplate,
 } from "@shared/types"
-import { taskSelectionKey } from "@/components/notifications/task-ui"
+import { taskSelectionKey, toContinuationRun } from "@/components/notifications/task-ui"
 
 export function FactoryPage() {
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -129,6 +129,9 @@ export function FactoryPage() {
     refreshFactoryData,
     refreshFactoryState,
     setFactoryBlueprint,
+    setFactoryBlueprintError,
+    setFactoryState,
+    setFactoryStateError,
     templates,
     templatesError,
     templatesLoading,
@@ -200,32 +203,47 @@ export function FactoryPage() {
     setSelectedCaseId(caseId)
   }, [setSelectedCaseId])
 
+  const openWorkflowInThread = useCallback(async (
+    workflowPath: string,
+    options?: {
+      preserveInboxTask?: boolean
+      pastRun?: RunResult | null
+    },
+  ) => {
+    const workflow = await window.api.loadWorkflow(workflowPath)
+    setSelectedWorkflowPath(workflowPath)
+    setWorkflow(workflow)
+    setWorkflowSavedSnapshot(workflowSnapshot(workflow))
+    if (!options?.preserveInboxTask) {
+      setSelectedInboxTaskKey(null)
+    }
+    setSelectedPastRun(options?.pastRun ?? null)
+    setMainView("thread")
+    return workflow
+  }, [
+    setMainView,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
+    setSelectedWorkflowPath,
+    setWorkflow,
+    setWorkflowSavedSnapshot,
+  ])
+
   const openInboxTask = useCallback(async (task: HumanTaskSummary, caseId?: string) => {
     if (caseId) {
       setSelectedCaseId(caseId)
     }
-    setSelectedInboxTaskKey(taskSelectionKey(task))
 
     if (task.workflowPath) {
       if (task.workflowPath !== selectedWorkflowPath && !(await confirmDiscard("open blocked work", workflowDirty))) {
         return
       }
       try {
-        const workflow = await window.api.loadWorkflow(task.workflowPath)
-        setSelectedWorkflowPath(task.workflowPath)
-        setWorkflow(workflow)
-        setWorkflowSavedSnapshot(workflowSnapshot(workflow))
-        setSelectedPastRun({
-          runId: task.sourceRunId,
-          status: "blocked",
-          workflowName: task.workflowName,
-          workflowPath: task.workflowPath,
-          startedAt: task.createdAt,
-          completedAt: task.updatedAt,
-          reportPath: "",
-          workspace: task.workspace,
+        setSelectedInboxTaskKey(taskSelectionKey(task))
+        await openWorkflowInThread(task.workflowPath, {
+          preserveInboxTask: true,
+          pastRun: toContinuationRun(task),
         })
-        setMainView("thread")
         return
       } catch (error) {
         toastErrorFromCatch("Could not open blocked work", error)
@@ -233,17 +251,15 @@ export function FactoryPage() {
       }
     }
 
+    setSelectedInboxTaskKey(taskSelectionKey(task))
     setMainView("inbox")
   }, [
     confirmDiscard,
+    openWorkflowInThread,
     selectedWorkflowPath,
     setMainView,
     setSelectedCaseId,
     setSelectedInboxTaskKey,
-    setSelectedPastRun,
-    setSelectedWorkflowPath,
-    setWorkflow,
-    setWorkflowSavedSnapshot,
     workflowDirty,
   ])
   useEffect(() => {
@@ -455,6 +471,8 @@ export function FactoryPage() {
   const openWorkflow = useCallback(async (workflowPath: string | null) => {
     if (!workflowPath) return
     if (workflowPath === selectedWorkflowPath) {
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
       setMainView("thread")
       return
     }
@@ -463,15 +481,19 @@ export function FactoryPage() {
     }
 
     try {
-      const workflow = await window.api.loadWorkflow(workflowPath)
-      setSelectedWorkflowPath(workflowPath)
-      setWorkflow(workflow)
-      setWorkflowSavedSnapshot(workflowSnapshot(workflow))
-      setMainView("thread")
+      await openWorkflowInThread(workflowPath)
     } catch (error) {
       toastErrorFromCatch("Could not open flow", error)
     }
-  }, [confirmDiscard, selectedWorkflowPath, setMainView, setSelectedWorkflowPath, setWorkflow, setWorkflowSavedSnapshot, workflowDirty])
+  }, [
+    confirmDiscard,
+    openWorkflowInThread,
+    selectedWorkflowPath,
+    setMainView,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
+    workflowDirty,
+  ])
 
   const openArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
@@ -481,7 +503,8 @@ export function FactoryPage() {
     })
   }
 
-  const openReport = async (reportPath: string) => {
+  const openReport = async (reportPath: string | null) => {
+    if (!reportPath) return
     const openError = await window.api.openReport(reportPath)
     if (!openError) return
     toastError("Could not open report", {
@@ -511,6 +534,8 @@ export function FactoryPage() {
       setSelectedWorkflowPath(launch.filePath)
       setWorkflow(launch.loadedWorkflow)
       setWorkflowSavedSnapshot(launch.savedSnapshot)
+      setSelectedPastRun(null)
+      setSelectedInboxTaskKey(null)
       setInputValue(launch.inputSeed)
       setWorkflowEntryState(launch.entryState)
       setWorkflowTemplateContextForKey({

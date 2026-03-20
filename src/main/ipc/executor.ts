@@ -6,6 +6,7 @@ import {
   pauseWorkflowRun,
   resumeWorkflowRun,
   resolveApproval,
+  resolveEvalOverride,
   continueRunFromWorkspace,
   getWorkflowRunSnapshot,
 } from "../lib/workflow-runner"
@@ -1076,6 +1077,13 @@ export function registerExecutorHandlers() {
         })
       }
       return ok
+    },
+  )
+
+  ipcMain.handle(
+    "executor:override-evaluator",
+    async (_e, runId: string, nodeId: string) => {
+      return resolveEvalOverride(runId, nodeId)
     },
   )
 

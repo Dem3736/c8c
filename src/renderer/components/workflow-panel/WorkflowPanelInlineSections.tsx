@@ -1,5 +1,7 @@
 import { useEffect, type ReactNode, type RefObject } from "react"
+import { useAtomValue } from "jotai"
 import {
+  ArrowRight,
   FileStack,
   FolderOpen,
   LayoutTemplate,
@@ -36,6 +38,7 @@ import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { InputPanel } from "@/components/InputPanel"
 import { ProjectResultsPanel } from "@/components/workflow/ProjectResultsPanel"
 import { consumeShortcut, isShortcutConsumed, matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
+import { hasCompletedFirstFlowAtom } from "@/lib/store"
 import type { WorkflowBlockedResumeSummary } from "@/lib/workflow-blocked-resume"
 import type { WorkflowEntryState } from "@/lib/workflow-entry"
 import {
@@ -77,32 +80,99 @@ export function EmptyState({
   )
 }
 
-export function EmptyProjectState({ onOpenTemplates }: { onOpenTemplates: () => void }) {
+export interface EmptyProjectQuickStart {
+  label: string
+  prompt: string
+}
+
+const DEFAULT_QUICK_STARTS: EmptyProjectQuickStart[] = [
+  { label: "Map this codebase", prompt: "Map this codebase and summarize its architecture" },
+  { label: "Review code for issues", prompt: "Review this codebase for bugs, security issues, and code quality problems" },
+  { label: "Investigate a bug", prompt: "Investigate and fix a bug" },
+  { label: "Plan a new feature", prompt: "Plan and build a new feature" },
+]
+
+export function EmptyProjectState({
+  onOpenTemplates,
+  onQuickStart,
+  quickStarts = DEFAULT_QUICK_STARTS,
+}: {
+  onOpenTemplates: () => void
+  onQuickStart?: (prompt: string) => void
+  quickStarts?: EmptyProjectQuickStart[]
+}) {
+  const hasCompletedFirstFlow = useAtomValue(hasCompletedFirstFlowAtom)
+
   return (
     <EmptyState
-      icon={FileStack}
-      title="Pick a flow"
-      description="Choose an existing flow or start a new one from the sidebar"
+      icon={Sparkles}
+      title="What do you want to do?"
+      description="Describe your goal or pick a starting point."
     >
-      <Button variant="outline" size="sm" onClick={onOpenTemplates}>
-        <LayoutTemplate size={14} />
-        Browse library
-      </Button>
+      <div className="flex flex-col items-center gap-4">
+        {onQuickStart && quickStarts.length > 0 && (
+          <div className="flex flex-col items-stretch gap-1.5 w-full max-w-xs">
+            {quickStarts.map((qs) => (
+              <button
+                key={qs.label}
+                type="button"
+                onClick={() => onQuickStart(qs.prompt)}
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-body-sm text-foreground hover:bg-surface-2 ui-transition-colors text-left"
+              >
+                <ArrowRight size={12} className="shrink-0 opacity-50" aria-hidden="true" />
+                {qs.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <Button variant="outline" size="sm" onClick={onOpenTemplates}>
+          <LayoutTemplate size={14} />
+          Browse library
+        </Button>
+        {!hasCompletedFirstFlow && (
+          <p className="text-body-sm text-muted-foreground/70">
+            First time? Describe what you need — c8c will handle the rest.
+          </p>
+        )}
+      </div>
     </EmptyState>
   )
 }
 
+const CAPABILITY_EXAMPLES = [
+  "Review code for security issues",
+  "Investigate and fix a bug",
+  "Plan and build a new feature",
+]
+
 export function EmptyWorkspaceState({ onOpenProject }: { onOpenProject: () => void }) {
+  const hasCompletedFirstFlow = useAtomValue(hasCompletedFirstFlowAtom)
+
   return (
     <EmptyState
       icon={FolderOpen}
-      title="Open a project"
-      description="Choose a project folder in the sidebar to begin"
+      title="Start by opening a project"
+      description="Choose a project folder — c8c will inspect it and suggest the best way to help."
     >
-      <Button variant="outline" size="sm" onClick={onOpenProject}>
-        <FolderOpen size={14} />
-        Open project folder
-      </Button>
+      <div className="flex flex-col items-center gap-4">
+        <Button variant="outline" size="sm" onClick={onOpenProject}>
+          <FolderOpen size={14} />
+          Open project folder
+        </Button>
+        <ul className="space-y-1.5 text-body-sm text-muted-foreground">
+          {CAPABILITY_EXAMPLES.map((example) => (
+            <li key={example} className="flex items-center gap-2">
+              <ArrowRight size={12} className="shrink-0 opacity-50" aria-hidden="true" />
+              {example}
+            </li>
+          ))}
+        </ul>
+        {!hasCompletedFirstFlow && (
+          <p className="text-body-sm text-muted-foreground/70">
+            First time? Open a project and describe what you need — c8c will handle the rest.
+          </p>
+        )}
+      </div>
     </EmptyState>
   )
 }

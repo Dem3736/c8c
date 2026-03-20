@@ -200,6 +200,14 @@ export function useExecutionController({
           action: getWorkflowNotificationAction(state),
         })
 
+        if (state.runOutcome === "completed") {
+          try {
+            localStorage.setItem("c8c:has-completed-first-flow", JSON.stringify(true))
+          } catch {
+            // localStorage may be unavailable in some environments
+          }
+        }
+
         if (
           state.runOutcome !== "completed"
           || !state.projectPath

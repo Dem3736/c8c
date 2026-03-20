@@ -255,6 +255,7 @@ export const workflowOpenStateAtom = atom<WorkflowOpenState>({
 // First launch / onboarding
 const DEFAULT_FIRST_LAUNCH = typeof __TEST_MODE__ !== "undefined" ? !__TEST_MODE__ : true
 export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", DEFAULT_FIRST_LAUNCH)
+export const hasCompletedFirstFlowAtom = atomWithStorage("c8c:has-completed-first-flow", false)
 
 // App pages
 export type MainView =

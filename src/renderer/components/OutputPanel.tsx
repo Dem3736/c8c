@@ -94,6 +94,8 @@ export function OutputPanel({
     artifactPersistenceError,
     surfaceNotice,
     setSurfaceNotice,
+    runId,
+    evalOverrideNodeIds,
   } = useOutputPanel()
   const [activeTab, setActiveTab] = useState("nodes")
   const [resultReadyPulse, setResultReadyPulse] = useState(false)
@@ -201,6 +203,11 @@ export function OutputPanel({
     }).length
     return { completed, total }
   }, [runStatus, allDisplayNodes, displayNodeStates])
+
+  const selectedWorkflowNode = useMemo(() => {
+    if (!selectedStageId) return null
+    return workflow.nodes.find((n) => n.id === selectedStageId) ?? null
+  }, [selectedStageId, workflow.nodes])
 
   const handleRerunFrom = useCallback((nodeId: string) => {
     if (!onRerunFrom || !rerunWorkspace) return
@@ -602,7 +609,14 @@ export function OutputPanel({
                 executionLoopSummary={executionLoopSummary}
                 approvalLoopSummary={approvalLoopSummary}
               />
-              <LogTab selectedNodeId={selectedStageId} nodeStates={displayNodeStates} evalResults={displayEvalResults} />
+              <LogTab
+                selectedNodeId={selectedStageId}
+                nodeStates={displayNodeStates}
+                evalResults={displayEvalResults}
+                workflowNode={selectedWorkflowNode}
+                runId={runId}
+                evalOverrideNodeIds={evalOverrideNodeIds}
+              />
                 </>
               )}
             </div>

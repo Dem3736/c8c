@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getSkillSourceKind, getSkillSourceLabel } from "@/lib/skill-source"
+import { analyzeSkillSafety, type SkillSafetyWarning } from "@/lib/skill-safety"
 import type { DiscoveredSkill } from "@shared/types"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -15,8 +16,20 @@ import {
   FolderOpen,
   Library,
   Package,
+  ShieldAlert,
+  AlertTriangle,
+  Info,
   type LucideIcon,
 } from "lucide-react"
+
+const SEVERITY_STYLES: Record<
+  SkillSafetyWarning["severity"],
+  { surface: string; text: string; icon: LucideIcon }
+> = {
+  danger: { surface: "surface-danger-soft", text: "text-status-danger", icon: ShieldAlert },
+  warning: { surface: "surface-warning-soft", text: "text-status-warning", icon: AlertTriangle },
+  info: { surface: "surface-info-soft", text: "text-status-info", icon: Info },
+}
 
 const MARKDOWN_COMPONENTS: MarkdownComponents = {
   a: ({ href, children, ...props }) => {
@@ -94,6 +107,11 @@ export function SkillDetailPanel({
   }
 
   const toolsList = skill.tools ?? skill.allowedTools ?? []
+
+  const safetyWarnings = useMemo(
+    () => (content ? analyzeSkillSafety(content, toolsList.length > 0 ? toolsList : undefined) : []),
+    [content, toolsList],
+  )
 
   return (
     <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
@@ -204,11 +222,30 @@ export function SkillDetailPanel({
             Failed to load skill details: {error}
           </div>
         ) : content ? (
-          <div className="prose-c8c">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-              {content}
-            </ReactMarkdown>
-          </div>
+          <>
+            {safetyWarnings.length > 0 && (
+              <div className="mb-4 space-y-2" role="alert">
+                {safetyWarnings.map((warning, index) => {
+                  const style = SEVERITY_STYLES[warning.severity]
+                  const WarnIcon = style.icon
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-body-sm ${style.surface}`}
+                    >
+                      <WarnIcon size={14} className={`${style.text} mt-0.5 shrink-0`} />
+                      <span className={style.text}>{warning.message}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <div className="prose-c8c">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                {content}
+              </ReactMarkdown>
+            </div>
+          </>
         ) : (
           <div className="py-8 text-center text-body-sm text-muted-foreground">
             No skill details available.

@@ -55,6 +55,7 @@ export interface WorkflowExecutionState {
   artifactPersistenceStatus: ArtifactPersistenceStatus
   artifactPersistenceError: string | null
   surfaceNotice: ExecutionSurfaceNotice | null
+  evalOverrideNodeIds: Set<string>
 }
 
 export interface ApprovalRequest {
@@ -119,6 +120,7 @@ export function createEmptyWorkflowExecutionState(): WorkflowExecutionState {
     artifactPersistenceStatus: "idle",
     artifactPersistenceError: null,
     surfaceNotice: null,
+    evalOverrideNodeIds: new Set(),
   }
 }
 
@@ -234,6 +236,7 @@ export function createExecutionStartState(
     artifactPersistenceStatus: "idle",
     artifactPersistenceError: null,
     surfaceNotice: null,
+    evalOverrideNodeIds: new Set(),
   }
 }
 
@@ -299,6 +302,7 @@ export function resetWorkflowExecutionState(
     artifactRecords: preserveCompletedWork ? previousState.artifactRecords : [],
     artifactPersistenceStatus: preserveCompletedWork ? previousState.artifactPersistenceStatus : "idle",
     artifactPersistenceError: preserveCompletedWork ? previousState.artifactPersistenceError : null,
+    evalOverrideNodeIds: new Set(),
   }
 }
 
@@ -418,6 +422,30 @@ export function reduceWorkflowExecutionEvent(
         effects: {},
       }
 
+    case "eval-exhausted": {
+      const nextOverrideIds = new Set(previousState.evalOverrideNodeIds)
+      nextOverrideIds.add(event.nodeId)
+      return {
+        nextState: {
+          ...previousState,
+          evalOverrideNodeIds: nextOverrideIds,
+        },
+        effects: {},
+      }
+    }
+
+    case "eval-overridden": {
+      const nextOverrideIds = new Set(previousState.evalOverrideNodeIds)
+      nextOverrideIds.delete(event.nodeId)
+      return {
+        nextState: {
+          ...previousState,
+          evalOverrideNodeIds: nextOverrideIds,
+        },
+        effects: {},
+      }
+    }
+
     case "nodes-expanded": {
       const graphNodeIds = new Set(event.nodes.map((node) => node.id))
       const nodeStates = { ...previousState.nodeStates }
@@ -505,6 +533,26 @@ export function reduceWorkflowExecutionEvent(
         },
         effects: {},
       }
+
+    case "node-warning": {
+      const currentNodeState = getNodeState(previousState, event.nodeId)
+      return {
+        nextState: {
+          ...previousState,
+          nodeStates: {
+            ...previousState.nodeStates,
+            [event.nodeId]: {
+              ...currentNodeState,
+              warnings: [
+                ...(currentNodeState.warnings ?? []),
+                { kind: event.warningKind, message: event.warning },
+              ],
+            },
+          },
+        },
+        effects: {},
+      }
+    }
 
     case "run-done":
       const nextState: WorkflowExecutionState = {

@@ -858,6 +858,7 @@ export interface NodeState {
   errorKind?: ErrorKind
   meta?: NodeMeta
   humanTask?: HumanTaskPointer
+  warnings?: Array<{ kind: string; message: string }>
 }
 
 export interface WorkflowRun {
@@ -958,6 +959,7 @@ export type WorkflowEvent =
   | { type: "node-log"; runId: string; nodeId: string; entry: LogEntry }
   | { type: "node-done"; runId: string; nodeId: string; output: NodeInput }
   | { type: "node-error"; runId: string; nodeId: string; error: string }
+  | { type: "node-warning"; runId: string; nodeId: string; warning: string; warningKind: "empty" | "repetition" | "refusal" | "length_anomaly" }
   | { type: "eval-result"; runId: string; nodeId: string; score: number; reason: string; passed: boolean; attempt: number; fix_instructions?: string; criteria?: Array<{ id: string; score: number; weight?: number }> }
   | {
       type: "nodes-expanded"
@@ -977,6 +979,8 @@ export type WorkflowEvent =
       taskId: string
       resolution: "submitted" | "rejected" | "timed_out"
     }
+  | { type: "eval-exhausted"; runId: string; nodeId: string; score: number; threshold: number; attempt: number }
+  | { type: "eval-overridden"; runId: string; nodeId: string }
   | { type: "run-done"; runId: string; status: RunStatus; reportPath?: string; workspace?: string }
 
 // ── Input ───────────────────────────────────────────────

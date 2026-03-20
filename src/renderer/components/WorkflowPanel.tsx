@@ -68,6 +68,7 @@ import { useWorkflowValidation } from "@/hooks/useWorkflowValidation"
 import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
 import { useSelectedRunReview } from "@/hooks/useSelectedRunReview"
+import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
 import { toast } from "sonner"
 import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
@@ -142,6 +143,7 @@ export function WorkflowPanel() {
   const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [workflowPastRuns] = useAtom(workflowHistoryRunsAtom)
   const { run, cancel, rerunFrom, continueRun, continueWithWorkflow } = useChainExecution()
+  const { openWorkflowCreate } = useWorkflowCreateNavigation()
   const listScrollRegionRef = useRef<HTMLDivElement | null>(null)
   const outputPanelRef = useRef<HTMLDivElement | null>(null)
   const chatPanelShellRef = useRef<HTMLDivElement | null>(null)
@@ -923,7 +925,10 @@ export function WorkflowPanel() {
 
   if (!selectedWorkflowPath && !hasMeaningfulContent) {
     return (
-      <EmptyProjectState onOpenTemplates={() => setMainView("templates")} />
+      <EmptyProjectState
+        onOpenTemplates={() => setMainView("templates")}
+        onQuickStart={(prompt) => openWorkflowCreate({ prompt })}
+      />
     )
   }
 

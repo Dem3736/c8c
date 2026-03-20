@@ -3,6 +3,7 @@ import { useAtom } from "jotai"
 import {
   generateDialogOpenAtom,
   currentWorkflowAtom,
+  selectedInboxTaskKeyAtom,
   skillsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
@@ -10,7 +11,7 @@ import {
   workflowSavedSnapshotAtom,
   workflowsAtom,
 } from "@/lib/store"
-import { runStatusAtom } from "@/features/execution"
+import { runStatusAtom, selectedPastRunAtom } from "@/features/execution"
 import {
   Dialog,
   CanvasDialogBody,
@@ -41,6 +42,8 @@ export function GenerateWorkflow() {
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
   const [skills, setSkills] = useAtom(skillsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -61,6 +64,8 @@ export function GenerateWorkflow() {
     setSelectedWorkflowPath,
     setWorkflowSavedSnapshot,
     setWorkflows,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
     skills,
     setSkills,
     selectedProject,

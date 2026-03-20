@@ -185,6 +185,12 @@ export function NodeInspector() {
     }
   }, [node, setValidationNavigationTarget, validationNavigationTarget])
 
+  const asideRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!selectedNodeId || !node || !asideRef.current) return
+    asideRef.current.focus({ preventScroll: true })
+  }, [node, selectedNodeId])
+
   if (!node) return null
 
   const Icon = NODE_ICONS[node.type]
@@ -198,13 +204,6 @@ export function NodeInspector() {
       ),
     }), { coalesceKey: `node-config:${node.id}` })
   }
-
-  const asideRef = useRef<HTMLElement>(null)
-  useEffect(() => {
-    if (selectedNodeId && asideRef.current) {
-      asideRef.current.focus({ preventScroll: true })
-    }
-  }, [selectedNodeId])
 
   return (
     <aside

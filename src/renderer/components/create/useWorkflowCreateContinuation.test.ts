@@ -71,6 +71,7 @@ describe("useWorkflowCreateContinuation loader", () => {
       requestIdRef,
       readResources: async () => ({
         artifacts: [createArtifact("fresh")],
+        caseStates: [],
         humanTasks: [createTask("fresh")],
       }),
       onReset: () => {
@@ -93,8 +94,8 @@ describe("useWorkflowCreateContinuation loader", () => {
 
   it("ignores stale results from an older project request", async () => {
     const requestIdRef = { current: 0 }
-    const alpha = deferred<{ artifacts: ArtifactRecord[]; humanTasks: HumanTaskSummary[] }>()
-    const beta = deferred<{ artifacts: ArtifactRecord[]; humanTasks: HumanTaskSummary[] }>()
+    const alpha = deferred<{ artifacts: ArtifactRecord[]; caseStates: []; humanTasks: HumanTaskSummary[] }>()
+    const beta = deferred<{ artifacts: ArtifactRecord[]; caseStates: []; humanTasks: HumanTaskSummary[] }>()
     const state = {
       artifacts: [] as ArtifactRecord[],
       humanTasks: [] as HumanTaskSummary[],
@@ -137,6 +138,7 @@ describe("useWorkflowCreateContinuation loader", () => {
 
     alpha.resolve({
       artifacts: [createArtifact("alpha")],
+      caseStates: [],
       humanTasks: [createTask("alpha")],
     })
     await flushMicrotasks()
@@ -147,6 +149,7 @@ describe("useWorkflowCreateContinuation loader", () => {
 
     beta.resolve({
       artifacts: [createArtifact("beta")],
+      caseStates: [],
       humanTasks: [createTask("beta")],
     })
     await flushMicrotasks()

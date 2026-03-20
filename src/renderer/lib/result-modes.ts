@@ -290,17 +290,17 @@ export function prioritizeDevelopmentCreateQuickStarts<T extends { templateId: s
   })
 }
 
-export function presentDevelopmentCreateQuickStarts(
-  quickStarts: WorkflowResultModeQuickStart[],
+export function presentDevelopmentCreateQuickStarts<T extends WorkflowResultModeQuickStart>(
+  quickStarts: T[],
   projectKind?: ProjectInspectionKind | null,
-): WorkflowResultModeQuickStart[] {
+): T[] {
   return quickStarts.map((quickStart) => {
     const presentation = getDevelopmentCreateQuickStartPresentation(quickStart.templateId, projectKind)
     if (!presentation) return quickStart
     return {
       ...quickStart,
       ...presentation,
-    }
+    } as T
   })
 }
 

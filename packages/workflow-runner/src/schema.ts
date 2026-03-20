@@ -390,6 +390,7 @@ export interface NodeState {
     taskId: string
     status: "open" | "answered" | "rejected" | "timed_out" | "consumed"
   }
+  warnings?: Array<{ kind: string; message: string }>
 }
 
 export interface RuntimeMetaEntry {
@@ -406,6 +407,7 @@ export type WorkflowEvent =
   | { type: "node-log"; runId: string; nodeId: string; entry: LogEntry }
   | { type: "node-done"; runId: string; nodeId: string; output: NodeInput }
   | { type: "node-error"; runId: string; nodeId: string; error: string }
+  | { type: "node-warning"; runId: string; nodeId: string; warning: string; warningKind: "empty" | "repetition" | "refusal" | "length_anomaly" }
   | {
       type: "eval-result"
       runId: string
@@ -434,6 +436,8 @@ export type WorkflowEvent =
       taskId: string
       resolution: "submitted" | "rejected" | "timed_out"
     }
+  | { type: "eval-exhausted"; runId: string; nodeId: string; score: number; threshold: number; attempt: number }
+  | { type: "eval-overridden"; runId: string; nodeId: string }
   | { type: "run-done"; runId: string; status: RunStatus; reportPath?: string; workspace?: string }
 
 export type WorkflowInput =

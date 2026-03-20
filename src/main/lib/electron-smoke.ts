@@ -886,10 +886,10 @@ async function assertCreateReadyContinuationScenario(
     '[aria-label="Continue saved work"]',
     (text) =>
       text.includes("Checkout polish")
-      && text.includes("Ready to continue to Plan the Change."),
+      && text.includes("Ready to continue to Research the Change."),
   )
   assertSmoke(
-    continuationText.includes("Latest check: Research pack saved. Planning can continue."),
+    continuationText.includes("Latest check: Project brief saved. Research can continue."),
     "Ready continuation should show the durable latest check.",
   )
   assertSmoke(
@@ -897,16 +897,16 @@ async function assertCreateReadyContinuationScenario(
     "Ready continuation should expose Continue work.",
   )
   recordAssertion(assertions, "Opened create page from persisted project state")
-  recordAssertion(assertions, "Rendered ready continuation from durable result and case state", "Checkout polish -> Plan the Change")
+  recordAssertion(assertions, "Rendered ready continuation from durable result and case state", "Checkout polish -> Research the Change")
 
   return {
     uiState: state,
     invariants: {
       kind: "create-ready-continuation",
       title: "Checkout polish",
-      readinessText: "Ready to continue to Plan the Change.",
+      readinessText: "Ready to continue to Research the Change.",
       actionLabel: "Continue work",
-      latestCheckText: "Research pack saved. Planning can continue.",
+      latestCheckText: "Project brief saved. Research can continue.",
     },
   }
 }

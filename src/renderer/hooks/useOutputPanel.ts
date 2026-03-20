@@ -9,10 +9,12 @@ import {
   artifactRecordsAtom,
   completedAtAtom,
   evalResultsAtom,
+  evalOverrideNodeIdsAtom,
   finalContentAtom,
   inspectedNodeIdAtom,
   nodeStatesAtom,
   reportPathAtom,
+  runIdAtom,
   runStartedAtAtom,
   runStatusAtom,
   runOutcomeAtom,
@@ -45,8 +47,11 @@ export function useOutputPanel() {
   const [artifactPersistenceStatus] = useAtom(artifactPersistenceStatusAtom)
   const [artifactPersistenceError] = useAtom(artifactPersistenceErrorAtom)
   const [surfaceNotice, setSurfaceNotice] = useAtom(surfaceNoticeAtom)
+  const [runId] = useAtom(runIdAtom)
+  const [evalOverrideNodeIds] = useAtom(evalOverrideNodeIdsAtom)
 
   return {
+    runId,
     runStatus,
     runOutcome,
     runStartedAt,
@@ -70,5 +75,6 @@ export function useOutputPanel() {
     artifactPersistenceError,
     surfaceNotice,
     setSurfaceNotice,
+    evalOverrideNodeIds,
   }
 }

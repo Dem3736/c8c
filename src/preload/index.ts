@@ -286,6 +286,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("executor:approve", runId, nodeId, editedContent),
   rejectNode: (runId: string, nodeId: string) =>
     ipcRenderer.invoke("executor:reject", runId, nodeId),
+  overrideEvaluator: (runId: string, nodeId: string) =>
+    ipcRenderer.invoke("executor:override-evaluator", runId, nodeId),
   listHumanTasks: (projectPath?: string) =>
     ipcRenderer.invoke("executor:list-human-tasks", projectPath) as Promise<HumanTaskSummary[]>,
   loadHumanTask: (taskId: string, workspace: string) =>

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { promisify } from "node:util"
 import { drainExecutionHandle } from "./lib/agent-execution.js"
+import { checkOutputHeuristics } from "./lib/output-heuristics.js"
 import { withExecutionSlot } from "./lib/execution-pool.js"
 import { buildEvaluatorPrompt, parseEvaluatorOutput } from "./lib/evaluator.js"
 import {
@@ -214,11 +215,17 @@ export interface WorkflowRunHandle {
   resume(): boolean
 }
 
+export interface EvalOverrideDecision {
+  runId: string
+  nodeId: string
+}
+
 export interface WorkflowRunner {
   startRun(request: StartWorkflowRunRequest): Promise<WorkflowRunHandle>
   resumeRun(request: ResumeWorkflowRunRequest): Promise<WorkflowRunHandle>
   rerunFromNode(request: RerunFromNodeRequest): Promise<WorkflowRunHandle>
   resolveApproval(decision: ApprovalDecision): Promise<boolean>
+  resolveEvalOverride(decision: EvalOverrideDecision): Promise<boolean>
   getSnapshot(runId: string): Promise<WorkflowRunSnapshot | null>
 }
 
@@ -230,6 +237,10 @@ interface ApprovalResolution {
   approved: boolean
   editedContent?: string
   timedOut?: boolean
+}
+
+interface EvalOverrideResolve {
+  resolve: (overridden: boolean) => void
 }
 
 interface ResolvedRetryPolicy {
@@ -1436,6 +1447,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
   const activeRuns = new Map<string, AbortController>()
   const pausedRuns = new Map<string, { paused: boolean; resume: (() => void) | null }>()
   const pendingApprovals = new Map<string, ApprovalResolve>()
+  const pendingEvalOverrides = new Map<string, EvalOverrideResolve>()
   const runWorkspaces = new Map<string, string>()
 
   const resolveWorkflowProviderId = deps.resolveWorkflowProviderId
@@ -1490,6 +1502,43 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       pending.resolve({ approved })
       pendingApprovals.delete(key)
     }
+  }
+
+  function resolvePendingEvalOverridesForRun(runId: string): void {
+    const prefix = `${runId}:`
+    for (const [key, pending] of pendingEvalOverrides.entries()) {
+      if (!key.startsWith(prefix)) continue
+      pending.resolve(false)
+      pendingEvalOverrides.delete(key)
+    }
+  }
+
+  function waitForEvalOverride(
+    runId: string,
+    nodeId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const key = `${runId}:${nodeId}`
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (overridden: boolean) => {
+        if (settled) return
+        settled = true
+        pendingEvalOverrides.delete(key)
+        signal.removeEventListener("abort", onAbort)
+        resolve(overridden)
+      }
+
+      const onAbort = () => finish(false)
+      signal.addEventListener("abort", onAbort, { once: true })
+
+      if (signal.aborted) {
+        finish(false)
+        return
+      }
+
+      pendingEvalOverrides.set(key, { resolve: finish })
+    })
   }
 
   async function waitForApproval(
@@ -2087,9 +2136,39 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
                 state.log = []
                 return
               } else {
-                output = createNodeOutput(node, incomingContent, evalMetadata)
-                for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
-                  if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
+                // Retries exhausted (or no retryFrom configured) — pause for user override
+                await runtime.emitEvent({
+                  type: "eval-exhausted",
+                  runId,
+                  nodeId: node.id,
+                  score,
+                  threshold: evalConfig.threshold,
+                  attempt: state.attempts,
+                })
+
+                const overridden = await waitForEvalOverride(runId, node.id, runtime.controller.signal)
+
+                if (overridden) {
+                  await runtime.emitEvent({ type: "eval-overridden", runId, nodeId: node.id })
+                  output = createNodeOutput(node, incomingContent, {
+                    ...evalMetadata,
+                    overridden: true,
+                  })
+                  for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                    if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
+                  }
+                } else {
+                  // Not overridden (run cancelled or aborted) — activate fail edges if any
+                  output = createNodeOutput(node, incomingContent, evalMetadata)
+                  const failEdges = getOutgoingEdges(runtimeWorkflow, node.id).filter((e) => e.type === "fail")
+                  if (failEdges.length > 0) {
+                    for (const edge of failEdges) activatedEdges.add(edge.id)
+                  } else {
+                    // No fail edges — continue on pass/default to avoid hanging the flow
+                    for (const edge of getOutgoingEdges(runtimeWorkflow, node.id)) {
+                      if (edge.type === "pass" || edge.type === "default") activatedEdges.add(edge.id)
+                    }
+                  }
                 }
               }
               break
@@ -2620,6 +2699,26 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
           }
 
           await runtime.emitEvent({ type: "node-done", runId, nodeId: node.id, output: completedOutput })
+
+          // Soft heuristic checks on skill node output — non-blocking warnings
+          if (node.type === "skill" && completedOutput.content) {
+            const heuristicWarnings = checkOutputHeuristics(completedOutput.content, node.id)
+            for (const hw of heuristicWarnings) {
+              logger.warn("workflow-runner", "output_heuristic_warning", {
+                runId,
+                nodeId: node.id,
+                kind: hw.kind,
+                message: hw.message,
+              })
+              await runtime.emitEvent({
+                type: "node-warning",
+                runId,
+                nodeId: node.id,
+                warning: hw.message,
+                warningKind: hw.kind,
+              })
+            }
+          }
         } catch (error) {
           if (runtime.controller.signal.aborted) {
             state.status = "failed"
@@ -2940,6 +3039,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
         lastBlockingNodeId: blockedByNodeId,
       })
       resolvePendingApprovalsForRun(runId, false)
+      resolvePendingEvalOverridesForRun(runId)
       activeRuns.delete(runId)
       pausedRuns.delete(runId)
     }
@@ -2994,6 +3094,7 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       result,
       cancel() {
         resolvePendingApprovalsForRun(runId, false)
+        resolvePendingEvalOverridesForRun(runId)
         controller.abort()
       },
       pause() {
@@ -3158,6 +3259,17 @@ export function createWorkflowRunner(deps: WorkflowRunnerDeps): WorkflowRunner {
       }
 
       return Boolean(workspace)
+    },
+
+    async resolveEvalOverride(decision: EvalOverrideDecision): Promise<boolean> {
+      const key = `${decision.runId}:${decision.nodeId}`
+      const pending = pendingEvalOverrides.get(key)
+      if (pending) {
+        pending.resolve(true)
+        pendingEvalOverrides.delete(key)
+        return true
+      }
+      return false
     },
 
     async getSnapshot(runId: string): Promise<WorkflowRunSnapshot | null> {

@@ -1,9 +1,19 @@
 import { describe, expect, it, vi } from "vitest"
-import type { ClaudeCodeSubscriptionStatus, ProviderDiagnostics, Workflow } from "@shared/types"
+import type {
+  ClaudeCodeSubscriptionStatus,
+  ProviderDiagnostics,
+  Workflow,
+  WorkflowEdge,
+  WorkflowNode,
+} from "@shared/types"
 import {
   applyExecutionProviderFeatureFlags,
   compareSemver,
+  DEFAULT_COST_WARNING_THRESHOLD_USD,
+  estimateFlowCost,
   evaluateExecutionStartPreflight,
+  evaluateTokenBudgetWarning,
+  formatCostBreakdown,
   formatExecutionPreflightTitle,
   loadExecutionStartPreflight,
   MIN_CLAUDE_CLI_VERSION,
@@ -363,5 +373,418 @@ describe("execution preflight", () => {
       expect(compareSemver("2.0.0", "1.0.0")).toBeGreaterThan(0)
       expect(compareSemver("1.1.0", "1.0.9")).toBeGreaterThan(0)
     })
+  })
+
+  describe("preflight success includes warnings array", () => {
+    it("returns empty warnings for simple workflow", () => {
+      const workflow = createWorkflow("claude")
+      workflow.nodes = [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("output-1", "output"),
+      ]
+      workflow.edges = [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "output-1"),
+      ]
+
+      const result = evaluateExecutionStartPreflight(workflow, {
+        diagnostics: createDiagnostics(),
+        cliStatus: createCliStatus(),
+      })
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.warnings).toEqual([])
+      }
+    })
+  })
+})
+
+// ── Helpers for graph construction ──────────────────────
+
+let nodeCounter = 0
+function makeNode(id: string, type: WorkflowNode["type"], config?: Record<string, unknown>): WorkflowNode {
+  nodeCounter++
+  const base = { id, type, position: { x: nodeCounter * 100, y: 0 } }
+  switch (type) {
+    case "input":
+      return { ...base, type: "input", config: { ...config } } as WorkflowNode
+    case "output":
+      return { ...base, type: "output", config: { ...config } } as WorkflowNode
+    case "skill":
+      return { ...base, type: "skill", config: { prompt: "test", ...config } } as WorkflowNode
+    case "evaluator":
+      return { ...base, type: "evaluator", config: { criteria: "test", threshold: 7, maxRetries: 0, ...config } } as WorkflowNode
+    case "splitter":
+      return { ...base, type: "splitter", config: { strategy: "auto", ...config } } as WorkflowNode
+    case "merger":
+      return { ...base, type: "merger", config: { strategy: "concatenate", ...config } } as WorkflowNode
+    case "approval":
+      return { ...base, type: "approval", config: { show_content: true, allow_edit: false, ...config } } as WorkflowNode
+    default:
+      return { ...base, type, config: { ...config } } as unknown as WorkflowNode
+  }
+}
+
+function makeEdge(source: string, target: string, type: WorkflowEdge["type"] = "default"): WorkflowEdge {
+  return { id: `${source}->${target}`, source, target, type }
+}
+
+function buildWorkflow(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  model?: string,
+): Workflow {
+  return {
+    version: 1,
+    name: "Test flow",
+    defaults: model ? { model } : undefined,
+    nodes,
+    edges,
+  }
+}
+
+describe("estimateFlowCost", () => {
+  it("counts a single skill node", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(1)
+    expect(estimate.worstCaseInvocations).toBe(1)
+    expect(estimate.estimatedCostUsd).toBeGreaterThan(0)
+  })
+
+  it("counts multiple skill nodes in a linear chain", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("skill-2", "skill"),
+        makeNode("skill-3", "skill"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "skill-2"),
+        makeEdge("skill-2", "skill-3"),
+        makeEdge("skill-3", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(3)
+    expect(estimate.worstCaseInvocations).toBe(3)
+  })
+
+  it("multiplies downstream skills by splitter maxBranches", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("splitter-1", "splitter", { maxBranches: 5 }),
+        makeNode("skill-1", "skill"),
+        makeNode("merger-1", "merger"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "splitter-1"),
+        makeEdge("splitter-1", "skill-1"),
+        makeEdge("skill-1", "merger-1"),
+        makeEdge("merger-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(1)
+    // 1 base + 4 additional copies from splitter
+    expect(estimate.worstCaseInvocations).toBe(5)
+  })
+
+  it("uses default maxBranches of 3 when not specified", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("splitter-1", "splitter"),
+        makeNode("skill-1", "skill"),
+        makeNode("merger-1", "merger"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "splitter-1"),
+        makeEdge("splitter-1", "skill-1"),
+        makeEdge("skill-1", "merger-1"),
+        makeEdge("merger-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    // 1 base + 2 additional copies (maxBranches defaults to 3)
+    expect(estimate.worstCaseInvocations).toBe(3)
+  })
+
+  it("multiplies skills by evaluator retries", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("eval-1", "evaluator", { maxRetries: 3 }),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "eval-1"),
+        makeEdge("eval-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(1)
+    // 1 base + 3 retries * 1 skill
+    expect(estimate.worstCaseInvocations).toBe(4)
+  })
+
+  it("handles evaluator with retryFrom spanning multiple skills", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("skill-2", "skill"),
+        makeNode("eval-1", "evaluator", { maxRetries: 2, retryFrom: "skill-1" }),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "skill-2"),
+        makeEdge("skill-2", "eval-1"),
+        makeEdge("eval-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(2)
+    // 2 base + 2 retries * 2 skills in retry scope
+    expect(estimate.worstCaseInvocations).toBe(6)
+  })
+
+  it("combines splitter fan-out and evaluator retries", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("splitter-1", "splitter", { maxBranches: 4 }),
+        makeNode("skill-1", "skill"),
+        makeNode("eval-1", "evaluator", { maxRetries: 3 }),
+        makeNode("merger-1", "merger"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "splitter-1"),
+        makeEdge("splitter-1", "skill-1"),
+        makeEdge("skill-1", "eval-1"),
+        makeEdge("eval-1", "merger-1"),
+        makeEdge("merger-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(1)
+    // 1 base + 3 additional (splitter) + 3 retries * 1 skill
+    expect(estimate.worstCaseInvocations).toBe(7)
+  })
+
+  it("uses opus pricing for opus model", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "output-1"),
+      ],
+      "opus",
+    )
+
+    const estimateOpus = estimateFlowCost(wf)
+
+    const wfSonnet = buildWorkflow(
+      [
+        makeNode("input-1b", "input"),
+        makeNode("skill-1b", "skill"),
+        makeNode("output-1b", "output"),
+      ],
+      [
+        makeEdge("input-1b", "skill-1b"),
+        makeEdge("skill-1b", "output-1b"),
+      ],
+      "sonnet",
+    )
+
+    const estimateSonnet = estimateFlowCost(wfSonnet)
+
+    // Opus should be significantly more expensive than sonnet
+    expect(estimateOpus.estimatedCostUsd).toBeGreaterThan(estimateSonnet.estimatedCostUsd)
+    expect(estimateOpus.modelFamily).toBe("opus")
+    expect(estimateSonnet.modelFamily).toBe("sonnet")
+  })
+
+  it("returns zero invocations for workflow with no skill nodes", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(0)
+    expect(estimate.worstCaseInvocations).toBe(0)
+    expect(estimate.estimatedCostUsd).toBe(0)
+  })
+
+  it("does not count skills after a merger as part of splitter fan-out", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("splitter-1", "splitter", { maxBranches: 4 }),
+        makeNode("skill-1", "skill"),
+        makeNode("merger-1", "merger"),
+        makeNode("skill-2", "skill"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "splitter-1"),
+        makeEdge("splitter-1", "skill-1"),
+        makeEdge("skill-1", "merger-1"),
+        makeEdge("merger-1", "skill-2"),
+        makeEdge("skill-2", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    expect(estimate.totalSkillNodes).toBe(2)
+    // skill-1: 1 base + 3 from splitter = 4
+    // skill-2: 1 (not multiplied by splitter since it's after the merger)
+    expect(estimate.worstCaseInvocations).toBe(5)
+  })
+})
+
+describe("formatCostBreakdown", () => {
+  it("formats a breakdown with all component types", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("splitter-1", "splitter", { maxBranches: 4 }),
+        makeNode("skill-1", "skill"),
+        makeNode("skill-2", "skill"),
+        makeNode("eval-1", "evaluator", { maxRetries: 3 }),
+        makeNode("merger-1", "merger"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "splitter-1"),
+        makeEdge("splitter-1", "skill-1"),
+        makeEdge("skill-1", "skill-2"),
+        makeEdge("skill-2", "eval-1"),
+        makeEdge("eval-1", "merger-1"),
+        makeEdge("merger-1", "output-1"),
+      ],
+    )
+
+    const estimate = estimateFlowCost(wf)
+    const formatted = formatCostBreakdown(estimate)
+
+    expect(formatted).toContain("2 skill steps")
+    expect(formatted).toContain("splitter")
+    expect(formatted).toContain("check")
+    expect(formatted).toContain("invocations")
+  })
+})
+
+describe("evaluateTokenBudgetWarning", () => {
+  it("returns null for low-cost workflows", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "output-1"),
+      ],
+    )
+
+    const warning = evaluateTokenBudgetWarning(wf, "sonnet")
+    expect(warning).toBeNull()
+  })
+
+  it("returns warning for expensive workflows", () => {
+    // Build an expensive workflow: splitter(8) x evaluator(3 retries) with opus
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("splitter-1", "splitter", { maxBranches: 8 }),
+        makeNode("skill-1", "skill"),
+        makeNode("eval-1", "evaluator", { maxRetries: 3 }),
+        makeNode("merger-1", "merger"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "splitter-1"),
+        makeEdge("splitter-1", "skill-1"),
+        makeEdge("skill-1", "eval-1"),
+        makeEdge("eval-1", "merger-1"),
+        makeEdge("merger-1", "output-1"),
+      ],
+      "opus",
+    )
+
+    const warning = evaluateTokenBudgetWarning(wf, "opus")
+    expect(warning).not.toBeNull()
+    expect(warning!.kind).toBe("token_budget")
+    expect(warning!.estimatedCostUsd).toBeGreaterThan(DEFAULT_COST_WARNING_THRESHOLD_USD)
+    expect(warning!.message).toContain("$")
+    expect(warning!.message).toContain("worst case")
+  })
+
+  it("respects custom threshold", () => {
+    const wf = buildWorkflow(
+      [
+        makeNode("input-1", "input"),
+        makeNode("skill-1", "skill"),
+        makeNode("skill-2", "skill"),
+        makeNode("skill-3", "skill"),
+        makeNode("output-1", "output"),
+      ],
+      [
+        makeEdge("input-1", "skill-1"),
+        makeEdge("skill-1", "skill-2"),
+        makeEdge("skill-2", "skill-3"),
+        makeEdge("skill-3", "output-1"),
+      ],
+      "opus",
+    )
+
+    // With a very low threshold, even a small workflow triggers the warning
+    const warning = evaluateTokenBudgetWarning(wf, "opus", 0.01)
+    expect(warning).not.toBeNull()
+
+    // With a very high threshold, even an expensive workflow doesn't trigger
+    const noWarning = evaluateTokenBudgetWarning(wf, "opus", 999_999)
+    expect(noWarning).toBeNull()
   })
 })

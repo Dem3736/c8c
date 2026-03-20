@@ -5,7 +5,7 @@ import { SectionHeading } from "@/components/ui/page-shell"
 import { cn } from "@/lib/cn"
 import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
 import { SelectedTaskPanel } from "./SelectedTaskPanel"
-import { deriveTaskCardContext, taskKindLabel, taskSelectionKey, taskStageKey, type TaskStageMeta } from "./task-ui"
+import { deriveTaskCardContext, taskActivityAt, taskKindLabel, taskSelectionKey, taskStageKey, type TaskStageMeta } from "./task-ui"
 
 interface HumanTaskInboxSectionProps {
   humanTasksLoading: boolean
@@ -136,7 +136,7 @@ export function HumanTaskInboxSection({
                         <p className="mt-1 line-clamp-2 ui-meta-text text-muted-foreground">{taskCardContext.detailText}</p>
                       )}
                     </div>
-                    <span className="shrink-0 ui-meta-text text-muted-foreground">{formatRelativeTime(task.createdAt)}</span>
+                    <span className="shrink-0 ui-meta-text text-muted-foreground">{formatRelativeTime(taskActivityAt(task))}</span>
                   </div>
                 </button>
               )

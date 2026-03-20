@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { useAtomValue, useSetAtom } from "jotai"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 import { errorToUserMessage } from "@/lib/error-message"
@@ -31,6 +31,7 @@ import {
   formatExecutionPreflightTitle,
   loadExecutionStartPreflight,
   resolveEffectiveExecutionProvider,
+  type PreflightWarning,
 } from "./preflight"
 import type { WorkflowExecutionController } from "./controller"
 
@@ -47,6 +48,7 @@ interface UseExecutionCommandsArgs {
   setActiveExecutionProvider: (provider: ProviderId) => void
   setCurrentWorkflow: (workflow: Workflow) => void
   setSelectedWorkflowPath: (workflowPath: string | null) => void
+  onPreflightWarnings?: (warnings: PreflightWarning[]) => Promise<boolean>
 }
 
 export function useExecutionCommands({
@@ -62,8 +64,11 @@ export function useExecutionCommands({
   setActiveExecutionProvider,
   setCurrentWorkflow,
   setSelectedWorkflowPath,
+  onPreflightWarnings,
 }: UseExecutionCommandsArgs) {
   const { addNotification } = useInboxNotifications()
+  const onPreflightWarningsRef = useRef(onPreflightWarnings)
+  onPreflightWarningsRef.current = onPreflightWarnings
   const providerSettings = useAtomValue(providerSettingsAtom)
   const setProviderSettings = useSetAtom(providerSettingsAtom)
   const setProviderAvailability = useSetAtom(providerAvailabilityAtom)
@@ -118,6 +123,12 @@ export function useExecutionCommands({
         })
         recordExecutionError(title, preflight.message)
         return null
+      }
+
+      // Surface non-blocking warnings (e.g. token budget) before proceeding
+      if (preflight.warnings.length > 0 && onPreflightWarningsRef.current) {
+        const confirmed = await onPreflightWarningsRef.current(preflight.warnings)
+        if (!confirmed) return null
       }
 
       return {
