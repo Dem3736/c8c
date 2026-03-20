@@ -9,6 +9,7 @@ describe("delivery pack templates", () => {
     "delivery-research-phase",
     "delivery-plan-phase",
     "delivery-implement-phase",
+    "delivery-review-phase",
     "delivery-verify-phase",
   ] as const
 
@@ -42,7 +43,23 @@ describe("delivery pack templates", () => {
     ])
   })
 
-  it("keeps ship as the default continuation after delivery verification", () => {
+  it("keeps review as the default continuation after implementation", () => {
+    const implementPhase = getBuiltinTemplates().find((template) => template.id === "delivery-implement-phase")
+
+    expect(implementPhase?.pack?.recommendedNext).toEqual([
+      "delivery-review-phase",
+    ])
+  })
+
+  it("keeps verify as the default continuation after delivery review", () => {
+    const reviewPhase = getBuiltinTemplates().find((template) => template.id === "delivery-review-phase")
+
+    expect(reviewPhase?.pack?.recommendedNext).toEqual([
+      "delivery-verify-phase",
+    ])
+  })
+
+  it("keeps no forced continuation after delivery verification", () => {
     const verifyPhase = getBuiltinTemplates().find((template) => template.id === "delivery-verify-phase")
 
     expect(verifyPhase?.pack?.recommendedNext).toBeUndefined()

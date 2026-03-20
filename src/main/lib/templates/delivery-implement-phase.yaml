@@ -15,7 +15,7 @@ pack:
   label: Delivery Factory
   journey_stage: execute
   recommended_next:
-    - delivery-verify-phase
+    - delivery-review-phase
 contract_in:
   - kind: phase_plan
     title: Phase Plan

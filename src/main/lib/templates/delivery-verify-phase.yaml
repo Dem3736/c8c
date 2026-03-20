@@ -21,6 +21,10 @@ contract_in:
     title: Phase Plan
     description: The agreed objective, slices, and scope for the phase.
     required: true
+  - kind: review_notes
+    title: Review Notes
+    description: Optional review findings and follow-ups gathered before final verification.
+    required: false
   - kind: validation_contract
     title: Validation Contract
     description: The checks and acceptance criteria that define completion.
@@ -81,7 +85,7 @@ nodes:
       skillRef: researcher
       prompt: >-
         Create a Verification Report for this delivery phase. Compare the available implementation evidence
-        against the Phase Plan and Validation Contract. Include:
+        against the Phase Plan, Validation Contract, and any attached Review Notes. Include:
         1) what was verified,
         2) checks that appear to pass,
         3) gaps or failures,
