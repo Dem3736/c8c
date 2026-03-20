@@ -94,9 +94,10 @@ export function RuntimeNodeCard({
     : runtimeStatus === "failed"
       ? "bg-status-danger/45"
       : null
-  const primaryChips = runtimeCardCopy.metricChips.length > 0
-    ? runtimeCardCopy.metricChips
-    : [runtimePresentation.artifactRoleLabel]
+  const primaryChips = Array.from(new Set([
+    runtimePresentation.artifactRoleLabel,
+    ...runtimeCardCopy.metricChips,
+  ])).slice(0, 5)
   const footerLabel = runtimeCardCopy.detail || `${runtimePresentation.outcomeLabel}: ${runtimePresentation.artifactLabel}`
 
   return (
@@ -115,7 +116,7 @@ export function RuntimeNodeCard({
         type="button"
         onClick={onSelect}
         className="group grid h-full w-full grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] gap-3 px-3.5 py-3.5 text-left"
-        aria-label={`Focus stage ${runtimePresentation.title}`}
+        aria-label={`Focus step ${runtimePresentation.title}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
@@ -267,13 +268,13 @@ export function RuntimeNodeCard({
                 )}
               </div>
             </div>
-          ) : (
-            <div className="rounded-lg border border-hairline bg-surface-2/55 px-2.5 py-2">
-              <div className="line-clamp-2 ui-meta-text text-muted-foreground">
-                {runtimeCardCopy.detail || runtimePresentation.outcomeText}
+          ) : runtimeCardCopy.detail ? (
+            <div className="rounded-md bg-surface-2/35 px-2 py-1.5">
+              <div className="line-clamp-1 ui-meta-text text-muted-foreground">
+                {runtimeCardCopy.detail}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-hairline/80 pt-2.5">

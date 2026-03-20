@@ -11,7 +11,6 @@ import { DeepLinkTemplateDialog } from "@/components/app/DeepLinkTemplateDialog"
 import { AppMainView } from "@/components/app/AppMainView"
 import { RendererSmokeBridge } from "@/components/app/RendererSmokeBridge"
 import { SidebarVisibilityToggle } from "@/components/app/SidebarVisibilityToggle"
-import { FlowStatusRail } from "@/components/FlowStatusRail"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
 import { ExecutionProvider } from "@/hooks/useChainExecution"
@@ -53,7 +52,6 @@ import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 import { workflowExecutionStatesAtom } from "@/features/execution"
 import { buildAppShellActionEntries, buildAppShellProjectEntries, buildAppShellWorkflowEntries, type AppShellCommandEntry } from "@/lib/app-shell-command-palette"
 import { resolveAppShellShortcutIntent } from "@/lib/app-shell-shortcuts"
-import { buildFlowStatusRailEntries } from "@/lib/flow-status-rail"
 import { isEditableKeyboardTarget } from "@/lib/keyboard-shortcuts"
 import { applyLoadedWorkflow } from "@/components/sidebar/useWorkflowCrud"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
@@ -132,14 +130,6 @@ const AppShell = memo(function AppShell() {
         projectPath: entry.projectPath,
       }))
   }, [workflowCommandEntries])
-  const flowStatusRailEntries = useMemo(
-    () => buildFlowStatusRailEntries({
-      workflowEntries: workflowCommandEntries,
-      executionStates: workflowExecutionStates,
-      selectedWorkflowPath,
-    }),
-    [selectedWorkflowPath, workflowCommandEntries, workflowExecutionStates],
-  )
   const toggleSidebar = useCallback((nextOpen = !sidebarOpen) => {
     if (!nextOpen) {
       const activeElement = document.activeElement as HTMLElement | null
@@ -561,7 +551,7 @@ const AppShell = memo(function AppShell() {
         <RendererSmokeBridge
           commandPaletteOpen={commandPaletteOpen}
           sidebarOpen={sidebarOpen}
-          flowStatusRailLabels={flowStatusRailEntries.map((entry) => entry.label)}
+          flowStatusRailLabels={[]}
           availableWorkflowNames={workflowCommandEntries.map((entry) => entry.label)}
         />
       )}
@@ -600,16 +590,6 @@ const AppShell = memo(function AppShell() {
 
       <div id="main-content" className="min-w-0 min-h-0 flex-1 flex flex-col">
         <CliBanner />
-        <FlowStatusRail
-          entries={flowStatusRailEntries}
-          primaryModifierLabel={desktopRuntime.primaryModifierLabel}
-          onSelect={(entry) => {
-            void openWorkflowFromPalette({
-              workflowPath: entry.workflowPath,
-              projectPath: entry.projectPath,
-            })
-          }}
-        />
         {/* Main area — workflow editor */}
         <SectionErrorBoundary sectionName="flow view">
           <AppMainView />

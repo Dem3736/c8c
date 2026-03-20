@@ -1,7 +1,5 @@
-import type { RefObject } from "react"
 import { ApprovalDialog } from "@/components/ApprovalDialog"
 import { SkillPicker } from "@/components/SkillPicker"
-import { WorkflowChatPanelShell } from "@/components/workflow-panel/WorkflowChatPanelShell"
 import { StageStartApprovalDialog } from "@/components/workflow-panel/WorkflowPanelInlineSections"
 import type { DiscoveredSkill } from "@shared/types"
 
@@ -24,11 +22,6 @@ export function WorkflowPanelOverlays({
   primaryModifierKey,
   onApproveStageStart,
   onCancelStageStart,
-  canShowAgentPanel,
-  chatPanelShellRef,
-  chatOpen,
-  chatPanelWidth,
-  onCloseChat,
 }: {
   showEntryLanding: boolean
   showEntryEditor: boolean
@@ -48,11 +41,6 @@ export function WorkflowPanelOverlays({
   primaryModifierKey: string
   onApproveStageStart: () => void | Promise<void>
   onCancelStageStart: () => void
-  canShowAgentPanel: boolean
-  chatPanelShellRef: RefObject<HTMLDivElement | null>
-  chatOpen: boolean
-  chatPanelWidth: number
-  onCloseChat: () => void
 }) {
   return (
     <>
@@ -87,15 +75,6 @@ export function WorkflowPanelOverlays({
         onCancel={onCancelStageStart}
       />
       <ApprovalDialog />
-
-      {canShowAgentPanel && (
-        <WorkflowChatPanelShell
-          shellRef={chatPanelShellRef}
-          open={chatOpen}
-          width={chatPanelWidth}
-          onClose={onCloseChat}
-        />
-      )}
     </>
   )
 }

@@ -87,6 +87,7 @@ import type { DiscoveredSkill } from "@shared/types"
 import { useWorkflowPanelResources } from "./workflow-panel/useWorkflowPanelResources"
 import { useWorkflowPanelEntryState } from "./workflow-panel/useWorkflowPanelEntryState"
 import { WorkflowPanelOverlays } from "./workflow-panel/WorkflowPanelOverlays"
+import { WorkflowChatPanelShell } from "./workflow-panel/WorkflowChatPanelShell"
 
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -142,6 +143,7 @@ export function WorkflowPanel() {
   const previousRunStatusRef = useRef(runStatus)
   const completionSurfaceRef = useRef<string | null>(null)
   const pendingListAutoScrollRef = useRef(false)
+  const idleReviewAutoScrollKeyRef = useRef<string | null>(null)
   const resetExecution = useExecutionReset({ preserveCompletedWork: true })
   const [stageStartGateOpen, setStageStartGateOpen] = useState(false)
   const [pendingRunMode, setPendingRunMode] = useState<PermissionMode>("edit")
@@ -228,6 +230,41 @@ export function WorkflowPanel() {
     return path.split(/[\\/]/).pop()?.replace(/\.(chain|yaml|yml)$/i, "") || "flow"
   }, [])
 
+  const scrollOutputPanelIntoListViewport = useCallback((padding = 12) => {
+    const listScrollRegion = listScrollRegionRef.current
+    const outputPanel = outputPanelRef.current
+    if (!listScrollRegion || !outputPanel) return false
+
+    const regionRect = listScrollRegion.getBoundingClientRect()
+    const panelRect = outputPanel.getBoundingClientRect()
+    const panelAboveViewport = panelRect.top < regionRect.top + padding
+    const panelBelowViewport = panelRect.bottom > regionRect.bottom - padding
+
+    if (!panelAboveViewport && !panelBelowViewport) {
+      return true
+    }
+
+    const nextTop = panelAboveViewport
+      ? listScrollRegion.scrollTop + panelRect.top - regionRect.top - padding
+      : listScrollRegion.scrollTop + panelRect.bottom - regionRect.bottom + padding
+
+    listScrollRegion.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" })
+    return true
+  }, [])
+
+  const scrollOutputPanelToListViewportStart = useCallback((padding = 12) => {
+    const listScrollRegion = listScrollRegionRef.current
+    const outputPanel = outputPanelRef.current
+    if (!listScrollRegion || !outputPanel) return false
+
+    const regionRect = listScrollRegion.getBoundingClientRect()
+    const panelRect = outputPanel.getBoundingClientRect()
+    const nextTop = listScrollRegion.scrollTop + panelRect.top - regionRect.top - padding
+
+    listScrollRegion.scrollTo({ top: Math.max(0, nextTop), behavior: "auto" })
+    return true
+  }, [])
+
   useEffect(() => {
     if (!runStartedAt || (runStatus !== "running" && runStatus !== "starting" && runStatus !== "cancelling" && runStatus !== "paused")) {
       setElapsed("")
@@ -242,23 +279,10 @@ export function WorkflowPanel() {
 
   useEffect(() => {
     if (viewMode === "list" && runStatus === "running" && pendingListAutoScrollRef.current) {
-      const listScrollRegion = listScrollRegionRef.current
-      const outputPanel = outputPanelRef.current
-      if (listScrollRegion && outputPanel) {
-        const padding = 16
-        const regionRect = listScrollRegion.getBoundingClientRect()
-        const panelRect = outputPanel.getBoundingClientRect()
-        const panelAboveViewport = panelRect.top < regionRect.top + padding
-        const panelBelowViewport = panelRect.bottom > regionRect.bottom - padding
-
-        if (panelAboveViewport || panelBelowViewport) {
-          const targetTop = listScrollRegion.scrollTop + panelRect.top - regionRect.top - padding
-          listScrollRegion.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" })
-        }
-      }
+      scrollOutputPanelIntoListViewport(16)
       pendingListAutoScrollRef.current = false
     }
-  }, [runStatus, viewMode])
+  }, [runStatus, scrollOutputPanelIntoListViewport, viewMode])
 
   useEffect(() => {
     if (chatOpen) return
@@ -273,6 +297,10 @@ export function WorkflowPanel() {
   useEffect(() => {
     setShowEntryEditor(false)
     setPrepareNewRun(false)
+    setOutputTabRequest(null)
+    pendingListAutoScrollRef.current = false
+    idleReviewAutoScrollKeyRef.current = null
+    listScrollRegionRef.current?.scrollTo({ top: 0, behavior: "auto" })
   }, [selectedWorkflowPath])
 
   useEffect(() => {
@@ -312,25 +340,13 @@ export function WorkflowPanel() {
     setOutputTabRequest({ tab, nodeId, nonce: Date.now() })
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        const listScrollRegion = listScrollRegionRef.current
-        const outputPanel = outputPanelRef.current
-        if (listScrollRegion && outputPanel) {
-          const regionRect = listScrollRegion.getBoundingClientRect()
-          const panelRect = outputPanel.getBoundingClientRect()
-          const padding = 12
-          const panelAboveViewport = panelRect.top < regionRect.top + padding
-          const panelBelowViewport = panelRect.bottom > regionRect.bottom - padding
-
-          if (panelAboveViewport || panelBelowViewport) {
-            const nextTop = listScrollRegion.scrollTop + panelRect.top - regionRect.top - padding
-            listScrollRegion.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" })
-          }
+        if (scrollOutputPanelIntoListViewport()) {
           return
         }
-        outputPanel?.scrollIntoView({ behavior: "smooth", block: "start" })
+        outputPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
       })
     })
-  }, [setViewMode])
+  }, [scrollOutputPanelIntoListViewport, setViewMode])
 
   const openActivity = useCallback(() => {
     requestOutputTab("nodes")
@@ -571,6 +587,21 @@ export function WorkflowPanel() {
   }, [setWorkflowReviewMode, showIdleReviewMode])
 
   useEffect(() => {
+    if (!showIdleReviewMode || viewMode !== "list") return
+
+    const reviewKey = `${selectedWorkflowPath || "no-flow"}::${selectedPastRun?.runId || "latest"}`
+    if (idleReviewAutoScrollKeyRef.current === reviewKey) return
+
+    idleReviewAutoScrollKeyRef.current = reviewKey
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (scrollOutputPanelToListViewportStart(16)) return
+        outputPanelRef.current?.scrollIntoView({ behavior: "auto", block: "start" })
+      })
+    })
+  }, [scrollOutputPanelToListViewportStart, selectedPastRun?.runId, selectedWorkflowPath, showIdleReviewMode, viewMode])
+
+  useEffect(() => {
     if (runStatus !== "idle" && prepareNewRun) {
       setPrepareNewRun(false)
     }
@@ -761,13 +792,17 @@ export function WorkflowPanel() {
           primaryModifierKey={desktopRuntime.primaryModifierKey}
           onApproveStageStart={handleApproveStageStart}
           onCancelStageStart={handleCancelStageStart}
-          canShowAgentPanel={canShowAgentPanel}
-          chatPanelShellRef={chatPanelShellRef}
-          chatOpen={chatOpen}
-          chatPanelWidth={chatPanelWidth}
-          onCloseChat={() => setChatOpen(false)}
         />
       </div>
+
+      {canShowAgentPanel && (
+        <WorkflowChatPanelShell
+          shellRef={chatPanelShellRef}
+          open={chatOpen}
+          width={chatPanelWidth}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   )
 }
