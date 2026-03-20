@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useAtomValue } from "jotai"
 import { cn } from "@/lib/cn"
 import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 import {
+  desktopRuntimeAtom,
   selectedNodeIdAtom,
   skillPickerOpenAtom,
   type WorkflowNode,
@@ -19,37 +20,19 @@ import type {
   MergerNodeConfig,
   OutputNodeConfig,
   SkillNodeConfig,
-  NodeState,
-  WorkflowRuntimeMeta,
 } from "@shared/types"
-import { NodeCard, type RuntimeBranchSummary } from "./NodeCard"
+import { NodeCard } from "./NodeCard"
 import { SkillPicker } from "./SkillPicker"
-import { Plus, BarChart3, GitFork, ArrowDown as ArrowDownIcon, ArrowRight as ArrowRightIcon, Hand } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { getRuntimeBranchDetail, getRuntimeBranchLabel } from "@/lib/runtime-flow-labels"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { CursorMenu } from "@/components/ui/cursor-menu"
-import {
-  CanvasDialogBody,
-  CanvasDialogContent,
-  CanvasDialogFooter,
-  CanvasDialogHeader,
-  Dialog,
-  DialogTitle,
-  DialogDescription,
-  DialogClose,
-} from "@/components/ui/dialog"
+import { ArrowDown as ArrowDownIcon, ArrowRight as ArrowRightIcon } from "lucide-react"
 import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
+import { ChainBuilderAddControls } from "@/components/chain-builder/ChainBuilderAddControls"
+import { ChainBuilderContextMenu } from "@/components/chain-builder/ChainBuilderContextMenu"
+import { ChainBuilderRemoveDialog } from "@/components/chain-builder/ChainBuilderRemoveDialog"
+import { ChainBuilderStartHint } from "@/components/chain-builder/ChainBuilderStartHint"
+import { ChainBuilderSurfaceHeader } from "@/components/chain-builder/ChainBuilderSurfaceHeader"
+import { resolveChainBuilderShortcutIntent } from "@/lib/chain-builder-shortcuts"
+import { isEditableKeyboardTarget } from "@/lib/keyboard-shortcuts"
 import {
   addApprovalNodeToWorkflow,
   addEvaluatorNodeToWorkflow,
@@ -63,139 +46,13 @@ import {
   moveMiddleNodeByDirection,
   removeNodeAndRewireWorkflow,
 } from "@/lib/workflow-mutations"
+import { useChainBuilderRuntimeState } from "@/components/chain-builder/useChainBuilderRuntimeState"
 
 interface ChainBuilderProps {
   compact?: boolean
   mode?: "edit" | "outline" | "monitor"
   onStageSelect?: (payload: { nodeId: string; preferredTab: "nodes" | "log" | "result" }) => void
   reviewSnapshot?: PersistedRunSnapshot | null
-}
-
-const STATUS_PRIORITY: Record<string, number> = {
-  waiting_approval: 0,
-  waiting_human: 0,
-  failed: 1,
-  running: 2,
-  queued: 3,
-  pending: 4,
-  completed: 5,
-  skipped: 6,
-}
-
-function buildRuntimeBranchSummary(
-  branchIds: string[],
-  nodeStates: Record<string, NodeState>,
-  runtimeMeta: WorkflowRuntimeMeta,
-): RuntimeBranchSummary | null {
-  if (branchIds.length === 0) return null
-
-  let running = 0
-  let completed = 0
-  let failed = 0
-  let waitingApproval = 0
-  let pending = 0
-
-  for (const branchId of branchIds) {
-    const status = nodeStates[branchId]?.status || "pending"
-    if (status === "running") running += 1
-    else if (status === "waiting_approval" || status === "waiting_human") waitingApproval += 1
-    else if (status === "failed") failed += 1
-    else if (status === "completed" || status === "skipped") completed += 1
-    else pending += 1
-  }
-
-  const previews = branchIds
-    .map((branchId) => ({
-      id: branchId,
-      label: runtimeMeta[branchId]?.subtaskKey
-        ? getRuntimeBranchLabel(runtimeMeta[branchId].subtaskKey)
-        : branchId.split("::").pop() || branchId,
-      detail: getRuntimeBranchDetail(runtimeMeta[branchId]),
-      status: nodeStates[branchId]?.status || "pending",
-    }))
-    .sort((left, right) => {
-      const priorityDelta = (STATUS_PRIORITY[left.status] ?? 99) - (STATUS_PRIORITY[right.status] ?? 99)
-      if (priorityDelta !== 0) return priorityDelta
-      return left.label.localeCompare(right.label)
-    })
-    .slice(0, 4)
-
-  return {
-    total: branchIds.length,
-    running,
-    completed,
-    failed,
-    waitingApproval,
-    pending,
-    previews,
-  }
-}
-
-function buildAggregateBranchState(
-  branchIds: string[],
-  summary: RuntimeBranchSummary,
-  nodeStates: Record<string, NodeState>,
-): NodeState {
-  const status = summary.waitingApproval > 0
-    ? "waiting_human"
-    : summary.failed > 0
-      ? "failed"
-      : summary.running > 0
-        ? "running"
-        : summary.completed === summary.total && summary.total > 0
-          ? "completed"
-          : summary.completed > 0
-            ? "running"
-            : summary.pending > 0
-              ? "pending"
-              : "pending"
-
-  let totalTokensIn = 0
-  let totalTokensOut = 0
-  let totalCostUsd = 0
-  let totalLatencyMs = 0
-  let sawMetrics = false
-  let startedAt: number | undefined
-  let completedAt: number | undefined
-  let error: string | undefined
-
-  for (const branchId of branchIds) {
-    const state = nodeStates[branchId]
-    if (!state) continue
-    if (!error && state.error) {
-      error = state.error
-    }
-    if (typeof state.startedAt === "number") {
-      startedAt = typeof startedAt === "number" ? Math.min(startedAt, state.startedAt) : state.startedAt
-    }
-    if (typeof state.completedAt === "number") {
-      completedAt = typeof completedAt === "number" ? Math.max(completedAt, state.completedAt) : state.completedAt
-    }
-    if (state.metrics) {
-      sawMetrics = true
-      totalTokensIn += state.metrics.tokens_in || 0
-      totalTokensOut += state.metrics.tokens_out || 0
-      totalCostUsd += state.metrics.cost_usd || 0
-      totalLatencyMs += state.metrics.latency_ms || 0
-    }
-  }
-
-  return {
-    status,
-    attempts: 0,
-    error,
-    log: [],
-    startedAt,
-    completedAt,
-    metrics: sawMetrics
-      ? {
-        tokens_in: totalTokensIn,
-        tokens_out: totalTokensOut,
-        cost_usd: totalCostUsd,
-        latency_ms: totalLatencyMs,
-      }
-      : undefined,
-  }
 }
 
 export function ChainBuilder({
@@ -205,6 +62,7 @@ export function ChainBuilder({
   reviewSnapshot = null,
 }: ChainBuilderProps = {}) {
   const { workflow, setWorkflow, setWorkflowDirect } = useWorkflowWithUndo()
+  const desktopRuntime = useAtomValue(desktopRuntimeAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [runtimeMeta] = useAtom(runtimeMetaAtom)
@@ -225,17 +83,6 @@ export function ChainBuilder({
   } | null>(null)
   const flowCardMode = mode === "outline" || mode === "monitor"
   const runtimeMode = mode === "monitor"
-  const displayNodeStates = reviewSnapshot?.nodeStates ?? nodeStates
-  const displayRuntimeMeta = reviewSnapshot?.runtimeMeta ?? runtimeMeta
-
-  useEffect(() => {
-    return () => {
-      if (undoToastIdRef.current != null) {
-        toast.dismiss(undoToastIdRef.current)
-      }
-    }
-  }, [])
-
   // Order nodes: input first, then middle nodes in array order, then output last
   const orderedNodes = useMemo(() => {
     const inputNodes = workflow.nodes.filter((n) => n.type === "input")
@@ -245,50 +92,37 @@ export function ChainBuilder({
     )
     return [...inputNodes, ...middleNodes, ...outputNodes]
   }, [workflow.nodes])
-  const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
-  const runtimeBranchIds = useMemo(() => Object.keys(displayRuntimeMeta || {}), [displayRuntimeMeta])
-  const runtimeBranchSummariesByTemplate = useMemo(() => {
-    const branchIdsByTemplate = new Map<string, string[]>()
-    for (const [branchId, meta] of Object.entries(displayRuntimeMeta || {})) {
-      if (!meta?.templateId) continue
-      const existing = branchIdsByTemplate.get(meta.templateId)
-      if (existing) {
-        existing.push(branchId)
-      } else {
-        branchIdsByTemplate.set(meta.templateId, [branchId])
+  const selectedNodeId = flowCardMode ? inspectedNodeId : builderSelectedNodeId
+  const {
+    displayNodeStates,
+    resolvedActiveNodeId,
+    resolvedSelectedNodeId,
+    getNodePresentation,
+    orderedMonitorStages,
+    monitorCurrentStage,
+    monitorNextStage,
+    monitorLatestCompletedStage,
+    monitorFocusNodeId,
+    monitorCounts,
+  } = useChainBuilderRuntimeState({
+    workflowNodes: orderedNodes,
+    nodeStates,
+    runtimeMeta,
+    reviewSnapshot,
+    runtimeMode,
+    flowCardMode,
+    activeNodeId,
+    selectedNodeId,
+  })
+
+  useEffect(() => {
+    return () => {
+      if (undoToastIdRef.current != null) {
+        toast.dismiss(undoToastIdRef.current)
       }
     }
-
-    const summaries = new Map<string, RuntimeBranchSummary>()
-    for (const [templateId, branchIds] of branchIdsByTemplate.entries()) {
-      const summary = buildRuntimeBranchSummary(branchIds, displayNodeStates, displayRuntimeMeta || {})
-      if (summary) summaries.set(templateId, summary)
-    }
-    return summaries
-  }, [displayNodeStates, displayRuntimeMeta])
-  const aggregateBranchStatesByTemplate = useMemo(() => {
-    const aggregateStates = new Map<string, NodeState>()
-    for (const [templateId, summary] of runtimeBranchSummariesByTemplate.entries()) {
-      const branchIds = Object.entries(displayRuntimeMeta || {})
-        .filter(([, meta]) => meta.templateId === templateId)
-        .map(([branchId]) => branchId)
-      if (branchIds.length === 0) continue
-      aggregateStates.set(templateId, buildAggregateBranchState(branchIds, summary, displayNodeStates))
-    }
-    return aggregateStates
-  }, [displayNodeStates, displayRuntimeMeta, runtimeBranchSummariesByTemplate])
-  const singleSplitterBranchSummary = useMemo(() => {
-    const splitterCount = workflow.nodes.filter((node) => node.type === "splitter").length
-    if (splitterCount !== 1) return null
-    return buildRuntimeBranchSummary(runtimeBranchIds, displayNodeStates, displayRuntimeMeta || {})
-  }, [displayNodeStates, displayRuntimeMeta, runtimeBranchIds, workflow.nodes])
-  const resolvedActiveNodeId = activeNodeId && displayRuntimeMeta[activeNodeId]?.templateId
-    ? displayRuntimeMeta[activeNodeId].templateId
-    : activeNodeId
-  const selectedNodeId = flowCardMode ? inspectedNodeId : builderSelectedNodeId
-  const resolvedSelectedNodeId = selectedNodeId && displayRuntimeMeta[selectedNodeId]?.templateId
-    ? displayRuntimeMeta[selectedNodeId].templateId
-    : selectedNodeId
+  }, [])
+  const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
   const contextNode = chainContextMenu
     ? workflow.nodes.find((node) => node.id === chainContextMenu.nodeId) || null
     : null
@@ -300,79 +134,6 @@ export function ChainBuilder({
     }
     setBuilderSelectedNodeId(nodeId)
   }
-
-  const getNodePresentation = (node: WorkflowNode) => {
-    const directState = displayNodeStates[node.id]
-    const aggregateState = aggregateBranchStatesByTemplate.get(node.id)
-    const effectiveState = flowCardMode
-      ? aggregateState && (!directState || directState.status === "pending" || directState.status === "queued")
-        ? aggregateState
-        : directState
-      : directState
-    const runtimeBranchSummary = flowCardMode
-      ? node.type === "splitter"
-        ? singleSplitterBranchSummary
-        : runtimeBranchSummariesByTemplate.get(node.id) ?? null
-      : null
-
-    return { effectiveState, runtimeBranchSummary }
-  }
-
-  const orderedMonitorStages = useMemo(() => {
-    if (!runtimeMode) return []
-    return orderedNodes.map((node) => {
-      const presentation = getNodePresentation(node)
-      return {
-        node,
-        status: presentation.effectiveState?.status || "pending",
-      }
-    })
-  }, [orderedNodes, runtimeMode, aggregateBranchStatesByTemplate, displayNodeStates, runtimeBranchSummariesByTemplate, singleSplitterBranchSummary])
-
-  const monitorCurrentStage = useMemo(() => {
-    if (!runtimeMode) return null
-    return orderedMonitorStages.find((entry) =>
-      entry.status === "running"
-      || entry.status === "waiting_approval"
-      || entry.status === "waiting_human"
-      || entry.status === "failed",
-    ) || null
-  }, [orderedMonitorStages, runtimeMode])
-
-  const monitorNextStage = useMemo(() => {
-    if (!runtimeMode) return null
-    return orderedMonitorStages.find((entry) =>
-      entry.status === "queued" || entry.status === "pending",
-    ) || null
-  }, [orderedMonitorStages, runtimeMode])
-
-  const monitorLatestCompletedStage = useMemo(() => {
-    if (!runtimeMode) return null
-    return [...orderedMonitorStages].reverse().find((entry) =>
-      entry.status === "completed" || entry.status === "skipped",
-    ) || null
-  }, [orderedMonitorStages, runtimeMode])
-
-  const monitorFocusNodeId = useMemo(() => {
-    if (!runtimeMode) return null
-    return monitorCurrentStage?.node.id
-      || monitorNextStage?.node.id
-      || monitorLatestCompletedStage?.node.id
-      || null
-  }, [monitorCurrentStage, monitorLatestCompletedStage, monitorNextStage, runtimeMode])
-
-  const monitorCounts = useMemo(() => {
-    if (!runtimeMode) {
-      return { completed: 0, pending: 0, blocked: 0 }
-    }
-    return {
-      completed: orderedMonitorStages.filter((entry) => entry.status === "completed" || entry.status === "skipped").length,
-      pending: orderedMonitorStages.filter((entry) => entry.status === "pending" || entry.status === "queued").length,
-      blocked: orderedMonitorStages.filter((entry) =>
-        entry.status === "failed" || entry.status === "waiting_approval" || entry.status === "waiting_human",
-      ).length,
-    }
-  }, [orderedMonitorStages, runtimeMode])
 
   useEffect(() => {
     if (!runtimeMode || !monitorFocusNodeId) return
@@ -395,6 +156,12 @@ export function ChainBuilder({
       setInspectedNodeId(monitorFocusNodeId)
     }
   }, [monitorCurrentStage, monitorFocusNodeId, orderedMonitorStages, resolvedSelectedNodeId, runtimeMode, setInspectedNodeId])
+
+  useEffect(() => {
+    if (flowCardMode || !resolvedSelectedNodeId) return
+    const step = stepRefs.current[resolvedSelectedNodeId]
+    step?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
+  }, [flowCardMode, resolvedSelectedNodeId])
 
   const getNodeDisplayLabel = (nodeId: string) => {
     const node = workflow.nodes.find((n) => n.id === nodeId)
@@ -534,7 +301,63 @@ export function ChainBuilder({
     }
   }
 
-  const handleInsertBlock = (value: string) => {
+  useEffect(() => {
+    if (flowCardMode) return
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      if (isEditableKeyboardTarget(event.target as HTMLElement | null)) return
+
+      const selectedNode = selectedNodeId
+        ? workflow.nodes.find((node) => node.id === selectedNodeId) ?? null
+        : null
+      const intent = resolveChainBuilderShortcutIntent({
+        event,
+        primaryModifierKey: desktopRuntime.primaryModifierKey,
+        flowCardMode,
+        isEditable: false,
+        orderedNodeIds: orderedNodes.map((node) => node.id),
+        resolvedSelectedNodeId,
+        selectedNodeId: selectedNode?.id ?? null,
+        selectedNodeType: selectedNode?.type ?? null,
+      })
+      if (!intent) return
+
+      event.preventDefault()
+
+      if (intent.type === "open_skill_picker") {
+        setPickerOpen(true)
+        return
+      }
+
+      if (intent.type === "select") {
+        setSelectedNode(intent.nodeId)
+        return
+      }
+
+      if (intent.type === "remove_selected") {
+        confirmRemove(intent.nodeId)
+        return
+      }
+
+      if (intent.type === "move_selected") {
+        moveNode(intent.nodeId, intent.direction)
+      }
+    }
+
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [
+    desktopRuntime.primaryModifierKey,
+    flowCardMode,
+    orderedNodes,
+    resolvedSelectedNodeId,
+    selectedNodeId,
+    setPickerOpen,
+    workflow.nodes,
+  ])
+
+  const handleInsertBlock = (value: "evaluator" | "fanout" | "approval" | "human") => {
     if (value === "evaluator") {
       addEvaluator()
       return
@@ -704,7 +527,7 @@ export function ChainBuilder({
 
   return (
     <section
-      aria-label={flowCardMode ? "Flow preview" : "Pipeline builder"}
+      aria-label={flowCardMode ? "Flow preview" : "Flow builder"}
       className={cn(
         "ui-fade-slide-in surface-panel",
         flowCardMode
@@ -715,69 +538,28 @@ export function ChainBuilder({
       )}
     >
       {flowCardMode ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <h2 className="section-kicker">{runtimeMode ? "Flow" : "Preview"}</h2>
-            <p className="ui-meta-text text-muted-foreground">
-              {runtimeMode
-                ? reviewSnapshot
-                  ? "Review the saved run stage by stage. Select any stage to inspect its activity."
-                  : "Current and next stages are called out below. Select any stage to inspect its activity."
-                : reviewSnapshot
-                  ? "Review the selected saved run from left to right."
-                  : "Review the stages from left to right before you run or refine the flow."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {runtimeMode && monitorCurrentStage && (
-              <span
-                className={cn(
-                  "ui-status-badge ui-meta-text shrink-0",
-                  "border-hairline bg-surface-2 text-foreground",
-                  monitorCurrentStage.status === "running" && "ui-status-badge-info",
-                  (monitorCurrentStage.status === "waiting_approval" || monitorCurrentStage.status === "waiting_human") && "ui-status-badge-warning",
-                  monitorCurrentStage.status === "failed" && "ui-status-badge-danger",
-                )}
-              >
-                {monitorCurrentStage.status === "running"
-                  ? `Current: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`
-                  : monitorCurrentStage.status === "failed"
-                    ? `Needs attention: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`
-                    : `Blocked at: ${getNodeDisplayLabel(monitorCurrentStage.node.id)}`}
-              </span>
-            )}
-            {runtimeMode && monitorNextStage && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0 border-primary/25 bg-primary/5 text-foreground">
-                Next: {getNodeDisplayLabel(monitorNextStage.node.id)}
-              </Badge>
-            )}
-            {runtimeMode && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-                {monitorCounts.completed}/{orderedMonitorStages.length} done
-              </Badge>
-            )}
-            {runtimeMode && monitorCounts.pending > 0 && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-                {monitorCounts.pending} pending
-              </Badge>
-            )}
-            <span className="ui-meta-text tabular-nums text-muted-foreground">{orderedNodes.length} stages</span>
-          </div>
-        </div>
+        <ChainBuilderSurfaceHeader
+          reviewSnapshot={Boolean(reviewSnapshot)}
+          runtimeMode={runtimeMode}
+          currentStep={monitorCurrentStage
+            ? {
+              label: getNodeDisplayLabel(monitorCurrentStage.node.id),
+              status: monitorCurrentStage.status,
+            }
+            : null}
+          nextStepLabel={monitorNextStage ? getNodeDisplayLabel(monitorNextStage.node.id) : null}
+          completedCount={monitorCounts.completed}
+          pendingCount={monitorCounts.pending}
+          totalMonitoredSteps={orderedMonitorStages.length}
+          totalSteps={orderedNodes.length}
+        />
       ) : (
-        <h2 className="section-kicker">Pipeline Builder</h2>
+        <h2 className="section-kicker">Flow builder</h2>
       )}
 
       <div className="space-y-0">
         {!flowCardMode && !workflow.nodes.some((n) => n.type !== "input" && n.type !== "output") && (
-          <div
-            className={cn(
-              "rounded-lg border border-hairline bg-surface-2/90 px-3 ui-meta-text",
-              compact ? "mb-2 py-1.5" : "mb-3 py-2",
-            )}
-          >
-            Build your chain by adding a skill step first. Evaluator checks output quality, and Split work creates parallel branches.
-          </div>
+          <ChainBuilderStartHint compact={compact} />
         )}
         {flowCardMode ? (
           <div className="overflow-x-auto pb-2 ui-scrollbar-hidden">
@@ -801,171 +583,61 @@ export function ChainBuilder({
         )}
 
         {!flowCardMode && (
-          <div className={cn("flex items-center gap-2 rounded-lg control-cluster p-1", compact ? "pt-1" : "pt-2")}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="flex-1 border-dashed bg-surface-1/80"
-                  onClick={() => setPickerOpen(true)}
-                >
-                  <Plus size={16} />
-                  Add skill step
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add a skill step between Input and Output</TooltipContent>
-            </Tooltip>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={cn("justify-start bg-surface-1/80", compact ? "w-[170px]" : "w-[196px]")}
-                >
-                  <GitFork size={14} />
-                  Add step
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Add workflow step</DropdownMenuLabel>
-                <DropdownMenuItem
-                  disabled={!hasSkillNodes}
-                  onSelect={() => handleInsertBlock("evaluator")}
-                  className="items-start gap-2 py-2"
-                  title={!hasSkillNodes ? "Add at least one skill node before inserting an evaluator." : undefined}
-                >
-                  <BarChart3 size={13} className="mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-body-sm font-medium text-foreground">Add Evaluator</div>
-                    <div className="ui-meta-text text-muted-foreground">
-                      {hasSkillNodes
-                        ? "Check the previous output and branch or retry when it misses the mark."
-                        : "Requires at least one skill node before it can evaluate anything."}
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleInsertBlock("fanout")}
-                  className="items-start gap-2 py-2"
-                >
-                  <GitFork size={13} className="mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-body-sm font-medium text-foreground">Add Split Work</div>
-                    <div className="ui-meta-text text-muted-foreground">
-                      Add a split, branch, and merge scaffold for parallel work.
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleInsertBlock("human")}
-                  className="items-start gap-2 py-2"
-                >
-                  <Hand size={13} className="mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-body-sm font-medium text-foreground">Add Human Input</div>
-                    <div className="ui-meta-text text-muted-foreground">
-                      Pause the flow until someone provides the missing information.
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleInsertBlock("approval")}
-                  className="items-start gap-2 py-2"
-                >
-                  <Hand size={13} className="mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-body-sm font-medium text-foreground">Add Approval Gate</div>
-                    <div className="ui-meta-text text-muted-foreground">
-                      Stop after a stage so you can review it before the flow continues.
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <ChainBuilderAddControls
+            compact={compact}
+            hasSkillNodes={hasSkillNodes}
+            primaryModifierLabel={desktopRuntime.primaryModifierLabel}
+            onAddSkill={() => setPickerOpen(true)}
+            onAddStep={handleInsertBlock}
+          />
         )}
       </div>
 
-      <CursorMenu
+      <ChainBuilderContextMenu
         open={!runtimeMode && chainContextMenu !== null}
         x={chainContextMenu?.x || 0}
         y={chainContextMenu?.y || 0}
+        stepLabel={contextNode ? getNodeDisplayLabel(contextNode.id) : null}
+        moveUpDisabledReason={contextNode ? getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up") : null}
+        moveDownDisabledReason={contextNode ? getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down") : null}
+        removeDisabled={!contextNode || contextNode.type === "input" || contextNode.type === "output"}
         onOpenChange={(open) => {
           if (!open) setChainContextMenu(null)
         }}
-      >
-        {contextNode && (
-          <>
-            <DropdownMenuLabel>{getNodeDisplayLabel(contextNode.id)}</DropdownMenuLabel>
-            <DropdownMenuItem
-              onSelect={() => {
-                setSelectedNode(contextNode.id)
-                setChainContextMenu(null)
-              }}
-            >
-              Select step
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={Boolean(getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up"))}
-              title={getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up") || undefined}
-              onSelect={() => {
-                if (getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "up")) return
-                moveNode(contextNode.id, "up")
-                setChainContextMenu(null)
-              }}
-            >
-              Move up
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={Boolean(getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down"))}
-              title={getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down") || undefined}
-              onSelect={() => {
-                if (getMiddleNodeMoveBlockedReason(workflow, contextNode.id, "down")) return
-                moveNode(contextNode.id, "down")
-                setChainContextMenu(null)
-              }}
-            >
-              Move down
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={contextNode.type === "input" || contextNode.type === "output"}
-              onSelect={() => {
-                if (contextNode.type === "input" || contextNode.type === "output") return
-                confirmRemove(contextNode.id)
-                setChainContextMenu(null)
-              }}
-            >
-              Remove step
-            </DropdownMenuItem>
-          </>
-        )}
-      </CursorMenu>
+        onSelect={() => {
+          if (!contextNode) return
+          setSelectedNode(contextNode.id)
+          setChainContextMenu(null)
+        }}
+        onMoveUp={() => {
+          if (!contextNode) return
+          moveNode(contextNode.id, "up")
+          setChainContextMenu(null)
+        }}
+        onMoveDown={() => {
+          if (!contextNode) return
+          moveNode(contextNode.id, "down")
+          setChainContextMenu(null)
+        }}
+        onRemove={() => {
+          if (!contextNode || contextNode.type === "input" || contextNode.type === "output") return
+          confirmRemove(contextNode.id)
+          setChainContextMenu(null)
+        }}
+      />
 
       <SkillPicker onAddSkill={addNode} />
 
-      <Dialog open={!runtimeMode && pendingRemoveId !== null} onOpenChange={(open) => !open && setPendingRemoveId(null)}>
-        <CanvasDialogContent showCloseButton={false}>
-          <CanvasDialogHeader>
-            <DialogTitle>Remove step?</DialogTitle>
-            <DialogDescription>This will remove the step and its connections from the workflow.</DialogDescription>
-          </CanvasDialogHeader>
-          <CanvasDialogBody>
-            <p className="text-body-md text-muted-foreground">
-              Remove &ldquo;{pendingRemoveId ? getNodeDisplayLabel(pendingRemoveId) : ""}&rdquo; from the chain?
-            </p>
-          </CanvasDialogBody>
-          <CanvasDialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={executeRemove}>
-              Remove
-            </Button>
-          </CanvasDialogFooter>
-        </CanvasDialogContent>
-      </Dialog>
+      <ChainBuilderRemoveDialog
+        open={!runtimeMode && pendingRemoveId !== null}
+        stepLabel={pendingRemoveId ? getNodeDisplayLabel(pendingRemoveId) : ""}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingRemoveId(null)
+          }
+        }}
+        onConfirm={executeRemove}
+      />
     </section>
   )
 }

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
-import { cn } from "@/lib/cn"
 import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 import {
   chatStatusAtom,
@@ -44,18 +43,27 @@ import {
   surfaceNoticeAtom,
   workflowHistoryRunsAtom,
 } from "@/features/execution"
-import { resolveWorkflowInput } from "@/lib/input-type"
-import { InputPanel } from "./InputPanel"
-import { ChainBuilder } from "./ChainBuilder"
-import { CanvasView } from "./CanvasView"
 import { SkillPicker } from "./SkillPicker"
-import { NodeInspector } from "./canvas/NodeInspector"
 import { Toolbar } from "./Toolbar"
-import { OutputPanel } from "./OutputPanel"
+import { RunStrip } from "./workflow/RunStrip"
 import { BatchPanel } from "./BatchPanel"
 import { ApprovalDialog } from "./ApprovalDialog"
-import { ChatPanel } from "./chat/ChatPanel"
-import { WorkflowSettingsPanel } from "./WorkflowSettingsPanel"
+import {
+  EmptyProjectState,
+  EmptyWorkspaceState,
+  StageStartApprovalDialog,
+} from "./workflow-panel/WorkflowPanelInlineSections"
+import {
+  WorkflowCanvasTab,
+  WorkflowListTab,
+  WorkflowSettingsTab,
+} from "./workflow-panel/WorkflowPanelTabContents"
+import {
+  WorkflowOpenErrorBanner,
+  WorkflowOpenLoadingState,
+  WorkflowPanelHeader,
+} from "./workflow-panel/WorkflowPanelChrome"
+import { WorkflowChatPanelShell } from "./workflow-panel/WorkflowChatPanelShell"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { useWorkflowReset } from "@/hooks/useWorkflowReset"
 import { useExecutionReset } from "@/hooks/useExecutionReset"
@@ -64,620 +72,24 @@ import { useUndoRedo } from "@/hooks/useUndoRedo"
 import { useChainExecution } from "@/hooks/useChainExecution"
 import { useSelectedRunReview } from "@/hooks/useSelectedRunReview"
 import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
-import {
-  List,
-  LayoutGrid,
-  SlidersHorizontal,
-  FolderOpen,
-  FileStack,
-  LayoutTemplate,
-  PencilLine,
-  Loader2,
-  Sparkles,
-  MessageSquare,
-  Play,
-  FileText,
-  Activity,
-  Plus,
-  MoreHorizontal,
-  type LucideIcon,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SectionErrorBoundary } from "@/components/ui/error-boundary"
-import { ScopeBanner } from "@/components/ui/scope-banner"
-import type { WorkflowEntryState, WorkflowTemplateRunContext } from "@/lib/workflow-entry"
-import {
-  areTemplateContractsSatisfied,
-  buildContinuationArtifactPool,
-  deriveTemplateDisplayLabel,
-  deriveTemplateJobLabel,
-  deriveTemplateContextJourneyStageLabel,
-  formatArtifactContractLabel,
-  selectArtifactsForTemplateContracts,
-} from "@/lib/workflow-entry"
+import { Tabs } from "@/components/ui/tabs"
 import {
   contextAutoRunsOnContinue,
   contextRequiresStartApproval,
 } from "@/lib/stage-run-policy"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 import type {
-  ArtifactContract,
   ArtifactRecord,
-  InputAttachment,
   PermissionMode,
-  ProjectFactoryBlueprint,
   Workflow,
-  WorkflowTemplate,
 } from "@shared/types"
-import { buildRunProgressSummary, formatElapsedTime, type RunProgressSummary } from "@/lib/run-progress"
-import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
-import { DisclosurePanel } from "@/components/ui/disclosure-panel"
+import { buildRunProgressSummary, formatElapsedTime } from "@/lib/run-progress"
 import { ProcessSpine } from "@/components/ui/process-spine"
-import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
-import { buildProcessSpine, selectProcessSpineFactory } from "@/lib/process-spine"
 import { addSkillNodeToWorkflow } from "@/lib/workflow-mutations"
 import type { DiscoveredSkill } from "@shared/types"
-
-function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children?: React.ReactNode }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-muted-foreground pt-[var(--titlebar-height)]">
-      <div className="ui-empty-state rounded-lg surface-soft px-8">
-        <div className="mx-auto mb-3 h-control-lg w-control-lg rounded-md border border-hairline bg-surface-2/90 flex items-center justify-center ui-elevation-inset">
-          <Icon size={20} className="opacity-70" aria-hidden="true" />
-        </div>
-        <p className="mb-1 text-title-md text-foreground">{title}</p>
-        <p className="text-body-md">{description}</p>
-        {children && <div className="mt-4 flex items-center justify-center gap-2">{children}</div>}
-      </div>
-    </div>
-  )
-}
-
-function WorkflowDraftSkeleton() {
-  return (
-    <div className="rounded-lg surface-panel p-5 ui-fade-slide-in">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-foreground shadow-inset-highlight">
-          <Sparkles size={18} aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-title-sm text-foreground">
-            <Loader2 size={14} className="animate-spin text-status-info" />
-            Preparing the first process draft
-          </div>
-          <p className="mt-2 text-body-sm text-muted-foreground">
-            The agent is turning your prompt into a runnable process. This view will populate as soon as the draft is ready.
-          </p>
-        </div>
-      </div>
-      <div className="mt-5 space-y-3" aria-hidden="true">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div
-            key={`workflow-draft-skeleton-${index}`}
-            className="animate-pulse rounded-xl border border-hairline bg-surface-2/70 px-4 py-4"
-          >
-            <div className="h-4 w-40 rounded bg-surface-3" />
-            <div className="mt-3 h-3 w-full rounded bg-surface-3" />
-            <div className="mt-2 h-3 w-5/6 rounded bg-surface-3" />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function collapseInlineText(value: string | null | undefined) {
-  return (value || "").trim().replace(/\s+/g, " ")
-}
-
-function takeLeadingSentence(value: string | null | undefined, fallback: string) {
-  const clean = collapseInlineText(value)
-  if (!clean) return fallback
-  const match = clean.match(/^.*?[.!?](?=\s|$)/)
-  return match ? match[0] : clean
-}
-
-function deriveEntryPolicySummary(workflow: Workflow, templateContext: WorkflowTemplateRunContext | null) {
-  const explicitSummary = takeLeadingSentence(templateContext?.executionPolicy?.summary, "")
-  if (explicitSummary) return explicitSummary
-
-  const approvalCount = workflow.nodes.filter((node) => node.type === "approval").length
-  if (approvalCount > 0) {
-    return approvalCount === 1
-      ? "Stops for one approval gate."
-      : `Stops for ${approvalCount} approval gates.`
-  }
-
-  return "Runs to the next decision."
-}
-
-function deriveEntryNextStepLabel({
-  readyToRun,
-  nextStageTemplate,
-}: {
-  readyToRun: boolean
-  nextStageTemplate: WorkflowTemplate | null
-}) {
-  if (!readyToRun) return "Add stage input."
-  if (nextStageTemplate) {
-    return `Continue with ${deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}.`
-  }
-  return "Review the result."
-}
-
-function formatInputAttachmentLabel(attachment: InputAttachment) {
-  if (attachment.kind === "file") return attachment.name
-  if (attachment.kind === "run") return attachment.workflowName
-  return attachment.label
-}
-
-function WorkflowEntryLanding({
-  entry,
-  displayTitle,
-  readyToRun,
-  startApprovalRequired,
-  stageLabel,
-  policySummary,
-  nextStepLabel,
-  inputLabels,
-  onPrimaryAction,
-  primaryActionLabel,
-  onRefine,
-  onToggleEditor,
-  onAttachCapability,
-  showEditor,
-  canRefine,
-  onDismiss,
-}: {
-  entry: WorkflowEntryState
-  displayTitle: string
-  readyToRun: boolean
-  startApprovalRequired: boolean
-  stageLabel?: string | null
-  policySummary: string
-  nextStepLabel: string
-  inputLabels: string[]
-  onPrimaryAction: () => void
-  primaryActionLabel: string
-  onRefine: () => void
-  onToggleEditor: () => void
-  onAttachCapability: () => void
-  showEditor: boolean
-  canRefine: boolean
-  onDismiss: () => void
-}) {
-  const compactItems = [
-    {
-      label: "Expects",
-      value: inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : entry.inputText,
-    },
-    {
-      label: "Produces",
-      value: entry.outputText,
-    },
-    {
-      label: "Next",
-      value: startApprovalRequired ? "Review gate before run." : nextStepLabel,
-    },
-  ]
-
-  return (
-    <section className="space-y-2.5 ui-fade-slide-in">
-      <ScopeBanner
-        tone="muted"
-        eyebrow={(
-          <div className="flex flex-wrap items-center gap-1.5">
-            {stageLabel && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                {stageLabel}
-              </Badge>
-            )}
-            <Badge variant={readyToRun ? "success" : "secondary"} className="ui-meta-text px-2 py-0">
-              {readyToRun ? "Ready" : "Needs input"}
-            </Badge>
-            {startApprovalRequired && (
-              <Badge variant="warning" className="ui-meta-text px-2 py-0">
-                Approval before run
-              </Badge>
-            )}
-          </div>
-        )}
-        title={displayTitle}
-        actions={(
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={onPrimaryAction}>
-              <Play size={14} />
-              {primaryActionLabel}
-            </Button>
-            {canRefine ? (
-              <Button variant="outline" size="sm" onClick={onRefine}>
-                <MessageSquare size={14} />
-                Refine
-              </Button>
-            ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" aria-label="More actions">
-                  <MoreHorizontal size={14} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={8} className="w-56">
-                <DropdownMenuItem onSelect={onAttachCapability}>
-                  <Plus size={14} />
-                  Attach capability
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={onToggleEditor}>
-                  <PencilLine size={14} />
-                  {showEditor ? "Hide editor" : "Edit process"}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onDismiss}>
-                  Dismiss
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
-      >
-        <div className="grid gap-2 sm:grid-cols-3">
-          {compactItems.map((item) => (
-            <div key={item.label} className="rounded-lg border border-hairline/80 bg-surface-1/70 px-3 py-2">
-              <p className="ui-meta-label text-muted-foreground">{item.label}</p>
-              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{item.value}</p>
-            </div>
-          ))}
-        </div>
-        {entry.routing?.reason ? (
-          <DisclosurePanel
-            summary="Why this start?"
-            className="max-w-full"
-            summaryClassName="px-0 py-0 text-muted-foreground"
-            contentClassName="space-y-2 px-0 pb-0 pt-2 border-0"
-          >
-            <p className="ui-meta-text text-muted-foreground">{entry.routing.reason}</p>
-          </DisclosurePanel>
-        ) : null}
-      </ScopeBanner>
-    </section>
-  )
-}
-
-function StageStartApprovalDialog({
-  open,
-  title,
-  stageLabel,
-  policySummary,
-  expectedArtifact,
-  inputLabels,
-  notes,
-  shortcutLabel,
-  primaryModifierKey,
-  onApprove,
-  onCancel,
-}: {
-  open: boolean
-  title: string
-  stageLabel?: string | null
-  policySummary: string
-  expectedArtifact: string
-  inputLabels: string[]
-  notes: string[]
-  shortcutLabel: string
-  primaryModifierKey: "meta" | "ctrl"
-  onApprove: () => Promise<void> | void
-  onCancel: () => void
-}) {
-  useEffect(() => {
-    if (!open) return
-
-    const handler = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isShortcutConsumed(event)) return
-
-      const usesPrimaryModifier = primaryModifierKey === "meta"
-        ? event.metaKey
-        : event.ctrlKey
-      if (!usesPrimaryModifier || event.key !== "Enter") return
-      consumeShortcut(event)
-      void Promise.resolve(onApprove())
-    }
-
-    window.addEventListener("keydown", handler, true)
-    return () => {
-      window.removeEventListener("keydown", handler, true)
-    }
-  }, [onApprove, open, primaryModifierKey])
-
-  return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel() }}>
-      <DialogContent className="max-w-xl" showCloseButton={false} aria-describedby="stage-start-approval-description">
-        <DialogHeader>
-          <DialogTitle className="flex flex-wrap items-center gap-2">
-            Approval before run
-            <Badge variant="outline" size="compact">{shortcutLabel}</Badge>
-          </DialogTitle>
-          <DialogDescription id="stage-start-approval-description">
-            Review this next step before execution begins.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="ui-meta-label text-muted-foreground">Before run</div>
-                <p className="mt-1 text-body-sm font-medium text-foreground">{title}</p>
-              </div>
-              <div className="ui-badge-row">
-                {stageLabel && (
-                  <Badge variant="outline" size="compact">
-                    {stageLabel}
-                  </Badge>
-                )}
-                <Badge variant="warning" size="compact">Approval gate</Badge>
-                <Badge variant="outline" size="compact">{policySummary}</Badge>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2 md:grid-cols-2">
-            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Result</p>
-              <p className="mt-1 text-body-sm text-foreground">{expectedArtifact}</p>
-            </div>
-            <div className="rounded-lg border border-hairline bg-surface-2/70 px-3 py-2.5">
-              <p className="ui-meta-label text-muted-foreground">Input</p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {inputLabels.length > 0 ? inputLabels.map((label) => (
-                  <Badge key={label} variant="outline" className="ui-meta-text px-2 py-0">
-                    {label}
-                  </Badge>
-                )) : (
-                  <span className="ui-meta-text text-muted-foreground">Review the current stage input.</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {notes.length > 0 && (
-            <DisclosurePanel summary="Gate notes">
-              <div className="space-y-2">
-                {notes.map((note, index) => (
-                  <p key={`${note}-${index}`} className="text-body-sm text-foreground">{note}</p>
-                ))}
-              </div>
-            </DisclosurePanel>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={() => { void Promise.resolve(onApprove()) }}>
-            <Play size={14} />
-            Run
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function RunStrip({
-  summary,
-  elapsed,
-  hasResult,
-  onOpenActivity,
-  onOpenResult,
-}: {
-  summary: RunProgressSummary
-  elapsed: string
-  hasResult: boolean
-  onOpenActivity: () => void
-  onOpenResult: () => void
-}) {
-  const toneClass = summary.tone === "success"
-    ? "ui-status-badge-success"
-    : summary.tone === "warning"
-      ? "ui-status-badge-warning"
-      : summary.tone === "danger"
-        ? "ui-status-badge-danger"
-        : "ui-status-badge-info"
-
-  const progressLabel = summary.totalSteps > 0
-    ? `${Math.min(summary.completedSteps, summary.totalSteps)}/${summary.totalSteps} complete`
-    : null
-  const resultButtonLabel = hasResult
-    ? summary.phaseLabel === "Completed"
-      ? "View result"
-      : "Open result"
-    : "View activity"
-
-  return (
-    <div className="border-b border-hairline bg-surface-1/90">
-      <div className="flex w-full flex-wrap items-center gap-2 px-[var(--content-gutter)] py-2">
-        <div className="min-w-0 flex flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
-          <span className={cn("ui-status-badge ui-meta-text", toneClass)}>
-            {summary.phaseLabel}
-          </span>
-          {summary.activeStepLabel && (
-            <span className="min-w-0 truncate text-body-sm text-foreground">
-              {summary.activeStepLabel}
-            </span>
-          )}
-          {progressLabel && (
-            <span className="ui-meta-text tabular-nums text-muted-foreground">{progressLabel}</span>
-          )}
-          {summary.branchLabel && (
-            <span className="ui-meta-text text-muted-foreground">{summary.branchLabel}</span>
-          )}
-          {elapsed && (
-            <span className="ui-meta-text tabular-nums text-muted-foreground">{elapsed}</span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-8 px-2.5" onClick={hasResult ? onOpenResult : onOpenActivity}>
-            {hasResult ? <FileText size={14} /> : <Activity size={14} />}
-            {resultButtonLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProjectArtifactsPanel({
-  artifacts,
-  loading,
-  error,
-  requiredContracts,
-  onOpenArtifact,
-}: {
-  artifacts: ArtifactRecord[]
-  loading: boolean
-  error: string | null
-  requiredContracts?: ArtifactContract[]
-  onOpenArtifact: (artifact: ArtifactRecord) => void
-}) {
-  const latestArtifacts = artifacts.slice(0, 4)
-  const availableKinds = new Set(artifacts.map((artifact) => artifact.kind))
-  const requiredLabels = (requiredContracts || []).map((contract) => ({
-    label: formatArtifactContractLabel(contract),
-    satisfied: availableKinds.has(contract.kind),
-    optional: contract.required === false,
-  }))
-  const shouldRender = loading || Boolean(error) || latestArtifacts.length > 0 || requiredLabels.length > 0
-
-  if (!shouldRender) {
-    return null
-  }
-
-  return (
-    <section className="rounded-lg border border-hairline bg-surface-1/70 px-4 py-3 ui-fade-slide-in">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="section-kicker">Artifacts</div>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="ui-meta-text px-2 py-0">
-            {artifacts.length} saved
-          </Badge>
-          {requiredLabels.length > 0 && (
-            <Badge variant="outline" className="ui-meta-text px-2 py-0">
-              {requiredLabels.length} reusable
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {requiredLabels.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {requiredLabels.map((item) => (
-            <Badge
-              key={`${item.label}-${item.optional ? "optional" : "required"}`}
-              variant={item.satisfied ? "success" : "outline"}
-              className="ui-meta-text px-2 py-0"
-            >
-              {item.label}{item.optional ? " (optional)" : ""}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-3">
-        {loading ? (
-          <div className="ui-meta-text text-muted-foreground">Loading artifacts...</div>
-        ) : error ? (
-          <div role="alert" className="ui-meta-text text-status-danger">{error}</div>
-        ) : latestArtifacts.length === 0 ? (
-          <div className="ui-meta-text text-muted-foreground">No saved artifacts yet.</div>
-        ) : (
-          <div className="space-y-1.5">
-            {latestArtifacts.map((artifact) => (
-              <div
-                key={artifact.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2/60 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="text-body-sm font-medium text-foreground">{artifact.title}</div>
-                  <div className="ui-meta-text text-muted-foreground">
-                    {formatArtifactContractLabel(artifact.kind)}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => onOpenArtifact(artifact)}
-                >
-                  Open
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-function StageInputSection({
-  inputPanelRef,
-  showTemplateContext = true,
-  showProjectArtifactsPanel,
-  artifacts,
-  loading,
-  error,
-  requiredContracts,
-  onOpenArtifact,
-}: {
-  inputPanelRef: RefObject<HTMLDivElement | null>
-  showTemplateContext?: boolean
-  showProjectArtifactsPanel: boolean
-  artifacts: ArtifactRecord[]
-  loading: boolean
-  error: string | null
-  requiredContracts?: ArtifactContract[]
-  onOpenArtifact: (artifact: ArtifactRecord) => void
-}) {
-  return (
-    <>
-      <div ref={inputPanelRef}>
-        <InputPanel label="Stage input" compact showTemplateContext={showTemplateContext} />
-      </div>
-      {showProjectArtifactsPanel && (
-        <ProjectArtifactsPanel
-          artifacts={artifacts}
-          loading={loading}
-          error={error}
-          requiredContracts={requiredContracts}
-          onOpenArtifact={onOpenArtifact}
-        />
-      )}
-    </>
-  )
-}
+import { useWorkflowPanelResources } from "./workflow-panel/useWorkflowPanelResources"
+import { useWorkflowPanelEntryState } from "./workflow-panel/useWorkflowPanelEntryState"
 
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -698,10 +110,6 @@ export function WorkflowPanel() {
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [artifactPersistenceStatus] = useAtom(artifactPersistenceStatusAtom)
   const [artifactRecords] = useAtom(artifactRecordsAtom)
-  const [projectArtifacts, setProjectArtifacts] = useState<ArtifactRecord[]>([])
-  const [projectArtifactsLoading, setProjectArtifactsLoading] = useState(false)
-  const [projectArtifactsError, setProjectArtifactsError] = useState<string | null>(null)
-  const [factoryBlueprint, setFactoryBlueprint] = useState<ProjectFactoryBlueprint | null>(null)
   const [finalContent] = useAtom(finalContentAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [reportPath] = useAtom(reportPathAtom)
@@ -727,7 +135,6 @@ export function WorkflowPanel() {
   const inputPanelRef = useRef<HTMLDivElement | null>(null)
   const [showEntryEditor, setShowEntryEditor] = useState(false)
   const [prepareNewRun, setPrepareNewRun] = useState(false)
-  const [packTemplates, setPackTemplates] = useState<WorkflowTemplate[]>([])
   const [launchingNextStage, setLaunchingNextStage] = useState(false)
   const [elapsed, setElapsed] = useState("")
   const [outputTabRequest, setOutputTabRequest] = useState<{ tab: "nodes" | "log" | "result" | "history"; nodeId?: string; nonce: number } | null>(null)
@@ -746,6 +153,59 @@ export function WorkflowPanel() {
   useWorkflowReset()
   useWorkflowValidation()
   useUndoRedo()
+  const {
+    projectArtifacts,
+    projectArtifactsLoading,
+    projectArtifactsError,
+    factoryBlueprint,
+    packTemplates,
+  } = useWorkflowPanelResources({
+    selectedProject,
+    selectedWorkflowTemplateContext,
+    artifactRecords,
+  })
+  const {
+    activeEntryState,
+    readyToRun,
+    combinedArtifactRecords,
+    nextStageTemplate,
+    nextStageArtifacts,
+    entryStageLabel,
+    entryFlowRules,
+    startApprovalRequired,
+    entryNextStepLabel,
+    stageStartInputLabels,
+    stageStartPolicyNotes,
+    stageStartFlowName,
+    stageStartDescription,
+    showCreateDraftSkeleton,
+    showEntryLanding,
+    showIdleReviewMode,
+    processSpineStages,
+    showIdleInputPanel,
+    showProjectArtifactsPanel,
+  } = useWorkflowPanelEntryState({
+    workflow,
+    selectedWorkflowPath,
+    workflowEntryState,
+    inputValue,
+    inputAttachments,
+    artifactRecords,
+    projectArtifacts,
+    selectedWorkflowTemplateContext,
+    packTemplates,
+    factoryBlueprint,
+    runStatus,
+    runOutcome,
+    viewMode,
+    pendingCreateMessage,
+    chatStatus,
+    workflowPastRunsCount: workflowPastRuns.length,
+    prepareNewRun,
+    projectArtifactsLoading,
+    projectArtifactsError,
+    selectedProject,
+  })
 
   useEffect(() => {
     const previousRunStatus = previousRunStatusRef.current
@@ -767,8 +227,8 @@ export function WorkflowPanel() {
   }, [setWorkflowOpenState])
 
   const workflowTitleFromPath = useCallback((path: string | null) => {
-    if (!path) return "process"
-    return path.split(/[\\/]/).pop()?.replace(/\.(chain|yaml|yml)$/i, "") || "process"
+    if (!path) return "flow"
+    return path.split(/[\\/]/).pop()?.replace(/\.(chain|yaml|yml)$/i, "") || "flow"
   }, [])
 
   useEffect(() => {
@@ -824,234 +284,7 @@ export function WorkflowPanel() {
     }
   }, [runStatus, setWorkflowEntryState, workflowEntryState])
 
-  useEffect(() => {
-    if (!selectedProject) {
-      setProjectArtifacts([])
-      setProjectArtifactsLoading(false)
-      setProjectArtifactsError(null)
-      setFactoryBlueprint(null)
-      return
-    }
-
-    let cancelled = false
-    setProjectArtifactsLoading(true)
-    setProjectArtifactsError(null)
-
-    void window.api.listProjectArtifacts(selectedProject).then((artifacts) => {
-      if (cancelled) return
-      setProjectArtifacts(artifacts)
-    }).catch((error) => {
-      if (cancelled) return
-      setProjectArtifacts([])
-      setProjectArtifactsError(error instanceof Error ? error.message : String(error))
-    }).finally(() => {
-      if (!cancelled) {
-        setProjectArtifactsLoading(false)
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedProject, artifactRecords])
-
-  useEffect(() => {
-    if (!selectedProject) {
-      setFactoryBlueprint(null)
-      return
-    }
-
-    let cancelled = false
-    void window.api.loadProjectFactoryBlueprint(selectedProject).then((blueprint) => {
-      if (cancelled) return
-      setFactoryBlueprint(blueprint)
-    }).catch(() => {
-      if (!cancelled) {
-        setFactoryBlueprint(null)
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedProject])
-
-  useEffect(() => {
-    if (!selectedWorkflowTemplateContext?.pack?.id) {
-      setPackTemplates([])
-      return
-    }
-
-    let cancelled = false
-    void window.api.listTemplates().then((templates) => {
-      if (cancelled) return
-      setPackTemplates(templates)
-    }).catch((error) => {
-      if (cancelled) return
-      console.error("[WorkflowPanel] failed to load pack templates:", error)
-      setPackTemplates([])
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedWorkflowTemplateContext])
-
   const hasMeaningfulContent = workflowHasMeaningfulContent(workflow)
-  const workflowHasGeneratedSteps = workflow.nodes.some(
-    (node) => node.type !== "input" && node.type !== "output",
-  )
-  const activeEntryState = useMemo(() => {
-    if (!workflowEntryState) return null
-    if (workflowEntryState.workflowPath) {
-      return workflowEntryState.workflowPath === selectedWorkflowPath
-        ? workflowEntryState
-        : null
-    }
-    return workflowEntryState.workflowName === workflow.name
-      ? workflowEntryState
-      : null
-  }, [selectedWorkflowPath, workflow.name, workflowEntryState])
-  const inputNode = workflow.nodes.find((node) => node.type === "input")
-  const inputValidation = resolveWorkflowInput(inputValue, {
-    inputType: inputNode?.type === "input" ? inputNode.config.inputType : undefined,
-    required: inputNode?.type === "input" ? inputNode.config.required : undefined,
-    defaultValue: inputNode?.type === "input" ? inputNode.config.defaultValue : undefined,
-  })
-  const readyToRun = inputValidation.valid && workflow.nodes.some((node) => node.type === "skill")
-  const combinedArtifactRecords = useMemo(() => {
-    const byId = new Map<string, ArtifactRecord>()
-    for (const artifact of projectArtifacts) {
-      byId.set(artifact.id, artifact)
-    }
-    for (const artifact of artifactRecords) {
-      byId.set(artifact.id, artifact)
-    }
-    return Array.from(byId.values()).sort((left, right) => right.updatedAt - left.updatedAt)
-  }, [artifactRecords, projectArtifacts])
-  const continuationArtifactRecords = useMemo(
-    () => buildContinuationArtifactPool({
-      currentArtifacts: artifactRecords,
-      projectArtifacts,
-      context: selectedWorkflowTemplateContext,
-    }),
-    [artifactRecords, projectArtifacts, selectedWorkflowTemplateContext],
-  )
-  const nextStageSelection = useMemo(() => {
-    const recommendedNext = selectedWorkflowTemplateContext?.pack?.recommendedNext || []
-    if (recommendedNext.length === 0 || packTemplates.length === 0) {
-      return { template: null, artifacts: [] as ArtifactRecord[] }
-    }
-
-    const orderedCandidates = recommendedNext
-      .map((templateId) => packTemplates.find((template) => template.id === templateId) || null)
-      .filter((template): template is WorkflowTemplate => template !== null)
-
-    const preferredTemplate = orderedCandidates.find((template) =>
-      areTemplateContractsSatisfied(template.contractIn, continuationArtifactRecords),
-    ) || null
-    if (preferredTemplate) {
-      return {
-        template: preferredTemplate,
-        artifacts: selectArtifactsForTemplateContracts(preferredTemplate.contractIn, continuationArtifactRecords),
-      }
-    }
-
-    return { template: null, artifacts: [] as ArtifactRecord[] }
-  }, [continuationArtifactRecords, packTemplates, selectedWorkflowTemplateContext])
-  const nextStageTemplate = nextStageSelection.template
-  const nextStageArtifacts = nextStageSelection.artifacts
-  const entryStageLabel = useMemo(
-    () => deriveTemplateContextJourneyStageLabel(selectedWorkflowTemplateContext),
-    [selectedWorkflowTemplateContext],
-  )
-  const entryPolicySummary = useMemo(
-    () => deriveEntryPolicySummary(workflow, selectedWorkflowTemplateContext),
-    [selectedWorkflowTemplateContext, workflow],
-  )
-  const startApprovalRequired = useMemo(
-    () => runStatus === "idle" && contextRequiresStartApproval(selectedWorkflowTemplateContext),
-    [runStatus, selectedWorkflowTemplateContext],
-  )
-  const entryNextStepLabel = useMemo(
-    () => deriveEntryNextStepLabel({ readyToRun, nextStageTemplate }),
-    [nextStageTemplate, readyToRun],
-  )
-  const stageStartInputLabels = useMemo(() => {
-    if (inputAttachments.length > 0) {
-      return inputAttachments.map(formatInputAttachmentLabel)
-    }
-    return (selectedWorkflowTemplateContext?.contractIn || []).map((contract) => formatArtifactContractLabel(contract))
-  }, [inputAttachments, selectedWorkflowTemplateContext])
-  const stageStartPolicyNotes = useMemo(
-    () => (selectedWorkflowTemplateContext?.executionPolicy?.notes || []).slice(0, 3),
-    [selectedWorkflowTemplateContext],
-  )
-  const showCreateDraftSkeleton = (
-    viewMode === "list"
-    && selectedWorkflowPath != null
-    && (
-      Boolean(selectedWorkflowPath && pendingCreateMessage[selectedWorkflowPath])
-      || (
-        (chatStatus === "thinking" || chatStatus === "streaming")
-        && !workflowHasGeneratedSteps
-      )
-    )
-  )
-  const showEntryLanding = (
-    viewMode === "list"
-    && runStatus === "idle"
-    && activeEntryState !== null
-    && !showCreateDraftSkeleton
-  )
-  const showIdleReviewMode = (
-    runStatus === "idle"
-    && activeEntryState === null
-    && !showCreateDraftSkeleton
-    && workflowPastRuns.length > 0
-    && !prepareNewRun
-  )
-  const processSpineFactory = useMemo(
-    () => selectProcessSpineFactory(factoryBlueprint, selectedWorkflowTemplateContext),
-    [factoryBlueprint, selectedWorkflowTemplateContext],
-  )
-  const processSpineStages = useMemo(
-    () => buildProcessSpine({
-      context: selectedWorkflowTemplateContext,
-      nextTemplate: nextStageTemplate,
-      templates: packTemplates,
-      factory: processSpineFactory,
-      runStatus,
-      runOutcome,
-      reviewingPastRun: showIdleReviewMode,
-    }),
-    [
-      nextStageTemplate,
-      packTemplates,
-      processSpineFactory,
-      runOutcome,
-      runStatus,
-      selectedWorkflowTemplateContext,
-      showIdleReviewMode,
-    ],
-  )
-  const showIdleInputPanel = (
-    viewMode === "list"
-    && runStatus === "idle"
-    && Boolean(inputNode)
-    && !showCreateDraftSkeleton
-    && !showEntryLanding
-    && !showIdleReviewMode
-  )
-  const showProjectArtifactsPanel = (
-    Boolean(selectedProject)
-    && (
-      projectArtifactsLoading
-      || Boolean(projectArtifactsError)
-      || combinedArtifactRecords.length > 0
-      || (selectedWorkflowTemplateContext?.contractIn?.length ?? 0) > 0
-    )
-  )
   const {
     reviewedRun,
     reviewedRunDetails,
@@ -1077,7 +310,6 @@ export function WorkflowPanel() {
     ? "w-full px-[var(--content-gutter)] py-4 space-y-3"
     : "ui-content-shell py-3 space-y-3"
   const reviewFlowHasSnapshot = showIdleReviewMode && !!reviewedRunDetails?.snapshot
-
   const requestOutputTab = useCallback((tab: "nodes" | "log" | "result" | "history", nodeId?: string) => {
     setViewMode("list")
     setOutputTabRequest({ tab, nodeId, nonce: Date.now() })
@@ -1142,7 +374,7 @@ export function WorkflowPanel() {
   const handleOpenArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
     if (!openError) return
-    toast.error("Could not open artifact", {
+    toast.error("Could not open result", {
       description: openError,
     })
   }
@@ -1200,8 +432,8 @@ export function WorkflowPanel() {
 
       toast.success(
         nextStageNeedsApproval
-          ? `Opened gated stage: ${deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`
-          : `Continuing with ${deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`,
+          ? `Opened step awaiting approval: ${deriveTemplateContinuationLabel(nextStageTemplate) || deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`
+          : `Continuing to ${deriveTemplateContinuationLabel(nextStageTemplate) || deriveTemplateJobLabel(nextStageTemplate) || deriveTemplateDisplayLabel(nextStageTemplate) || nextStageTemplate.name}`,
       )
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
@@ -1211,7 +443,7 @@ export function WorkflowPanel() {
         })
       })
     } catch (error) {
-      toast.error("Could not open the next stage", {
+      toast.error("Could not open the next step", {
         description: String(error),
       })
     } finally {
@@ -1284,6 +516,38 @@ export function WorkflowPanel() {
     })
   }
 
+  const sharedOutputPanelProps = useMemo(() => ({
+    onRerunFrom: rerunFrom,
+    onContinueRun: continueRun,
+    requestedTab: outputTabRequest,
+    reviewedRun,
+    reviewedRunDetails,
+    reviewedRunLoading,
+    reviewedRunError,
+    onStartNewRun: handleStartNewRun,
+    onOpenInbox: () => setMainView("inbox"),
+    onOpenArtifacts: () => setMainView("artifacts"),
+    nextStageTemplate,
+    nextStageArtifacts,
+    onRunNextStage: selectedProject && nextStageTemplate ? handleRunNextStage : null,
+    nextStagePending: launchingNextStage,
+  }), [
+    continueRun,
+    handleRunNextStage,
+    handleStartNewRun,
+    launchingNextStage,
+    nextStageArtifacts,
+    nextStageTemplate,
+    outputTabRequest,
+    rerunFrom,
+    reviewedRun,
+    reviewedRunDetails,
+    reviewedRunError,
+    reviewedRunLoading,
+    selectedProject,
+    setMainView,
+  ])
+
   useEffect(() => {
     if (runStatus !== "idle") return
     if (workflowPastRuns.length === 0) {
@@ -1333,7 +597,7 @@ export function WorkflowPanel() {
     setShowEntryEditor(true)
     setFlowSurfaceMode("edit")
     toast.success(`Attached ${skill.name}`, {
-      description: "Added to this process. Review the new capability in Edit process.",
+      description: "Added to this flow. Review the new skill in Edit flow.",
     })
   }, [setFlowSurfaceMode, setSelectedNodeId, setWorkflow])
 
@@ -1350,86 +614,34 @@ export function WorkflowPanel() {
       : isFlowEditing
         ? "edit"
         : "outline"
-
   if (!selectedProject && !hasMeaningfulContent) {
     return (
-      <EmptyState
-        icon={FolderOpen}
-        title="Open a project"
-        description="Choose a project folder in the sidebar to begin"
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void window.api.addProject()}
-        >
-          <FolderOpen size={14} />
-          Open project folder
-        </Button>
-      </EmptyState>
+      <EmptyWorkspaceState onOpenProject={() => { void window.api.addProject() }} />
     )
   }
 
   if (!selectedWorkflowPath && !hasMeaningfulContent) {
     return (
-      <EmptyState
-        icon={FileStack}
-        title="Pick a process"
-        description="Choose an existing process or start a new one from the sidebar"
-      >
-        <Button variant="outline" size="sm" onClick={() => setMainView("templates")}>
-          <LayoutTemplate size={14} />
-          Open a starting point
-        </Button>
-      </EmptyState>
+      <EmptyProjectState onOpenTemplates={() => setMainView("templates")} />
     )
   }
 
   return (
     <div className="flex-1 min-h-0 flex overflow-hidden">
       {/* Main workflow editor area */}
-      <div role="region" aria-label="Process workspace" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
+      <div role="region" aria-label="Flow workspace" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
         <Toolbar onRun={handleRunRequest} onCancel={cancel} agentToggleRef={chatPanelToggleRef} />
 
         {workflowOpenState.status === "loading" ? (
-          <div className="flex-1 min-h-0 flex items-center justify-center px-[var(--content-gutter)]">
-            <div className="w-full max-w-xl rounded-xl surface-panel p-6 ui-fade-slide-in">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-hairline bg-surface-2 text-status-info ui-elevation-inset">
-                  <Loader2 size={18} className="animate-spin" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-title-sm text-foreground">
-                    Opening {workflowTitleFromPath(workflowOpenState.targetPath)}
-                  </div>
-                  <p className="mt-1 text-body-sm text-muted-foreground">
-                    Loading the process and restoring its stage state.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <WorkflowOpenLoadingState flowLabel={workflowTitleFromPath(workflowOpenState.targetPath)} />
         ) : (
           <>
             {workflowOpenState.status === "error" && (
-              <div className="surface-danger-soft px-[var(--content-gutter)] py-2.5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="ui-meta-label text-status-danger">Could not open process</div>
-                    <p className="mt-1 text-body-sm text-status-danger">
-                      Failed to open {workflowTitleFromPath(workflowOpenState.targetPath)}. The previous process remains open.
-                    </p>
-                    {workflowOpenState.message && (
-                      <p className="mt-1 ui-meta-text text-status-danger/90">
-                        {workflowOpenState.message}
-                      </p>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={clearWorkflowOpenState}>
-                    Dismiss
-                  </Button>
-                </div>
-              </div>
+              <WorkflowOpenErrorBanner
+                flowLabel={workflowTitleFromPath(workflowOpenState.targetPath)}
+                message={workflowOpenState.message}
+                onDismiss={clearWorkflowOpenState}
+              />
             )}
 
             <Tabs
@@ -1437,77 +649,20 @@ export function WorkflowPanel() {
               onValueChange={(next) => setViewMode(next as "list" | "canvas" | "settings")}
               className="flex-1 min-h-0 flex flex-col overflow-hidden"
             >
-          <div className="border-b border-hairline bg-surface-1">
-            <div className={cn("ui-content-gutter flex flex-wrap items-center gap-3", runStatus === "idle" ? "py-2.5" : "py-2")}>
-              <div className="flex min-w-[280px] flex-1 items-center gap-2">
-                <span
-                  className="inline-flex h-control-sm w-control-sm shrink-0 items-center justify-center rounded-md border border-hairline bg-surface-2/80 text-muted-foreground ui-elevation-inset"
-                  aria-hidden="true"
-                >
-                  {showEntryLanding && !showEntryEditor ? <Sparkles size={13} /> : <PencilLine size={13} />}
-                </span>
-                {runStatus === "idle" && !(showEntryLanding && !showEntryEditor) ? (
-                  <>
-                    <Label htmlFor="workflow-name" className="sr-only">Process name</Label>
-                    <Input
-                      id="workflow-name"
-                      type="text"
-                      value={workflow.name || ""}
-                      onChange={(e) =>
-                        setWorkflow((prev) => ({ ...prev, name: e.target.value }), { coalesceKey: "workflow-name" })
-                      }
-                      placeholder="Process name"
-                      className="h-auto min-w-0 flex-1 border-none bg-transparent px-0 py-0 text-title-md font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
-                    />
-                  </>
-                ) : (
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-title-md font-semibold text-foreground">
-                      {workflow.name || activeEntryState?.title || "Untitled process"}
-                    </div>
-                  </div>
-                )}
-                {workflowDirty && (
-                  <Badge variant="warning" className="ui-meta-text shrink-0 px-2 py-1">
-                    Unsaved
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {showEntryLanding && !showEntryEditor ? (
-                  <Badge variant="outline" className="ui-meta-text shrink-0 px-2.5 py-1">
-                    Stage shell
-                  </Badge>
-                ) : (
-                  <TabsList className="h-control-md shrink-0" aria-label="View mode">
-                    <TabsTrigger value="list" className="px-3 py-1">
-                      <List size={13} aria-hidden="true" className="mr-1.5" />
-                      Process
-                    </TabsTrigger>
-                    <TabsTrigger value="canvas" className="px-3 py-1">
-                      <LayoutGrid size={13} aria-hidden="true" className="mr-1.5" />
-                      Graph
-                    </TabsTrigger>
-                    <TabsTrigger value="settings" className="px-3 py-1">
-                      <SlidersHorizontal size={13} aria-hidden="true" className="mr-1.5" />
-                      Defaults
-                    </TabsTrigger>
-                  </TabsList>
-                )}
-                {viewMode === "list" && runStatus === "idle" && !showEntryLanding && (
-                  <Button
-                    variant={flowSurfaceMode === "edit" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-control-md shrink-0"
-                    onClick={() => setFlowSurfaceMode((prev) => (prev === "edit" ? "outline" : "edit"))}
-                  >
-                    <PencilLine size={13} />
-                    {flowSurfaceMode === "edit" ? "View process" : "Edit process"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
+          <WorkflowPanelHeader
+            runStatus={runStatus}
+            showEntryLanding={showEntryLanding}
+            showEntryEditor={showEntryEditor}
+            workflowName={workflow.name || ""}
+            entryTitle={activeEntryState?.title}
+            workflowDirty={workflowDirty}
+            viewMode={viewMode}
+            flowSurfaceMode={flowSurfaceMode}
+            onWorkflowNameChange={(next) =>
+              setWorkflow((prev) => ({ ...prev, name: next }), { coalesceKey: "workflow-name" })
+            }
+            onToggleFlowSurfaceMode={() => setFlowSurfaceMode((prev) => (prev === "edit" ? "outline" : "edit"))}
+          />
 
           {showRunStrip && (
             <RunStrip
@@ -1527,190 +682,64 @@ export function WorkflowPanel() {
             </div>
           )}
 
-          {/* Content */}
-          <TabsContent value="canvas" className="mt-0 flex-1 min-h-0 flex flex-col overflow-hidden ui-fade-slide-in">
-            <div className="flex-1 min-h-0 flex overflow-hidden">
-              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-                <SectionErrorBoundary sectionName="canvas view">
-                  <CanvasView
-                    surfaceBanner={surfaceNotice ? (
-                      <ExecutionSurfaceNoticeBanner
-                        notice={surfaceNotice}
-                        onAction={handleSurfaceNoticeAction}
-                        onDismiss={() => setSurfaceNotice(null)}
-                        className="pointer-events-auto max-w-[560px] shadow-sm backdrop-blur"
-                      />
-                    ) : null}
-                  />
-                </SectionErrorBoundary>
-              </div>
-              <NodeInspector />
-            </div>
-            <div className="ui-scroll-region border-t border-hairline overflow-y-auto h-[clamp(120px,30vh,320px)]">
-              <div className="ui-content-shell py-6 space-y-6">
-                <InputPanel />
-                <SectionErrorBoundary sectionName="output panel">
-                  <OutputPanel
-                    onRerunFrom={rerunFrom}
-                    onContinueRun={continueRun}
-                    requestedTab={outputTabRequest}
-                    reviewingPastRun={showIdleReviewMode}
-                    reviewedRun={reviewedRun}
-                    reviewedRunDetails={reviewedRunDetails}
-                    reviewedRunLoading={reviewedRunLoading}
-                    reviewedRunError={reviewedRunError}
-                    onStartNewRun={handleStartNewRun}
-                    onOpenInbox={() => setMainView("inbox")}
-                    onOpenArtifacts={() => setMainView("artifacts")}
-                    nextStageTemplate={nextStageTemplate}
-                    nextStageArtifacts={nextStageArtifacts}
-                    onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
-                    nextStagePending={launchingNextStage}
-                  />
-                </SectionErrorBoundary>
-              </div>
-            </div>
-          </TabsContent>
+          <WorkflowCanvasTab
+            surfaceNotice={surfaceNotice}
+            onSurfaceNoticeAction={handleSurfaceNoticeAction}
+            onDismissSurfaceNotice={() => setSurfaceNotice(null)}
+            outputPanelProps={{
+              ...sharedOutputPanelProps,
+              reviewingPastRun: showIdleReviewMode,
+            }}
+          />
 
-          <TabsContent value="settings" className="mt-0 ui-scroll-region flex-1 min-h-0 overflow-y-auto ui-fade-slide-in">
-            <div className="ui-content-shell py-6 space-y-6">
-              {surfaceNotice && (
-                <ExecutionSurfaceNoticeBanner
-                  notice={surfaceNotice}
-                  onAction={handleSurfaceNoticeAction}
-                  onDismiss={() => setSurfaceNotice(null)}
-                />
-              )}
-              <WorkflowSettingsPanel />
-            </div>
-          </TabsContent>
+          <WorkflowSettingsTab
+            surfaceNotice={surfaceNotice}
+            onSurfaceNoticeAction={handleSurfaceNoticeAction}
+            onDismissSurfaceNotice={() => setSurfaceNotice(null)}
+          />
 
-          <TabsContent
-            value="list"
-            ref={listScrollRegionRef}
-            className="mt-0 ui-scroll-region flex-1 min-h-0 overflow-y-auto ui-fade-slide-in"
-          >
-            <div className={listShellClass}>
-              {showCreateDraftSkeleton ? (
-                <WorkflowDraftSkeleton />
-              ) : (
-                <>
-                  {showEntryLanding && activeEntryState && (
-                    <>
-                      <WorkflowEntryLanding
-                        entry={activeEntryState}
-                        displayTitle={activeEntryState.title || workflow.name}
-                        readyToRun={readyToRun}
-                        startApprovalRequired={startApprovalRequired}
-                        stageLabel={entryStageLabel}
-                        policySummary={entryPolicySummary}
-                        nextStepLabel={entryNextStepLabel}
-                        inputLabels={stageStartInputLabels}
-                        onPrimaryAction={() => {
-                          if (readyToRun) {
-                            void handleRunRequest()
-                            return
-                          }
-                          focusInputPanel()
-                        }}
-                        primaryActionLabel={readyToRun ? "Run" : "Add input"}
-                        onRefine={() => setChatOpen(true)}
-                        onToggleEditor={() => setShowEntryEditor((prev) => !prev)}
-                        onAttachCapability={handleAttachCapability}
-                        showEditor={showEntryEditor}
-                        canRefine={canShowAgentPanel}
-                        onDismiss={() => setWorkflowEntryState(null)}
-                      />
-                      <StageInputSection
-                        inputPanelRef={inputPanelRef}
-                        showTemplateContext={false}
-                        showProjectArtifactsPanel={showProjectArtifactsPanel}
-                        artifacts={combinedArtifactRecords}
-                        loading={projectArtifactsLoading}
-                        error={projectArtifactsError}
-                        requiredContracts={selectedWorkflowTemplateContext?.contractIn}
-                        onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
-                      />
-                    </>
-                  )}
-                  {showIdleInputPanel && (
-                    <StageInputSection
-                      inputPanelRef={inputPanelRef}
-                      showProjectArtifactsPanel={showProjectArtifactsPanel}
-                      artifacts={combinedArtifactRecords}
-                      loading={projectArtifactsLoading}
-                      error={projectArtifactsError}
-                      requiredContracts={selectedWorkflowTemplateContext?.contractIn}
-                      onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
-                    />
-                  )}
-                  {(!showEntryLanding || showEntryEditor) && (
-                    <SectionErrorBoundary sectionName="chain builder">
-                      <ChainBuilder
-                        compact
-                        mode={chainBuilderMode}
-                        onStageSelect={focusStageDetails}
-                        reviewSnapshot={showIdleReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
-                      />
-                    </SectionErrorBoundary>
-                  )}
-                  {showIdleReviewMode && (
-                    <div
-                      ref={outputPanelRef}
-                      id="run-output-panel"
-                      className="scroll-mt-4 space-y-3"
-                    >
-                      <SectionErrorBoundary sectionName="output panel">
-                        <OutputPanel
-                          onRerunFrom={rerunFrom}
-                          onContinueRun={continueRun}
-                          requestedTab={outputTabRequest}
-                          reviewingPastRun
-                          reviewedRun={reviewedRun}
-                          reviewedRunDetails={reviewedRunDetails}
-                          reviewedRunLoading={reviewedRunLoading}
-                          reviewedRunError={reviewedRunError}
-                          onStartNewRun={handleStartNewRun}
-                          onOpenInbox={() => setMainView("inbox")}
-                          onOpenArtifacts={() => setMainView("artifacts")}
-                          nextStageTemplate={nextStageTemplate}
-                          nextStageArtifacts={nextStageArtifacts}
-                          onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
-                          nextStagePending={launchingNextStage}
-                        />
-                      </SectionErrorBoundary>
-                    </div>
-                  )}
-                  {(!showEntryLanding || runStatus !== "idle") && !showIdleReviewMode && (
-                    <div
-                      ref={outputPanelRef}
-                      id="run-output-panel"
-                      className="scroll-mt-4"
-                    >
-                      <SectionErrorBoundary sectionName="output panel">
-                        <OutputPanel
-                          onRerunFrom={rerunFrom}
-                          onContinueRun={continueRun}
-                          requestedTab={outputTabRequest}
-                          reviewedRun={reviewedRun}
-                          reviewedRunDetails={reviewedRunDetails}
-                          reviewedRunLoading={reviewedRunLoading}
-                          reviewedRunError={reviewedRunError}
-                          onStartNewRun={handleStartNewRun}
-                          onOpenInbox={() => setMainView("inbox")}
-                          onOpenArtifacts={() => setMainView("artifacts")}
-                          nextStageTemplate={nextStageTemplate}
-                          nextStageArtifacts={nextStageArtifacts}
-                          onRunNextStage={selectedProject && nextStageTemplate ? handleRunNextStage : null}
-                          nextStagePending={launchingNextStage}
-                        />
-                      </SectionErrorBoundary>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </TabsContent>
+          <WorkflowListTab
+            listScrollRegionRef={listScrollRegionRef}
+            listShellClass={listShellClass}
+            showCreateDraftSkeleton={showCreateDraftSkeleton}
+            showEntryLanding={showEntryLanding}
+            activeEntryState={activeEntryState}
+            workflowName={workflow.name}
+            readyToRun={readyToRun}
+            startApprovalRequired={startApprovalRequired}
+            entryStageLabel={entryStageLabel}
+            entryFlowRules={entryFlowRules}
+            entryNextStepLabel={entryNextStepLabel}
+            stageStartInputLabels={stageStartInputLabels}
+            onPrimaryEntryAction={() => {
+              if (readyToRun) {
+                void handleRunRequest()
+                return
+              }
+              focusInputPanel()
+            }}
+            onRefine={() => setChatOpen(true)}
+            onToggleEntryEditor={() => setShowEntryEditor((prev) => !prev)}
+            onAttachCapability={handleAttachCapability}
+            showEntryEditor={showEntryEditor}
+            canShowAgentPanel={canShowAgentPanel}
+            onDismissEntry={() => setWorkflowEntryState(null)}
+            inputPanelRef={inputPanelRef}
+            showProjectArtifactsPanel={showProjectArtifactsPanel}
+            combinedArtifactRecords={combinedArtifactRecords}
+            projectArtifactsLoading={projectArtifactsLoading}
+            projectArtifactsError={projectArtifactsError}
+            requiredContracts={selectedWorkflowTemplateContext?.contractIn}
+            onOpenArtifact={(artifact) => { void handleOpenArtifact(artifact) }}
+            showIdleInputPanel={showIdleInputPanel}
+            chainBuilderMode={chainBuilderMode}
+            onFocusStageDetails={focusStageDetails}
+            reviewSnapshot={showIdleReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
+            showIdleReviewMode={showIdleReviewMode}
+            runStatus={runStatus}
+            outputPanelRef={outputPanelRef}
+            outputPanelProps={sharedOutputPanelProps}
+          />
             </Tabs>
           </>
         )}
@@ -1719,24 +748,29 @@ export function WorkflowPanel() {
         {showEntryLanding && !showEntryEditor && (
           <SkillPicker
             onAddSkill={handleAttachCapabilitySelection}
-            title="Attach capability"
-            description="Choose a reusable capability to add to the current process."
-            searchPlaceholder="Search capabilities..."
-            emptyStateMessage="No capabilities found. Enable a plugin pack, keep using local skills, or open a project with project-level capabilities."
-            emptyResultsMessage={(query) => `No capabilities found for “${query}”`}
+            title="Attach skill"
+            description="Choose a reusable skill to add to the current flow."
+            searchPlaceholder="Search skills..."
+            emptyStateMessage="No skills found. Enable a plugin pack, keep using local skills, or open a project with project-level skills."
+            emptyResultsMessage={(query) => `No skills found for “${query}”`}
             stageLabel={entryStageLabel}
-            attachTargetLabel="this process"
+            attachTargetLabel="this flow"
           />
         )}
         <StageStartApprovalDialog
           open={stageStartGateOpen}
-          title={activeEntryState?.title || workflow.name || selectedWorkflowTemplateContext?.templateName || "This stage"}
+          flowName={stageStartFlowName}
+          title={activeEntryState?.title || workflow.name || selectedWorkflowTemplateContext?.templateName || "This step"}
           stageLabel={entryStageLabel}
-          policySummary={entryPolicySummary}
+          stepDescription={stageStartDescription}
+          flowRules={entryFlowRules}
           expectedArtifact={selectedWorkflowTemplateContext?.outputText || activeEntryState?.outputText || "A reviewable result"}
+          inputPreview={inputValue}
           inputLabels={stageStartInputLabels}
           notes={stageStartPolicyNotes}
           shortcutLabel={`${desktopRuntime.primaryModifierLabel}↵`}
+          approveConsequence="Runs this step with the current input."
+          rejectConsequence="Keeps the flow in edit mode."
           primaryModifierKey={desktopRuntime.primaryModifierKey}
           onApprove={handleApproveStageStart}
           onCancel={handleCancelStageStart}
@@ -1744,22 +778,13 @@ export function WorkflowPanel() {
         <ApprovalDialog />
       </div>
 
-      {/* Agent panel — right side */}
       {canShowAgentPanel && (
-        <SectionErrorBoundary sectionName="Agent panel">
-          <div
-            ref={chatPanelShellRef}
-            aria-hidden={!chatOpen}
-            className={cn(
-              "relative shrink-0 min-h-0 overflow-hidden ui-motion-standard transition-[width,opacity]",
-              chatOpen ? "opacity-100" : "opacity-0",
-            )}
-            style={{ width: chatOpen ? chatPanelWidth : 0 }}
-            inert={!chatOpen}
-          >
-            <ChatPanel collapsed={!chatOpen} onClose={() => setChatOpen(false)} />
-          </div>
-        </SectionErrorBoundary>
+        <WorkflowChatPanelShell
+          shellRef={chatPanelShellRef}
+          open={chatOpen}
+          width={chatPanelWidth}
+          onClose={() => setChatOpen(false)}
+        />
       )}
     </div>
   )

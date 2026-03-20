@@ -36,7 +36,7 @@ const ERROR_KIND_LABELS: Record<string, string> = {
   tool: "Tool error",
   model: "Model error",
   timeout: "Timeout",
-  policy: "Policy",
+  policy: "Flow rules",
   unknown: "Error",
 }
 
