@@ -71,7 +71,7 @@ export function deriveSkillStageFit(skill: DiscoveredSkill, stageLabel?: string 
     return {
       score: 1,
       label: "Reusable",
-      reason: "General capability for this process.",
+      reason: "General skill for this flow.",
     }
   }
 
@@ -79,7 +79,7 @@ export function deriveSkillStageFit(skill: DiscoveredSkill, stageLabel?: string 
     return {
       score: 4,
       label: `Fits ${stageLabel}`,
-      reason: "Name and description match this stage.",
+      reason: "Name and description match this step.",
     }
   }
 
@@ -87,7 +87,7 @@ export function deriveSkillStageFit(skill: DiscoveredSkill, stageLabel?: string 
     return {
       score: 3,
       label: `Works for ${stageLabel}`,
-      reason: "Likely useful for the current stage.",
+      reason: "Likely useful for the current step.",
     }
   }
 

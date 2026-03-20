@@ -72,7 +72,7 @@ function DependencyWarningDialog({
                 checked={acknowledgeBrokenRefs}
                 onCheckedChange={onAcknowledgeBrokenRefsChange}
               />
-              I understand this may break `skillRef` in the current workflow.
+              I understand this may break `skillRef` in the current flow.
             </Label>
           </div>
         )}
@@ -146,7 +146,7 @@ export function SkillsPageDialogs({
         onOpenChange={(open) => !open && onPendingUninstallChange(null)}
         title="Uninstall library?"
         description={`Remove "${pendingUninstall?.name || "library"}" and its installed skills from this app profile?`}
-        warning="Dependency warning: current workflow references skills from this library."
+        warning="Dependency warning: current flow references skills from this library."
         refs={pendingUninstallRefs}
         acknowledgeId="acknowledge-broken-refs"
         acknowledgeBrokenRefs={acknowledgeBrokenRefs}
@@ -159,8 +159,8 @@ export function SkillsPageDialogs({
         open={pendingDisablePlugin !== null}
         onOpenChange={(open) => !open && onPendingDisablePluginChange(null)}
         title="Disable plugin?"
-        description={`Disable "${pendingDisablePlugin?.name || "plugin"}" and hide its packaged skills, templates, and MCP packs from the active profile?`}
-        warning="Dependency warning: current workflow references skills from this plugin."
+        description={`Disable "${pendingDisablePlugin?.name || "plugin"}" and hide its packaged skills, starting points, and MCP packs from the active profile?`}
+        warning="Dependency warning: current flow references skills from this plugin."
         refs={pendingDisablePluginRefs}
         acknowledgeId="acknowledge-disable-plugin-refs"
         acknowledgeBrokenRefs={acknowledgeBrokenRefs}
@@ -174,7 +174,7 @@ export function SkillsPageDialogs({
         onOpenChange={(open) => !open && onPendingRemoveMarketplaceChange(null)}
         title="Remove marketplace?"
         description={`Remove "${pendingRemoveMarketplace?.name || "marketplace"}" and all plugin packs installed from it?`}
-        warning="Dependency warning: current workflow references skills from plugins in this marketplace."
+        warning="Dependency warning: current flow references skills from plugins in this marketplace."
         refs={pendingRemoveMarketplaceRefs}
         acknowledgeId="acknowledge-remove-marketplace-refs"
         acknowledgeBrokenRefs={acknowledgeBrokenRefs}
@@ -190,7 +190,7 @@ export function SkillsPageDialogs({
             <DialogDescription>
               {previewLibrary?.installed
                 ? "Detected skills from this installed library."
-                : "Typical capabilities available after installation."}
+                : "Typical skills available after installation."}
             </DialogDescription>
           </DialogHeader>
 
@@ -236,7 +236,7 @@ export function SkillsPageDialogs({
           <DialogHeader>
             <DialogTitle>{previewPlugin?.name || "Plugin"} preview</DialogTitle>
             <DialogDescription>
-              Packaged pipeline assets discovered from this installed plugin.
+              Packaged skills, starting points, and MCP packs discovered from this installed plugin.
             </DialogDescription>
           </DialogHeader>
 

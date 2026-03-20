@@ -21,7 +21,7 @@ describe("summarizeToolCall", () => {
       },
       after_node_id: "input-1",
     })).toEqual({
-      title: "Add skill node",
+      title: "Add skill step",
       detail: "qa/reviewer",
       preview: "After input-1",
     })
@@ -63,8 +63,8 @@ Warnings:
   WARN: Splitter should have a merger
 
 Summary: 2 nodes, 1 edge`)).toEqual({
-      title: "1 error in workflow",
-      detail: "2 nodes, 1 edge",
+      title: "1 error in flow",
+      detail: "2 steps, 1 connection",
       preview: "1 warning",
     })
   })

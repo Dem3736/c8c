@@ -475,7 +475,7 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
       </div>
 
       <p className="ui-meta-text text-muted-foreground">
-        Provider and model are controlled from the workflow Input step.
+        Provider and model are controlled from the flow Input step.
       </p>
 
       <div>
@@ -588,7 +588,7 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
         </p>
       </div>
       <p className="ui-meta-text text-muted-foreground">
-        Provider and model are controlled from the workflow Input step.
+        Provider and model are controlled from the flow Input step.
       </p>
       <div className="flex items-center gap-3">
         <Label htmlFor={`max-branches-${nodeId}`} className="ui-meta-text text-muted-foreground">Max branches</Label>
@@ -663,7 +663,7 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
   return (
     <div className="ui-fade-slide-in border-t border-hairline px-3 pb-3 pt-2.5 space-y-2 surface-soft">
       <p className="ui-meta-text text-muted-foreground">
-        Pauses the workflow and asks you to review before continuing.
+        Pauses the flow and asks you to review before continuing.
       </p>
 
       <div>
@@ -743,7 +743,7 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
               <SelectContent>
                 <SelectItem value="auto_approve">Auto-approve</SelectItem>
                 <SelectItem value="auto_reject">Auto-reject</SelectItem>
-                <SelectItem value="skip">Skip node</SelectItem>
+                <SelectItem value="skip">Skip step</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -751,12 +751,12 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
         <p className="ui-meta-text text-muted-foreground">
           {config.timeout_minutes != null && config.timeout_minutes > 0
             ? "If no one responds in time, the timeout action runs automatically."
-            : "No timeout — the workflow will wait indefinitely for approval."}
+            : "No timeout — the flow will wait indefinitely for approval."}
         </p>
       </div>
 
       <p className="ui-meta-text text-muted-foreground">
-        Rejecting at this gate will stop the entire workflow run.
+        Rejecting at this approval will stop the entire flow run.
       </p>
 
       <RuntimePolicyEditor nodeId={nodeId} config={config} onConfigChange={onConfigChange as (next: RuntimeConfigurableNodeConfig) => void} />

@@ -79,7 +79,7 @@ export function InputPanel({
   const showError = touched && !resolvedInput.valid
   const placeholder =
     inputConfig.placeholder ||
-    "Enter your input text, paste a URL, or describe what to process..."
+    "Enter your input text, paste a URL, or describe what to run..."
   const templateContracts = useMemo(
     () => (selectedWorkflowTemplateContext?.contractIn || []).map((contract) => ({
       key: `${contract.kind}:${contract.title || ""}:${contract.description || ""}:${contract.required !== false ? "required" : "optional"}`,
@@ -288,7 +288,7 @@ export function InputPanel({
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setRunPickerOpen(true)}>
                 <History size={13} className="mr-2" />
-                Attach result artifact
+                Attach saved result
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={handleAddText}>
                 <Type size={13} className="mr-2" />
@@ -307,14 +307,14 @@ export function InputPanel({
             codexEnabled={providerSettings.features.codexProvider}
             labelMode="short"
             className="control-pill-compact w-[104px] border-hairline bg-surface-1/85 shadow-inset-highlight-subtle"
-            ariaLabel="Workflow provider"
+            ariaLabel="Flow provider"
           />
           <ProviderModelSelect
             provider={workflowProvider}
             value={workflowModel}
             onValueChange={(model) => updateWorkflowDefaults({ model })}
             className="control-pill-compact w-[124px] border-hairline bg-surface-1/85 tabular-nums shadow-inset-highlight-subtle"
-            ariaLabel="Workflow model"
+            ariaLabel="Flow model"
           />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1">
@@ -337,7 +337,7 @@ export function InputPanel({
                 ? "Optional input."
                 : "Auto-detected type."
               : inputConfig.required === false
-                ? "Optional input. Empty state falls back to the workflow default."
+                ? "Optional input. Empty state falls back to the flow default."
                 : "Paste text, a URL, or a project path."}
           </span>
         </div>

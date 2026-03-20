@@ -44,12 +44,19 @@ function summarizeDefaults(defaults: Record<string, unknown>): string | undefine
   return keys.slice(0, 3).join(", ")
 }
 
-function summarizeWorkflowCounts(value: unknown): string | undefined {
+function summarizeFlowCounts(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined
   const nodes = Array.isArray(value.nodes) ? value.nodes.length : undefined
   const edges = Array.isArray(value.edges) ? value.edges.length : undefined
   if (typeof nodes !== "number" || typeof edges !== "number") return undefined
-  return `${pluralize(nodes, "node")}, ${pluralize(edges, "edge")}`
+  return `${pluralize(nodes, "step")}, ${pluralize(edges, "connection")}`
+}
+
+function canonicalizeFlowSummary(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  return value
+    .replace(/\b(\d+)\s+nodes?\b/g, (_match, count: string) => pluralize(Number(count), "step"))
+    .replace(/\b(\d+)\s+edges?\b/g, (_match, count: string) => pluralize(Number(count), "connection"))
 }
 
 function summarizeGenericInput(input: Record<string, unknown> | undefined): string | undefined {
@@ -123,10 +130,10 @@ export function summarizeToolCall(
     }
 
     case "validate_workflow":
-      return { title: "Validate workflow" }
+      return { title: "Validate flow" }
 
     case "get_workflow":
-      return { title: "Read workflow" }
+      return { title: "Read flow" }
 
     case "add_node": {
       const node = isRecord(input?.node) ? input.node : undefined
@@ -134,7 +141,7 @@ export function summarizeToolCall(
       const skillRef = isRecord(node?.config) ? asString(node.config.skillRef) : undefined
       const afterNodeId = asString(input?.after_node_id)
       return {
-        title: nodeType ? `Add ${nodeType} node` : "Add node",
+        title: nodeType ? `Add ${nodeType} step` : "Add step",
         detail: skillRef || afterNodeId,
         preview: afterNodeId && skillRef ? `After ${afterNodeId}` : undefined,
       }
@@ -144,14 +151,14 @@ export function summarizeToolCall(
       const nodeId = asString(input?.node_id)
       const config = isRecord(input?.config) ? input.config : undefined
       return {
-        title: nodeId ? `Update ${nodeId}` : "Update node",
+        title: nodeId ? `Update ${nodeId}` : "Update step",
         detail: config ? Object.keys(config).slice(0, 3).join(", ") : undefined,
       }
     }
 
     case "remove_node":
       return {
-        title: "Remove node",
+        title: "Remove step",
         detail: asString(input?.node_id),
       }
 
@@ -160,14 +167,14 @@ export function summarizeToolCall(
       const target = asString(input?.target)
       const type = asString(input?.type)
       return {
-        title: source && target ? `Connect ${source} -> ${target}` : "Add edge",
-        detail: type && type !== "default" ? `${type} edge` : undefined,
+        title: source && target ? `Connect ${source} -> ${target}` : "Add connection",
+        detail: type && type !== "default" ? `${type} connection` : undefined,
       }
     }
 
     case "remove_edge":
       return {
-        title: "Remove edge",
+        title: "Remove connection",
         detail: asString(input?.edge_id),
       }
 
@@ -182,8 +189,8 @@ export function summarizeToolCall(
     case "update_workflow": {
       const workflow = isRecord(input?.workflow) ? input.workflow : undefined
       return {
-        title: "Replace workflow",
-        detail: summarizeWorkflowCounts(workflow),
+        title: "Replace flow",
+        detail: summarizeFlowCounts(workflow),
       }
     }
 
@@ -250,11 +257,11 @@ export function summarizeToolResult(
       const errorCount = (body.match(/^\s*ERROR:/gm) || []).length
       return {
         title: valid
-          ? "Workflow valid"
+          ? "Flow valid"
           : errorCount > 0
-            ? `${pluralize(errorCount, "error")} in workflow`
-            : "Workflow has issues",
-        detail: summaryMatch?.[1],
+            ? `${pluralize(errorCount, "error")} in flow`
+            : "Flow has issues",
+        detail: canonicalizeFlowSummary(summaryMatch?.[1]),
         preview: warningCount > 0 ? pluralize(warningCount, "warning") : undefined,
       }
     }
@@ -262,10 +269,10 @@ export function summarizeToolResult(
     case "get_workflow": {
       try {
         const parsed = JSON.parse(body) as unknown
-        const counts = summarizeWorkflowCounts(parsed)
+        const counts = summarizeFlowCounts(parsed)
         const name = isRecord(parsed) ? asString(parsed.name) : undefined
         return {
-          title: "Workflow snapshot",
+          title: "Flow snapshot",
           detail: counts,
           preview: name,
         }
@@ -285,7 +292,7 @@ export function summarizeToolResult(
     case "update_workflow": {
       const match = body.match(/^Workflow updated:\s*(.+)$/m)
       return {
-        title: "Workflow updated",
+        title: "Flow updated",
         detail: match?.[1],
       }
     }
@@ -293,15 +300,15 @@ export function summarizeToolResult(
     case "add_node": {
       const match = body.match(/^Added node "([^"]+)" \(([^)]+)\)(?: after "([^"]+)")?/m)
       return {
-        title: match ? `Added ${match[1]}` : "Added node",
-        detail: match ? `${match[2]} node${match[3] ? ` after ${match[3]}` : ""}` : undefined,
+        title: match ? `Added ${match[1]}` : "Added step",
+        detail: match ? `${match[2]} step${match[3] ? ` after ${match[3]}` : ""}` : undefined,
       }
     }
 
     case "remove_node": {
       const match = body.match(/^Removed node "([^"]+)"(?: and rewired (.+))?/m)
       return {
-        title: match ? `Removed ${match[1]}` : "Removed node",
+        title: match ? `Removed ${match[1]}` : "Removed step",
         detail: compactText(match?.[2]),
       }
     }
@@ -309,22 +316,22 @@ export function summarizeToolResult(
     case "update_node": {
       const match = body.match(/^Updated node "([^"]+)"/m)
       return {
-        title: match ? `Updated ${match[1]}` : "Updated node",
+        title: match ? `Updated ${match[1]}` : "Updated step",
       }
     }
 
     case "add_edge": {
       const match = body.match(/^Added edge "([^"]+)" \((.+?) → (.+?), type: ([^)]+)\)/m)
       return {
-        title: match ? `Connected ${match[2]} -> ${match[3]}` : "Added edge",
-        detail: match ? `${match[4]} edge` : undefined,
+        title: match ? `Connected ${match[2]} -> ${match[3]}` : "Added connection",
+        detail: match ? `${match[4]} connection` : undefined,
       }
     }
 
     case "remove_edge": {
       const match = body.match(/^Removed edge "([^"]+)"/m)
       return {
-        title: match ? `Removed ${match[1]}` : "Removed edge",
+        title: match ? `Removed ${match[1]}` : "Removed connection",
       }
     }
   }

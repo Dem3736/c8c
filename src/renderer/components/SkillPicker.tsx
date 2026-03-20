@@ -45,12 +45,12 @@ interface SkillPickerProps {
 export function SkillPicker({
   onAddSkill,
   title = "Add Skill",
-  description = "Choose a skill to add to your workflow",
+  description = "Choose a skill to add to your flow",
   searchPlaceholder = "Search skills...",
   emptyStateMessage = "No skills found. Install a plugin pack in Plugins, keep using legacy libraries, or open a project with local skills.",
   emptyResultsMessage = (query) => `No results for “${query}”`,
   stageLabel = null,
-  attachTargetLabel = "This process",
+  attachTargetLabel = "This flow",
 }: SkillPickerProps) {
   const [skills] = useAtom(skillsAtom)
   const [pickerOpen, setPickerOpen] = useAtom(skillPickerOpenAtom)
@@ -168,7 +168,7 @@ export function SkillPicker({
             <div className="flex flex-wrap gap-1.5">
               <Badge variant="outline" size="compact">Attach to {attachTargetLabel}</Badge>
               {stageLabel && (
-                <Badge variant="outline" size="compact">Current stage: {stageLabel}</Badge>
+                <Badge variant="outline" size="compact">Current step: {stageLabel}</Badge>
               )}
             </div>
           </div>

@@ -167,12 +167,12 @@ export function BatchPanel() {
         showCloseButton={!isRunning}
         className="w-[min(100%-2rem,42rem)] max-h-[80vh] flex flex-col p-0 gap-0"
       >
-        <CanvasDialogHeader className="surface-depth-header border-b border-hairline">
-          <DialogTitle>Batch Run</DialogTitle>
-          <DialogDescription>
-            Run this workflow on multiple inputs. Enter one input per line.
-          </DialogDescription>
-        </CanvasDialogHeader>
+          <CanvasDialogHeader className="surface-depth-header border-b border-hairline">
+            <DialogTitle>Batch Run</DialogTitle>
+            <DialogDescription>
+              Run this flow on multiple inputs. Enter one input per line.
+            </DialogDescription>
+          </CanvasDialogHeader>
 
         <CanvasDialogBody className="ui-scroll-region flex-1 min-h-0 overflow-y-auto py-4">
           {!isRunning && !isDone && (
@@ -273,7 +273,7 @@ export function BatchPanel() {
                 <SummaryCard label="Cancelled" value={String(batchSummary.cancelled)} staggerIndex={3} />
                 <SummaryCard label="Mean Cost" value={`$${batchSummary.mean_cost_usd.toFixed(4)}`} staggerIndex={4} />
                 <SummaryCard
-                  label={batchSummary.total !== batchSummary.processed ? `Mean Duration (${batchSummary.processed} processed)` : "Mean Duration"}
+                  label={batchSummary.total !== batchSummary.processed ? `Mean Duration (${batchSummary.processed} completed)` : "Mean Duration"}
                   value={`${(batchSummary.mean_duration_ms / 1000).toFixed(1)}s`}
                   staggerIndex={5}
                 />

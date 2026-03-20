@@ -301,7 +301,7 @@ export function MultiRunDashboard() {
       setOpen(false)
       return
     }
-    if (!(await confirmDiscard("open another workflow", workflowDirty))) {
+    if (!(await confirmDiscard("open another flow", workflowDirty))) {
       return
     }
 
@@ -330,15 +330,15 @@ export function MultiRunDashboard() {
         return
       } catch (error) {
         if (!restoreWorkflowSnapshot(entry.workflowSnapshot)) {
-          toast.error("Could not open workflow", {
+          toast.error("Could not open flow", {
             description: String(error),
           })
           return
         }
       }
     } else if (!restoreWorkflowSnapshot(entry.workflowSnapshot)) {
-      toast.error("Could not open workflow", {
-        description: "This dashboard entry does not have a restorable workflow snapshot.",
+      toast.error("Could not open flow", {
+        description: "This dashboard entry does not have a restorable flow snapshot.",
       })
       return
     }
@@ -432,8 +432,8 @@ export function MultiRunDashboard() {
             </DialogTitle>
             <DialogDescription>
               {activeCount > 0
-                ? `${activeCount} run${activeCount === 1 ? "" : "s"} active across workflows.`
-                : "Inspect recent session runs and jump back into any workflow."}
+                ? `${activeCount} run${activeCount === 1 ? "" : "s"} active across flows.`
+                : "Inspect recent session runs and jump back into any flow."}
             </DialogDescription>
           </CanvasDialogHeader>
 
@@ -467,7 +467,7 @@ export function MultiRunDashboard() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate text-body-sm font-medium text-foreground">
-                              {entry.workflowName || (entry.workflowPath ? "Untitled workflow" : "Unsaved draft")}
+                              {entry.workflowName || (entry.workflowPath ? "Untitled flow" : "Unsaved draft")}
                             </p>
                             <p className="mt-0.5 truncate ui-meta-text text-muted-foreground">
                               {folderName(entry.projectPath)}
@@ -504,16 +504,16 @@ export function MultiRunDashboard() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="truncate text-title-md text-foreground">
-                            {selectedEntry.workflowName || (selectedEntry.workflowPath ? "Untitled workflow" : "Unsaved draft")}
+                            {selectedEntry.workflowName || (selectedEntry.workflowPath ? "Untitled flow" : "Unsaved draft")}
                           </h3>
                           {selectedEntry.isSelectedWorkflow && (
                             <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-                              Current editor
+                              Current flow
                             </Badge>
                           )}
                         </div>
                         <p className="mt-1 text-body-sm text-muted-foreground">
-                          {selectedEntry.workflowPath || "Unsaved draft workflow"}
+                          {selectedEntry.workflowPath || "Unsaved draft flow"}
                         </p>
                       </div>
 
@@ -622,7 +622,7 @@ export function MultiRunDashboard() {
                             <dd className="max-w-[60%] truncate text-right text-foreground">{selectedEntry.runId || selectedEntry.pastRun?.runId || "Not active"}</dd>
                           </div>
                           <div className="flex items-start justify-between gap-3">
-                            <dt className="text-muted-foreground">Active node</dt>
+                            <dt className="text-muted-foreground">Active step</dt>
                             <dd className="max-w-[60%] text-right text-foreground">
                               <span className="inline-flex max-w-full items-center justify-end gap-1.5">
                                 {isRunInFlight(selectedEntry.runStatus) && selectedEntry.activeNodeLabel && (
@@ -683,7 +683,7 @@ export function MultiRunDashboard() {
 
                       <div className="space-y-4">
                         <div className="rounded-lg surface-soft p-4">
-                          <h4 className="text-body-sm font-medium text-foreground">Artifacts</h4>
+                          <h4 className="text-body-sm font-medium text-foreground">Results</h4>
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
                               variant="outline"
@@ -727,7 +727,7 @@ export function MultiRunDashboard() {
                   <div className="max-w-sm rounded-lg border border-dashed border-hairline bg-surface-1/70 p-6">
                     <p className="text-title-sm text-foreground">No runs to show</p>
                     <p className="mt-2 text-body-sm text-muted-foreground">
-                      Start a workflow and it will appear here with live status, approvals, and artifacts.
+                      Start a flow and it will appear here with live status, approvals, and results.
                     </p>
                   </div>
                 </div>

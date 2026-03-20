@@ -562,7 +562,7 @@ function SkillFields({
       <ValidationMessages errors={maxTurnsValidation.errors} />
 
       <p className="ui-meta-text text-muted-foreground">
-        Provider and model are controlled from the workflow Input step.
+        Provider and model are controlled from the flow Input step.
       </p>
 
       <div className="flex items-center gap-3">
@@ -596,7 +596,7 @@ function SkillFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__inherit__">Inherit from workflow</SelectItem>
+            <SelectItem value="__inherit__">Inherit from flow</SelectItem>
             <SelectItem value="plan">Plan (read-only)</SelectItem>
             <SelectItem value="edit">Edit (can modify files)</SelectItem>
           </SelectContent>
@@ -604,7 +604,7 @@ function SkillFields({
       </div>
       <ValidationMessages errors={permissionModeValidation.errors} />
       <p className="ui-meta-text text-muted-foreground">
-        Inherit follows the workflow default. Plan can inspect but not change files. Edit allows this step to modify files.
+        Inherit follows the flow default. Plan can inspect but not change files. Edit allows this step to modify files.
       </p>
 
       <div className="surface-inset-card px-2 py-2 space-y-2">
@@ -762,7 +762,7 @@ function SplitterFields({
       </div>
 
       <p className="ui-meta-text text-muted-foreground">
-        Provider and model are controlled from the workflow Input step.
+        Provider and model are controlled from the flow Input step.
       </p>
 
       <div className="flex items-center gap-3">
@@ -870,7 +870,7 @@ function ApprovalFields({
   return (
     <>
       <p className="ui-meta-text text-muted-foreground">
-        Pauses the workflow and asks you to review before continuing.
+        Pauses the flow and asks you to review before continuing.
       </p>
 
       <div>
@@ -953,7 +953,7 @@ function ApprovalFields({
               <SelectContent>
                 <SelectItem value="auto_approve">Auto-approve</SelectItem>
                 <SelectItem value="auto_reject">Auto-reject</SelectItem>
-                <SelectItem value="skip">Skip node</SelectItem>
+                <SelectItem value="skip">Skip step</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -961,13 +961,13 @@ function ApprovalFields({
         <p className="ui-meta-text text-muted-foreground/70 text-[10px]">
           {config.timeout_minutes != null && config.timeout_minutes > 0
             ? "If no one responds in time, the timeout action runs automatically."
-            : "No timeout — the workflow will wait indefinitely for approval."}
+            : "No timeout — the flow will wait indefinitely for approval."}
         </p>
       </div>
       <ValidationMessages errors={[...timeoutValidation.errors, ...timeoutActionValidation.errors]} />
 
       <p className="ui-meta-text text-muted-foreground/70 text-[10px]">
-        Rejecting at this gate will stop the entire workflow run.
+        Rejecting at this approval will stop the entire flow run.
       </p>
 
       <RuntimePolicyEditor
