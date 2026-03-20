@@ -197,11 +197,11 @@ export function SkillDetailPanel({
         {loading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground">
             <Loader2 size={18} className="mr-2 animate-spin" />
-            Loading skill content...
+            Loading skill details...
           </div>
         ) : error ? (
           <div className="rounded-lg surface-danger-soft px-4 py-3 text-body-sm text-status-danger">
-            Failed to load skill content: {error}
+            Failed to load skill details: {error}
           </div>
         ) : content ? (
           <div className="prose-c8c">
@@ -211,7 +211,7 @@ export function SkillDetailPanel({
           </div>
         ) : (
           <div className="py-8 text-center text-body-sm text-muted-foreground">
-            No content available.
+            No skill details available.
           </div>
         )}
       </div>
@@ -223,10 +223,10 @@ export function SkillDetailPanel({
             size="sm"
             onClick={onAddToWorkflow}
             disabled={!canAddToWorkflow}
-            title={addDisabledReason || "Add this skill to the current workflow."}
+            title={addDisabledReason || "Attach this skill to the current flow."}
             className="w-full"
           >
-            Add to workflow
+            Attach to flow
           </Button>
         </div>
       )}

@@ -315,7 +315,7 @@ export function FactoryPage() {
       setFactoryState(result.state)
       if (result.plannedCases.length === 0) {
         toast.message("No new item cases were added", {
-          description: "This planning artifact already spawned the current item cases.",
+          description: "This planning result already spawned the current item cases.",
         })
       } else {
         toast.success(`Spawned ${result.plannedCases.length} item case${result.plannedCases.length === 1 ? "" : "s"}`)
@@ -340,7 +340,7 @@ export function FactoryPage() {
     if (!selectedProject || launchingTemplateId) return
     const template = (plannedCase.templateId && templateById.get(plannedCase.templateId)) || spawnTemplateCandidate
     if (!template) {
-      toast.error("No downstream template is linked to this planned case yet")
+      toast.error("No next starting point is linked to this planned case yet")
       return
     }
 
@@ -417,7 +417,7 @@ export function FactoryPage() {
       setMainView("thread")
       return
     }
-    if (!(await confirmDiscard("open another workflow", workflowDirty))) {
+    if (!(await confirmDiscard("open another flow", workflowDirty))) {
       return
     }
 
@@ -428,7 +428,7 @@ export function FactoryPage() {
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       setMainView("thread")
     } catch (error) {
-      toast.error("Could not open workflow", {
+      toast.error("Could not open flow", {
         description: String(error),
       })
     }
@@ -437,7 +437,7 @@ export function FactoryPage() {
   const openArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
     if (!openError) return
-    toast.error("Could not open artifact", {
+    toast.error("Could not open result", {
       description: openError,
     })
   }
@@ -486,7 +486,7 @@ export function FactoryPage() {
       })
       toast.success(`Opened ${template.name}`)
     } catch (error) {
-      toast.error("Could not open the selected stage", {
+      toast.error("Could not open the selected step", {
         description: String(error),
       })
     } finally {
@@ -500,7 +500,7 @@ export function FactoryPage() {
         <PageShell>
           <PageHeader
             title="Factory"
-            subtitle="Choose a project in the sidebar to see live work, human gates, reusable artifacts, and next stages."
+            subtitle="Choose a project in the sidebar to see live work, approvals, reusable results, and next steps."
             actions={(
               <Button variant="outline" size="sm" onClick={() => setMainView("thread")}>
                 <FolderOpen size={14} />
@@ -519,12 +519,12 @@ export function FactoryPage() {
       <PageShell>
         <PageHeader
           title="Factory"
-          subtitle={`Advanced project view for outcomes, outputs, live work, and review gates in ${projectFolderName(selectedProject)}.`}
+          subtitle={`Advanced project view for outcomes, results, live work, and approvals in ${projectFolderName(selectedProject)}.`}
           actions={(
             <>
               <Button variant="outline" size="sm" onClick={() => setMainView("artifacts")}>
                 <FileStack size={14} />
-                Open outputs
+                Open results
               </Button>
               <Button variant="outline" size="sm" onClick={() => {
                 setSelectedInboxTaskKey(null)
@@ -549,7 +549,7 @@ export function FactoryPage() {
             </div>
             <Button variant="ghost" size="sm" onClick={() => setMainView("templates")}>
               <Rocket size={14} />
-              Templates
+              Starting points
             </Button>
           </div>
 

@@ -4,7 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-c8c (cybernetic) — open-source skill operations for Claude Code. Like Apple Shortcuts, but for Claude — give input, pick a chain of skills, get processed output. Workflows are directed graphs of skill nodes executed via the Claude CLI.
+c8c (cybernetic) is a flow composer with hidden orchestration underneath. Simple on the outside (one input, one flow), powerful inside (directed graphs of skill nodes executed via CLI backends).
+
+North star: the user describes point B, c8c picks the right starting point, then reveals state instead of structure as the flow runs.
+
+## Product Vocabulary (R2-CANON)
+
+Canonical product decisions live in `docs/R2-CANON.md`. When writing or modifying user-facing strings, use these terms:
+
+| User sees | Code uses | Never in UI |
+|-----------|-----------|-------------|
+| **flow** | workflow | workflow, process, chain |
+| **step** | stage, phase | stage, phase |
+| **starting point** | template, entry route | template |
+| **skill** | skill ref | capability |
+| **check** | gate (auto-pass/auto-return) | gate |
+| **approval** | gate (human decision) | gate |
+| **flow rules** | policy | policy, autonomy, trust score |
+| typed result ("Review findings") | artifact | artifact |
+
+Internal code (variable names, types, file names) keeps existing vocabulary. Only user-facing strings (JSX text, placeholders, labels, tooltips, toasts, errors) must follow this table.
 
 ## Commands
 
@@ -18,7 +37,7 @@ npx tsc --noEmit     # Type-check without emitting
 
 ## Architecture
 
-Electron app with three process layers:
+Electron app with three app layers:
 
 - **Main** (`src/main/`) — Electron main process. IPC handlers in `ipc/`, business logic in `lib/`
 - **Preload** (`src/preload/index.ts`) — Context bridge exposing `window.api` with 40+ IPC methods
@@ -26,7 +45,7 @@ Electron app with three process layers:
 
 Path aliases: `@` → `src/renderer`, `@shared` → `src/shared` (in tsconfig and electron-vite config).
 
-### Graph-Based Workflow Model
+### Graph-Based Flow Model
 
 Workflows are directed graphs, not linear chains. Defined in `src/shared/types.ts`:
 
@@ -38,7 +57,7 @@ Key configs per node type:
 - **Evaluator**: `criteria`, `threshold` (1-10), `maxRetries`, `retryFrom` node
 - **Splitter**: `strategy`, `maxBranches` — fans out into parallel branches at runtime
 - **Merger**: `strategy` (concatenate|summarize|select_best)
-- **Approval**: human gate with optional edit
+- **Approval**: human approval with optional edit
 
 Runtime expands the base graph — splitter nodes create parallel branches tracked via `runtimeNodesAtom`/`runtimeEdgesAtom`/`runtimeMetaAtom`.
 
@@ -52,9 +71,9 @@ Jotai atoms in `src/renderer/lib/store.ts`. Key patterns:
 
 ### View Routing
 
-`mainViewAtom` switches between: `"thread"` (workflow editor), `"skills"`, `"templates"`, `"settings"`.
+`mainViewAtom` switches between: `"thread"` (flow editor), `"skills"`, `"templates"` (starting points), `"settings"`.
 
-Two workflow editing modes via `viewModeAtom`: `"list"` (linear chain builder) and `"canvas"` (React Flow graph).
+Two flow editing modes via `viewModeAtom`: `"list"` (linear chain builder) and `"canvas"` (React Flow graph).
 
 ### Canvas System
 
@@ -86,7 +105,7 @@ Use these for sidebar elements — not generic `text-body-sm` or `ui-meta-text`:
 
 | Token | Size | Weight | Purpose |
 |-------|------|--------|---------|
-| `text-sidebar-item` | 13px, lh 1rem | 400 | Nav items, workflow names |
+| `text-sidebar-item` | 13px, lh 1rem | 400 | Nav items, flow names |
 | `text-sidebar-label` | 11px, lh 1rem | 500 | Project folder group headers |
 | `text-sidebar-meta` | 10px, lh 0.875rem | 400 | Timestamps, helper text |
 
@@ -136,8 +155,8 @@ Additional approved Tailwind typography tokens: `text-label-xs`, `text-title-sm`
 ## Data Storage
 
 - Projects config: `~/.c8c/config.json`
-- Global workflows: `~/.c8c/chains/`
-- Project workflows: `{project}/.c8c/*.yaml` or `{project}/.claude/workflows/*.yaml`
+- Global flows: `~/.c8c/chains/`
+- Project flows: `{project}/.c8c/*.yaml` or `{project}/.claude/workflows/*.yaml`
 
 ## Stack
 
