@@ -53,6 +53,25 @@ export interface ExecutionStartError {
 
 export type ExecutionStartResult = string | ExecutionStartError | null | undefined
 
+export interface C8cTestHarnessEnvironment {
+  testMode: true
+  homeDir: string
+  userDataDir: string
+  projectsConfigPath: string
+  chainsDir: string
+  windowStatePath: string
+  startupSideEffectsSuppressed: boolean
+}
+
+export interface C8cTestHarnessApi {
+  getEnvironment: () => Promise<C8cTestHarnessEnvironment>
+  seedProjects: (input: {
+    projects: string[]
+    lastSelectedProject?: string | null
+  }) => Promise<boolean>
+  resetPersistentState: () => Promise<boolean>
+}
+
 export interface C8cApi {
   listProjects: () => Promise<string[]>
   addProject: () => Promise<string | null>
@@ -243,6 +262,7 @@ export interface C8cApi {
 declare global {
   interface Window {
     api: C8cApi
+    testHarness?: C8cTestHarnessApi
   }
 }
 

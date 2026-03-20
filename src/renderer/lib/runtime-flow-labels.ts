@@ -40,10 +40,10 @@ function buildArtifactOutcomeText(
   fallbackText: string,
 ) {
   if (!artifactLabel) return fallbackText
-  if (role === "input") return `This stage provides ${artifactLabel} to the flow.`
-  if (role === "decision") return `This stage records ${artifactLabel} before the flow continues.`
-  if (role === "final") return `This stage delivers ${artifactLabel} ready to review.`
-  return `This stage produces ${artifactLabel} for the next stage.`
+  if (role === "input") return `This step brings ${artifactLabel} into the flow.`
+  if (role === "decision") return `This step records ${artifactLabel} before the flow continues.`
+  if (role === "final") return `This step delivers ${artifactLabel} ready to review.`
+  return `This step produces ${artifactLabel} for the next step.`
 }
 
 export function humanizeRuntimeIdentifier(value: string) {
@@ -99,7 +99,7 @@ export function getRuntimeStagePresentation(
           : "Agent role",
         title: humanizeRuntimeIdentifier(leaf),
         outcomeLabel: "Produces",
-        outcomeText: buildArtifactOutcomeText(artifactRole || "intermediate", artifactLabel, compactCopy(config.prompt, 80) || "Stage output for the next role."),
+        outcomeText: buildArtifactOutcomeText(artifactRole || "intermediate", artifactLabel, compactCopy(config.prompt, 80) || "Result for the next role."),
         artifactLabel,
         artifactRoleLabel: getRuntimeArtifactRoleLabel(artifactRole || "intermediate"),
       }
@@ -112,7 +112,7 @@ export function getRuntimeStagePresentation(
       group: "Agent role",
       title,
       outcomeLabel: "Produces",
-      outcomeText: buildArtifactOutcomeText(artifactRole || "intermediate", artifactLabel, "Stage output for the next role."),
+      outcomeText: buildArtifactOutcomeText(artifactRole || "intermediate", artifactLabel, "Result for the next role."),
       artifactLabel,
       artifactRoleLabel: getRuntimeArtifactRoleLabel(artifactRole || "intermediate"),
     }
@@ -123,7 +123,7 @@ export function getRuntimeStagePresentation(
     const artifactLabel = artifactOverrideLabel || "Quality decision"
     return {
       kind: "Gate",
-      group: "Quality gate",
+      group: "Quality check",
       title: config.threshold ? `Quality check ${config.threshold}/10` : "Quality check",
       outcomeLabel: "Decides",
       outcomeText: buildArtifactOutcomeText(artifactRole || "decision", artifactLabel, "Whether work is strong enough to continue."),
@@ -174,7 +174,7 @@ export function getRuntimeStagePresentation(
     const artifactLabel = artifactOverrideLabel || "Approved content"
     return {
       kind: "Gate",
-      group: "Review gate",
+      group: "Review check",
       title: compactCopy(config.message, 42) || "Review and continue",
       outcomeLabel: "Approves",
       outcomeText: buildArtifactOutcomeText(artifactRole || "decision", artifactLabel, "A human decision before the flow can continue."),
@@ -188,7 +188,7 @@ export function getRuntimeStagePresentation(
     const artifactLabel = artifactOverrideLabel || "Human response"
     return {
       kind: "Gate",
-      group: config.mode === "approval" ? "Review gate" : "Human input",
+      group: config.mode === "approval" ? "Review check" : "Human input",
       title: compactCopy(config.staticRequest?.title, 42) || (config.mode === "approval" ? "Review and continue" : "Provide input"),
       outcomeLabel: config.mode === "approval" ? "Approves" : "Collects",
       outcomeText: buildArtifactOutcomeText(

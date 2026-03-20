@@ -96,7 +96,7 @@ export function areBoundsEqual(a: Rectangle, b: Rectangle): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
 
-function windowStatePath(): string {
+export function windowStatePath(): string {
   return join(app.getPath("userData"), "window-state.json")
 }
 

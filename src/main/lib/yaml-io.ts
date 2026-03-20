@@ -1,18 +1,21 @@
 import { readFile, readdir, mkdir, stat } from "node:fs/promises"
 import { join, basename } from "node:path"
-import { homedir } from "node:os"
 import YAML from "yaml"
 import type { ChainDefinition } from "./chain-runner"
 import { listChainFiles } from "./chain-io"
 import type { WorkflowFile } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
 import { logWarn } from "./structured-log"
+import { resolveAppHomeDir } from "./runtime-paths"
 
-const CHAINS_DIR = join(homedir(), ".c8c", "chains")
+function chainsDir(): string {
+  return join(resolveAppHomeDir(), ".c8c", "chains")
+}
 
 export async function ensureChainsDir(): Promise<string> {
-  await mkdir(CHAINS_DIR, { recursive: true })
-  return CHAINS_DIR
+  const dir = chainsDir()
+  await mkdir(dir, { recursive: true })
+  return dir
 }
 
 export async function loadChainYaml(filePath: string): Promise<ChainDefinition> {
@@ -39,7 +42,7 @@ export async function saveChainYaml(
 }
 
 export async function listChains(dir?: string): Promise<WorkflowFile[]> {
-  const targetDir = dir || CHAINS_DIR
+  const targetDir = dir || chainsDir()
   try {
     await mkdir(targetDir, { recursive: true })
     const entries = await readdir(targetDir, { withFileTypes: true })

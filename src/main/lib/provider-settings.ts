@@ -1,10 +1,10 @@
 import { mkdir, readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
-import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import type { ProviderId, ProviderSettings, SafetyProfile } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
 import { runSerialTask } from "./serial-task"
+import { resolveAppHomeDir } from "./runtime-paths"
 
 interface ProviderSettingsState {
   settings: ProviderSettings
@@ -61,13 +61,7 @@ function getElectronBindings(): {
 }
 
 function resolveHomeDir(): string {
-  try {
-    const home = getElectronBindings().app?.getPath("home")
-    if (home) return home
-  } catch {
-    // Electron app.getPath can throw before initialization.
-  }
-  return homedir()
+  return resolveAppHomeDir({ app: getElectronBindings().app })
 }
 
 function providerSettingsPath(): string {

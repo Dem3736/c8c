@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
   const hasPosthogConfig = Boolean(posthogHost) && Boolean(posthogKey)
   const telemetryLocalTest = env.C8C_TELEMETRY_LOCAL_TEST === "1"
     || env.C8C_TELEMETRY_LOCAL_TEST === "true"
+  const testMode = env.C8C_TEST_MODE === "1" || env.C8C_TEST_MODE === "true"
   const explicitTelemetryProvider = env.C8C_TELEMETRY_PROVIDER === "posthog"
     ? "posthog"
     : env.C8C_TELEMETRY_PROVIDER === "noop"
@@ -31,6 +32,7 @@ export default defineConfig(({ mode }) => {
     __TELEMETRY_PROVIDER__: JSON.stringify(telemetryProvider),
     __TELEMETRY_ENABLED__: JSON.stringify(telemetryEnabled),
     __TELEMETRY_LOCAL_TEST__: JSON.stringify(telemetryLocalTest),
+    __TEST_MODE__: JSON.stringify(testMode),
   }
 
   return {
@@ -49,7 +51,7 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [
         externalizeDepsPlugin({
-          exclude: ["@c8c/workflow-runner", "gray-matter", "@claude-tools/runner", "yaml"],
+          exclude: ["@c8c/workflow-runner", "@claude-tools/runner", "yaml"],
         }),
       ],
       build: {

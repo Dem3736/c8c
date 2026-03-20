@@ -1,15 +1,17 @@
 import { readdir, readFile, mkdir, access, rm } from "node:fs/promises"
 import { join, basename } from "node:path"
-import { homedir } from "node:os"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import matter from "gray-matter"
 import type { DiscoveredSkill } from "@shared/types"
 import { logWarn } from "./structured-log"
+import { resolveAppHomeDir } from "./runtime-paths"
 
 const execFileAsync = promisify(execFile)
 
-const LIBRARIES_DIR = join(homedir(), ".c8c", "libraries")
+function librariesDir(): string {
+  return join(resolveAppHomeDir(), ".c8c", "libraries")
+}
 
 function errorCode(error: unknown): string | undefined {
   if (typeof error === "object" && error !== null && "code" in error) {
@@ -134,17 +136,18 @@ async function exists(path: string): Promise<boolean> {
 }
 
 export async function ensureLibrariesDir(): Promise<string> {
-  await mkdir(LIBRARIES_DIR, { recursive: true })
-  return LIBRARIES_DIR
+  const dir = librariesDir()
+  await mkdir(dir, { recursive: true })
+  return dir
 }
 
 export async function getLibraryPath(id: string): Promise<string> {
-  return join(LIBRARIES_DIR, id)
+  return join(librariesDir(), id)
 }
 
 export async function installLibrary(lib: Omit<SkillLibrary, "installed">): Promise<void> {
   await ensureLibrariesDir()
-  const dest = join(LIBRARIES_DIR, lib.id)
+  const dest = join(librariesDir(), lib.id)
 
   if (await exists(dest)) {
     // Pull latest
@@ -158,14 +161,14 @@ export async function installLibrary(lib: Omit<SkillLibrary, "installed">): Prom
 }
 
 export async function removeLibrary(id: string): Promise<void> {
-  const dest = join(LIBRARIES_DIR, id)
+  const dest = join(librariesDir(), id)
   if (await exists(dest)) {
     await rm(dest, { recursive: true, force: true })
   }
 }
 
 export async function isLibraryInstalled(id: string): Promise<boolean> {
-  return exists(join(LIBRARIES_DIR, id))
+  return exists(join(librariesDir(), id))
 }
 
 export async function getLibraries(): Promise<SkillLibrary[]> {
@@ -181,7 +184,7 @@ export async function getLibraries(): Promise<SkillLibrary[]> {
 export async function scanLibrary(lib: SkillLibrary): Promise<DiscoveredSkill[]> {
   if (!lib.installed || !lib.enabled) return []
 
-  const libPath = join(LIBRARIES_DIR, lib.id)
+  const libPath = join(librariesDir(), lib.id)
   const pattern = lib.scanPattern
 
   if (pattern.type === "flat-categories") {

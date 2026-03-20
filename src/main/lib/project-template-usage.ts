@@ -1,22 +1,16 @@
 import { app } from "electron"
 import { mkdir, readFile } from "node:fs/promises"
-import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { writeFileAtomic } from "./atomic-write"
 import { logWarn } from "./structured-log"
+import { resolveAppHomeDir } from "./runtime-paths"
 
 interface ProjectTemplateUsageStore {
   byProject: Record<string, Record<string, number>>
 }
 
 function resolveHomeDir(): string {
-  try {
-    const home = app.getPath("home")
-    if (home) return home
-  } catch {
-    // app.getPath can throw before app ready in some contexts.
-  }
-  return homedir()
+  return resolveAppHomeDir({ app })
 }
 
 function usageFilePath(): string {

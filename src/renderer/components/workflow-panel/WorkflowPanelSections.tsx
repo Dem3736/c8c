@@ -319,10 +319,10 @@ export function StageStartApprovalDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel() }}>
-      <DialogContent className="max-w-xl" showCloseButton={false} aria-describedby="stage-start-approval-description">
+      <DialogContent className="max-w-xl" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Approve and run</DialogTitle>
-          <DialogDescription id="stage-start-approval-description">
+          <DialogDescription>
             Confirm what will run, which input it will use, and what happens next.
           </DialogDescription>
         </DialogHeader>

@@ -17,11 +17,14 @@ import { Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { DEFAULT_EXECUTION_IPC_TIMEOUT_MS, withIpcTimeout } from "@/features/execution"
 import { DisclosurePanel } from "@/components/ui/disclosure-panel"
-import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
+import { consumeShortcut, isShortcutConsumed, matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
+import { ExecutionApprovalSummary } from "@/components/ui/execution-approval-summary"
 import type { WorkflowNode } from "@shared/types"
 import { deriveExecutionLoopSummary } from "@/lib/execution-loops"
 import { ExecutionLoopCard } from "@/components/ui/execution-loop-card"
 import { getRuntimeNodeLabel, getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
+import { deriveExecutionLoopFlowRules } from "@/lib/flow-rules"
+import { FlowRulesPreview } from "@/components/ui/flow-rules-preview"
 
 type EvaluatorWorkflowNode = Extract<WorkflowNode, { type: "evaluator" }>
 
@@ -81,23 +84,19 @@ export function ApprovalDialog() {
   }, [request, requestExecutionState])
   const primaryShortcutLabel = `${desktopRuntime.primaryModifierLabel}↵`
   const failedCriterionCount = evaluatorSummary?.failedCriteriaCount || 0
-  const gateTitle = evaluatorSummary
-    ? `${evaluatorSummary.title} gate`
-    : "Approval required"
-  const gateDescription = request?.message || "Review this stage before the process continues."
   const requestContext = useMemo(() => {
     if (!request) return null
 
     const workflow = requestExecutionState?.workflowSnapshot
     const workflowName = requestExecutionState?.workflowName.trim()
-      || labelFromPathLike(requestExecutionState?.runWorkflowPath, labelFromPathLike(request.workflowKey, "Workflow"))
+      || labelFromPathLike(requestExecutionState?.runWorkflowPath, labelFromPathLike(request.workflowKey, "Flow"))
     const stageNode = workflow?.nodes.find((node) => node.id === request.nodeId) || null
     const stageLabel = stageNode
       ? getRuntimeNodeLabel(stageNode, { fallbackId: stageNode.id })
-      : labelFromPathLike(request.nodeId, "Stage")
-    const stageKind = stageNode
-      ? getRuntimeStagePresentation(stageNode, { fallbackId: stageNode.id }).kind
-      : "Stage"
+      : labelFromPathLike(request.nodeId, "Step")
+    const stagePresentation = stageNode
+      ? getRuntimeStagePresentation(stageNode, { fallbackId: stageNode.id })
+      : null
     const nextStageLabels = workflow
       ? Array.from(new Set(
         workflow.edges
@@ -112,15 +111,25 @@ export function ApprovalDialog() {
     return {
       workflowName,
       stageLabel,
-      stageKind,
+      stageKind: stagePresentation?.group || "Step",
+      stepDescription: request.message || stagePresentation?.outcomeText || "Review this exact step before the flow continues.",
+      expectedResult: stagePresentation?.artifactLabel || "Reviewable result",
       approveConsequence: nextStageLabel
         ? `Continues to ${nextStageLabel}`
         : workflow
-          ? "Completes this workflow run"
-          : "Continues this workflow run",
-      rejectConsequence: "Stops this workflow run",
+          ? "Completes this flow run"
+          : "Continues this flow run",
+      rejectConsequence: "Stops this flow run",
     }
   }, [request, requestExecutionState])
+  const flowRules = useMemo(
+    () => deriveExecutionLoopFlowRules(evaluatorSummary),
+    [evaluatorSummary],
+  )
+  const gateTitle = requestContext
+    ? `Approve ${requestContext.stageLabel}`
+    : "Approve this step"
+  const gateDescription = request?.message || "Review this exact step before the flow continues."
 
   useEffect(() => {
     mountedRef.current = true
@@ -141,10 +150,7 @@ export function ApprovalDialog() {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isShortcutConsumed(event)) return
 
-      const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
-        ? event.metaKey
-        : event.ctrlKey
-      if (!usesPrimaryModifier || event.key !== "Enter") return
+      if (!matchesPrimaryShortcut(event, { key: "Enter", primaryModifierKey: desktopRuntime.primaryModifierKey })) return
       consumeShortcut(event)
       void handleApprove()
     }
@@ -169,10 +175,10 @@ export function ApprovalDialog() {
       const ok = await withIpcTimeout(
         window.api.approveNode(request.runId, request.nodeId, content),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Approval timed out. Check the main process and try again.",
+        "Approval timed out. Check the main flow and try again.",
       )
       if (!ok) {
-        toast.error("Could not approve node: run is no longer active")
+        toast.error("Could not approve step: this flow is no longer active")
         shiftQueue()
         return
       }
@@ -194,17 +200,17 @@ export function ApprovalDialog() {
       const ok = await withIpcTimeout(
         window.api.rejectNode(request.runId, request.nodeId),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Rejecting the process timed out. Check the main process and try again.",
+        "Stopping the flow timed out. Check the main flow and try again.",
       )
       if (!ok) {
-        toast.error("Could not stop process: it is no longer active")
+        toast.error("Could not stop flow: it is no longer active")
         shiftQueue()
         return
       }
       shiftQueue()
     } catch (err) {
       console.error("[ApprovalDialog] reject failed:", err)
-      toast.error("Failed to stop process")
+      toast.error("Failed to stop flow")
     } finally {
       if (mountedRef.current) {
         setSubmitting(false)
@@ -214,60 +220,48 @@ export function ApprovalDialog() {
 
   return (
     <Dialog open={!!request} onOpenChange={() => {}}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region" showCloseButton={false} aria-describedby="approval-description">
+      <DialogContent
+        className="max-w-2xl max-h-[80vh] overflow-y-auto ui-scroll-region"
+        showCloseButton={false}
+        data-approval-dialog="true"
+      >
         <DialogHeader className="space-y-2">
           <DialogTitle>{gateTitle}</DialogTitle>
-          <DialogDescription id="approval-description">
+          <DialogDescription>
             {gateDescription}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {queueCount > 1 && (
-            <Badge variant="secondary">{queueCount - 1} more pending</Badge>
-          )}
-          <Badge variant="outline" size="compact">{primaryShortcutLabel} approve</Badge>
-          {failedCriterionCount > 0 && (
-            <Badge variant="warning" size="compact">
-              {failedCriterionCount} below
-            </Badge>
-          )}
-        </div>
-
         {requestContext && (
-          <section className="rounded-lg border border-hairline bg-surface-2/70 p-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" size="compact">Workflow</Badge>
-              <span className="text-body-sm font-medium text-foreground">{requestContext.workflowName}</span>
-              <Badge variant="outline" size="compact">{requestContext.stageKind}</Badge>
-              {request.allowEdit && (
-                <Badge variant="outline" size="compact">Editable payload</Badge>
-              )}
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
-                <div className="ui-meta-label text-muted-foreground">Current stage</div>
-                <div className="text-body-sm font-medium text-foreground">{requestContext.stageLabel}</div>
-              </div>
-              <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
-                <div className="ui-meta-label text-muted-foreground">Workflow</div>
-                <div className="text-body-sm font-medium text-foreground">{requestContext.workflowName}</div>
-              </div>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-md border border-status-success/20 bg-status-success/5 px-3 py-2.5">
-                <div className="ui-meta-label text-status-success">Approve</div>
-                <div className="text-body-sm font-medium text-foreground">{requestContext.approveConsequence}</div>
-              </div>
-              <div className="rounded-md border border-status-danger/20 bg-status-danger/5 px-3 py-2.5">
-                <div className="ui-meta-label text-status-danger">Reject</div>
-                <div className="text-body-sm font-medium text-foreground">{requestContext.rejectConsequence}</div>
-              </div>
-            </div>
-          </section>
+          <ExecutionApprovalSummary
+            flowName={requestContext.workflowName}
+            stepName={requestContext.stageLabel}
+            stepKind={requestContext.stageKind}
+            stepDescription={requestContext.stepDescription}
+            expectedResult={requestContext.expectedResult}
+            inputPreview={request.content}
+            approveConsequence={requestContext.approveConsequence}
+            rejectConsequence={requestContext.rejectConsequence}
+            topBadges={(
+              <>
+                {queueCount > 1 && (
+                  <Badge variant="secondary" size="compact">{queueCount - 1} more pending</Badge>
+                )}
+                <Badge variant="outline" size="compact">{primaryShortcutLabel} approve</Badge>
+                {failedCriterionCount > 0 && (
+                  <Badge variant="warning" size="compact">
+                    {failedCriterionCount} below
+                  </Badge>
+                )}
+                {request.allowEdit && (
+                  <Badge variant="outline" size="compact">Editable input</Badge>
+                )}
+              </>
+            )}
+          />
         )}
+
+        <FlowRulesPreview rules={flowRules} />
 
         {evaluatorSummary && (
           <ExecutionLoopCard
@@ -281,7 +275,7 @@ export function ApprovalDialog() {
           request.allowEdit ? (
             <section className="space-y-2 rounded-lg surface-inset-card p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="ui-meta-label text-muted-foreground">Gate payload</p>
+                <p className="ui-meta-label text-muted-foreground">Edit input before continue</p>
                 <Badge variant="outline" size="compact">Editable</Badge>
               </div>
               <Textarea
@@ -292,7 +286,7 @@ export function ApprovalDialog() {
               />
             </section>
           ) : (
-            <DisclosurePanel summary="Show payload">
+            <DisclosurePanel summary="Show full input">
               <div className="rounded-lg surface-inset-card p-3">
                 <div className="max-h-64 overflow-y-auto ui-scroll-region">
                   <pre className="text-body-sm text-foreground-subtle whitespace-pre-wrap">{request.content}</pre>

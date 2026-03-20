@@ -1,8 +1,8 @@
 import { net } from "electron"
 import { readFile, writeFile, mkdir } from "node:fs/promises"
 import { join } from "node:path"
-import { homedir } from "node:os"
 import { logInfo, logWarn } from "../structured-log"
+import { resolveAppHomeDir } from "../runtime-paths"
 
 export interface CatalogEntry {
   id: string
@@ -35,8 +35,13 @@ const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2 MB
 const MEMORY_TTL_MS = 10 * 60 * 1000 // 10 minutes
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 
-const CACHE_DIR = join(homedir(), ".c8c")
-const CACHE_FILE = join(CACHE_DIR, "hub-catalog.json")
+function cacheDir(): string {
+  return join(resolveAppHomeDir(), ".c8c")
+}
+
+function cacheFile(): string {
+  return join(cacheDir(), "hub-catalog.json")
+}
 
 let memoryCache: HubCatalogCache | null = null
 let memoryCacheTimestamp = 0
@@ -48,7 +53,7 @@ function isMemoryCacheFresh(): boolean {
 
 async function readDiskCache(): Promise<HubCatalogCache | null> {
   try {
-    const raw = await readFile(CACHE_FILE, "utf8")
+    const raw = await readFile(cacheFile(), "utf8")
     const parsed = JSON.parse(raw) as HubCatalogCache
     if (!Array.isArray(parsed.entries)) return null
     return parsed
@@ -59,8 +64,8 @@ async function readDiskCache(): Promise<HubCatalogCache | null> {
 
 async function writeDiskCache(cache: HubCatalogCache): Promise<void> {
   try {
-    await mkdir(CACHE_DIR, { recursive: true })
-    await writeFile(CACHE_FILE, JSON.stringify(cache), "utf8")
+    await mkdir(cacheDir(), { recursive: true })
+    await writeFile(cacheFile(), JSON.stringify(cache), "utf8")
   } catch (error) {
     logWarn("hub-catalog", "disk_cache_write_failed", {
       error: error instanceof Error ? error.message : String(error),

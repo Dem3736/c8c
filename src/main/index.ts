@@ -23,6 +23,13 @@ import {
 } from "./deep-links"
 import { initHubCatalogRefresh } from "./lib/templates/hub-catalog"
 import { registerMainHandlers } from "./register-handlers"
+import { applyRuntimePathOverrides, shouldSuppressStartupSideEffects } from "./lib/runtime-paths"
+import {
+  prepareElectronSmokeLaunchState,
+  resolveElectronSmokeScenario,
+  runElectronSmokeScenarioIfRequested,
+  shouldShowElectronSmokeWindow,
+} from "./lib/electron-smoke"
 import {
   areBoundsEqual,
   loadWindowState,
@@ -34,6 +41,7 @@ import {
 } from "./window-state"
 
 app.name = "c8c"
+applyRuntimePathOverrides({ app })
 
 configureDeepLinkProtocol()
 
@@ -47,6 +55,7 @@ let pendingDeepLinkUrl: string | null = null
 const processStartedAt = Date.now()
 let isCreatingWindow = false
 let quitFlushStarted = false
+const suppressStartupSideEffects = shouldSuppressStartupSideEffects()
 
 function isSafeExternalUrl(rawUrl: string): boolean {
   try {
@@ -79,6 +88,9 @@ app.on("second-instance", (_event, argv) => {
 
 function createWindow() {
   const isMac = process.platform === "darwin"
+  const smokeScenario = resolveElectronSmokeScenario()
+  const keepSmokeWindowVisible = shouldShowElectronSmokeWindow()
+  const useHiddenSmokeWindow = Boolean(smokeScenario && !keepSmokeWindowVisible)
   if (mainWindow || isCreatingWindow) return
   isCreatingWindow = true
   void loadWindowState().then((savedState) => {
@@ -94,6 +106,7 @@ function createWindow() {
       minWidth: MIN_WINDOW_WIDTH,
       minHeight: MIN_WINDOW_HEIGHT,
       show: false,
+      ...(useHiddenSmokeWindow ? { paintWhenInitiallyHidden: true } : {}),
       autoHideMenuBar: !isMac,
       ...(isMac ? {
         titleBarStyle: "hidden",
@@ -103,11 +116,13 @@ function createWindow() {
         preload: join(__dirname, "../preload/index.js"),
         contextIsolation: true,
         nodeIntegration: false,
+        ...(useHiddenSmokeWindow ? { backgroundThrottling: false } : {}),
       },
     }
 
     mainWindow = new BrowserWindow(windowOptions)
     const window = mainWindow
+    let smokeRunStarted = false
 
     const emitRuntime = () => emitDesktopRuntimeUpdate(window)
     let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -166,7 +181,9 @@ function createWindow() {
     }
 
     window.once("ready-to-show", () => {
-      window.show()
+      if (!useHiddenSmokeWindow) {
+        window.show()
+      }
       emitRuntime()
     })
 
@@ -175,6 +192,10 @@ function createWindow() {
       if (pendingDeepLinkUrl) {
         void handleDeepLink(pendingDeepLinkUrl, window)
         pendingDeepLinkUrl = null
+      }
+      if (!smokeRunStarted) {
+        smokeRunStarted = true
+        runElectronSmokeScenarioIfRequested(window)
       }
     })
 
@@ -216,9 +237,13 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  const useHiddenSmokeWindow = Boolean(resolveElectronSmokeScenario() && !shouldShowElectronSmokeWindow())
   if (process.platform === "darwin" && app.dock) {
     try {
       app.dock.setIcon(join(__dirname, "../../build/icon.png"))
+      if (useHiddenSmokeWindow) {
+        app.dock.hide()
+      }
     } catch (error) {
       logWarn("main", "dock_icon_set_failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -226,60 +251,67 @@ app.whenReady().then(async () => {
     }
   }
 
-  try {
-    await initTelemetryService()
-    await trackTelemetryEvent("app_started")
-  } catch (error) {
-    logWarn("main", "telemetry_init_failed", {
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
+  if (!suppressStartupSideEffects) {
+    try {
+      await initTelemetryService()
+      await trackTelemetryEvent("app_started")
+    } catch (error) {
+      logWarn("main", "telemetry_init_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
 
-  try {
-    const recovery = await recoverRuntimeState()
-    await trackTelemetryEvent("runtime_recovery_completed", {
-      roots: recovery.roots,
-      workspaces: recovery.workspaces,
-      stale_runs_updated: recovery.staleRunsUpdated,
-      manifests_processed: recovery.manifestsProcessed,
-      orphan_pids_killed: recovery.orphanPidsKilled,
-      orphan_pids_missing: recovery.orphanPidsMissing,
-      orphan_pids_failed: recovery.orphanPidsFailed,
-    })
-  } catch (error) {
-    logWarn("main", "runtime_recovery_failed", {
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
+    try {
+      const recovery = await recoverRuntimeState()
+      await trackTelemetryEvent("runtime_recovery_completed", {
+        roots: recovery.roots,
+        workspaces: recovery.workspaces,
+        stale_runs_updated: recovery.staleRunsUpdated,
+        manifests_processed: recovery.manifestsProcessed,
+        orphan_pids_killed: recovery.orphanPidsKilled,
+        orphan_pids_missing: recovery.orphanPidsMissing,
+        orphan_pids_failed: recovery.orphanPidsFailed,
+      })
+    } catch (error) {
+      logWarn("main", "runtime_recovery_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
 
-  try {
-    const batchRecovery = await recoverBatchStates()
-    await trackTelemetryEvent("batch_recovery_completed", {
-      roots: batchRecovery.roots,
-      workspaces: batchRecovery.workspaces,
-      interrupted: batchRecovery.interrupted,
-    })
-  } catch (error) {
-    logWarn("main", "batch_recovery_failed", {
-      error: error instanceof Error ? error.message : String(error),
-    })
+    try {
+      const batchRecovery = await recoverBatchStates()
+      await trackTelemetryEvent("batch_recovery_completed", {
+        roots: batchRecovery.roots,
+        workspaces: batchRecovery.workspaces,
+        interrupted: batchRecovery.interrupted,
+      })
+    } catch (error) {
+      logWarn("main", "batch_recovery_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   logInfo("main", "register_handlers_started")
   registerMainHandlers(() => mainWindow)
 
   logInfo("main", "register_handlers_completed")
-  initHubCatalogRefresh()
+  if (!suppressStartupSideEffects) {
+    initHubCatalogRefresh()
+  }
+  await prepareElectronSmokeLaunchState()
   createWindow()
-  if (app.isPackaged) {
+  if (app.isPackaged && !suppressStartupSideEffects) {
     initUpdater()
   }
-  try {
-    await trackTelemetryEvent("app_ready", { startup_ms: Date.now() - processStartedAt })
-  } catch (error) {
-    logWarn("main", "telemetry_app_ready_failed", {
-      error: error instanceof Error ? error.message : String(error),
-    })
+  if (!suppressStartupSideEffects) {
+    try {
+      await trackTelemetryEvent("app_ready", { startup_ms: Date.now() - processStartedAt })
+    } catch (error) {
+      logWarn("main", "telemetry_app_ready_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   app.on("activate", () => {
@@ -288,8 +320,11 @@ app.whenReady().then(async () => {
 })
 
 app.on("before-quit", (event) => {
-  shutdownUpdater()
+  if (!suppressStartupSideEffects) {
+    shutdownUpdater()
+  }
   if (quitFlushStarted) return
+  if (suppressStartupSideEffects) return
   quitFlushStarted = true
   event.preventDefault()
   void (async () => {

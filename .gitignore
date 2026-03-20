@@ -20,6 +20,7 @@ docs/
 
 # Playwright
 .playwright-cli/
+output/ui-smoke/
 
 tasks/
 .superpowers/

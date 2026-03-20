@@ -14,6 +14,8 @@ import { registerChatHandlers } from "./ipc/chat"
 import { registerMcpHandlers } from "./ipc/mcp"
 import { registerFilesHandlers } from "./ipc/files"
 import { registerFactoryHandlers } from "./ipc/factory"
+import { registerTestHarnessHandlers } from "./ipc/test-harness"
+import { isTestMode } from "./lib/runtime-paths"
 
 export function registerMainHandlers(
   getMainWindow: () => BrowserWindow | null,
@@ -33,6 +35,7 @@ export function registerMainHandlers(
     ["mcp", registerMcpHandlers],
     ["files", registerFilesHandlers],
     ["factory", registerFactoryHandlers],
+    ...(isTestMode() ? [["test-harness", registerTestHarnessHandlers] as const] : []),
   ] as const
 
   for (const [name, register] of handlers) {

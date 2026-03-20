@@ -2,17 +2,26 @@ import { access, mkdir, readFile, rm } from "node:fs/promises"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { dirname, join } from "node:path"
-import { homedir } from "node:os"
 import type { InstalledPlugin, MarketplaceSource } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
 import { discoverInstalledPlugins } from "./plugin-scanner"
 import { runSerialTask } from "./serial-task"
+import { resolveAppHomeDir } from "./runtime-paths"
 
 const execFileAsync = promisify(execFile)
-const PLUGINS_DIR = join(homedir(), ".c8c", "plugins")
-const PLUGIN_MARKETPLACES_DIR = join(PLUGINS_DIR, "marketplaces")
-const PLUGIN_SETTINGS_FILE = join(PLUGINS_DIR, "settings.json")
 const PLUGIN_SETTINGS_SERIAL_KEY = "plugin-settings"
+
+function pluginsDir(): string {
+  return join(resolveAppHomeDir(), ".c8c", "plugins")
+}
+
+function pluginMarketplacesDir(): string {
+  return join(pluginsDir(), "marketplaces")
+}
+
+function pluginSettingsFile(): string {
+  return join(pluginsDir(), "settings.json")
+}
 
 interface PersistedPluginSettings {
   disabledPluginIds?: unknown
@@ -74,7 +83,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 function pluginSettingsPath(): string {
-  return PLUGIN_SETTINGS_FILE
+  return pluginSettingsFile()
 }
 
 async function loadPluginSettings(): Promise<typeof DEFAULT_PLUGIN_SETTINGS> {
@@ -97,12 +106,13 @@ async function savePluginSettings(state: typeof DEFAULT_PLUGIN_SETTINGS): Promis
 }
 
 export async function ensurePluginMarketplacesDir(): Promise<string> {
-  await mkdir(PLUGIN_MARKETPLACES_DIR, { recursive: true })
-  return PLUGIN_MARKETPLACES_DIR
+  const dir = pluginMarketplacesDir()
+  await mkdir(dir, { recursive: true })
+  return dir
 }
 
 export function getMarketplacePath(id: string): string {
-  return join(PLUGIN_MARKETPLACES_DIR, id)
+  return join(pluginMarketplacesDir(), id)
 }
 
 export async function isMarketplaceInstalled(id: string): Promise<boolean> {

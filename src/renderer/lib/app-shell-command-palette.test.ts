@@ -48,7 +48,7 @@ describe("app-shell-command-palette", () => {
 
     expect(entry).toMatchObject({
       kind: "start",
-      label: "Review: ux ui polish",
+      label: "Review it: ux ui polish",
       projectPath: "/tmp/vibecon",
       projectLabel: "vibecon",
       requiresProjectSelection: false,
@@ -91,7 +91,7 @@ describe("app-shell-command-palette", () => {
     ])
     expect(sections[0]?.entries[0]).toMatchObject({
       kind: "start",
-      label: "Review: ux ui polish",
+      label: "Review it: ux ui polish",
     })
   })
 
@@ -110,6 +110,23 @@ describe("app-shell-command-palette", () => {
 
     expect(sections.map((section) => section.label)).toEqual(["Actions"])
     expect(sections[0]?.entries.map((entry) => entry.label)).toEqual(["Settings"])
+  })
+
+  it("surfaces attach skill as an action", () => {
+    const sections = buildAppShellCommandSections({
+      query: "attach",
+      actions: buildAppShellActionEntries(),
+      projectEntries: buildAppShellProjectEntries({
+        projects: ["/tmp/vibecon"],
+        selectedProject: "/tmp/vibecon",
+      }),
+      workflows: [],
+      selectedProject: "/tmp/vibecon",
+      projects: ["/tmp/vibecon"],
+    })
+
+    expect(sections.map((section) => section.label)).toEqual(["Actions"])
+    expect(sections[0]?.entries.map((entry) => entry.label)).toEqual(["Attach skill"])
   })
 
   it("surfaces project matches as switch targets", () => {

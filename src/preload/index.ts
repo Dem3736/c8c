@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
-import type { C8cApi } from "@shared/c8c-api"
+import type { C8cApi, C8cTestHarnessApi } from "@shared/c8c-api"
 import type {
   ClaudeCodeSubscriptionStatus,
   BatchEvent,
@@ -349,3 +349,12 @@ const api: C8cApi = {
 }
 
 contextBridge.exposeInMainWorld("api", api)
+
+if (__TEST_MODE__) {
+  const testHarness: C8cTestHarnessApi = {
+    getEnvironment: () => ipcRenderer.invoke("test-harness:get-environment"),
+    seedProjects: (input) => ipcRenderer.invoke("test-harness:seed-projects", input),
+    resetPersistentState: () => ipcRenderer.invoke("test-harness:reset-persistent-state"),
+  }
+  contextBridge.exposeInMainWorld("testHarness", testHarness)
+}

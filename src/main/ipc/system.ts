@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron"
 import { promisify } from "node:util"
 import { execFile as execFileCb } from "node:child_process"
 import type {
+  ClaudeCodeSubscriptionStatus,
   DesktopPlatform,
   DesktopRuntimeInfo,
   ProviderDiagnostics,
@@ -12,6 +13,7 @@ import type {
 import { getClaudeCodeSubscriptionStatus } from "../lib/claude-subscription"
 import { allowedOpenPathRoots, allowedProjectRoots, assertWithinRoots } from "../lib/security-paths"
 import { resolve } from "node:path"
+import { isTestMode } from "../lib/runtime-paths"
 import {
   getTelemetrySettings,
   setTelemetryConsent,
@@ -85,8 +87,51 @@ async function resolveGitBranch(projectPath: string): Promise<string | null> {
 }
 
 async function getProviderDiagnostics(): Promise<ProviderDiagnostics> {
+  const providerSettings = await getProviderSettings()
+  if (isTestMode()) {
+    return {
+      settings: providerSettings,
+      health: {
+        claude: {
+          provider: "claude",
+          available: true,
+          executablePath: "/test/bin/claude",
+          version: "test",
+          error: null,
+        },
+        codex: {
+          provider: "codex",
+          available: true,
+          executablePath: "/test/bin/codex",
+          version: "test",
+          error: null,
+        },
+      },
+      auth: {
+        claude: {
+          provider: "claude",
+          state: "authenticated",
+          authenticated: true,
+          authMethod: "test-mode",
+          accountLabel: "Test Claude",
+          apiKeyConfigured: true,
+          error: null,
+        },
+        codex: {
+          provider: "codex",
+          state: "authenticated",
+          authenticated: true,
+          authMethod: "test-mode",
+          accountLabel: "Test Codex",
+          apiKeyConfigured: true,
+          error: null,
+        },
+      },
+    }
+  }
+
   const [settings, claudeHealth, codexHealth, claudeAuth, codexAuth] = await Promise.all([
-    getProviderSettings(),
+    Promise.resolve(providerSettings),
     resolveAgentProvider("claude").checkAvailability(),
     resolveAgentProvider("codex").checkAvailability(),
     resolveAgentProvider("claude").getAuthStatus(),
@@ -103,6 +148,18 @@ async function getProviderDiagnostics(): Promise<ProviderDiagnostics> {
       claude: claudeAuth,
       codex: codexAuth,
     },
+  }
+}
+
+function getTestSubscriptionStatus(): ClaudeCodeSubscriptionStatus {
+  return {
+    checkedAt: Date.now(),
+    cliInstalled: true,
+    loggedIn: true,
+    authMethod: "test-mode",
+    apiProvider: "anthropic",
+    hasSubscription: true,
+    error: null,
   }
 }
 
@@ -127,6 +184,9 @@ export function registerSystemHandlers() {
   })
 
   ipcMain.handle("system:get-claude-subscription-status", async () => {
+    if (isTestMode()) {
+      return getTestSubscriptionStatus()
+    }
     return getClaudeCodeSubscriptionStatus()
   })
 

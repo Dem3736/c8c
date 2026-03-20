@@ -7,6 +7,7 @@ export type AppShellCommandAction =
   | "new_process"
   | "add_project"
   | "process_library"
+  | "attach_skill"
   | "inbox"
   | "settings"
 
@@ -98,9 +99,9 @@ function inferHelpModeFromPrompt(prompt: string): AppShellHelpMode {
 
 function formatStartLabel(prompt: string, helpMode: AppShellHelpMode) {
   const promptLabel = truncateLabel(prompt)
-  if (helpMode === "plan") return `Plan: ${promptLabel}`
-  if (helpMode === "review") return `Review: ${promptLabel}`
-  return `Build: ${promptLabel}`
+  if (helpMode === "plan") return `Plan it: ${promptLabel}`
+  if (helpMode === "review") return `Review it: ${promptLabel}`
+  return `Do it: ${promptLabel}`
 }
 
 function formatStartSubtitle(
@@ -110,10 +111,10 @@ function formatStartSubtitle(
   requiresProjectSelection: boolean,
 ) {
   if (requiresProjectAdd) {
-    return "Open the guided start flow and add a project first."
+    return "Open the guided start and add a project first."
   }
   if (requiresProjectSelection) {
-    return "Open the guided start flow and choose the target project."
+    return "Open the guided start and choose the target project."
   }
   if (helpMode === "plan") {
     return `Plan it${projectLabel ? ` in ${projectLabel}` : ""}. The system will choose the right path after submit.`
@@ -142,9 +143,10 @@ function actionEntry(
 
 export function buildAppShellActionEntries(): AppShellActionEntry[] {
   return [
-    actionEntry("new_process", "New process", ["new", "create", "start", "process"]),
+    actionEntry("new_process", "New flow", ["new", "create", "start", "flow", "process"]),
     actionEntry("add_project", "Add project", ["add", "project", "folder", "workspace"]),
-    actionEntry("process_library", "Process library", ["library", "template", "starting point", "process"]),
+    actionEntry("process_library", "Starting points", ["library", "template", "starting point", "flow", "process"]),
+    actionEntry("attach_skill", "Attach skill", ["attach", "add", "skill", "tool", "step"], "Open the skill picker for the current flow."),
     actionEntry("inbox", "Inbox", ["inbox", "approval", "tasks", "notifications"]),
     actionEntry("settings", "Settings", ["settings", "preferences", "configuration"]),
   ]
@@ -290,7 +292,7 @@ export function buildAppShellStartEntry({
     projectPath,
     projectLabel,
     requiresProjectSelection,
-    keywords: [prompt.toLowerCase(), "start new", "new process"],
+    keywords: [prompt.toLowerCase(), "start new", "new flow", "new process"],
   }
 }
 
@@ -309,7 +311,7 @@ export function buildAppShellProjectEntries({
       id: `project:${projectPath}`,
       projectPath,
       label,
-      subtitle: selected ? "Current project" : "Switch project context",
+      subtitle: selected ? "Current project" : "Switch project",
       selected,
       keywords: [
         normalize(label),
@@ -359,7 +361,8 @@ export function buildAppShellCommandSections({
     const createActions = actions.filter((entry) =>
       entry.action === "new_process"
       || entry.action === "add_project"
-      || entry.action === "process_library")
+      || entry.action === "process_library"
+      || entry.action === "attach_skill")
     const navigateActions = actions.filter((entry) => entry.action === "inbox" || entry.action === "settings")
     const recentWorkflows = workflows.slice(0, EMPTY_OPEN_RECENT_LIMIT)
     const switchProjects = projectEntries.filter((entry) => !entry.selected).slice(0, 5)

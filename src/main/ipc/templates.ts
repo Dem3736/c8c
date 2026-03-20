@@ -16,7 +16,6 @@ import type { DiscoveredSkill, GenerationProgress, Workflow, WorkflowTemplate } 
 import { allowedProjectRoots } from "../lib/security-paths"
 import { resolve, join } from "node:path"
 import { mkdir } from "node:fs/promises"
-import { homedir } from "node:os"
 import { saveChain } from "../lib/chain-io"
 import { toWorkflowFileStem } from "@shared/workflow-name"
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
@@ -27,6 +26,7 @@ import { getProviderSettings } from "../lib/provider-settings"
 import { applyProviderFeatureFlags, startProviderTask } from "../lib/provider-runtime"
 import { inspectProjectForCreateEntry } from "../lib/create-entry-inspection"
 import { routeCreateEntry } from "../lib/create-entry-router"
+import { resolveAppHomeDir } from "../lib/runtime-paths"
 import type { CreateEntryRouteInput, CreateEntryRouteResult } from "@shared/types"
 
 const activeGenerateControllers = new Map<number, AbortController>()
@@ -107,7 +107,7 @@ export function registerTemplateHandlers() {
   ipcMain.handle(
     "templates:save-user",
     async (_event, name: string, workflow: Workflow): Promise<string> => {
-      const dir = join(homedir(), ".c8c", "user-templates")
+      const dir = join(resolveAppHomeDir(), ".c8c", "user-templates")
       await mkdir(dir, { recursive: true })
       const stem = toWorkflowFileStem(name) || "template"
       const filePath = join(dir, `${stem}.chain`)

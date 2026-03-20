@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   ReactFlow,
   Background,
@@ -18,7 +18,7 @@ import { useWorkflowWithUndo } from "@/hooks/useWorkflowWithUndo"
 import { CanvasNode } from "./canvas/CanvasNode"
 import { WorkflowEdge } from "./canvas/WorkflowEdge"
 import { useAtom, useAtomValue } from "jotai"
-import { skillPickerOpenAtom, selectedNodeIdAtom, selectedWorkflowPathAtom, canvasManualPositionsAtom } from "@/lib/store"
+import { skillPickerOpenAtom, selectedNodeIdAtom, selectedWorkflowPathAtom, canvasManualPositionsAtom, desktopRuntimeAtom } from "@/lib/store"
 import {
   Dialog,
   CanvasDialogContent,
@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { CursorMenu } from "@/components/ui/cursor-menu"
+import { ShortcutHint } from "@/components/ui/shortcut-hint"
 import {
   addApprovalNodeToWorkflow,
   addEdgeToWorkflow,
@@ -54,6 +55,9 @@ import {
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { MOTION_BASE_MS, MOTION_SLOW_MS } from "@/lib/tokens"
 import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
+import { resolveCanvasShortcutIntent } from "@/lib/canvas-shortcuts"
+import { isEditableKeyboardTarget } from "@/lib/keyboard-shortcuts"
+import type { ElectronSmokeCanvasState, ElectronSmokeCanvasViewport } from "@shared/electron-smoke"
 import type { NodePosition, Workflow, WorkflowNode } from "@shared/types"
 
 const nodeTypes: NodeTypes = {
@@ -128,9 +132,16 @@ function applyInsertedNodePlacement(
   }
 }
 
+function ensureRendererSmokeHarness() {
+  const existing = window.__C8C_RENDERER_SMOKE__ ?? {}
+  window.__C8C_RENDERER_SMOKE__ = existing
+  return existing
+}
+
 export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null }: CanvasViewProps = {}) {
   const { nodes, edges } = useCanvasLayout()
   const [, setPickerOpen] = useAtom(skillPickerOpenAtom)
+  const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const [runStatus] = useAtom(runStatusAtom)
   const isRunning =
     runStatus === "running"
@@ -149,6 +160,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [pendingInsertPosition, setPendingInsertPosition] = useState<NodePosition | null>(null)
   const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null)
+  const canvasShellRef = useRef<HTMLDivElement | null>(null)
   const [canvasContextMenu, setCanvasContextMenu] = useState<{
     x: number
     y: number
@@ -283,11 +295,29 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
     return () => window.clearTimeout(id)
   }, [reactFlow, structureKey, nodes.length, hasUserNavigatedCanvas])
 
-  const recenterCanvas = () => {
+  const recenterCanvas = useCallback(() => {
     if (!reactFlow || nodes.length === 0) return
     setHasUserNavigatedCanvas(false)
     void reactFlow.fitView({ padding: 0.3, duration: MOTION_BASE_MS })
-  }
+  }, [nodes.length, reactFlow])
+
+  const openSkillPickerAtCenter = useCallback(() => {
+    if (readOnly || isRunning) return
+    const fallbackPosition = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    }
+    const shellRect = canvasShellRef.current?.getBoundingClientRect()
+    const screenPosition = shellRect
+      ? {
+          x: shellRect.left + (shellRect.width / 2),
+          y: shellRect.top + (shellRect.height / 2),
+        }
+      : fallbackPosition
+
+    setPendingInsertPosition(reactFlow ? reactFlow.screenToFlowPosition(screenPosition) : null)
+    setPickerOpen(true)
+  }, [isRunning, readOnly, reactFlow, setPickerOpen])
 
   const selectedTemplateNode = selectedNodeId
     ? workflow.nodes.find((node) => node.id === selectedNodeId) || null
@@ -469,28 +499,63 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
           : null
 
   useEffect(() => {
-    if (readOnly || isRunning) return
     const handler = (event: KeyboardEvent) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") return
-
-      const target = event.target as HTMLElement | null
-      const tag = target?.tagName
-      const isEditable = Boolean(
-        target?.isContentEditable ||
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        target?.closest("[contenteditable=true]"),
-      )
-      if (isEditable) return
-      if (!canDeleteSelection) return
+      const isEditable = isEditableKeyboardTarget(event.target as HTMLElement | null)
+      const intent = resolveCanvasShortcutIntent({
+        event,
+        primaryModifierKey: desktopRuntime.primaryModifierKey,
+        isEditable,
+        readOnly,
+        isRunning,
+        canDeleteSelection,
+      })
+      if (!intent) return
 
       event.preventDefault()
-      removeSelection()
+
+      if (intent.type === "remove_selection") {
+        removeSelection()
+        return
+      }
+
+      if (intent.type === "open_skill_picker") {
+        openSkillPickerAtCenter()
+        return
+      }
+
+      if (intent.type === "recenter") {
+        recenterCanvas()
+      }
     }
 
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [canDeleteSelection, isRunning, readOnly, removeSelection])
+  }, [canDeleteSelection, desktopRuntime.primaryModifierKey, isRunning, openSkillPickerAtCenter, readOnly, recenterCanvas, removeSelection])
+
+  useEffect(() => {
+    if (!__TEST_MODE__) return
+
+    const harness = ensureRendererSmokeHarness()
+    harness.getCanvasState = (): ElectronSmokeCanvasState | null => ({
+      nodeCount: workflow.nodes.length,
+      nodeLabels: workflow.nodes.map((node) => getWorkflowNodeLabel(node)),
+      selectedNodeId,
+      selectedNodeLabel: selectedTemplateNode ? getWorkflowNodeLabel(selectedTemplateNode) : null,
+      viewport: reactFlow ? reactFlow.getViewport() as ElectronSmokeCanvasViewport : null,
+    })
+    harness.setCanvasViewport = async (viewport: ElectronSmokeCanvasViewport) => {
+      if (!reactFlow) return false
+      setHasUserNavigatedCanvas(true)
+      await reactFlow.setViewport(viewport, { duration: 0 })
+      return true
+    }
+
+    return () => {
+      if (window.__C8C_RENDERER_SMOKE__ !== harness) return
+      delete harness.getCanvasState
+      delete harness.setCanvasViewport
+    }
+  }, [reactFlow, selectedNodeId, selectedTemplateNode, workflow.nodes])
 
   const handleInsertBlock = (value: string) => {
     const insertionPosition = canvasContextMenu && reactFlow
@@ -514,7 +579,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
   }
 
   return (
-    <div className="relative w-full h-full min-h-[400px]">
+    <div ref={canvasShellRef} className="relative w-full h-full min-h-[400px]">
       <ReactFlow
         className="workflow-canvas"
         nodes={nodes}
@@ -609,7 +674,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
           size="sm"
           aria-label="Add skill step"
           disabled={readOnly || isRunning}
-          title={addStepDisabledReason || undefined}
+          title={addStepDisabledReason || `Add skill step (A / ${desktopRuntime.primaryModifierLabel}ShiftA)`}
           onClick={() => {
             setPendingInsertPosition(null)
             setPickerOpen(true)
@@ -644,6 +709,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
           aria-label="Recenter canvas"
           onClick={recenterCanvas}
           className="text-muted-foreground hover:text-foreground"
+          title={`Recenter canvas (${desktopRuntime.primaryModifierLabel}ShiftL)`}
         >
           <LocateFixed size={14} />
         </Button>
@@ -668,6 +734,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
             <Button
               variant="outline"
               size="sm"
+              aria-label="Open add step menu"
               className="w-48 justify-between bg-surface-1/90"
               disabled={readOnly || isRunning}
               title={addStepDisabledReason || undefined}
@@ -679,7 +746,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Add workflow step</DropdownMenuLabel>
+            <DropdownMenuLabel>Add step</DropdownMenuLabel>
             <DropdownMenuItem
               disabled={!hasSkillNodes}
               onSelect={() => handleInsertBlock("evaluator")}
@@ -692,7 +759,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
                 <div className="ui-meta-text text-muted-foreground">
                   {hasSkillNodes
                     ? "Check the previous output and branch or retry when it misses the mark."
-                    : "Requires at least one skill node before it can evaluate anything."}
+                  : "Requires at least one skill node before it can evaluate anything."}
                 </div>
               </div>
             </DropdownMenuItem>
@@ -728,11 +795,27 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
             >
               <Hand size={13} className="mt-0.5 shrink-0" />
               <div className="min-w-0">
-                <div className="ui-body-text-medium text-foreground">Add Approval Gate</div>
+                <div className="ui-body-text-medium text-foreground">Add Approval</div>
                 <div className="ui-meta-text text-muted-foreground">
-                  Stop after a stage so you can review it before the flow continues.
+                  Stop after a step so you can review it before the flow continues.
                 </div>
               </div>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                setPendingInsertPosition(null)
+                setPickerOpen(true)
+              }}
+            >
+              Add skill step
+              <ShortcutHint label={`A / ${desktopRuntime.primaryModifierLabel}ShiftA`} />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={recenterCanvas}
+            >
+              Recenter canvas
+              <ShortcutHint label={`${desktopRuntime.primaryModifierLabel}ShiftL`} />
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -836,6 +919,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
               }}
             >
               Add skill step
+              <ShortcutHint label={`A / ${desktopRuntime.primaryModifierLabel}ShiftA`} />
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={readOnly || isRunning || !hasSkillNodes}
@@ -871,7 +955,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
                 setCanvasContextMenu(null)
               }}
             >
-              Add Approval Gate
+              Add Approval
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -881,6 +965,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
               }}
             >
               Recenter canvas
+              <ShortcutHint label={`${desktopRuntime.primaryModifierLabel}ShiftL`} />
             </DropdownMenuItem>
           </>
         )}

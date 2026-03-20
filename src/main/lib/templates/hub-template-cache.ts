@@ -1,16 +1,18 @@
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises"
 import { join } from "node:path"
-import { homedir } from "node:os"
 import type { WorkflowTemplate } from "@shared/types"
 import { fetchRemoteTemplate } from "./remote"
 import { getHubCatalogGeneratedAt } from "./hub-catalog"
 import { logInfo, logWarn } from "../structured-log"
+import { resolveAppHomeDir } from "../runtime-paths"
 
-const CACHE_DIR = join(homedir(), ".c8c", "hub-templates")
+function cacheDir(): string {
+  return join(resolveAppHomeDir(), ".c8c", "hub-templates")
+}
 
 function templateCachePath(id: string): string {
   const safeId = id.replace(/[^a-zA-Z0-9._-]+/g, "-")
-  return join(CACHE_DIR, `${safeId}.json`)
+  return join(cacheDir(), `${safeId}.json`)
 }
 
 interface CachedTemplate {
@@ -31,7 +33,7 @@ async function readCachedTemplate(id: string): Promise<CachedTemplate | null> {
 
 async function writeCachedTemplate(id: string, template: WorkflowTemplate, catalogGeneratedAt: string): Promise<void> {
   try {
-    await mkdir(CACHE_DIR, { recursive: true })
+    await mkdir(cacheDir(), { recursive: true })
     const entry: CachedTemplate = { catalogGeneratedAt, template }
     await writeFile(templateCachePath(id), JSON.stringify(entry), "utf8")
   } catch (error) {

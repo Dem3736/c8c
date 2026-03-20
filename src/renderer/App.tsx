@@ -1,21 +1,17 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Provider as JotaiProvider } from "jotai"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { FilePlus2, Folder, Inbox, LayoutTemplate, Loader2, PanelLeft, PanelLeftOpen, Search, Settings2 } from "lucide-react"
 import { Toaster } from "sonner"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ProjectSidebar } from "@/components/ProjectSidebar"
-import { WorkflowPanel } from "@/components/WorkflowPanel"
-import { SkillsPage } from "@/components/SkillsPage"
-import { WorkflowsTemplatesPage } from "@/components/WorkflowsTemplatesPage"
-import { ArtifactsPage } from "@/components/ArtifactsPage"
-import { FactoryPage } from "@/components/FactoryPage"
-import { SettingsPage } from "@/components/SettingsPage"
-import { NotificationsPage } from "@/components/NotificationsPage"
-import { OnboardingWizard } from "@/components/OnboardingWizard"
-import { WorkflowCreatePage } from "@/components/WorkflowCreatePage"
 import { AppStatusBar } from "@/components/AppStatusBar"
 import { MultiRunDashboard } from "@/components/MultiRunDashboard"
+import { AppCommandPalette } from "@/components/app/AppCommandPalette"
+import { DeepLinkTemplateDialog } from "@/components/app/DeepLinkTemplateDialog"
+import { AppMainView } from "@/components/app/AppMainView"
+import { RendererSmokeBridge } from "@/components/app/RendererSmokeBridge"
+import { SidebarVisibilityToggle } from "@/components/app/SidebarVisibilityToggle"
+import { FlowStatusRail } from "@/components/FlowStatusRail"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
 import { ExecutionProvider } from "@/hooks/useChainExecution"
@@ -45,362 +41,23 @@ import {
   providerAuthStatusAtom,
   projectSidebarOpenAtom,
   projectSidebarWidthAtom,
+  skillPickerOpenAtom,
   workflowCreateContextAtom,
 } from "@/lib/store"
-import {
-  Dialog,
-  CanvasDialogBody,
-  CanvasDialogContent,
-  CanvasDialogFooter,
-  CanvasDialogHeader,
-  DialogClose,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/cn"
 import { toast } from "sonner"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { buildTemplateRunContext } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
-import { STAGE_META } from "@/lib/template-stages"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
 import { workflowExecutionStatesAtom } from "@/features/execution"
-import { buildAppShellActionEntries, buildAppShellCommandSections, buildAppShellProjectEntries, buildAppShellWorkflowEntries, type AppShellActionEntry, type AppShellCommandAction, type AppShellCommandEntry, type AppShellProjectEntry, type AppShellWorkflowEntry } from "@/lib/app-shell-command-palette"
+import { buildAppShellActionEntries, buildAppShellProjectEntries, buildAppShellWorkflowEntries, type AppShellCommandEntry } from "@/lib/app-shell-command-palette"
+import { resolveAppShellShortcutIntent } from "@/lib/app-shell-shortcuts"
+import { buildFlowStatusRailEntries } from "@/lib/flow-status-rail"
+import { isEditableKeyboardTarget } from "@/lib/keyboard-shortcuts"
 import { applyLoadedWorkflow } from "@/components/sidebar/useWorkflowCrud"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
-
-function SidebarVisibilityToggle({
-  desktopRuntime,
-  sidebarOpen,
-  sidebarWidth,
-  onToggle,
-  buttonRef,
-}: {
-  desktopRuntime: {
-    platform: string
-    titlebarHeight: number
-    primaryModifierLabel: string
-  }
-  sidebarOpen: boolean
-  sidebarWidth: number
-  onToggle: () => void
-  buttonRef?: Ref<HTMLButtonElement>
-}) {
-  const inTitlebar = desktopRuntime.titlebarHeight > 0
-  if (!inTitlebar && sidebarOpen) return null
-
-  const Icon = sidebarOpen ? PanelLeft : PanelLeftOpen
-  const label = sidebarOpen ? "Hide sidebar" : "Show sidebar"
-  const shortcutLabel = `${desktopRuntime.primaryModifierLabel}B`
-  const positionStyle = inTitlebar
-    ? desktopRuntime.platform === "macos"
-      ? {
-        top: 12,
-        left: sidebarOpen
-          ? Math.max(12, Math.round(sidebarWidth - 28))
-          : 96,
-      }
-      : { top: Math.max(6, Math.round((desktopRuntime.titlebarHeight - 20) / 2)), left: 12 }
-    : { top: 12, left: 12 }
-
-  return (
-    <div className={cn("fixed z-[60]")} style={positionStyle}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            ref={buttonRef}
-            className="pointer-events-auto no-drag h-5 w-5 rounded-sm border-transparent bg-transparent p-0 text-muted-foreground hover:border-transparent hover:bg-transparent hover:text-foreground active:bg-transparent"
-            onClick={onToggle}
-            aria-label={`${label} (${shortcutLabel})`}
-            aria-pressed={sidebarOpen}
-          >
-            <Icon size={17} strokeWidth={1.8} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{label} ({shortcutLabel})</TooltipContent>
-      </Tooltip>
-    </div>
-  )
-}
-
-function entryIcon(entry: AppShellCommandEntry) {
-  if (entry.kind === "start") return FilePlus2
-  if (entry.kind === "project") return Folder
-  if (entry.kind === "workflow") return null
-  if (entry.action === "new_process") return FilePlus2
-  if (entry.action === "add_project") return Folder
-  if (entry.action === "process_library") return LayoutTemplate
-  if (entry.action === "inbox") return Inbox
-  return Settings2
-}
-
-function isActionEntry(entry: AppShellCommandEntry): entry is AppShellActionEntry {
-  return entry.kind === "action"
-}
-
-function isWorkflowEntry(entry: AppShellCommandEntry): entry is AppShellWorkflowEntry {
-  return entry.kind === "workflow"
-}
-
-function isProjectEntry(entry: AppShellCommandEntry): entry is AppShellProjectEntry {
-  return entry.kind === "project"
-}
-
-function AppCommandPalette({
-  open,
-  onOpenChange,
-  entries,
-  onSelect,
-  primaryModifierLabel,
-  selectedProject,
-  projects,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  entries: AppShellCommandEntry[]
-  onSelect: (entry: AppShellCommandEntry) => void
-  primaryModifierLabel: string
-  selectedProject: string | null
-  projects: string[]
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const listRef = useRef<HTMLDivElement | null>(null)
-  const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
-  const [query, setQuery] = useState("")
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [selectionMode, setSelectionMode] = useState<"pointer" | "keyboard">("pointer")
-
-  const sections = useMemo(
-    () => buildAppShellCommandSections({
-      query,
-      actions: entries.filter(isActionEntry),
-      projectEntries: entries.filter(isProjectEntry),
-      workflows: entries.filter(isWorkflowEntry),
-      selectedProject,
-      projects,
-    }),
-    [entries, projects, query, selectedProject],
-  )
-  const filteredEntries = useMemo(
-    () => sections.flatMap((section) => section.entries),
-    [sections],
-  )
-
-  useEffect(() => {
-    if (!open) {
-      setQuery("")
-      setSelectedIndex(0)
-      setSelectionMode("pointer")
-      return
-    }
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    })
-  }, [open])
-
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
-
-  useEffect(() => {
-    if (!open) return
-    const selectedEntry = filteredEntries[selectedIndex]
-    if (!selectedEntry) return
-
-    const frame = window.requestAnimationFrame(() => {
-      const target = itemRefs.current[selectedEntry.id]
-      if (!target || !listRef.current) return
-      target.scrollIntoView({
-        block: "nearest",
-        inline: "nearest",
-      })
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [filteredEntries, open, selectedIndex])
-
-  const handleActivate = (entry: AppShellCommandEntry) => {
-    onSelect(entry)
-    onOpenChange(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <CanvasDialogContent size="lg" className="max-w-[44rem] gap-0 p-0" showCloseButton={false}>
-        <CanvasDialogHeader className="command-center-header">
-          <div className="space-y-2.5">
-            <div className="flex items-center gap-3">
-              <div className="command-center-search-shell">
-                <Search size={14} className="text-muted-foreground" />
-                <Input
-                  ref={inputRef}
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault()
-                      setSelectionMode("keyboard")
-                      setSelectedIndex((previous) =>
-                        filteredEntries.length === 0 ? 0 : Math.min(previous + 1, filteredEntries.length - 1),
-                      )
-                      return
-                    }
-                    if (event.key === "ArrowUp") {
-                      event.preventDefault()
-                      setSelectionMode("keyboard")
-                      setSelectedIndex((previous) => Math.max(previous - 1, 0))
-                      return
-                    }
-                    if (event.key === "Enter") {
-                      const entry = filteredEntries[selectedIndex]
-                      if (!entry) return
-                      event.preventDefault()
-                      handleActivate(entry)
-                    }
-                  }}
-                  placeholder="Jump to a process, project, or action"
-                  className="h-auto border-0 bg-transparent px-0 py-0 text-body-md shadow-none focus-visible:ring-0"
-                  aria-label="Command palette"
-                />
-              </div>
-              <span className="command-center-kbd">
-                {primaryModifierLabel}K
-              </span>
-            </div>
-            {selectedProject ? (
-              <div className="px-1">
-                <span className="text-sidebar-meta text-muted-foreground">
-                  {`In ${selectedProject.split(/[\\/]/).filter(Boolean).pop() || selectedProject}`}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        </CanvasDialogHeader>
-
-        <div
-          ref={listRef}
-          className="command-center-scroll"
-          onPointerMove={() => {
-            if (selectionMode !== "pointer") {
-              setSelectionMode("pointer")
-            }
-          }}
-        >
-        <CanvasDialogBody className="py-2">
-          {filteredEntries.length === 0 ? (
-            <div className="command-center-empty">
-              Nothing matches this query
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {sections.map((section) => (
-                <div key={section.id} className="command-center-section">
-                  <p className="command-center-section-label">{section.label}</p>
-                  {section.entries.map((entry) => {
-                    const index = filteredEntries.findIndex((candidate) => candidate.id === entry.id)
-                    const isSelected = index === selectedIndex
-                    const Icon = entryIcon(entry)
-                    return (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        ref={(node) => {
-                          itemRefs.current[entry.id] = node
-                        }}
-                        onMouseEnter={() => {
-                          if (selectionMode !== "pointer") return
-                          setSelectedIndex(index)
-                        }}
-                        onClick={() => handleActivate(entry)}
-                        className={cn(
-                          "command-center-row",
-                          isSelected && "command-center-row--selected",
-                        )}
-                        aria-selected={isSelected}
-                      >
-                        <span className="command-center-icon">
-                          {entry.kind === "workflow" ? (
-                            entry.active ? <Loader2 size={13} className="animate-spin" /> : <span className="command-center-dot" />
-                          ) : Icon ? (
-                            <Icon size={14} />
-                          ) : (
-                            <span className="command-center-dot" />
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-body-sm text-foreground">
-                            {entry.label}
-                          </span>
-                          {entry.kind === "workflow" ? (
-                            <span className="block truncate text-sidebar-meta text-muted-foreground">
-                              {entry.projectLabel}
-                            </span>
-                          ) : entry.subtitle ? (
-                            <span className="block truncate text-sidebar-meta text-muted-foreground">
-                              {entry.subtitle}
-                            </span>
-                          ) : null}
-                        </span>
-                        {entry.kind === "workflow" ? (
-                          entry.active ? null : (
-                            <span className="command-center-meta">
-                              {entry.metaLabel}
-                            </span>
-                          )
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-        </CanvasDialogBody>
-        </div>
-        <CanvasDialogFooter className="command-center-footer">
-          <div className="flex flex-wrap items-center gap-3 text-sidebar-meta text-muted-foreground">
-            <span>↑↓ Move</span>
-            <span>Enter Open</span>
-            <span>Esc Close</span>
-          </div>
-          <span className="text-sidebar-meta text-muted-foreground">
-            Start, open, switch
-          </span>
-        </CanvasDialogFooter>
-      </CanvasDialogContent>
-    </Dialog>
-  )
-}
-
-const MainView = memo(function MainView() {
-  const [mainView] = useAtom(mainViewAtom)
-  const factoryBetaEnabled = useAtomValue(factoryBetaEnabledAtom)
-
-  if (mainView === "onboarding") return <OnboardingWizard />
-  if (mainView === "factory") return factoryBetaEnabled ? <FactoryPage /> : <WorkflowPanel />
-  if (mainView === "workflow_create") return <WorkflowCreatePage />
-  if (mainView === "skills") return <SkillsPage />
-  if (mainView === "templates") return <WorkflowsTemplatesPage />
-  if (mainView === "artifacts") return <ArtifactsPage />
-  if (mainView === "settings") return <SettingsPage />
-  if (mainView === "inbox") return <NotificationsPage />
-
-  return <WorkflowPanel />
-})
 
 const AppShell = memo(function AppShell() {
   const [mainView, setMainView] = useAtom(mainViewAtom)
@@ -419,7 +76,7 @@ const AppShell = memo(function AppShell() {
   const [workflows, setWorkflows] = useAtom(workflowsAtom)
   const [workflowCreateContext, setWorkflowCreateContext] = useAtom(workflowCreateContextAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
-  const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const setSelectedFactoryId = useSetAtom(selectedFactoryIdAtom)
   const setSelectedFactoryCaseId = useSetAtom(selectedFactoryCaseIdAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
@@ -427,6 +84,7 @@ const AppShell = memo(function AppShell() {
   const [, setProviderSettings] = useAtom(providerSettingsAtom)
   const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
   const [, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
+  const [, setSkillPickerOpen] = useAtom(skillPickerOpenAtom)
   const [sidebarOpen, setSidebarOpen] = useAtom(projectSidebarOpenAtom)
   const [sidebarWidth] = useAtom(projectSidebarWidthAtom)
   const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
@@ -462,11 +120,26 @@ const AppShell = memo(function AppShell() {
       workflowExecutionStates,
     }),
   ]), [commandPaletteProjectPath, paletteWorkflowCache, projects, workflowExecutionStates])
-  const quickSwitchEntries = useMemo(
-    () => commandPaletteEntries.filter(isWorkflowEntry).slice(0, 9),
+  const workflowCommandEntries = useMemo(
+    () => commandPaletteEntries.filter((entry): entry is Extract<AppShellCommandEntry, { kind: "workflow" }> => entry.kind === "workflow"),
     [commandPaletteEntries],
   )
-
+  const quickSwitchTargets = useMemo(() => {
+    return workflowCommandEntries
+      .slice(0, 5)
+      .map((entry) => ({
+        workflowPath: entry.workflowPath,
+        projectPath: entry.projectPath,
+      }))
+  }, [workflowCommandEntries])
+  const flowStatusRailEntries = useMemo(
+    () => buildFlowStatusRailEntries({
+      workflowEntries: workflowCommandEntries,
+      executionStates: workflowExecutionStates,
+      selectedWorkflowPath,
+    }),
+    [selectedWorkflowPath, workflowCommandEntries, workflowExecutionStates],
+  )
   const toggleSidebar = useCallback((nextOpen = !sidebarOpen) => {
     if (!nextOpen) {
       const activeElement = document.activeElement as HTMLElement | null
@@ -486,7 +159,7 @@ const AppShell = memo(function AppShell() {
     workflowPath: string
     projectPath: string
   }) => {
-    if (!(await confirmDiscard("open another process", workflowDirty))) {
+    if (!(await confirmDiscard("open another flow", workflowDirty))) {
       return
     }
 
@@ -509,7 +182,7 @@ const AppShell = memo(function AppShell() {
         setWorkflowSavedSnapshot,
       )
     } catch (error) {
-      toast.error(`Failed to open process: ${String(error)}`)
+      toast.error(`Failed to open flow: ${String(error)}`)
     }
   }, [
     confirmDiscard,
@@ -550,6 +223,13 @@ const AppShell = memo(function AppShell() {
     setWorkflows,
     workflowCreateContext.locked,
   ])
+
+  const openSkillPicker = useCallback(() => {
+    if (mainView !== "thread") {
+      setMainView("thread")
+    }
+    setSkillPickerOpen(true)
+  }, [mainView, setMainView, setSkillPickerOpen])
 
   const handleCommandPaletteSelect = useCallback((entry: AppShellCommandEntry) => {
     if (entry.kind === "start") {
@@ -603,6 +283,10 @@ const AppShell = memo(function AppShell() {
       setMainView("templates")
       return
     }
+    if (action === "attach_skill") {
+      openSkillPicker()
+      return
+    }
     if (action === "inbox") {
       setMainView("inbox")
       return
@@ -613,6 +297,7 @@ const AppShell = memo(function AppShell() {
     addProjectFromPalette,
     mainView,
     openWorkflowCreate,
+    openSkillPicker,
     openWorkflowFromPalette,
     paletteWorkflowCache,
     setMainView,
@@ -687,44 +372,40 @@ const AppShell = memo(function AppShell() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey) return
-      const target = event.target as HTMLElement | null
-      const tagName = target?.tagName
-      const isEditable = Boolean(
-        target?.isContentEditable
-        || tagName === "INPUT"
-        || tagName === "TEXTAREA"
-        || target?.closest("[contenteditable=true]"),
-      )
-      const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
-        ? event.metaKey
-        : event.ctrlKey
-      if (!usesPrimaryModifier) return
+      const isEditable = isEditableKeyboardTarget(event.target as HTMLElement | null)
+      const intent = resolveAppShellShortcutIntent({
+        event,
+        primaryModifierKey: desktopRuntime.primaryModifierKey,
+        isEditable,
+        quickSwitchCount: quickSwitchTargets.length,
+      })
+      if (!intent) return
 
-      const key = event.key.toLowerCase()
-      if (key === "," && !event.shiftKey) {
-        event.preventDefault()
+      event.preventDefault()
+
+      if (intent.type === "open_settings") {
         setMainView("settings")
         return
       }
 
-      if (key === "k" && !event.shiftKey) {
-        event.preventDefault()
+      if (intent.type === "toggle_command_palette") {
         setCommandPaletteOpen((open) => !open)
         return
       }
 
-      if (key === "n" && !event.shiftKey) {
-        event.preventDefault()
+      if (intent.type === "new_flow") {
         openWorkflowCreate()
         return
       }
 
-      if (!event.shiftKey && /^[1-9]$/.test(key)) {
-        if (isEditable) return
-        const targetEntry = quickSwitchEntries[Number(key) - 1]
+      if (intent.type === "attach_skill") {
+        openSkillPicker()
+        return
+      }
+
+      if (intent.type === "quick_switch") {
+        const targetEntry = quickSwitchTargets[intent.index]
         if (!targetEntry) return
-        event.preventDefault()
         void openWorkflowFromPalette({
           workflowPath: targetEntry.workflowPath,
           projectPath: targetEntry.projectPath,
@@ -732,8 +413,7 @@ const AppShell = memo(function AppShell() {
         return
       }
 
-      if (key === "k" && event.shiftKey) {
-        event.preventDefault()
+      if (intent.type === "toggle_thread") {
         if (mainView !== "thread") {
           setMainView("thread")
         }
@@ -741,9 +421,7 @@ const AppShell = memo(function AppShell() {
         return
       }
 
-      if (key === "b" && !event.shiftKey) {
-        if (isEditable) return
-        event.preventDefault()
+      if (intent.type === "toggle_sidebar") {
         toggleSidebar()
       }
     }
@@ -752,7 +430,7 @@ const AppShell = memo(function AppShell() {
     return () => {
       window.removeEventListener("keydown", handler)
     }
-  }, [desktopRuntime.primaryModifierKey, mainView, openWorkflowCreate, openWorkflowFromPalette, quickSwitchEntries, setChatPanelOpen, setMainView, toggleSidebar])
+  }, [desktopRuntime.primaryModifierKey, mainView, openSkillPicker, openWorkflowCreate, openWorkflowFromPalette, quickSwitchTargets, setChatPanelOpen, setMainView, toggleSidebar])
 
   useEffect(() => {
     window.api.getClaudeCodeSubscriptionStatus().then(setCliStatus).catch(() => {})
@@ -772,7 +450,7 @@ const AppShell = memo(function AppShell() {
       setDeepLinkTemplate(template)
     })
     const unsubError = window.api.onDeepLinkTemplateError((err) => {
-      toast.error(`Failed to load template "${err.templateId}": ${err.error}`)
+      toast.error(`Failed to load starting point "${err.templateId}": ${err.error}`)
     })
     return () => {
       unsubTemplate()
@@ -816,7 +494,7 @@ const AppShell = memo(function AppShell() {
     })
     setMainView("thread")
     setDeepLinkTemplate(null)
-    toast.success(`Template "${deepLinkTemplate.name}" applied`, {
+    toast.success(`Starting point "${deepLinkTemplate.name}" applied`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -854,14 +532,11 @@ const AppShell = memo(function AppShell() {
       })
       setMainView("thread")
       setDeepLinkTemplate(null)
-      toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from template`)
+      toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from starting point`)
     } catch (error) {
-      toast.error(`Failed to create workflow: ${String(error)}`)
+      toast.error(`Failed to create flow: ${String(error)}`)
     }
   }
-
-  const nodeCount = deepLinkTemplate?.workflow.nodes.length ?? 0
-  const edgeCount = deepLinkTemplate?.workflow.edges.length ?? 0
 
   return (
     <div role="application" aria-label="c8c" className="flex h-full w-full overflow-hidden bg-background text-foreground">
@@ -882,6 +557,14 @@ const AppShell = memo(function AppShell() {
         onToggle={() => toggleSidebar()}
         buttonRef={sidebarToggleRef}
       />
+      {__TEST_MODE__ && (
+        <RendererSmokeBridge
+          commandPaletteOpen={commandPaletteOpen}
+          sidebarOpen={sidebarOpen}
+          flowStatusRailLabels={flowStatusRailEntries.map((entry) => entry.label)}
+          availableWorkflowNames={workflowCommandEntries.map((entry) => entry.label)}
+        />
+      )}
 
       <AppCommandPalette
         open={commandPaletteOpen}
@@ -917,9 +600,19 @@ const AppShell = memo(function AppShell() {
 
       <div id="main-content" className="min-w-0 min-h-0 flex-1 flex flex-col">
         <CliBanner />
+        <FlowStatusRail
+          entries={flowStatusRailEntries}
+          primaryModifierLabel={desktopRuntime.primaryModifierLabel}
+          onSelect={(entry) => {
+            void openWorkflowFromPalette({
+              workflowPath: entry.workflowPath,
+              projectPath: entry.projectPath,
+            })
+          }}
+        />
         {/* Main area — workflow editor */}
-        <SectionErrorBoundary sectionName="workflow panel">
-          <MainView />
+        <SectionErrorBoundary sectionName="flow view">
+          <AppMainView />
         </SectionErrorBoundary>
         <SectionErrorBoundary sectionName="status bar">
           <AppStatusBar />
@@ -929,72 +622,20 @@ const AppShell = memo(function AppShell() {
         </SectionErrorBoundary>
       </div>
 
-      {/* Deep link template confirmation */}
-      <Dialog open={deepLinkTemplate !== null} onOpenChange={(open) => !open && setDeepLinkTemplate(null)}>
-        <CanvasDialogContent showCloseButton={false}>
-          <CanvasDialogHeader>
-            <DialogTitle>Template from c8c Hub</DialogTitle>
-            <DialogDescription>
-              Do you want to use &ldquo;{deepLinkTemplate?.name}&rdquo;?
-            </DialogDescription>
-          </CanvasDialogHeader>
-          {deepLinkTemplate && (
-            <CanvasDialogBody className="space-y-2">
-              {deepLinkTemplate.description && (
-                <p className="text-body-sm text-muted-foreground">{deepLinkTemplate.description}</p>
-              )}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline">{STAGE_META[deepLinkTemplate.stage].label}</Badge>
-                <span className="ui-meta-text text-muted-foreground">
-                  {nodeCount} node{nodeCount === 1 ? "" : "s"} · {edgeCount} edge{edgeCount === 1 ? "" : "s"}
-                </span>
-              </div>
-              {projects.length > 0 ? (
-                <div className="space-y-1">
-                  <p className="ui-meta-text text-muted-foreground">Create in project</p>
-                  <Select
-                    value={deepLinkTargetProject ?? ""}
-                    onValueChange={(value) => setDeepLinkTargetProject(value)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((projectPath) => {
-                        const projectName = projectPath.split(/[\\/]/).pop() || projectPath
-                        return (
-                          <SelectItem key={projectPath} value={projectPath}>
-                            {projectName}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <p className="text-body-sm text-muted-foreground">
-                  Add a project in sidebar to create a workflow file from this template.
-                </p>
-              )}
-            </CanvasDialogBody>
-          )}
-          <CanvasDialogFooter>
-            <DialogClose asChild>
-              <Button variant="ghost" size="sm">Cancel</Button>
-            </DialogClose>
-            <Button
-              size="sm"
-              disabled={!deepLinkTargetProject}
-              onClick={() => void createDeepLinkTemplate()}
-            >
-              Create in project
-            </Button>
-            <Button variant="outline" size="sm" onClick={applyDeepLinkTemplate}>
-              Replace current
-            </Button>
-          </CanvasDialogFooter>
-        </CanvasDialogContent>
-      </Dialog>
+      <DeepLinkTemplateDialog
+        template={deepLinkTemplate}
+        open={deepLinkTemplate !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeepLinkTemplate(null)
+          }
+        }}
+        projects={projects}
+        targetProject={deepLinkTargetProject}
+        onTargetProjectChange={setDeepLinkTargetProject}
+        onCreateInProject={() => void createDeepLinkTemplate()}
+        onReplaceCurrent={applyDeepLinkTemplate}
+      />
       {unsavedChangesDialog}
     </div>
   )

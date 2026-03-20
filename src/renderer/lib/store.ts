@@ -253,7 +253,7 @@ export const workflowOpenStateAtom = atom<WorkflowOpenState>({
 })
 
 // First launch / onboarding
-export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", true)
+export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", !__TEST_MODE__)
 
 // App pages
 export type MainView =

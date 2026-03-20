@@ -1,0 +1,121 @@
+id: delivery-review-phase
+stage: code
+emoji: "\U0001F50D"
+headline: Review a finished phase before final verification
+how: Review the current implementation against the phase plan and validation contract, surface concrete issues, and hand focused review notes to verification.
+input: Current branch, diff, implementation notes, or links that should be reviewed before final verification
+output: Review notes covering strengths, gaps, risky changes, and what should be fixed or double-checked before verification
+use_when: A phase is implemented and you want a visible review pass before final verification and sign-off.
+time: ~4-7 min.
+steps:
+  - Review the current implementation against the phase plan and validation contract
+  - Call out gaps, risky changes, and scope drift with concrete evidence
+  - Produce concise review notes that verification can use next
+pack:
+  id: delivery-foundation
+  label: Delivery Factory
+  journey_stage: review
+  recommended_next:
+    - delivery-verify-phase
+contract_in:
+  - kind: phase_plan
+    title: Phase Plan
+    description: The approved objective, scope, and slices for the implementation phase.
+    required: true
+  - kind: implementation_report
+    title: Implementation Report
+    description: The implementation handoff describing changed files, checks, and follow-ups.
+    required: true
+  - kind: validation_contract
+    title: Validation Contract
+    description: The checks and acceptance criteria that the implementation should satisfy.
+    required: true
+  - kind: research_pack
+    title: Research Pack
+    description: Helpful evidence and risks that should stay in view during review.
+    required: false
+contract_out:
+  - kind: review_notes
+    title: Review Notes
+    description: Concrete review findings, open risks, and the fixes or follow-ups verification should inspect.
+execution_policy:
+  profile_id: delivery_review
+  summary: Focused review before verify
+  description: Review the implementation against its plan and contract, then leave concise findings before final verification.
+  tags:
+    - review_gates
+    - test_first
+  notes:
+    - Prefer concrete findings over generic praise.
+    - Name scope drift explicitly when the implementation diverges from the approved phase.
+    - The goal is to sharpen the work before verification, not to re-plan the whole phase.
+    - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
+version: 1
+name: "Delivery Factory: Review Phase"
+description: Review the finished phase, surface concrete issues, and hand focused review notes to verification.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Paste the current branch, diff, implementation notes, or review context for the phase you want reviewed.
+  - id: reviewer-1
+    type: skill
+    position:
+      x: 360
+      y: 200
+    config:
+      skillRef: dev/code-reviewer
+      prompt: >-
+        Review this delivery phase against the attached Phase Plan, Validation Contract, and Implementation Report.
+        Use the current repo context when it is available.
+
+        Return concise Review Notes with:
+        1) what looks solid and should stay,
+        2) defects, gaps, or risky changes,
+        3) scope drift or contract misses,
+        4) fixes or follow-ups required before verification,
+        5) whether the phase looks ready for verification or needs another implementation pass.
+        Keep the notes concrete, prioritized, and easy to verify.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 720
+      y: 200
+    config:
+      criteria: "Score 1-10: findings reference concrete evidence, plan and contract coverage are addressed, issues are prioritized, and the review notes are concise and actionable."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: reviewer-1
+  - id: output-1
+    type: output
+    position:
+      x: 1080
+      y: 200
+    config:
+      title: Review Notes
+edges:
+  - id: e-input-reviewer
+    source: input-1
+    target: reviewer-1
+    type: default
+  - id: e-reviewer-eval
+    source: reviewer-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-reviewer
+    source: eval-1
+    target: reviewer-1
+    type: fail
