@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom } from "jotai"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   currentWorkflowAtom,
@@ -12,8 +11,7 @@ import {
   skillsAtom,
   type SkillLibrary,
 } from "@/lib/store"
-import { cn } from "@/lib/cn"
-import { getSkillSourceLabel } from "@/lib/skill-source"
+import { getSkillSourceKind, getSkillSourceLabel } from "@/lib/skill-source"
 import { addSkillNodeToWorkflow } from "@/lib/workflow-mutations"
 import type {
   DiscoveredSkill,
@@ -21,13 +19,14 @@ import type {
   MarketplaceSource,
   PluginMcpServerInfo,
 } from "@shared/types"
-import { Loader2, Plus } from "lucide-react"
+import { Plus } from "lucide-react"
 import { toast } from "sonner"
-import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
-import { SkillDetailPanel } from "@/components/SkillDetailPanel"
+import { PageHeader, PageShell } from "@/components/ui/page-shell"
 import { CollectionToolbar } from "@/components/ui/collection-toolbar"
 import { SkillSourcesAdmin } from "@/components/skills/SkillSourcesAdmin"
 import { SkillsPageDialogs } from "@/components/skills/skill-dialogs"
+import { SkillsActionStatus } from "@/components/skills/SkillsActionStatus"
+import { SkillsAttachSection } from "@/components/skills/SkillsAttachSection"
 import {
   FAVORITE_LIBRARY_ORDER,
   findWorkflowRefsBySkills,
@@ -39,6 +38,27 @@ import {
   PLUGIN_ACTION_LABEL,
   type PluginAction,
 } from "@/components/skills/skills-page-helpers"
+
+const CAPABILITY_SOURCE_SECTIONS = [
+  {
+    id: "project",
+    title: "Project skills",
+    description: "Found in this repo or workspace.",
+    kinds: new Set(["project"]),
+  },
+  {
+    id: "personal",
+    title: "Personal skills",
+    description: "Reusable across your work.",
+    kinds: new Set(["user"]),
+  },
+  {
+    id: "imported",
+    title: "Imported skills",
+    description: "Connected from libraries and plugins.",
+    kinds: new Set(["library", "plugin"]),
+  },
+] as const
 
 export function SkillsPage() {
   const [libraries, setLibraries] = useAtom(librariesAtom)
@@ -213,6 +233,21 @@ export function SkillsPage() {
       )
     return [...list].sort((a, b) => a.name.localeCompare(b.name))
   }, [skills, query])
+
+  const currentProcessLabel = useMemo(() => {
+    const workflowName = currentWorkflow.name?.trim()
+    if (workflowName) return workflowName
+    if (!selectedWorkflowPath) return null
+    const fileName = selectedWorkflowPath.split("/").pop() || ""
+    return fileName.replace(/\.(yaml|yml|json)$/i, "") || null
+  }, [currentWorkflow.name, selectedWorkflowPath])
+
+  const groupedSkills = useMemo(() => {
+    return CAPABILITY_SOURCE_SECTIONS.map((section) => {
+      const items = filteredSkills.filter((skill) => section.kinds.has(getSkillSourceKind(skill)))
+      return { ...section, items }
+    }).filter((section) => section.items.length > 0)
+  }, [filteredSkills])
 
   useEffect(() => {
     if (!selectedSkill) return
@@ -397,7 +432,7 @@ export function SkillsPage() {
   const addToWorkflowDisabledReason = !selectedProject
     ? "Select a project first."
     : !selectedWorkflowPath
-      ? "Open a workflow first."
+      ? "Open a flow first."
       : null
 
   const addSkillToWorkflow = useCallback((skill: DiscoveredSkill) => {
@@ -406,7 +441,7 @@ export function SkillsPage() {
       return
     }
     if (!selectedWorkflowPath) {
-      toast.error("Open a workflow first, then add a skill.")
+      toast.error("Open a flow first, then attach a skill.")
       return
     }
 
@@ -420,14 +455,14 @@ export function SkillsPage() {
     if (nextSelectedId) {
       setSelectedNodeId(nextSelectedId)
     }
-    toast.success(`Skill added: ${skill.name}`, {
-      description: "The new step is ready in the workflow editor.",
+    toast.success(`Skill attached: ${skill.name}`, {
+      description: "The new step is ready in Edit flow.",
       action: {
-        label: "View workflow",
+        label: "Edit flow",
         onClick: () => setMainView("thread"),
       },
     })
-    setStatusMessage(`${skill.name} added to workflow`)
+    setStatusMessage(`${skill.name} attached to flow`)
   }, [selectedProject, selectedWorkflowPath, setCurrentWorkflow, setMainView, setSelectedNodeId])
 
   const createSkill = async () => {
@@ -442,7 +477,7 @@ export function SkillsPage() {
       const fileName = skillPath.split("/").pop() || "skill file"
       if (openError) {
         toast.success(`Skill created: ${fileName}`, {
-          description: "Template is ready. Open it from your file explorer.",
+          description: "Starter file is ready. Open it from your file explorer.",
           action: {
             label: "Open file",
             onClick: () => void window.api.openPath(skillPath),
@@ -451,10 +486,10 @@ export function SkillsPage() {
       } else {
         toast.success(`Skill created and opened: ${fileName}`)
       }
-      setStatusMessage("Skill template created")
+      setStatusMessage("Skill starter created")
     } catch (error) {
-      toast.error(`Failed to create skill template: ${String(error)}`)
-      setStatusMessage("Failed to create skill template")
+      toast.error(`Failed to create skill starter: ${String(error)}`)
+      setStatusMessage("Failed to create skill starter")
     }
   }
 
@@ -481,16 +516,16 @@ export function SkillsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Plugins"
-        subtitle="Install marketplaces, enable executable pipeline packs, and browse discovered skills from one place."
+        title="Skills"
+        subtitle="Connect reusable skills, then attach them to the current flow when they help."
       />
 
       <CollectionToolbar
         ariaLabel="Skill controls"
         query={query}
         onQueryChange={setQuery}
-        searchPlaceholder="Search marketplaces, plugins, and skills"
-        searchAriaLabel="Search marketplaces, plugins, and skills"
+        searchPlaceholder="Search skills, plugins, and sources"
+        searchAriaLabel="Search skills, plugins, and sources"
         summary={`${filteredMarketplaces.length} marketplace${filteredMarketplaces.length === 1 ? "" : "s"} · ${filteredPlugins.length} plugin${filteredPlugins.length === 1 ? "" : "s"} · ${filteredSkills.length} skill${filteredSkills.length === 1 ? "" : "s"}`}
         action={(
           <Button
@@ -506,26 +541,11 @@ export function SkillsPage() {
         )}
       />
 
-      {currentLibraryActionLabel && (
-        <div className="ui-alert-info text-status-info flex items-center gap-2">
-          <Loader2 size={14} className="animate-spin" />
-          {currentLibraryActionLabel}
-        </div>
-      )}
-
-      {currentMarketplaceActionLabel && (
-        <div className="ui-alert-info text-status-info flex items-center gap-2">
-          <Loader2 size={14} className="animate-spin" />
-          {currentMarketplaceActionLabel}
-        </div>
-      )}
-
-      {currentPluginActionLabel && (
-        <div className="ui-alert-info text-status-info flex items-center gap-2">
-          <Loader2 size={14} className="animate-spin" />
-          {currentPluginActionLabel}
-        </div>
-      )}
+      <SkillsActionStatus
+        libraryActionLabel={currentLibraryActionLabel}
+        marketplaceActionLabel={currentMarketplaceActionLabel}
+        pluginActionLabel={currentPluginActionLabel}
+      />
 
       <SkillSourcesAdmin
         libraries={libraries}
@@ -557,95 +577,18 @@ export function SkillsPage() {
         onPreviewPlugin={setPreviewPlugin}
       />
 
-      <section className="space-y-3">
-        <SectionHeading title="Browse & Use" meta={
-          <Badge variant="outline">
-            {filteredSkills.length !== skills.length
-              ? `${filteredSkills.length}/${skills.length}`
-              : filteredSkills.length}
-          </Badge>
-        } />
-
-        {filteredSkills.length === 0 ? (
-          <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
-            No skills match this filter. Install a library or plugin, or clear search.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 lg:flex-row">
-            <div className="min-w-0 flex-1 rounded-lg surface-panel divide-y divide-hairline" role="list" aria-label="Available skills">
-              {filteredSkills.map((skill) => {
-                const isSelected = selectedSkill?.path === skill.path
-
-                return (
-                  <div
-                    key={`${skill.path}-${skill.name}`}
-                    className="flex items-start gap-3 px-3 py-2.5"
-                    role="listitem"
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="bare"
-                      onClick={() => setSelectedSkill(skill)}
-                      aria-pressed={isSelected}
-                      className={cn(
-                        "ui-interactive-card min-w-0 flex-1 !justify-start gap-3 rounded-md border border-transparent text-left !whitespace-normal",
-                        isSelected && "surface-inset-card shadow-inset-highlight",
-                      )}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="ui-body-text-medium truncate">{skill.name}</span>
-                          <Badge variant="outline" size="compact">{skill.type}</Badge>
-                          <Badge variant="secondary" size="compact">
-                            {getSkillSourceLabel(skill)}
-                          </Badge>
-                        </div>
-                        <p className="ui-meta-text text-muted-foreground mt-0.5">
-                          {skill.category}/{skill.name}
-                        </p>
-                        {skill.description && (
-                          <p className="ui-meta-text text-muted-foreground line-clamp-2 mt-0.5">
-                            {skill.description}
-                          </p>
-                        )}
-                      </div>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        addSkillToWorkflow(skill)
-                      }}
-                      disabled={!!addToWorkflowDisabledReason}
-                      title={addToWorkflowDisabledReason || "Add this skill to the current workflow."}
-                    >
-                      Add to workflow
-                    </Button>
-                  </div>
-                )
-              })}
-            </div>
-
-            {selectedSkill && (
-              <SkillDetailPanel
-                skill={selectedSkill}
-                onAddToWorkflow={() => addSkillToWorkflow(selectedSkill)}
-                canAddToWorkflow={!addToWorkflowDisabledReason}
-                addDisabledReason={addToWorkflowDisabledReason}
-                onClose={() => setSelectedSkill(null)}
-              />
-            )}
-          </div>
-        )}
-
-        {!selectedWorkflowPath && (
-          <p className="ui-meta-text text-muted-foreground">
-            Open a workflow to enable &ldquo;Add to workflow&rdquo;.
-          </p>
-        )}
-      </section>
+      <SkillsAttachSection
+        filteredSkills={filteredSkills}
+        allSkillsCount={skills.length}
+        currentFlowLabel={currentProcessLabel}
+        groupedSkills={groupedSkills}
+        selectedSkill={selectedSkill}
+        onSelectSkill={setSelectedSkill}
+        onAttachSkill={addSkillToWorkflow}
+        addToFlowDisabledReason={addToWorkflowDisabledReason}
+        selectedFlowPath={selectedWorkflowPath}
+        onCloseSkillDetail={() => setSelectedSkill(null)}
+      />
 
       <div aria-live="polite" className="sr-only">{statusMessage}</div>
 

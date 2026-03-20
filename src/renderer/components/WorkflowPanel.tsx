@@ -43,15 +43,12 @@ import {
   surfaceNoticeAtom,
   workflowHistoryRunsAtom,
 } from "@/features/execution"
-import { SkillPicker } from "./SkillPicker"
 import { Toolbar } from "./Toolbar"
 import { RunStrip } from "./workflow/RunStrip"
 import { BatchPanel } from "./BatchPanel"
-import { ApprovalDialog } from "./ApprovalDialog"
 import {
   EmptyProjectState,
   EmptyWorkspaceState,
-  StageStartApprovalDialog,
 } from "./workflow-panel/WorkflowPanelInlineSections"
 import {
   WorkflowCanvasTab,
@@ -63,7 +60,6 @@ import {
   WorkflowOpenLoadingState,
   WorkflowPanelHeader,
 } from "./workflow-panel/WorkflowPanelChrome"
-import { WorkflowChatPanelShell } from "./workflow-panel/WorkflowChatPanelShell"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { useWorkflowReset } from "@/hooks/useWorkflowReset"
 import { useExecutionReset } from "@/hooks/useExecutionReset"
@@ -90,6 +86,7 @@ import { addSkillNodeToWorkflow } from "@/lib/workflow-mutations"
 import type { DiscoveredSkill } from "@shared/types"
 import { useWorkflowPanelResources } from "./workflow-panel/useWorkflowPanelResources"
 import { useWorkflowPanelEntryState } from "./workflow-panel/useWorkflowPanelEntryState"
+import { WorkflowPanelOverlays } from "./workflow-panel/WorkflowPanelOverlays"
 
 export function WorkflowPanel() {
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -745,47 +742,32 @@ export function WorkflowPanel() {
         )}
 
         <BatchPanel />
-        {showEntryLanding && !showEntryEditor && (
-          <SkillPicker
-            onAddSkill={handleAttachCapabilitySelection}
-            title="Attach skill"
-            description="Choose a reusable skill to add to the current flow."
-            searchPlaceholder="Search skills..."
-            emptyStateMessage="No skills found. Enable a plugin pack, keep using local skills, or open a project with project-level skills."
-            emptyResultsMessage={(query) => `No skills found for “${query}”`}
-            stageLabel={entryStageLabel}
-            attachTargetLabel="this flow"
-          />
-        )}
-        <StageStartApprovalDialog
-          open={stageStartGateOpen}
-          flowName={stageStartFlowName}
-          title={activeEntryState?.title || workflow.name || selectedWorkflowTemplateContext?.templateName || "This step"}
+        <WorkflowPanelOverlays
+          showEntryLanding={showEntryLanding}
+          showEntryEditor={showEntryEditor}
+          entryStageLabel={entryStageLabel}
+          onAttachCapabilitySelection={handleAttachCapabilitySelection}
+          stageStartGateOpen={stageStartGateOpen}
+          stageStartFlowName={stageStartFlowName}
+          stageStartTitle={activeEntryState?.title || workflow.name || selectedWorkflowTemplateContext?.templateName || "This step"}
           stageLabel={entryStageLabel}
-          stepDescription={stageStartDescription}
-          flowRules={entryFlowRules}
+          stageStartDescription={stageStartDescription}
+          entryFlowRules={entryFlowRules}
           expectedArtifact={selectedWorkflowTemplateContext?.outputText || activeEntryState?.outputText || "A reviewable result"}
           inputPreview={inputValue}
           inputLabels={stageStartInputLabels}
           notes={stageStartPolicyNotes}
           shortcutLabel={`${desktopRuntime.primaryModifierLabel}↵`}
-          approveConsequence="Runs this step with the current input."
-          rejectConsequence="Keeps the flow in edit mode."
           primaryModifierKey={desktopRuntime.primaryModifierKey}
-          onApprove={handleApproveStageStart}
-          onCancel={handleCancelStageStart}
+          onApproveStageStart={handleApproveStageStart}
+          onCancelStageStart={handleCancelStageStart}
+          canShowAgentPanel={canShowAgentPanel}
+          chatPanelShellRef={chatPanelShellRef}
+          chatOpen={chatOpen}
+          chatPanelWidth={chatPanelWidth}
+          onCloseChat={() => setChatOpen(false)}
         />
-        <ApprovalDialog />
       </div>
-
-      {canShowAgentPanel && (
-        <WorkflowChatPanelShell
-          shellRef={chatPanelShellRef}
-          open={chatOpen}
-          width={chatPanelWidth}
-          onClose={() => setChatOpen(false)}
-        />
-      )}
     </div>
   )
 }
