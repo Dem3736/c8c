@@ -66,10 +66,10 @@ export function CaseDetail({
         </div>
 
         <div className="space-y-3">
-          <div className="ui-meta-label text-muted-foreground">Artifact lineage</div>
+          <div className="ui-meta-label text-muted-foreground">Result lineage</div>
           {selectedCase.artifacts.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-6 text-body-sm text-muted-foreground">
-              No artifacts persisted for this case yet.
+              No saved results for this case yet.
             </div>
           ) : (
             <div className="space-y-2">
@@ -192,7 +192,7 @@ export function CaseDetail({
                   onClick={() => onOpenInboxTask(primaryAction.task!, selectedCase.id)}
                 >
                   <Inbox size={14} />
-                  Review gate
+                  Approval
                 </Button>
               ) : null}
               {primaryAction?.run ? (
@@ -213,22 +213,22 @@ export function CaseDetail({
                   disabled={Boolean(launchingTemplateId)}
                 >
                   {launchingTemplateId === primaryAction.template.id ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                  {launchingTemplateId === primaryAction.template.id ? "Opening..." : "Run next action"}
+                  {launchingTemplateId === primaryAction.template.id ? "Opening..." : "Open next step"}
                 </Button>
               ) : null}
               <Button variant="ghost" size="sm" onClick={() => onOpenCaseArtifacts(selectedCase.id)}>
                 <FileStack size={14} />
-                Case artifacts
+                Case results
               </Button>
             </div>
           </>
         ) : null}
 
         <div className="space-y-3">
-          <div className="ui-meta-label text-muted-foreground">Open gates</div>
+          <div className="ui-meta-label text-muted-foreground">Open approvals</div>
           {selectedCase.tasks.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-4 text-body-sm text-muted-foreground">
-              No pending human gates for this case.
+              No pending approvals for this case.
             </div>
           ) : (
             <div className="space-y-2">
@@ -236,7 +236,7 @@ export function CaseDetail({
                 <div key={`${task.workspace}:${task.taskId}`} className="rounded-lg surface-warning-soft px-4 py-3">
                   <div className="text-body-sm font-medium text-foreground">{task.title}</div>
                   <div className="mt-1 text-body-sm text-muted-foreground">
-                    {task.kind === "approval" ? "Review gate" : "Input needed"} · {formatRelativeTime(task.createdAt)}
+                    {task.kind === "approval" ? "Approval" : "Input needed"} · {formatRelativeTime(task.createdAt)}
                   </div>
                 </div>
               ))}
@@ -253,10 +253,10 @@ export function CaseDetail({
         </div>
 
         <div className="space-y-3">
-          <div className="ui-meta-label text-muted-foreground">Next stages</div>
+          <div className="ui-meta-label text-muted-foreground">Next steps</div>
           {selectedCase.nextTemplates.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-4 text-body-sm text-muted-foreground">
-              No downstream stage is ready yet for this case.
+              No downstream step is ready yet for this case.
             </div>
           ) : (
             <div className="space-y-2">

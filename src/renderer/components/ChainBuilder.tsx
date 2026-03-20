@@ -475,7 +475,7 @@ export function ChainBuilder({
         className={cn(
           "rounded-lg ui-transition-colors ui-motion-fast",
           flowCardMode
-            ? "w-[13.75rem] shrink-0 snap-start md:w-[14.5rem] xl:w-[15rem]"
+            ? "w-[14.5rem] shrink-0 snap-start md:w-[15rem] xl:w-[15.5rem]"
             : "w-full",
           dragOverNodeId === node.id && "ring-2 ring-primary/50 ring-offset-2 ring-offset-surface-1",
         )}

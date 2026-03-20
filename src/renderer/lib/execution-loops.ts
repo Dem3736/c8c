@@ -33,6 +33,17 @@ export interface ExecutionLoopSummary {
   deltaLabel?: string | null
 }
 
+export type ExecutionCheckStatus = "passed" | "returned" | "escalated"
+
+export interface ExecutionCheckRecord {
+  kind: "check"
+  status: ExecutionCheckStatus
+  statusLabel: string
+  title: string
+  summary: string
+  detailSummary?: string
+}
+
 interface DeriveExecutionLoopSummaryInput {
   workflow: Workflow
   nodeStates: Record<string, NodeState>
@@ -79,7 +90,7 @@ function deriveOutcome({
     return {
       outcome: "human decision",
       outcomeLabel: "Human decision",
-      outcomeSentence: `Score ${latestAttempt.score}/10 stayed below ${threshold}/10. Human decision required before this process can continue.`,
+      outcomeSentence: `Score ${latestAttempt.score}/10 stayed below ${threshold}/10. Human decision required before this flow can continue.`,
     }
   }
 
@@ -186,5 +197,40 @@ export function deriveExecutionLoopSummary({
     reason: latestAttempt.reason,
     fixInstructions: latestAttempt.fix_instructions,
     deltaLabel: previousAttempt ? `${previousAttempt.score}/10 -> ${latestAttempt.score}/10` : null,
+  }
+}
+
+export function deriveExecutionCheckRecord(summary: ExecutionLoopSummary | null): ExecutionCheckRecord | null {
+  if (!summary || summary.outcome === "human decision") return null
+
+  if (summary.outcome === "auto-pass") {
+    return {
+      kind: "check",
+      status: "passed",
+      statusLabel: "Passed",
+      title: summary.title,
+      summary: summary.reason || summary.outcomeSentence,
+      detailSummary: summary.criteriaBreakdown?.length ? "Why / checks" : "Why",
+    }
+  }
+
+  if (summary.outcome === "auto-return") {
+    return {
+      kind: "check",
+      status: "returned",
+      statusLabel: "Returned to fix",
+      title: summary.title,
+      summary: summary.fixInstructions || summary.reason || summary.outcomeSentence,
+      detailSummary: summary.criteriaBreakdown?.length ? "Why / checks" : "Why",
+    }
+  }
+
+  return {
+    kind: "check",
+    status: "escalated",
+    statusLabel: "Escalated",
+    title: summary.title,
+    summary: summary.reason || summary.outcomeSentence,
+    detailSummary: summary.criteriaBreakdown?.length ? "Why / checks" : "Why",
   }
 }

@@ -10,7 +10,7 @@ import { ExecutionCheckRecord } from "@/components/ui/execution-check-record"
 import { ExecutionLoopCard } from "@/components/ui/execution-loop-card"
 import { LoopStateIndicator } from "@/components/ui/loop-state-indicator"
 
-function StageSummaryCard({
+function StepSummaryCard({
   contextToneClass,
   contextLabelClass,
   contextLabel,
@@ -60,7 +60,7 @@ function StageSummaryCard({
             )}
             {hasOutput && (
               <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-                Output ready
+                Result ready
               </Badge>
             )}
           </div>
@@ -73,7 +73,7 @@ function StageSummaryCard({
               onClick={() => onRerunFrom(rerunNodeId)}
             >
               <RotateCcw size={12} />
-              Rerun from here
+              Rerun this step
             </Button>
           )}
         </div>
@@ -128,7 +128,7 @@ export function SelectedStepSummaryPanel({
   return (
     <>
       {selectedStagePresentation && (
-        <StageSummaryCard
+        <StepSummaryCard
           contextToneClass={selectedStageContextToneClass}
           contextLabelClass={selectedStageContextLabelClass}
           contextLabel={selectedStageContextLabel}

@@ -11,7 +11,7 @@ function resolveLoopOutcomePresentation(outcome: ExecutionLoopOutcome) {
         Icon: CheckCircle2,
         badgeVariant: "success" as const,
         iconToneClass: "text-status-success bg-status-success/10 border-status-success/20",
-        headline: "Passed threshold",
+        headline: "Check passed",
         nextAction: "Continue",
       }
     case "human decision":
@@ -35,7 +35,7 @@ function resolveLoopOutcomePresentation(outcome: ExecutionLoopOutcome) {
         Icon: RefreshCcw,
         badgeVariant: "info" as const,
         iconToneClass: "text-status-info bg-status-info/10 border-status-info/20",
-        headline: "Retrying with fixes",
+        headline: "Returning with fixes",
         nextAction: "Auto return",
       }
   }
@@ -85,7 +85,7 @@ export function ExecutionLoopCard({
             <Gauge size={11} />
             {summary.score}/10
           </Badge>
-          <Badge variant="outline" size="compact">Need {summary.threshold}/10</Badge>
+          <Badge variant="outline" size="compact">Bar {summary.threshold}/10</Badge>
           <Badge variant="outline" size="compact">Loop {summary.attempt}/{summary.maxAttempts}</Badge>
         </div>
       </div>
@@ -94,7 +94,7 @@ export function ExecutionLoopCard({
         <Badge variant={outcome.badgeVariant} size="compact">{outcome.nextAction}</Badge>
         {summary.failedCriteriaCount > 0 && (
           <Badge variant="warning" size="compact">
-            {summary.failedCriteriaCount} below
+            {summary.failedCriteriaCount} below bar
           </Badge>
         )}
         {summary.deltaLabel && (

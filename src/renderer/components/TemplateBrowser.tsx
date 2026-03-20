@@ -32,7 +32,6 @@ import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
-import { STAGE_META } from "@/lib/template-stages"
 import {
   deriveTemplateCardCopy,
   deriveTemplateExecutionDisciplineLabels,
@@ -118,7 +117,6 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   const selectedOptionId = selectedId ? `template-option-${selectedId}` : undefined
   const selectedQuickStart = selected ? quickStartById.get(selected.id) || null : null
   const selectedDisciplineLabels = selected ? deriveTemplateExecutionDisciplineLabels(selected) : []
-  const selectedStageLabel = selected ? STAGE_META[selected.stage].label : null
   const selectedSourceKind = selected ? getTemplateSourceKind(selected) : null
   const selectedSourceLabel = selected ? getTemplateSourceLabel(selected) : null
   const selectedExecutionSummary = selected
@@ -128,7 +126,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
   const selectedExecutionDescription = selected?.executionPolicy?.description?.trim() || null
   const selectedPrimaryActionLabel = selectedQuickStart
     ? `Start ${selectedQuickStart.label}`
-    : "Start here"
+    : "Start with this"
 
   const closeBrowser = useCallback(() => {
     setOpen(false)
@@ -275,7 +273,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                 {templateSplit.quickStarts.length > 0 && (
                   <div className="space-y-2">
                     <p className="px-1 ui-meta-label text-muted-foreground">
-                      Quick starts in {selectedMode.label}
+                      Suggested for {selectedMode.label}
                     </p>
                     {templateSplit.quickStarts.map((entry) => {
                       const template = entry.template
@@ -329,7 +327,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                 {templateSplit.modeTemplates.length > 0 && (
                   <div className="space-y-2">
                     <p className="px-1 ui-meta-label text-muted-foreground">
-                      More {selectedMode.label.toLowerCase()} starting points
+                      More ways to start
                     </p>
                     {templateSplit.modeTemplates.map((template) => {
                       const isSelected = selectedId === template.id
@@ -362,16 +360,13 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                               <p className="ui-meta-text mt-1">
                                 {deriveTemplateCardCopy(template)}
                               </p>
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                <Badge variant="outline" size="compact">
-                                  {STAGE_META[template.stage].label}
-                                </Badge>
-                                {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+                              {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
                                   <Badge variant="secondary" size="compact">
                                     {getTemplateSourceLabel(template)}
                                   </Badge>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </Button>
@@ -382,7 +377,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
                 {templateSplit.otherTemplates.length > 0 && (
                   <div className="space-y-2">
-                    <p className="px-1 ui-meta-label text-muted-foreground">Other starting points</p>
+                    <p className="px-1 ui-meta-label text-muted-foreground">Also available</p>
                     {templateSplit.otherTemplates.map((template) => {
                       const isSelected = selectedId === template.id
                       const sourceKind = getTemplateSourceKind(template)
@@ -414,16 +409,13 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                               <p className="ui-meta-text mt-1">
                                 {deriveTemplateCardCopy(template)}
                               </p>
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                <Badge variant="outline" size="compact">
-                                  {STAGE_META[template.stage].label}
-                                </Badge>
-                                {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+                              {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
                                   <Badge variant="secondary" size="compact">
                                     {getTemplateSourceLabel(template)}
                                   </Badge>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </Button>
@@ -440,7 +432,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
               <p className="text-body-md text-muted-foreground">
                 {loadError
                   ? "Retry loading starting points to preview details before starting."
-                  : "Select a starting point to preview details before starting."}
+                  : "Select a starting point to preview it before starting."}
               </p>
             ) : (
               <div className="space-y-3">
@@ -455,11 +447,6 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                         {selectedQuickStart.intentLabel}
                       </Badge>
                     ) : null}
-                    {selectedStageLabel ? (
-                      <Badge size="compact" variant="outline">
-                        {selectedStageLabel}
-                      </Badge>
-                    ) : null}
                   </div>
                   {selected.description ? (
                     <p className="ui-meta-text mt-1">
@@ -470,15 +457,15 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
                 <div className="space-y-2">
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">When</span>
+                    <span className="ui-meta-label text-muted-foreground">Best when</span>
                     <p className="text-body-sm">{deriveTemplateUseWhen(selected)}</p>
                   </div>
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Input</span>
+                    <span className="ui-meta-label text-muted-foreground">You'll give</span>
                     <p className="text-body-sm">{selected.input}</p>
                   </div>
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Result</span>
+                    <span className="ui-meta-label text-muted-foreground">You'll get</span>
                     <p className="text-body-sm">{selected.output}</p>
                   </div>
                 </div>
@@ -495,10 +482,11 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </div>
                 )}
 
-                <div>
-                  <span className="ui-meta-label text-muted-foreground">Why it fits</span>
-                  <p className="text-body-sm text-muted-foreground">{selected.how}</p>
-                </div>
+                {selected.how ? (
+                  <DisclosurePanel summary="Why this start works">
+                    <p className="mt-3 text-body-sm text-muted-foreground">{selected.how}</p>
+                  </DisclosurePanel>
+                ) : null}
 
                 {(selectedSourceKind === "plugin" || selectedSourceKind === "user" || selectedSourceKind === "hub") && (
                   <div>
@@ -510,7 +498,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </div>
                 )}
 
-                <DisclosurePanel summary="Step outline">
+                <DisclosurePanel summary="Inside this flow">
                   <ol className="list-decimal list-inside space-y-1 mt-3 text-muted-foreground">
                     {selected.steps.map((step, i) => (
                       <li key={i} className="text-body-sm">{step}</li>

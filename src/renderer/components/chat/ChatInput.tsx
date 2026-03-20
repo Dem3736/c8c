@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useAtomValue } from "jotai"
 import { Send, Square } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { Button } from "@/components/ui/button"
@@ -8,9 +8,11 @@ import {
   chatDraftByWorkflowAtom,
   currentWorkflowAtom,
   defaultProviderAtom,
+  desktopRuntimeAtom,
   providerSettingsAtom,
   selectedWorkflowPathAtom,
 } from "@/lib/store"
+import { matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
 import { ProviderSelect } from "@/components/provider-controls"
 
 interface ChatInputProps {
@@ -28,17 +30,18 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
   const [defaultProvider] = useAtom(defaultProviderAtom)
   const [providerSettings] = useAtom(providerSettingsAtom)
   const [chatDraftByWorkflow, setChatDraftByWorkflow] = useAtom(chatDraftByWorkflowAtom)
+  const desktopRuntime = useAtomValue(desktopRuntimeAtom)
   const composerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const activeWorkflowDraft = selectedWorkflowPath ? (chatDraftByWorkflow[selectedWorkflowPath] || "") : ""
-  const sendShortcutLabel = "Enter"
-  const sendShortcutAriaLabel = "Enter"
+  const sendShortcutLabel = `${desktopRuntime.primaryModifierLabel}↵`
+  const sendShortcutAriaLabel = desktopRuntime.primaryModifierKey === "meta" ? "Command Enter" : "Control Enter"
   const activeProvider = workflow.defaults?.provider || defaultProvider
   const shortcutHint = isCompact
     ? isStreaming
-      ? "Enter send · Esc cancel"
-      : "Enter send"
-    : `${sendShortcutLabel} send · Shift+Enter newline${isStreaming ? " · Esc cancel" : ""}`
+      ? `${sendShortcutLabel} send · Esc cancel`
+      : `${sendShortcutLabel} send`
+    : `${sendShortcutLabel} send · Enter newline${isStreaming ? " · Esc cancel" : ""}`
 
   useEffect(() => {
     if (!selectedWorkflowPath) {
@@ -74,7 +77,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
   }, [isStreaming, onSend, selectedWorkflowPath, setChatDraftByWorkflow, value])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (matchesPrimaryShortcut(e, { key: "Enter", primaryModifierKey: desktopRuntime.primaryModifierKey })) {
       e.preventDefault()
       handleSend()
     }
@@ -92,7 +95,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
     }
   }
 
-    return (
+  return (
     <div className="border-t border-hairline p-3 bg-surface-1">
       <PromptComposer
         ref={textareaRef}
@@ -173,7 +176,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
           </div>
         )}
       />
-      <span className="sr-only">Press {sendShortcutAriaLabel} to send, Shift Enter for a new line, Escape to cancel generation</span>
+      <span className="sr-only">Press {sendShortcutAriaLabel} to send, Enter for a new line, Escape to cancel generation</span>
     </div>
   )
 }

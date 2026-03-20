@@ -24,7 +24,7 @@ export const DEFAULT_FANOUT_PATTERN: {
   },
   worker: {
     skillRef: "",
-    prompt: "Process this subtask",
+    prompt: "Run this subtask",
   },
   merger: {
     strategy: "concatenate",

@@ -154,9 +154,9 @@ export function factoryCaseStatusTone(status: FactoryCase["status"]): "info" | "
 }
 
 export function factoryActionLabel(kind: FactoryActionItem["kind"]) {
-  if (kind === "review_gate") return "Review gate"
+  if (kind === "review_gate") return "Approval"
   if (kind === "monitor_run") return "Live run"
-  return "Open stage"
+  return "Open step"
 }
 
 export function latestLineageLabel(entry: FactoryCase) {
@@ -361,13 +361,13 @@ export function factoryLaneMeta(status: FactoryCase["status"]) {
   if (status === "ready") {
     return {
       title: "Ready",
-      description: "Cases that can move to the next stage now.",
+      description: "Cases that can move to the next step now.",
       tone: "success" as const,
     }
   }
   return {
     title: "Completed",
-    description: "Cases with no open gate and no immediate next stage.",
+    description: "Cases with no open approval and no immediate next step.",
     tone: "default" as const,
   }
 }

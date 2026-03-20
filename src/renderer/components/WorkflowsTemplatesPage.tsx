@@ -114,16 +114,13 @@ function TemplateCard({
         <p className="text-body-sm text-muted-foreground mt-1 line-clamp-2">
           {deriveTemplateCardCopy(template)}
         </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge variant="outline" size="compact">
-            {STAGE_META[template.stage].shortLabel}
-          </Badge>
-          {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+        {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge variant="secondary" size="compact">
               {getTemplateSourceLabel(template)}
             </Badge>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </Button>
   )
@@ -170,11 +167,6 @@ function TemplateCategoryCard({
           <h3 className="text-body-md font-semibold text-foreground">{label}</h3>
           <p className="mt-1 ui-meta-text text-muted-foreground">{count} shown</p>
         </div>
-        {selected ? (
-          <Badge variant="secondary" size="compact">
-            Selected
-          </Badge>
-        ) : null}
       </div>
       <p className="mt-3 text-body-sm text-muted-foreground">{summary}</p>
     </Button>
@@ -191,27 +183,23 @@ const TEMPLATE_CATEGORY_ORDER: TemplateCategoryKey[] = [
 const TEMPLATE_CATEGORY_META: Record<TemplateCategoryKey, {
   label: string
   summary: string
-  detail: string
+  detail?: string
 }> = {
   all: {
-    label: "All starting points",
+    label: "All",
     summary: "See the whole library first, then narrow it only if that helps.",
-    detail: "Product, Marketing, and Content overlap on purpose, so edge-case starting points stay discoverable.",
   },
   product: {
-    label: "Product",
-    summary: "Development, research, design, QA, and shipping work.",
-    detail: "Use this for repo mapping, specs, implementation planning, UI polish, and software audits.",
+    label: "Development",
+    summary: "Repo work, specs, implementation planning, UI polish, and software audits.",
   },
   marketing: {
     label: "Marketing",
-    summary: "Research, positioning, trend, SEO, funnel, and audit flows.",
-    detail: "This includes segment work, messaging, GTM research, landing-page work, and other growth loops.",
+    summary: "Research, positioning, trend, SEO, funnel, and campaign work.",
   },
   content: {
     label: "Content",
-    summary: "Texts, publishing systems, course-shaped flows, and launch assets.",
-    detail: "Use this for post pipelines, copy cleanup, editorial systems, curriculum work, and other publish-ready results.",
+    summary: "Texts, publishing systems, course work, and launch assets.",
   },
 }
 
@@ -240,7 +228,6 @@ function TemplateDetailPanel({
 }) {
   const sourceKind = getTemplateSourceKind(template)
   const sourceLabel = getTemplateSourceLabel(template)
-  const stageLabel = STAGE_META[template.stage].label
   const disciplineLabels = deriveTemplateExecutionDisciplineLabels(template)
   const executionSummary = template.executionPolicy?.summary?.trim()
     || (disciplineLabels.length > 0 ? disciplineLabels.join(", ") : null)
@@ -262,12 +249,11 @@ function TemplateDetailPanel({
                 {template.description}
               </p>
             )}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <Badge variant="outline" size="compact">{stageLabel}</Badge>
-              {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+            {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 <Badge variant="secondary" size="compact">{sourceLabel}</Badge>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <button
@@ -283,15 +269,15 @@ function TemplateDetailPanel({
 
       <div className="border-b border-border px-4 py-3 space-y-3">
         <div>
-          <span className="ui-meta-label text-muted-foreground">Need</span>
+          <span className="ui-meta-label text-muted-foreground">Best when</span>
           <p className="mt-1 text-body-sm">{deriveTemplateUseWhen(template)}</p>
         </div>
         <div>
-          <span className="ui-meta-label text-muted-foreground">Input</span>
+          <span className="ui-meta-label text-muted-foreground">You'll give</span>
           <p className="mt-1 text-body-sm">{template.input}</p>
         </div>
         <div>
-          <span className="ui-meta-label text-muted-foreground">Result</span>
+          <span className="ui-meta-label text-muted-foreground">You'll get</span>
           <p className="mt-1 text-body-sm">{template.output}</p>
         </div>
       </div>
@@ -300,7 +286,7 @@ function TemplateDetailPanel({
         <div className="space-y-4">
           {(executionSummary || executionDescription) && (
             <div>
-              <span className="ui-meta-label text-muted-foreground">Working style</span>
+              <span className="ui-meta-label text-muted-foreground">Flow rules</span>
               {executionSummary ? (
                 <p className="mt-1 text-body-sm text-foreground">{executionSummary}</p>
               ) : null}
@@ -310,12 +296,13 @@ function TemplateDetailPanel({
             </div>
           )}
 
-          <div>
-            <span className="ui-meta-label text-muted-foreground">Why it fits</span>
-            <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
-          </div>
+          {template.how ? (
+            <DisclosurePanel title="Why this start works">
+              <p className="mt-3 text-body-sm text-muted-foreground">{template.how}</p>
+            </DisclosurePanel>
+          ) : null}
 
-          <DisclosurePanel title="Flow outline">
+          <DisclosurePanel title="Inside this flow">
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
               {template.steps.map((step, i) => (
                 <li key={i}>{step}</li>
@@ -337,7 +324,7 @@ function TemplateDetailPanel({
 
       <div className="border-t border-border px-4 py-3">
         <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
-          Start here
+          Start with this
         </Button>
       </div>
     </aside>
@@ -648,16 +635,16 @@ export function WorkflowsTemplatesPage() {
     <PageShell>
       <PageHeader
         title="Starting points"
-        subtitle="Browse starting points for a concrete flow, or start from blank if you want to shape it yourself."
+        subtitle="Choose how to begin, or open a blank flow only if you need full control."
         actions={headerActions}
       />
 
       <section aria-label="Starting point categories" className="overflow-hidden rounded-xl surface-elevated">
         <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
-          <p className="section-kicker">Starting points</p>
-          <h2 className="mt-1 ui-title-text text-foreground">Browse by category</h2>
+          <p className="section-kicker">Library</p>
+          <h2 className="mt-1 ui-title-text text-foreground">Browse the library</h2>
           <p className="mt-2 text-body-sm text-muted-foreground">
-            Categories overlap on purpose. Start broad, then refine by stage only if it helps.
+            Start broad, then narrow the list only if it helps.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -681,12 +668,11 @@ export function WorkflowsTemplatesPage() {
             <div className="space-y-1">
               <p className="ui-meta-label text-muted-foreground">{selectedCategoryMeta.label}</p>
               <p className="text-body-sm text-foreground">{selectedCategoryMeta.summary}</p>
-              <p className="text-body-sm text-muted-foreground">{selectedCategoryMeta.detail}</p>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {availableStageFilters.map((entry) => (
                 <Badge key={entry.stage} variant="outline" size="compact">
-                  {STAGE_META[entry.stage].shortLabel}
+                  {STAGE_META[entry.stage].label}
                 </Badge>
               ))}
             </div>
@@ -705,8 +691,8 @@ export function WorkflowsTemplatesPage() {
           <>
             <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">
               {activeCategory === "all"
-                ? "Refine by step"
-                : `Refine ${selectedCategoryMeta.label.toLowerCase()} starting points`}
+                ? "Narrow by work type"
+                : `Narrow ${selectedCategoryMeta.label.toLowerCase()} starting points`}
             </span>
             <Button
               variant={activeFilter === "all" ? "secondary" : "outline"}
@@ -714,7 +700,7 @@ export function WorkflowsTemplatesPage() {
               onClick={() => setActiveFilter("all")}
               aria-pressed={activeFilter === "all"}
             >
-              All stages
+              All kinds
             </Button>
             {availableStageFilters.map(({ stage }) => (
               <Button
@@ -724,7 +710,7 @@ export function WorkflowsTemplatesPage() {
                 onClick={() => setActiveFilter(stage)}
                 aria-pressed={activeFilter === stage}
               >
-                {STAGE_META[stage].shortLabel}
+                {STAGE_META[stage].label}
               </Button>
             ))}
             {hasActiveFilters && (

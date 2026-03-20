@@ -46,15 +46,11 @@ export function OutputPanelHeader({
 }) {
   return (
     <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0">
-        <label className="section-kicker">
-          Inspect
-        </label>
-      </div>
+      <div className="min-w-0" />
       <div className="flex flex-wrap items-center justify-end gap-2">
         {pastRuns.length > 0 && runStatus === "idle" && (
           <div className="flex items-center gap-2 rounded-lg border border-hairline bg-surface-1/80 px-2 py-1 ui-elevation-inset">
-            <span className="ui-meta-label text-muted-foreground">Runs</span>
+            <span className="ui-meta-label text-muted-foreground">Saved run</span>
             <Select
               value={selectedReviewRunId || undefined}
               onValueChange={onSelectReviewRun}

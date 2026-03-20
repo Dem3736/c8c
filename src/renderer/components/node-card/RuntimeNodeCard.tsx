@@ -97,7 +97,7 @@ export function RuntimeNodeCard({
   const primaryChips = Array.from(new Set([
     runtimePresentation.artifactRoleLabel,
     ...runtimeCardCopy.metricChips,
-  ])).slice(0, 5)
+  ])).slice(0, 4)
   const footerLabel = runtimeCardCopy.detail || `${runtimePresentation.outcomeLabel}: ${runtimePresentation.artifactLabel}`
 
   return (
@@ -105,8 +105,8 @@ export function RuntimeNodeCard({
       className={cn(
         "relative h-[224px] overflow-hidden rounded-xl border ui-elevation-base transition-[border-color,box-shadow,background-color] ui-motion-fast",
         runtimeSurfaceClass,
-        isSelected && "ring-1 ring-foreground/10 shadow-[0_10px_30px_rgba(15,23,42,0.05)]",
-        (isActive || runtimeFocusKind === "current") && "shadow-[0_14px_36px_rgba(15,23,42,0.08)]",
+        isSelected && "ring-1 ring-foreground/10 shadow-[0_10px_30px_var(--shadow-card-sm)]",
+        (isActive || runtimeFocusKind === "current") && "shadow-[0_14px_36px_var(--shadow-card-lg)]",
       )}
     >
       {runtimeAccentBarClass && (
@@ -119,7 +119,7 @@ export function RuntimeNodeCard({
         aria-label={`Focus step ${runtimePresentation.title}`}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-1.5">
               <div className="truncate ui-meta-label text-muted-foreground">
                 {`Step ${index + 1}`}
@@ -136,29 +136,31 @@ export function RuntimeNodeCard({
                 />
               )}
             </div>
-            <div className="ui-meta-text text-muted-foreground">
+            <div className="line-clamp-1 ui-meta-text text-muted-foreground">
               {runtimePresentation.kind}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
+          <div className="min-w-0 max-w-[44%] flex flex-col items-end gap-1">
             {runtimeSelectionLabel && (
               <Badge
                 variant="outline"
-                className="shrink-0 border-hairline px-1.5 py-0 ui-meta-text text-muted-foreground"
+                className="max-w-full shrink-0 border-hairline px-1.5 py-0 ui-meta-text text-muted-foreground"
+                title={runtimeSelectionLabel}
               >
-                {runtimeSelectionLabel}
+                <span className="truncate">{runtimeSelectionLabel}</span>
               </Badge>
             )}
             {runtimeFocusLabel && (
               <span
                 className={cn(
-                  "shrink-0 ui-meta-text",
+                  "max-w-full shrink-0 truncate ui-meta-text",
                   runtimeFocusKind === "current" && "ui-status-badge border-hairline bg-surface-2 text-foreground",
                   runtimeFocusKind === "current" && runtimeStatus === "running" && "ui-status-badge-info",
                   runtimeFocusKind === "current" && (runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human") && "ui-status-badge-warning",
                   runtimeFocusKind === "current" && runtimeStatus === "failed" && "ui-status-badge-danger",
                   runtimeFocusKind === "next" && "inline-flex rounded-md border border-hairline bg-surface-2 px-1.5 py-0 text-foreground",
                 )}
+                title={runtimeFocusLabel}
               >
                 {runtimeFocusLabel}
               </span>
@@ -166,11 +168,12 @@ export function RuntimeNodeCard({
             <Badge
               variant={runtimeStatusBadgeVariant}
               className={cn(
-                "shrink-0 px-1.5 py-0 ui-meta-text shadow-none",
+                "max-w-full shrink-0 px-1.5 py-0 ui-meta-text shadow-none",
                 (runtimeStatus === "pending" || runtimeStatus === "queued") && "border-hairline bg-surface-2 text-muted-foreground",
               )}
+              title={runtimeStatusLabel}
             >
-              {runtimeStatusLabel}
+              <span className="truncate">{runtimeStatusLabel}</span>
             </Badge>
           </div>
         </div>
@@ -192,10 +195,10 @@ export function RuntimeNodeCard({
           </div>
 
           <div className="min-w-0 flex-1 space-y-1.5">
-            <div className="line-clamp-2 text-title-sm text-foreground">
+            <div className="line-clamp-1 text-title-sm text-foreground" title={runtimePresentation.title}>
               {runtimePresentation.title}
             </div>
-            <div className="line-clamp-1 ui-meta-text text-muted-foreground">
+            <div className="line-clamp-1 ui-meta-text text-muted-foreground" title={runtimePresentation.artifactLabel}>
               {runtimePresentation.artifactLabel}
             </div>
           </div>
@@ -229,8 +232,13 @@ export function RuntimeNodeCard({
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {primaryChips.map((chip, chipIndex) => (
-              <Badge key={`${chip}-${chipIndex}`} variant="outline" className="px-1.5 py-0 ui-meta-text text-muted-foreground">
-                {chip}
+              <Badge
+                key={`${chip}-${chipIndex}`}
+                variant="outline"
+                className="max-w-full px-1.5 py-0 ui-meta-text text-muted-foreground"
+                title={chip}
+              >
+                <span className="truncate">{chip}</span>
               </Badge>
             ))}
           </div>
@@ -278,7 +286,7 @@ export function RuntimeNodeCard({
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-hairline/80 pt-2.5">
-          <div className="min-w-0 line-clamp-1 ui-meta-text text-muted-foreground">
+          <div className="min-w-0 line-clamp-1 ui-meta-text text-muted-foreground" title={footerLabel}>
             {footerLabel}
           </div>
           <span className="shrink-0 ui-meta-text text-muted-foreground transition-colors group-hover:text-foreground">

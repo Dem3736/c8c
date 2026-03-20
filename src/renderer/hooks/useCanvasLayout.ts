@@ -145,12 +145,12 @@ export function computeLayout(
     } else if (node.type === "approval") {
       const cfg = node.config as ApprovalNodeConfig
       label = NODE_LABELS.approval
-      subtitle = cfg.message || "Manual approval gate"
+      subtitle = cfg.message || "Manual approval"
     } else if (node.type === "human") {
       const cfg = node.config as HumanNodeConfig
       label = cfg.staticRequest?.title || NODE_LABELS.human
       subtitle = cfg.mode === "approval"
-        ? "Human approval gate"
+        ? "Human approval"
         : cfg.staticRequest?.instructions || "Structured human input"
     } else if (node.type === "input") {
       const cfg = node.config as InputNodeConfig

@@ -183,7 +183,7 @@ export function WorkflowEntryLanding({
     },
     {
       label: "Next",
-      value: startApprovalRequired ? "Review approval before run." : nextStepLabel,
+      value: startApprovalRequired ? "Approval before continue." : nextStepLabel,
     },
   ]
 
@@ -203,7 +203,7 @@ export function WorkflowEntryLanding({
             </Badge>
             {startApprovalRequired && (
               <Badge variant="warning" className="ui-meta-text px-2 py-0">
-                Approval before run
+                Approval before continue
               </Badge>
             )}
           </div>

@@ -6,5 +6,5 @@ export function canReplaceCurrentWorkflow(runStatus: ExecutionRunStatus): boolea
 
 export function getReplaceCurrentWorkflowBlockedReason(runStatus: ExecutionRunStatus): string | null {
   if (canReplaceCurrentWorkflow(runStatus)) return null
-  return "Stop the active run first, or create a new workflow file instead of replacing the current one."
+  return "Stop the active run first, or create a new flow file instead of replacing the current one."
 }

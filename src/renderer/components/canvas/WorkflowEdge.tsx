@@ -97,7 +97,7 @@ function WorkflowEdgeComponent({
           interactionWidth={0}
           className="workflow-edge-photon"
           style={{
-            stroke: "hsl(0 0% 100% / 0.76)",
+            stroke: "var(--edge-photon-stroke)",
             strokeWidth: "var(--edge-stroke-width-active)",
             strokeLinecap: "round",
             pointerEvents: "none",

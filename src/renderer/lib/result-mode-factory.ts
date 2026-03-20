@@ -133,9 +133,9 @@ function defaultQualityPolicy(mode: WorkflowResultMode) {
     return ["Evidence-first market research", "Angle before asset production", "Human review before scaling"]
   }
   if (mode.id === "courses") {
-    return ["Voice-locked drafting", "Structure before scale", "Human publish or launch gate"]
+    return ["Voice-locked drafting", "Structure before scale", "Human publish or launch approval"]
   }
-  return ["Spec-first delivery", "Visible verification before complete", "Sparse human review gates"]
+  return ["Spec-first delivery", "Visible verification before complete", "Sparse human approvals"]
 }
 
 function defaultCaseGenerationRule(mode: WorkflowResultMode) {

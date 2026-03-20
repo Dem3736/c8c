@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Workflow } from "@shared/types"
-import { deriveExecutionLoopSummary } from "./execution-loops"
+import { deriveExecutionCheckRecord, deriveExecutionLoopSummary } from "./execution-loops"
 
 const BASE_WORKFLOW: Workflow = {
   version: 1,
@@ -112,5 +112,59 @@ describe("deriveExecutionLoopSummary", () => {
       maxAttempts: 3,
       score: 7,
     })
+  })
+
+  it("maps auto-pass summaries to check records", () => {
+    const summary = deriveExecutionLoopSummary({
+      workflow: BASE_WORKFLOW,
+      nodeStates: {
+        "eval-1": {
+          status: "completed",
+          attempts: 2,
+          log: [],
+        },
+      },
+      evalResults: {
+        "eval-1": [
+          { attempt: 1, score: 6, reason: "Needs fixes", passed: false },
+          { attempt: 2, score: 9, reason: "Looks good", passed: true },
+        ],
+      },
+      runOutcome: "completed",
+    })
+
+    expect(deriveExecutionCheckRecord(summary)).toMatchObject({
+      kind: "check",
+      status: "passed",
+      statusLabel: "Passed",
+    })
+  })
+
+  it("does not map human decisions to check records", () => {
+    const summary = deriveExecutionLoopSummary({
+      workflow: BASE_WORKFLOW,
+      nodeStates: {
+        "eval-1": {
+          status: "completed",
+          attempts: 3,
+          log: [],
+        },
+        "approval-1": {
+          status: "waiting_approval",
+          attempts: 0,
+          log: [],
+        },
+      },
+      evalResults: {
+        "eval-1": [
+          { attempt: 1, score: 7, reason: "Still risky", passed: false },
+          { attempt: 2, score: 7, reason: "Still risky", passed: false },
+          { attempt: 3, score: 7, reason: "Still risky", passed: false },
+        ],
+      },
+      runOutcome: "blocked",
+    })
+
+    expect(deriveExecutionCheckRecord(summary)).toBeNull()
   })
 })

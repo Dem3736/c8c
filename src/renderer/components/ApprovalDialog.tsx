@@ -250,7 +250,7 @@ export function ApprovalDialog() {
                 <Badge variant="outline" size="compact">{primaryShortcutLabel} approve</Badge>
                 {failedCriterionCount > 0 && (
                   <Badge variant="warning" size="compact">
-                    {failedCriterionCount} below
+                    {failedCriterionCount} below bar
                   </Badge>
                 )}
                 {request.allowEdit && (

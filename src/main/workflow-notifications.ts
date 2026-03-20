@@ -33,12 +33,12 @@ function handleWorkflowNotification(window: BrowserWindow, event: WorkflowEvent)
   if (event.type === "run-done") {
     if (event.status === "completed") {
       showNotification(window, {
-        body: "Workflow completed",
+        body: "Flow completed",
         bounce: "informational",
       })
     } else if (event.status === "failed" || event.status === "interrupted") {
       showNotification(window, {
-        body: "Workflow failed",
+        body: "Flow failed",
       })
     }
     return

@@ -440,8 +440,8 @@ export function WorkflowCreatePage() {
     }))
   }, [displayQuickStarts, visiblePopularTemplates])
   const suggestedTemplatesTitle = useMemo(() => {
-    if (selectedResultMode.id === "development") return "Suggested starting points"
-    return `Suggested ${selectedResultMode.label.toLowerCase()} starting points`
+    if (selectedResultMode.id === "development") return "Suggested ways to start"
+    return `Suggested ${selectedResultMode.label.toLowerCase()} starts`
   }, [selectedResultMode.id, selectedResultMode.label])
   const pendingQuickStart = useMemo(
     () => displayQuickStarts.find((quickStart) => quickStart.template.id === pendingTemplate?.id) || null,
@@ -449,7 +449,7 @@ export function WorkflowCreatePage() {
   )
   const pendingPrimaryActionLabel = pendingQuickStart?.intentLabel
     ? `Start ${pendingQuickStart.label}`
-    : "Start here"
+    : "Start with this"
 
   const openWorkflowFile = async (
     filePath: string,

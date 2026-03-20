@@ -51,7 +51,7 @@ export function FlowStatusRail({
               className={cn(
                 "group min-w-[220px] max-w-[280px] rounded-xl border border-hairline bg-background/90 px-3 py-2 text-left ui-motion-fast transition-[border-color,background-color,box-shadow]",
                 "hover:border-foreground/15 hover:bg-surface-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
-                entry.selected && "border-foreground/15 bg-surface-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)]",
+                entry.selected && "border-foreground/15 bg-surface-1 shadow-[0_8px_24px_var(--shadow-card-md)]",
               )}
               aria-label={`Open ${entry.label}`}
             >

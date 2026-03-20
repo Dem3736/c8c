@@ -85,7 +85,7 @@ export function useFactoryData({
       .map(([workflowKey, state]) => ({
         workflowKey,
         workflowPath: workflowKey === "__draft__" ? null : workflowKey,
-        workflowName: state.workflowName || "Untitled workflow",
+        workflowName: state.workflowName || "Untitled flow",
         reportPath: state.reportPath,
         runStartedAt: state.runStartedAt,
         lastUpdatedAt: state.lastUpdatedAt,
@@ -350,8 +350,8 @@ export function useFactoryData({
             .map((template) => deriveTemplateJourneyStageLabel(template) || template.name),
         ),
         caseRule: entrypointTemplate
-          ? `A new case starts when you launch ${entrypointTemplate.name}. Later stages reuse saved artifacts to continue that same case.`
-          : "Cases are created from entry stages and then continue through saved artifacts and downstream launches.",
+          ? `A new case starts when you launch ${entrypointTemplate.name}. Later steps reuse saved results to continue that same case.`
+          : "Cases are created from entry steps and then continue through saved results and downstream launches.",
         activeCaseCount: caseIdsByPack.get(packId)?.size || 0,
       }
     }).sort((left, right) => right.activeCaseCount - left.activeCaseCount)
@@ -413,7 +413,7 @@ export function useFactoryData({
         rememberFactory({
           id: entry.factoryId,
           label: entry.factoryLabel,
-          summary: "Derived from saved artifacts and ongoing case lineage.",
+          summary: "Derived from saved results and ongoing case lineage.",
           caseCount: 1,
           artifactCount: entry.artifacts.length,
           origin: "derived",
@@ -478,8 +478,8 @@ export function useFactoryData({
             .map((template) => deriveTemplateJourneyStageLabel(template) || template.name),
         ),
         caseRule: entrypointTemplate
-          ? `A new case starts when you launch ${entrypointTemplate.name}. Later stages reuse saved artifacts to continue that same case.`
-          : "Cases are created from entry stages and then continue through saved artifacts and downstream launches.",
+          ? `A new case starts when you launch ${entrypointTemplate.name}. Later steps reuse saved results to continue that same case.`
+          : "Cases are created from entry steps and then continue through saved results and downstream launches.",
         activeCaseCount: 0,
       }
     }
@@ -647,7 +647,7 @@ export function useFactoryData({
           caseLabel: entry.label,
           kind: "review_gate",
           title: primaryTask.title,
-          description: primaryTask.summary || primaryTask.instructions || "A human gate is blocking this case.",
+          description: primaryTask.summary || primaryTask.instructions || "An approval is blocking this case.",
           timestamp: primaryTask.updatedAt,
           tone: "warning",
           task: primaryTask,
@@ -682,7 +682,7 @@ export function useFactoryData({
           title: primaryTemplate.name,
           description: entry.latestArtifact
             ? `Ready from ${entry.latestArtifact.title}.`
-            : "Ready from the artifacts already saved for this case.",
+            : "Ready from the results already saved for this case.",
           timestamp: entry.latestArtifact?.updatedAt || 0,
           tone: "success",
           template: primaryTemplate,
@@ -718,8 +718,8 @@ export function useFactoryData({
     if (!selectedCase) return null
     const primaryAction = primaryActionByCaseId.get(selectedCase.id) || null
 
-    let currentStageValue = latestLineageLabel(selectedCase) || "Not staged yet"
-    let currentStageHint = "Run a stage to establish lineage."
+    let currentStageValue = latestLineageLabel(selectedCase) || "Not started yet"
+    let currentStageHint = "Run a step to establish lineage."
     let currentStageTone: CaseSummaryField["tone"] = "default"
 
     if (selectedCase.activeRun) {
@@ -727,7 +727,7 @@ export function useFactoryData({
       currentStageHint = selectedCase.activeRun.summary.activeStepLabel || "Run in progress."
       currentStageTone = "info"
     } else if (selectedCase.latestArtifact) {
-      currentStageValue = latestLineageLabel(selectedCase) || "Artifact saved"
+      currentStageValue = latestLineageLabel(selectedCase) || "Result saved"
       currentStageHint = `${selectedCase.latestArtifact.title} · ${formatRelativeTime(selectedCase.latestArtifact.updatedAt)}`
     } else if (primaryAction?.template) {
       currentStageValue = latestLineageLabel(selectedCase) || "Ready to continue"
@@ -735,17 +735,17 @@ export function useFactoryData({
       currentStageTone = "success"
     }
 
-    let blockingGateValue = "No open gate"
+    let blockingGateValue = "No open approval"
     let blockingGateHint = "Nothing is waiting on human input."
     let blockingGateTone: CaseSummaryField["tone"] = "default"
     if (selectedCase.tasks[0]) {
-      blockingGateValue = selectedCase.tasks[0].kind === "approval" ? "Review gate" : "Input needed"
+      blockingGateValue = selectedCase.tasks[0].kind === "approval" ? "Approval" : "Input needed"
       blockingGateHint = selectedCase.tasks[0].title
       blockingGateTone = "warning"
     }
 
-    let latestArtifactValue = "No artifact yet"
-    let latestArtifactHint = "This case has not persisted any reusable output."
+    let latestArtifactValue = "No result yet"
+    let latestArtifactHint = "This case has not saved any reusable result yet."
     if (selectedCase.latestArtifact) {
       latestArtifactValue = selectedCase.latestArtifact.title
       latestArtifactHint = `${formatArtifactContractLabel(selectedCase.latestArtifact.kind)} · ${formatRelativeTime(selectedCase.latestArtifact.updatedAt)}`
@@ -764,19 +764,19 @@ export function useFactoryData({
 
     const fields: CaseSummaryField[] = [
       {
-        label: "Current stage",
+        label: "Current step",
         value: currentStageValue,
         hint: currentStageHint,
         tone: currentStageTone,
       },
       {
-        label: "Blocking gate",
+        label: "Blocking approval",
         value: blockingGateValue,
         hint: blockingGateHint,
         tone: blockingGateTone,
       },
       {
-        label: "Latest artifact",
+        label: "Latest result",
         value: latestArtifactValue,
         hint: latestArtifactHint,
       },
@@ -827,7 +827,7 @@ export function useFactoryData({
       {
         label: "Planned items",
         value: String(plannedCaseProgress.length),
-        hint: "Item cases generated from planning artifacts.",
+        hint: "Item cases generated from planning results.",
       },
       {
         label: "Completed items",
@@ -860,18 +860,18 @@ export function useFactoryData({
   const overviewFields = useMemo(() => {
     const outcomeValue = selectedFactoryDefinition?.outcome?.title?.trim() || selectedFactoryOption?.label || "Factory not defined yet"
     const bottleneckValue = scopedHumanTasks.length > 0
-      ? `${scopedHumanTasks.length} strategist gate${scopedHumanTasks.length === 1 ? "" : "s"}`
+      ? `${scopedHumanTasks.length} strategist approval${scopedHumanTasks.length === 1 ? "" : "s"}`
       : scopedActiveRunsCount > 0
         ? `${scopedActiveRunsCount} live run${scopedActiveRunsCount === 1 ? "" : "s"}`
         : readyCasesCount > 0
           ? `${readyCasesCount} case${readyCasesCount === 1 ? "" : "s"} ready`
           : "No active bottleneck"
     const bottleneckHint = scopedHumanTasks.length > 0
-      ? "Human review or missing input is the main limiter right now."
+      ? "Approvals or requested input are the main limiter right now."
       : scopedActiveRunsCount > 0
         ? "Execution is the main moving part right now."
         : readyCasesCount > 0
-          ? "The system is waiting for you to launch the next stage."
+          ? "The system is waiting for you to launch the next step."
           : "This factory is idle until you start or continue a case."
 
     return [

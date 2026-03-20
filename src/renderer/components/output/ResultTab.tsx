@@ -216,7 +216,7 @@ export function ResultTab({
 
       {!reviewingRunHistory && hasMultipleResultOptions && (
         <DisclosurePanel
-          summary={`Other step results (${resultNodeOptions.length})`}
+          summary={`Other results (${resultNodeOptions.length})`}
           className="border border-hairline bg-surface-1/70"
           contentClassName="space-y-2"
         >
@@ -266,7 +266,7 @@ export function ResultTab({
                 </Badge>
                 {nextStageRequiresApproval ? (
                   <Badge variant="warning" className="ui-meta-text px-2 py-0">
-                    Approval before run
+                    Approval before continue
                   </Badge>
                 ) : null}
                 {nextStageAutoRuns ? (
@@ -327,14 +327,14 @@ export function ResultTab({
             className={cn(nextStageOutput ? "md:grid-cols-3" : "md:grid-cols-2")}
             items={[
               {
-                label: "Saved",
+                label: "Ready now",
                 value: artifactRecords.length > 0
                   ? visibleArtifactContinuation.map((artifact) => artifact.title).join(" · ")
                   : "No reusable results",
                 hint: hiddenArtifactContinuationCount > 0 ? `+${hiddenArtifactContinuationCount} more` : undefined,
               },
               {
-                label: "Next uses",
+                label: "Used next",
                 value: visibleNextStageArtifacts.length > 0
                   ? visibleNextStageArtifacts.map((artifact) => artifact.title).join(" · ")
                   : "Resolved after continue",
@@ -398,10 +398,10 @@ export function ResultTab({
         {isDisplayedResultEmpty ? (
           <div className="ui-meta-text text-muted-foreground">
             {reviewingRunHistory
-              ? "No saved result content is available for this run."
+              ? "No saved result for this run."
               : selectedResultNodeId
                 ? "This step finished without a primary result."
-                : "Final result is empty."}
+                : "No result yet."}
           </div>
         ) : (
           <div className={MARKDOWN_PROSE_CLASS}>

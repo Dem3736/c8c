@@ -35,7 +35,7 @@ export function WorkflowCreateSuggestionsSection({
           onClick={onBrowseLibrary}
           className="w-fit text-muted-foreground"
         >
-          Browse starting points
+          Browse library
         </Button>
       </div>
 

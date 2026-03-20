@@ -18,7 +18,7 @@ describe("inbox notification helpers", () => {
         action: {
           kind: "open_inbox_task",
           taskKey: "/tmp/workspace::approval-1",
-          label: "Open review gate",
+          label: "Open approval",
         },
         createdAt: 10,
         read: true,
@@ -35,7 +35,7 @@ describe("inbox notification helpers", () => {
         kind: "open_inbox_task",
         taskKey: "/tmp/workspace::approval-1",
         workflowPath: "/tmp/workflow.chain",
-        label: "Open review gate",
+        label: "Open approval",
       },
     }, 20)
 
@@ -51,7 +51,7 @@ describe("inbox notification helpers", () => {
           kind: "open_inbox_task",
           taskKey: "/tmp/workspace::approval-1",
           workflowPath: "/tmp/workflow.chain",
-          label: "Open review gate",
+          label: "Open approval",
         },
         createdAt: 10,
         read: true,
@@ -63,7 +63,7 @@ describe("inbox notification helpers", () => {
     const existing: InboxNotification[] = []
 
     const withFirst = appendInboxNotification(existing, {
-      title: "Review gate needs attention",
+      title: "Approval needs attention",
       description: "Open the inbox task to continue.",
       level: "warning",
       source: "workflow",
@@ -75,7 +75,7 @@ describe("inbox notification helpers", () => {
     }, 100)
 
     const withSecond = appendInboxNotification(withFirst, {
-      title: "Review gate needs attention",
+      title: "Approval needs attention",
       description: "Open the inbox task to continue.",
       level: "warning",
       source: "workflow",
@@ -95,7 +95,7 @@ describe("inbox notification helpers", () => {
     const existing: InboxNotification[] = [
       {
         id: "notif-1",
-        title: "Approval pending",
+        title: "Approval needed",
         level: "warning",
         source: "workflow",
         persistentKey: "approval-needed:/tmp/workspace::approval-1",
@@ -104,7 +104,7 @@ describe("inbox notification helpers", () => {
       },
       {
         id: "notif-2",
-        title: "Workflow completed",
+        title: "Flow completed",
         level: "success",
         source: "workflow",
         createdAt: 20,
@@ -115,7 +115,7 @@ describe("inbox notification helpers", () => {
     expect(pruneInboxNotificationsByPersistentKeys(existing, ["approval-needed:/tmp/workspace::approval-1"])).toEqual([
       {
         id: "notif-2",
-        title: "Workflow completed",
+        title: "Flow completed",
         level: "success",
         source: "workflow",
         createdAt: 20,

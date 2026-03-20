@@ -31,7 +31,7 @@ export function GuidedPath({
           <h2 className="text-title-sm text-foreground">{selectedFactoryOption?.label || "Factory"} guided path</h2>
           <p className="text-body-sm text-muted-foreground">
             {selectedFactoryDefinition?.recipe?.summary
-              || "Stages, contracts, and review points for this outcome."}
+              || "Steps, contracts, and review points for this outcome."}
           </p>
         </div>
 
@@ -53,7 +53,7 @@ export function GuidedPath({
             variant="outline"
           />
           <BadgeGroup
-            label="Reusable outputs"
+            label="Reusable results"
             items={selectedFactoryDefinition?.recipe?.artifactContracts || selectedPackRecipes[0]?.contractLabels || []}
             emptyLabel="No contracts yet"
           />
@@ -104,9 +104,9 @@ export function GuidedPath({
                   variant="outline"
                 />
                 <BadgeGroup
-                  label="Outputs"
+                  label="Results"
                   items={recipe.contractLabels.slice(0, 6)}
-                  emptyLabel="No outputs"
+                  emptyLabel="No results"
                 />
                 <BadgeGroup
                   label="Quality"

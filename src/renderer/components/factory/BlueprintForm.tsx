@@ -244,7 +244,7 @@ export function BlueprintForm({
                   id="factory-quality-policy"
                   value={draft.qualityPolicyText}
                   onChange={(event) => onFieldChange("qualityPolicyText", event.target.value)}
-                  placeholder={"Voice-locked\nNo-slop review\nPublish gate"}
+                  placeholder={"Voice-locked\nNo-slop review\nPublish approval"}
                   rows={4}
                 />
               </div>
@@ -260,7 +260,7 @@ export function BlueprintForm({
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="factory-artifact-contracts">Reusable outputs</Label>
+              <Label htmlFor="factory-artifact-contracts">Reusable results</Label>
               <Textarea
                 id="factory-artifact-contracts"
                 value={draft.artifactContractsText}
@@ -290,7 +290,7 @@ export function BlueprintForm({
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={onOpenArtifacts}>
                 <FileStack size={14} />
-                Outputs
+                Results
               </Button>
               <Button variant="outline" size="sm" onClick={onOpenInbox}>
                 <Inbox size={14} />

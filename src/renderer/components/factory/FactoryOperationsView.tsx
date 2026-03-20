@@ -130,7 +130,7 @@ export function FactoryOperationsView({
         <StatCard
           label="Active runs"
           value={String(scopedActiveRunsCount)}
-          hint={scopedActiveRunsCount > 0 ? "Flows currently executing or waiting on a gate." : "Nothing is actively running right now."}
+          hint={scopedActiveRunsCount > 0 ? "Flows currently executing or waiting on an approval." : "Nothing is actively running right now."}
           tone={scopedActiveRunsCount > 0 ? "info" : "default"}
         />
         <StatCard
@@ -140,9 +140,9 @@ export function FactoryOperationsView({
           tone={scopedHumanTasks.length > 0 ? "warning" : "default"}
         />
         <StatCard
-          label="Saved outputs"
+          label="Saved results"
           value={String(scopedArtifacts.length)}
-          hint={scopedArtifacts.length > 0 ? "Reusable outputs available for downstream stages." : "Run a stage to create reusable outputs."}
+          hint={scopedArtifacts.length > 0 ? "Reusable results available for downstream steps." : "Run a step to create reusable results."}
         />
         <StatCard
           label="Ready next steps"
@@ -155,7 +155,7 @@ export function FactoryOperationsView({
       {scopedCases.length === 0 && availableEntrypointTemplates.length > 0 ? (
         <section className="rounded-xl surface-panel p-5 space-y-4">
           <SectionHeading
-            title="Entrypoints"
+            title="Starting points"
             meta={(
               <Badge variant="outline" className="ui-meta-text px-2 py-0">
                 {availableEntrypointTemplates.length} ready
@@ -245,7 +245,7 @@ export function FactoryOperationsView({
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
               {spawnCandidateArtifact
                 ? `Use ${spawnCandidateArtifact.title} to spawn item-level work and compare planned volume against the target.`
-                : "No planning output is available yet to spawn item-level work."}
+                : "No planning result is available yet to spawn item-level work."}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -267,7 +267,7 @@ export function FactoryOperationsView({
                           ) : null}
                         </div>
                         <p className="mt-1 text-body-sm text-muted-foreground">
-                          {entry.plannedCase.summary || entry.plannedCase.sourceArtifactTitle || "Item case derived from a planning artifact."}
+                          {entry.plannedCase.summary || entry.plannedCase.sourceArtifactTitle || "Item case derived from a planning result."}
                         </p>
                       </div>
                     </div>
@@ -311,7 +311,7 @@ export function FactoryOperationsView({
 
           {nextActions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-              No immediate actions right now. New review gates, live runs, and ready stages will surface here automatically.
+              No immediate actions right now. New approvals, live runs, and ready steps will surface here automatically.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -370,7 +370,7 @@ export function FactoryOperationsView({
                           onClick={() => onOpenInboxTask(action.task!, action.caseId)}
                         >
                           <Inbox size={14} />
-                          Review gate
+                          Approval
                         </Button>
                       ) : null}
                       {action.run ? (
@@ -397,7 +397,7 @@ export function FactoryOperationsView({
                           disabled={Boolean(launchingTemplateId)}
                         >
                           {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                          {isLaunching ? "Opening..." : "Open stage"}
+                          {isLaunching ? "Opening..." : "Open step"}
                         </Button>
                       ) : null}
                       <Button variant="ghost" size="sm" onClick={() => onFocusCase(action.caseId)}>
@@ -423,7 +423,7 @@ export function FactoryOperationsView({
 
           {scopedCases.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-              No derived cases yet for this factory. Run an entry stage and persist artifacts to establish case lineage.
+              No derived cases yet for this factory. Open a starting point and save results to establish case lineage.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 2xl:grid-cols-4">
@@ -487,7 +487,7 @@ export function FactoryOperationsView({
                             <SummaryRail
                               items={[
                                 {
-                                  label: "Artifacts",
+                                  label: "Results",
                                   value: String(entry.artifacts.length),
                                 },
                                 {
@@ -496,7 +496,7 @@ export function FactoryOperationsView({
                                   tone: entry.tasks.length > 0 ? "warning" : "default",
                                 },
                                 {
-                                  label: "Next stages",
+                                  label: "Next steps",
                                   value: String(entry.nextTemplates.length),
                                   tone: entry.nextTemplates.length > 0 ? "success" : "default",
                                 },
@@ -521,7 +521,7 @@ export function FactoryOperationsView({
                                 </div>
                               ) : (
                                 <div className="rounded-md border border-hairline bg-surface-1/70 px-3 py-2 text-body-sm text-muted-foreground">
-                                  No next stage detected yet.
+                                  No next step detected yet.
                                 </div>
                               )}
                             </div>
@@ -534,7 +534,7 @@ export function FactoryOperationsView({
                                   }
                                 }}>
                                   <Inbox size={14} />
-                                  Review gate
+                                  Approval
                                 </Button>
                               ) : null}
                               {primaryTemplate ? (
@@ -544,12 +544,12 @@ export function FactoryOperationsView({
                                   disabled={Boolean(launchingTemplateId)}
                                 >
                                   {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                                  {isLaunching ? "Opening..." : "Open next stage"}
+                                  {isLaunching ? "Opening..." : "Open next step"}
                                 </Button>
                               ) : null}
                               <Button variant="ghost" size="sm" onClick={() => onOpenCaseArtifacts(entry.id)}>
                                 <FileStack size={14} />
-                                Artifacts
+                                Results
                               </Button>
                             </div>
                           </button>
@@ -594,7 +594,7 @@ export function FactoryOperationsView({
               </div>
             ) : scopedHumanTasks.length === 0 && !humanTasksLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No human gates are blocking this factory right now.
+                No approvals are blocking this factory right now.
               </div>
             ) : (
               <div className="space-y-2">
@@ -607,7 +607,7 @@ export function FactoryOperationsView({
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-body-sm font-medium text-foreground">{task.title}</div>
                         <Badge variant={task.kind === "approval" ? "warning" : "info"} className="ui-meta-text px-2 py-0">
-                          {task.kind === "approval" ? "Review gate" : "Input needed"}
+                          {task.kind === "approval" ? "Approval" : "Input needed"}
                         </Badge>
                       </div>
                       <div className="mt-1 text-body-sm text-muted-foreground">
@@ -623,7 +623,7 @@ export function FactoryOperationsView({
                       ) : null}
                       <Button variant="outline" size="sm" onClick={() => onOpenInboxTask(task)}>
                         <Inbox size={14} />
-                        Review
+                        {task.kind === "approval" ? "Open approval" : "Open task"}
                       </Button>
                     </div>
                   </div>
@@ -648,7 +648,7 @@ export function FactoryOperationsView({
               </div>
             ) : scopedReadyTemplates.length === 0 && !templatesLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No downstream stage is fully ready yet for this factory. Use artifacts to build up the required contracts first.
+                No downstream step is fully ready yet for this factory. Use results to build up the required contracts first.
               </div>
             ) : (
               <div className="space-y-2">
@@ -678,12 +678,12 @@ export function FactoryOperationsView({
                         <div className="mt-1 text-body-sm text-muted-foreground">
                           {disciplineLabels.length > 0
                             ? disciplineLabels.join(" · ")
-                            : "Ready from the current factory artifacts."}
+                            : "Ready from the current factory results."}
                         </div>
                       </div>
                       <Button size="sm" onClick={() => { void onLaunchTemplate(template, scopedArtifacts) }} disabled={Boolean(launchingTemplateId)}>
                         {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                        {isLaunching ? "Opening..." : "Open stage"}
+                        {isLaunching ? "Opening..." : "Open step"}
                       </Button>
                     </div>
                   )
@@ -786,7 +786,7 @@ export function FactoryOperationsView({
 
           <article className="rounded-xl surface-panel p-5 space-y-4">
             <SectionHeading
-              title="Recent artifacts"
+              title="Recent results"
               meta={(
                 <Button variant="ghost" size="sm" onClick={onOpenArtifactsLibrary}>
                   <ArrowUpRight size={14} />
@@ -801,7 +801,7 @@ export function FactoryOperationsView({
               </div>
             ) : scopedRecentArtifacts.length === 0 && !artifactsLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No reusable artifacts have been saved for this factory yet.
+                No reusable results have been saved for this factory yet.
               </div>
             ) : (
               <div className="space-y-2">

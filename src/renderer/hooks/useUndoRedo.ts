@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import { currentWorkflowAtom, desktopRuntimeAtom } from "@/lib/store"
+import { isEditableKeyboardTarget, matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
 import {
   undoStackAtom,
   redoStackAtom,
@@ -26,23 +27,11 @@ export function useUndoRedo() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
-        ? event.metaKey
-        : event.ctrlKey
-      if (!usesPrimaryModifier) return
-
-      const key = event.key.toLowerCase()
-      if (key !== "z") return
-
-      const target = event.target as HTMLElement | null
-      const tag = target?.tagName
-      const isEditable = Boolean(
-        target?.isContentEditable ||
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        target?.closest("[contenteditable=true]"),
-      )
-      if (isEditable) return
+      if (isEditableKeyboardTarget(event.target as HTMLElement | null)) return
+      if (
+        !matchesPrimaryShortcut(event, { key: "z", primaryModifierKey: desktopRuntime.primaryModifierKey })
+        && !matchesPrimaryShortcut(event, { key: "z", primaryModifierKey: desktopRuntime.primaryModifierKey, shift: true })
+      ) return
 
       event.preventDefault()
       if (event.shiftKey) {

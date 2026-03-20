@@ -11,12 +11,12 @@ function dotClass(state: ProcessSpineStage["state"]) {
 }
 
 function rowClass(state: ProcessSpineStage["state"]) {
-  if (state === "done") return "border-status-success/25 bg-status-success/8 text-foreground"
-  if (state === "current") return "border-status-info/25 bg-status-info/8 text-foreground"
-  if (state === "blocked") return "border-status-warning/25 bg-status-warning/10 text-foreground"
-  if (state === "next") return "border-border bg-surface-2/80 text-foreground"
+  if (state === "done") return "border-status-success/22 bg-status-success/7 text-foreground"
+  if (state === "current") return "border-status-info/28 bg-status-info/9 text-foreground shadow-[inset_0_1px_0_hsl(var(--foreground)/0.05)]"
+  if (state === "blocked") return "border-status-warning/28 bg-status-warning/10 text-foreground"
+  if (state === "next") return "border-border/90 bg-surface-2/88 text-foreground"
   if (state === "available") return "border-transparent bg-transparent text-muted-foreground"
-  return "border-transparent bg-transparent text-muted-foreground/75"
+  return "border-transparent bg-transparent text-muted-foreground/70"
 }
 
 function connectorClass(left: ProcessSpineStage["state"], right: ProcessSpineStage["state"]) {
@@ -45,8 +45,8 @@ export function ProcessSpine({
   if (stages.length === 0) return null
 
   return (
-    <section className={cn("rounded-lg border border-hairline bg-surface-1/80 px-2.5 py-2", className)}>
-      <div className="overflow-x-auto">
+    <section className={cn("rounded-lg border border-hairline bg-surface-1/74 px-2 py-1.5", className)}>
+      <div className="overflow-x-auto ui-scrollbar-hidden">
         <div className="flex min-w-max items-center gap-1.5">
           {stages.map((stage, index) => (
             <div key={stage.id} className="flex items-center gap-1.5">
@@ -58,15 +58,17 @@ export function ProcessSpine({
               )}
               <div
                 className={cn(
-                  "flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-body-sm transition-colors",
+                  "flex items-center gap-2 rounded-md border px-2.5 py-1 text-body-sm transition-colors",
                   rowClass(stage.state),
                 )}
+                aria-current={stage.state === "current" ? "step" : undefined}
+                title={stage.label}
               >
                 <span
                   aria-hidden="true"
                   className={cn("h-2 w-2 shrink-0 rounded-full border", dotClass(stage.state))}
                 />
-                <span className="whitespace-nowrap">{stage.label}</span>
+                <span className="max-w-[8.5rem] truncate whitespace-nowrap">{stage.label}</span>
               </div>
             </div>
           ))}

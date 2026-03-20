@@ -38,7 +38,7 @@ export function ExecutionApprovalSummary({
   topBadges = null,
   className,
 }: ExecutionApprovalSummaryProps) {
-  const previewText = inputPreview?.trim() || "Current step input"
+  const previewText = inputPreview?.trim() || "Current input"
   const compactDescription = collapseText(stepDescription)
 
   return (
@@ -52,7 +52,7 @@ export function ExecutionApprovalSummary({
 
       <div className="grid gap-2 md:grid-cols-3">
         <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
-          <div className="ui-meta-label text-muted-foreground">Current step</div>
+          <div className="ui-meta-label text-muted-foreground">This step</div>
           <div className="mt-1 text-body-sm font-medium text-foreground">{stepName}</div>
           {compactDescription ? (
             <div className="mt-1 line-clamp-2 ui-meta-text text-muted-foreground">
@@ -61,11 +61,11 @@ export function ExecutionApprovalSummary({
           ) : null}
         </div>
         <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
-          <div className="ui-meta-label text-muted-foreground">Result to expect</div>
+          <div className="ui-meta-label text-muted-foreground">Expected result</div>
           <div className="mt-1 text-body-sm font-medium text-foreground">{expectedResult}</div>
         </div>
         <div className="rounded-md border border-hairline bg-surface-1/80 px-3 py-2.5">
-          <div className="ui-meta-label text-muted-foreground">Uses</div>
+          <div className="ui-meta-label text-muted-foreground">Runs with</div>
           {inputLabels.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1.5">
               {inputLabels.map((label) => (
@@ -75,7 +75,7 @@ export function ExecutionApprovalSummary({
               ))}
             </div>
           ) : (
-            <div className="mt-1 ui-meta-text text-muted-foreground">Current step input</div>
+            <div className="mt-1 ui-meta-text text-muted-foreground">Current input</div>
           )}
         </div>
       </div>

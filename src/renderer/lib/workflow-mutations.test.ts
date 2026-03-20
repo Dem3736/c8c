@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest"
 import type { Workflow } from "@shared/types"
 import {
+  addApprovalNodeToWorkflow,
   addEdgeToWorkflow,
+  addEvaluatorNodeToWorkflow,
+  addFanOutPatternToWorkflow,
+  addHumanNodeToWorkflow,
   addSkillNodeToWorkflow,
   getLinearChainReorderBlockReason,
   getMiddleNodeMoveBlockedReason,
@@ -174,6 +178,48 @@ describe("workflow edge mutations", () => {
     const ids = new Set(skillNodes.map((node) => node.id))
 
     expect(ids.size).toBe(skillNodes.length)
+  })
+
+  it("inserts an evaluator with pass and fail wiring before output", () => {
+    const next = addEvaluatorNodeToWorkflow(createWorkflow(), 1700000000000)
+    const evaluator = next.nodes.find((node) => node.type === "evaluator")
+
+    expect(evaluator).toBeDefined()
+    expect((evaluator?.config as { retryFrom?: string }).retryFrom).toBe("skill-1")
+    expect(next.edges.some((edge) => edge.source === "skill-1" && edge.target === evaluator?.id && edge.type === "default")).toBe(true)
+    expect(next.edges.some((edge) => edge.source === evaluator?.id && edge.target === "output-1" && edge.type === "pass")).toBe(true)
+    expect(next.edges.some((edge) => edge.source === evaluator?.id && edge.target === "skill-1" && edge.type === "fail")).toBe(true)
+  })
+
+  it("inserts a fan-out scaffold before output", () => {
+    const next = addFanOutPatternToWorkflow(createWorkflow(), 1700000000000)
+    const splitter = next.nodes.find((node) => node.type === "splitter")
+    const branchSkill = next.nodes.find((node) => node.type === "skill" && node.id !== "skill-1")
+    const merger = next.nodes.find((node) => node.type === "merger")
+
+    expect(splitter).toBeDefined()
+    expect(branchSkill).toBeDefined()
+    expect(merger).toBeDefined()
+    expect(next.edges.some((edge) => edge.source === "skill-1" && edge.target === splitter?.id)).toBe(true)
+    expect(next.edges.some((edge) => edge.source === splitter?.id && edge.target === branchSkill?.id)).toBe(true)
+    expect(next.edges.some((edge) => edge.source === branchSkill?.id && edge.target === merger?.id)).toBe(true)
+    expect(next.edges.some((edge) => edge.source === merger?.id && edge.target === "output-1")).toBe(true)
+  })
+
+  it("inserts approval and human steps as linear nodes before output", () => {
+    const withApproval = addApprovalNodeToWorkflow(createWorkflow(), 1700000000000)
+    const approval = withApproval.nodes.find((node) => node.type === "approval")
+
+    expect(approval).toBeDefined()
+    expect(withApproval.edges.some((edge) => edge.source === "skill-1" && edge.target === approval?.id)).toBe(true)
+    expect(withApproval.edges.some((edge) => edge.source === approval?.id && edge.target === "output-1")).toBe(true)
+
+    const withHuman = addHumanNodeToWorkflow(createWorkflow(), 1700000000000)
+    const human = withHuman.nodes.find((node) => node.type === "human")
+
+    expect(human).toBeDefined()
+    expect(withHuman.edges.some((edge) => edge.source === "skill-1" && edge.target === human?.id)).toBe(true)
+    expect(withHuman.edges.some((edge) => edge.source === human?.id && edge.target === "output-1")).toBe(true)
   })
 
   it("promotes a discovered skill model to workflow defaults instead of the node config", () => {
