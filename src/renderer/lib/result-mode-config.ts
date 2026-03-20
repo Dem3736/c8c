@@ -86,7 +86,7 @@ const RESULT_MODE_CONFIG_FIELDS: Record<string, ResultModeConfigField[]> = {
     {
       id: "launch_needs",
       label: "Publishing or launch needs",
-      placeholder: "Approval gates, launch assets, delivery format, cadence, or other downstream needs.",
+      placeholder: "Approvals, launch assets, delivery format, cadence, or other downstream needs.",
       type: "textarea",
     },
   ],
@@ -159,7 +159,7 @@ export function buildResultModeSeedInput(
   if (sections.length === 0) {
     if (basePrompt.trim()) return basePrompt
     return [
-      `Build a starter workflow for the ${mode.label} mode.`,
+      `Build a starter flow for the ${mode.label} result mode.`,
       `Focus: ${mode.useFor}`,
       `First useful result: ${mode.youGetFirst}`,
       `Human role: ${mode.userRole}`,

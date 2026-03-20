@@ -51,7 +51,7 @@ export const LIBRARY_PREVIEW_HINTS: Record<string, string[]> = {
     "Lead enrichment and account profiling",
   ],
   "anthropic-skills": [
-    "PDF, DOCX, and XLSX processing",
+    "PDF, DOCX, and XLSX skills",
     "Presentation analysis and summarization",
     "Website and design QA skills",
   ],
@@ -102,7 +102,7 @@ export function formatPluginAssetCount(plugin: InstalledPlugin, capability: Plug
   const asset = plugin.assets.find((item) => item.capability === capability)
   const count = asset?.count ?? 0
   if (capability === "skill") return `${count} skill${count === 1 ? "" : "s"}`
-  if (capability === "template") return `${count} template${count === 1 ? "" : "s"}`
+  if (capability === "template") return `${count} starting point${count === 1 ? "" : "s"}`
   return `${count} MCP server${count === 1 ? "" : "s"}`
 }
 

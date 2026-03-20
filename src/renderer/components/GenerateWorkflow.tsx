@@ -111,7 +111,7 @@ export function GenerateWorkflow() {
 
           <Textarea
             id="workflow-desc"
-            aria-label="Workflow description"
+            aria-label="Flow description"
             autoFocus
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -147,9 +147,9 @@ export function GenerateWorkflow() {
                 <p className="mt-1 text-body-sm text-foreground">
                   {target === "new"
                     ? targetLabel
-                      ? `Open it as a new starting point in ${targetLabel}.`
-                      : "Select a project first to open this as a new starting point."
-                    : "Use the current draft as the starting point."}
+                      ? `Open it as a new flow in ${targetLabel}.`
+                      : "Select a project first to open this as a new flow."
+                    : "Use the current draft as the current flow."}
                 </p>
                 {target === "replace" && replaceCurrentBlockedReason && (
                   <p className="mt-2 text-body-sm text-status-warning">{replaceCurrentBlockedReason}</p>
@@ -164,7 +164,7 @@ export function GenerateWorkflow() {
                     onClick={() => setTarget("replace")}
                     disabled={generating}
                   >
-                    Use current draft instead
+                    Use current flow instead
                   </Button>
                 ) : null}
                 {target === "replace" && selectedProject ? (
@@ -175,7 +175,7 @@ export function GenerateWorkflow() {
                     onClick={() => setTarget("new")}
                     disabled={generating}
                   >
-                    Open as new instead
+                    Open as new flow instead
                   </Button>
                 ) : null}
               </div>

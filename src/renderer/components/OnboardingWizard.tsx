@@ -404,7 +404,7 @@ function StepOpenProject({
   )
 }
 
-/* ── Step 3: Workflow mental model + first action ────────── */
+/* ── Step 3: Flow mental model + first action ────────── */
 
 function StepUnderstandWorkflow({
   onOpenAgent,
@@ -413,7 +413,7 @@ function StepUnderstandWorkflow({
   onOpenAgent: () => void
   onGoTemplates: () => void
 }) {
-  const examplePrompt = "Build a workflow that reviews this codebase for risky files, then summarizes what to fix first."
+  const examplePrompt = "Build a flow that reviews this codebase for risky files, then summarizes what to fix first."
   const flowCards = [
     {
       label: "1. Input",
@@ -423,12 +423,12 @@ function StepUnderstandWorkflow({
     {
       label: "2. Steps",
       detail: "Research, transform, branch, review",
-      meta: "Shape the workflow as it runs",
+      meta: "Shape the flow as it runs",
     },
     {
       label: "3. Result",
       detail: "Inspect output, logs, and rerun points",
-      meta: "Tighten only the stage that needs work",
+      meta: "Tighten only the step that needs work",
     },
   ]
 
@@ -440,9 +440,9 @@ function StepUnderstandWorkflow({
             <Bot size={20} className="text-foreground" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-title-md text-foreground">Start from a prompt or a template</h2>
+            <h2 className="text-title-md text-foreground">Start from a prompt or a starting point</h2>
             <div className="ui-meta-text text-muted-foreground">
-              Use the Agent for a draft, or start from Templates and tune steps later.
+              Use the Agent for a draft, or start from Starting points and tune the flow later.
             </div>
           </div>
         </div>
@@ -454,7 +454,7 @@ function StepUnderstandWorkflow({
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
             <LayoutTemplate size={14} />
-            Browse templates
+            Browse starting points
           </Button>
         </div>
       </div>
@@ -482,7 +482,7 @@ function StepUnderstandWorkflow({
         </div>
 
         <div className="rounded-lg surface-inset-card p-4 space-y-3">
-          <div className="ui-meta-label text-muted-foreground">Workflow shape</div>
+          <div className="ui-meta-label text-muted-foreground">Flow shape</div>
           <div className="space-y-0">
             {flowCards.map((card, index) => (
               <div

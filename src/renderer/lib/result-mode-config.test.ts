@@ -78,7 +78,7 @@ describe("result-mode-config", () => {
       },
     )
 
-    expect(seed).toContain("Build a starter workflow for the Content mode.")
+    expect(seed).toContain("Build a starter flow for the Content result mode.")
     expect(seed).toContain("First useful result")
   })
 })

@@ -433,7 +433,7 @@ export function SettingsPage() {
             <div>
               <h3 className="text-body-md font-semibold text-foreground">Enable factories (beta)</h3>
               <p className="mt-1 text-body-sm text-muted-foreground">
-                Shows the advanced factory workspace and related navigation. Leave this off for the simpler workflow and template flow.
+                Shows the advanced factory workspace and related navigation. Leave this off for the simpler flow editor and starting-point view.
               </p>
             </div>
             <Switch
@@ -456,7 +456,7 @@ export function SettingsPage() {
           <div>
             <h3 className="text-body-md font-semibold">Web Search Backend</h3>
             <p className="text-body-sm text-muted-foreground mt-1">
-              Defines which web-search path is preferred when applying templates from the
+              Defines which web-search path is preferred when using starting points from the
               <span className="font-medium"> research </span>
               category.
             </p>
@@ -476,7 +476,7 @@ export function SettingsPage() {
           </Select>
 
           <p className="ui-meta-text text-muted-foreground">
-            Current setting is stored locally for this app profile and does not modify existing workflow files.
+            Current setting is stored locally for this app profile and does not modify existing flow files.
           </p>
         </article>
       </section>
@@ -498,7 +498,7 @@ export function SettingsPage() {
                 className="w-full"
               />
               <p className="ui-meta-text text-muted-foreground">
-                Used when a workflow does not set its own provider override.
+                Used when a flow does not set its own provider override.
               </p>
             </div>
 
@@ -606,7 +606,7 @@ export function SettingsPage() {
                           type="password"
                           value={codexApiKeyDraft}
                           onChange={(event) => setCodexApiKeyDraft(event.target.value)}
-                          placeholder="Paste API key to store in the main process"
+                          placeholder="Paste API key to store in the app"
                           className="flex-1"
                         />
                         <Button
@@ -627,7 +627,7 @@ export function SettingsPage() {
                         </Button>
                       </div>
                       <p className="ui-meta-text text-muted-foreground">
-                        ChatGPT subscription login works via <code className="inline-code">codex login</code> and does not require an API key. The app-managed key is only an optional override stored in the main process.
+                        ChatGPT subscription login works via <code className="inline-code">codex login</code> and does not require an API key. The app-managed key is only an optional override stored in the app.
                       </p>
                     </div>
                   )}
