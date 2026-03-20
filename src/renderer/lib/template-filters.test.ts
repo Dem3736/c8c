@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
 import type { WorkflowTemplate } from "@shared/types"
 import {
-  buildTemplateSearchText,
+  getTemplateSearchScore,
   isContentTemplate,
   isMarketingTemplate,
   isProductTemplate,
+  templateMatchesSearchQuery,
   templateMatchesCategory,
   templateMatchesLibraryFilter,
 } from "./template-filters"
@@ -74,7 +75,8 @@ describe("template-filters", () => {
 
     expect(isMarketingTemplate(template)).toBe(true)
     expect(templateMatchesCategory(template, "marketing")).toBe(true)
-    expect(buildTemplateSearchText(template)).toContain("marketing")
+    expect(templateMatchesSearchQuery(template, "segment research")).toBe(true)
+    expect(templateMatchesSearchQuery(template, "research segment")).toBe(true)
   })
 
   it("allows overlap between product and marketing where the workflow is design-audit heavy", () => {
@@ -123,5 +125,45 @@ describe("template-filters", () => {
     expect(isContentTemplate(template)).toBe(true)
     expect(templateMatchesCategory(template, "content")).toBe(true)
     expect(templateMatchesCategory(template, "product")).toBe(false)
+  })
+
+  it("allows implicit matches from descriptive metadata", () => {
+    const template = createTemplate({
+      id: "generic-template",
+      name: "Generic Template",
+      headline: "Ship a feature cleanly",
+      description: "Polish the UI and tighten the copy before launch.",
+    })
+
+    expect(templateMatchesSearchQuery(template, "polish")).toBe(true)
+    expect(templateMatchesSearchQuery(template, "generic")).toBe(true)
+  })
+
+  it("matches against tokenized fields instead of raw substrings", () => {
+    const template = createTemplate({
+      id: "generic-template",
+      name: "Generic Template",
+      headline: "Ship a feature cleanly",
+    })
+
+    expect(templateMatchesSearchQuery(template, "ui", "Built-in")).toBe(false)
+    expect(templateMatchesSearchQuery(template, "built", "Built-in")).toBe(true)
+  })
+
+  it("ranks explicit title matches ahead of implicit description matches", () => {
+    const explicitTemplate = createTemplate({
+      id: "ux-ui-polish-audit",
+      name: "UX/UI Polish Audit",
+      headline: "Audit UX/UI polish across the whole project",
+      description: "Audit the project.",
+    })
+    const implicitTemplate = createTemplate({
+      id: "generic-template",
+      name: "Generic Template",
+      headline: "Ship a feature cleanly",
+      description: "Polish the UI and tighten the copy before launch.",
+    })
+
+    expect(getTemplateSearchScore(explicitTemplate, "polish")).toBeGreaterThan(getTemplateSearchScore(implicitTemplate, "polish"))
   })
 })

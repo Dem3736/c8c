@@ -82,6 +82,13 @@ function compactText(values: Array<string | undefined | null>): string {
     .join(" ")
 }
 
+function tokenizeSearchTerms(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+}
+
 function getTemplateSkillRefs(template: WorkflowTemplate): string[] {
   return template.workflow.nodes
     .filter((node) => node.type === "skill")
@@ -150,22 +157,73 @@ export function templateMatchesCategory(template: WorkflowTemplate, category: Te
   return isContentTemplate(template)
 }
 
-export function buildTemplateSearchText(template: WorkflowTemplate, sourceLabel?: string): string {
-  const aliases = compactText([
-    isProductTemplate(template) ? "product development design engineering ux ui frontend qa audit research" : "",
-    isMarketingTemplate(template) ? "marketing growth go-to-market gtm seo geo social distribution editorial outreach trends segments positioning" : "",
-    isContentTemplate(template) ? "content copy writing publishing course curriculum lessons text editorial" : "",
-  ])
-
+export function buildTemplateSearchText(template: WorkflowTemplate): string {
   return compactText([
-    getTemplateMetadataText(template),
-    template.stage,
+    template.headline,
+    template.name,
+    template.id,
+  ]).toLowerCase()
+}
+
+function buildTemplateImplicitSearchText(template: WorkflowTemplate, sourceLabel?: string): string {
+  return compactText([
+    template.description,
+    template.how,
+    template.input,
+    template.output,
+    template.useWhen,
+    template.pack?.label,
+    template.pack?.id,
     sourceLabel,
     template.marketplaceName,
+    template.pluginName,
     template.contractIn?.map((contract) => compactText([contract.kind, contract.title])).join(" "),
     template.contractOut?.map((contract) => compactText([contract.kind, contract.title])).join(" "),
-    aliases,
   ]).toLowerCase()
+}
+
+function matchesQueryTokens(value: string, queryTokens: string[]): boolean {
+  const valueTokens = tokenizeSearchTerms(value)
+  if (valueTokens.length === 0) return false
+
+  return queryTokens.every((queryToken) => valueTokens.some((valueToken) => valueToken.startsWith(queryToken)))
+}
+
+function getContiguousQueryMatchIndex(value: string, queryTokens: string[]): number {
+  const valueTokens = tokenizeSearchTerms(value)
+  if (queryTokens.length === 0 || valueTokens.length < queryTokens.length) return -1
+
+  for (let startIndex = 0; startIndex <= valueTokens.length - queryTokens.length; startIndex += 1) {
+    const matches = queryTokens.every((queryToken, offset) => valueTokens[startIndex + offset]?.startsWith(queryToken))
+    if (matches) return startIndex
+  }
+
+  return -1
+}
+
+function scoreSearchText(value: string, queryTokens: string[], phraseScore: number, tokenScore: number): number {
+  if (!value.trim()) return 0
+
+  const phraseMatchIndex = getContiguousQueryMatchIndex(value, queryTokens)
+  if (phraseMatchIndex >= 0) {
+    return phraseMatchIndex === 0 ? phraseScore + 25 : phraseScore
+  }
+
+  return matchesQueryTokens(value, queryTokens) ? tokenScore : 0
+}
+
+export function getTemplateSearchScore(template: WorkflowTemplate, query: string, sourceLabel?: string): number {
+  const queryTokens = tokenizeSearchTerms(query)
+  if (queryTokens.length === 0) return 0
+
+  const explicitScore = scoreSearchText(buildTemplateSearchText(template), queryTokens, 400, 300)
+  if (explicitScore > 0) return explicitScore
+
+  return scoreSearchText(buildTemplateImplicitSearchText(template, sourceLabel), queryTokens, 120, 60)
+}
+
+export function templateMatchesSearchQuery(template: WorkflowTemplate, query: string, sourceLabel?: string): boolean {
+  return getTemplateSearchScore(template, query, sourceLabel) > 0
 }
 
 export function templateMatchesLibraryFilter(template: WorkflowTemplate, filter: TemplateLibraryFilterKey): boolean {

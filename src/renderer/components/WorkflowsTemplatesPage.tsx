@@ -54,7 +54,7 @@ import { CollectionToolbar } from "@/components/ui/collection-toolbar"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
 import {
-  buildTemplateSearchText,
+  getTemplateSearchScore,
   templateMatchesCategory,
   templateMatchesLibraryFilter,
   type TemplateCategoryKey,
@@ -398,9 +398,18 @@ export function WorkflowsTemplatesPage() {
   }, [loadTemplates])
 
   const searchFilteredTemplates = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = query.trim()
     if (!q) return templates
-    return templates.filter((template) => buildTemplateSearchText(template, getTemplateSourceLabel(template)).includes(q))
+
+    return templates
+      .map((template, index) => ({
+        template,
+        index,
+        score: getTemplateSearchScore(template, q, getTemplateSourceLabel(template)),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.template)
   }, [query, templates])
 
   const categoryFilteredTemplates = useMemo(() => (
@@ -684,8 +693,8 @@ export function WorkflowsTemplatesPage() {
         ariaLabel="Library controls"
         query={query}
         onQueryChange={setQuery}
-        searchPlaceholder="Search library"
-        searchAriaLabel="Search library"
+        searchPlaceholder="Search templates"
+        searchAriaLabel="Search templates"
         summary={`${filteredTemplates.length} flow${filteredTemplates.length === 1 ? "" : "s"}`}
         filters={(
           <>
