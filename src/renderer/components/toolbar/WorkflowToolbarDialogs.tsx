@@ -51,8 +51,8 @@ export function WorkflowToolbarDialogs({
       <Dialog open={renameDialogOpen} onOpenChange={onRenameDialogOpenChange}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Rename workflow</DialogTitle>
-            <DialogDescription>Enter a new name for this workflow.</DialogDescription>
+            <DialogTitle>Rename flow</DialogTitle>
+            <DialogDescription>Enter a new name for this flow.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <Input
@@ -74,9 +74,9 @@ export function WorkflowToolbarDialogs({
       <Dialog open={deleteDialogOpen} onOpenChange={onDeleteDialogOpenChange}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Delete workflow</DialogTitle>
+            <DialogTitle>Delete flow</DialogTitle>
             <DialogDescription>
-              Delete &ldquo;{deleteLabel}&rdquo;?{workflowDirty ? " You have unsaved changes that will be lost." : ""} The workflow file will be permanently removed.
+              Delete &ldquo;{deleteLabel}&rdquo;?{workflowDirty ? " You have unsaved changes that will be lost." : ""} The flow file will be permanently removed.
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogFooter>
@@ -93,15 +93,15 @@ export function WorkflowToolbarDialogs({
       <Dialog open={templateDialogOpen} onOpenChange={onTemplateDialogOpenChange}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Save as template</DialogTitle>
-            <DialogDescription>Enter a name for this template.</DialogDescription>
+            <DialogTitle>Save as starting point</DialogTitle>
+            <DialogDescription>Enter a name for this starting point.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <Input
               value={templateNameInput}
               onChange={(event) => onTemplateNameInputChange(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && onCommitSaveAsTemplate()}
-              placeholder="Template name"
+              placeholder="Starting point name"
               autoFocus
             />
           </CanvasDialogBody>

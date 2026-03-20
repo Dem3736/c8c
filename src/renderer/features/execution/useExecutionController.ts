@@ -52,7 +52,7 @@ function getWorkflowNotificationAction(
   return {
     kind: "open_workflow" as const,
     workflowPath: state.runWorkflowPath,
-    label: state.runOutcome === "completed" ? "Open workflow" : "Inspect workflow",
+    label: state.runOutcome === "completed" ? "Open flow" : "Inspect flow",
   }
 }
 
@@ -103,14 +103,14 @@ export function buildPendingApprovalNotifications(
       const presentation = node ? getRuntimeStagePresentation(node, { fallbackId: nodeId }) : null
       const taskId = nodeState.humanTask?.taskId || approvalTaskId(nodeId)
       const taskKey = toInboxTaskKey(state.workspace, taskId)
-      const workflowName = state.workflowName || (workflowKey === "__draft__" ? "Draft workflow" : "Workflow")
+      const workflowName = state.workflowName || (workflowKey === "__draft__" ? "Draft flow" : "Flow")
       const stageTitle = presentation?.title || nodeId
       const stageGroup = presentation?.group
 
       notifications.push({
-        title: `${stageTitle} needs review`,
+        title: `${stageTitle} needs approval`,
         description: stageGroup
-          ? `${workflowName} is waiting at ${stageGroup}. Open the inbox task to approve or reject this gate.`
+          ? `${workflowName} is waiting at ${stageGroup}. Open the inbox task to approve or stop this step.`
           : `${workflowName} is waiting for your approval. Open the inbox task to continue or stop the run.`,
         level: "warning",
         source: "workflow",
@@ -119,7 +119,7 @@ export function buildPendingApprovalNotifications(
           kind: "open_inbox_task",
           taskKey,
           workflowPath: state.runWorkflowPath || undefined,
-          label: "Open review gate",
+          label: "Open approval",
         },
       })
     }
@@ -191,7 +191,7 @@ export function useExecutionController({
           showExecutionToast(notice)
         }
         addNotificationRef.current({
-          title: notice?.title || (state.workflowName || "Workflow"),
+          title: notice?.title || (state.workflowName || "Flow"),
           description: notice?.description || state.lastError || state.workspace || undefined,
           level: notice ? toInboxLevel(notice.level) : "info",
           source: "workflow",
@@ -230,7 +230,7 @@ export function useExecutionController({
             contracts: templateContext.contractOut,
           }),
           DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-          "Artifact persistence timed out. Check the main process and try again.",
+          "Result saving timed out. Check the main flow and try again.",
         ).then((result) => {
           controllerRef.current?.updateExecutionForKey(workflowKey, (previous) => ({
             ...previous,
@@ -246,7 +246,7 @@ export function useExecutionController({
             artifactPersistenceError: message,
           }))
           addNotificationRef.current({
-            title: `Artifact persistence failed: ${state.workflowName || "Workflow"}`,
+            title: `Result saving failed: ${state.workflowName || "Flow"}`,
             description: message,
             level: "error",
             source: "workflow",

@@ -84,7 +84,7 @@ export function useExecutionCommands({
       const cancelled = await withIpcTimeout(
         window.api.cancelRun(startedRunId),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Late-started run cancel timed out. Check the main process and try again.",
+        "Late-started run cancel timed out. Check the main flow and try again.",
       )
       if (cancelled) return
     } catch (error) {
@@ -178,7 +178,7 @@ export function useExecutionCommands({
           webSearchBackend,
         ),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Run start timed out. Check the main process and try again.",
+        "Run start timed out. Check the main flow and try again.",
       )
 
       const { startedRunId, errorMessage, validationIssues } = resolveExecutionStartResult(
@@ -252,7 +252,7 @@ export function useExecutionCommands({
       const cancelled = await withIpcTimeout(
         window.api.cancelRun(currentRunId),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Run cancel timed out. Check the main process and try again.",
+        "Run cancel timed out. Check the main flow and try again.",
       )
       if (!cancelled) {
         toast.error("Could not cancel run")
@@ -301,7 +301,7 @@ export function useExecutionCommands({
           webSearchBackend,
         ),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Restart timed out. Check the main process and try again.",
+        "Restart timed out. Check the main flow and try again.",
       )
 
       const { startedRunId, errorMessage, validationIssues } = resolveExecutionStartResult(result, "")
@@ -395,7 +395,7 @@ export function useExecutionCommands({
           webSearchBackend,
         ),
         DEFAULT_EXECUTION_IPC_TIMEOUT_MS,
-        "Continue run timed out. Check the main process and try again.",
+        "Continue run timed out. Check the main flow and try again.",
       )
 
       const { startedRunId, errorMessage, validationIssues } = resolveExecutionStartResult(
@@ -469,9 +469,9 @@ export function useExecutionCommands({
       workflowPathForRun = resolvedContinuation.workflowPathForRun
     } catch (error) {
       toast.error("Could not continue run", {
-        description: `Failed to load workflow file: ${String(error)}`,
+        description: `Failed to load flow file: ${String(error)}`,
       })
-      recordExecutionError("Could not continue run", `Failed to load workflow file: ${String(error)}`)
+      recordExecutionError("Could not continue run", `Failed to load flow file: ${String(error)}`)
       return
     }
 

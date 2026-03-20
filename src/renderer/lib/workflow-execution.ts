@@ -147,8 +147,8 @@ export function buildExecutionSurfaceNotice(state: WorkflowExecutionState): Exec
       level: "success",
       title: "Run complete",
       description: hasResult
-        ? "Result is ready to review from this workflow."
-        : "Activity is ready to review from this workflow.",
+        ? "Result is ready to review from this flow."
+        : "Activity is ready to review from this flow.",
       actionLabel: hasResult ? "View result" : "Open activity",
       actionTarget: hasResult ? "result" : "activity",
     }
@@ -158,7 +158,7 @@ export function buildExecutionSurfaceNotice(state: WorkflowExecutionState): Exec
     return {
       level: "warning",
       title: "Needs review",
-      description: "Approval or structured input is required before the workflow can continue.",
+      description: "Approval or structured input is required before the flow can continue.",
       actionLabel: "Open inbox",
       actionTarget: "inbox",
     }
@@ -169,8 +169,8 @@ export function buildExecutionSurfaceNotice(state: WorkflowExecutionState): Exec
       level: "warning",
       title: "Run cancelled",
       description: hasResult
-        ? "The workflow stopped before it finished, but partial result is still available to review."
-        : "The workflow stopped before it finished. Inspect activity to review the last completed stage.",
+        ? "The flow stopped before it finished, but partial result is still available to review."
+        : "The flow stopped before it finished. Inspect activity to review the last completed step.",
       actionLabel: hasResult ? "View partial result" : "Open activity",
       actionTarget: hasResult ? "result" : "activity",
     }
@@ -180,7 +180,7 @@ export function buildExecutionSurfaceNotice(state: WorkflowExecutionState): Exec
     return {
       level: "error",
       title: "Run needs attention",
-      description: state.lastError || "The workflow did not finish successfully. Inspect activity to review the failure.",
+      description: state.lastError || "The flow did not finish successfully. Inspect activity to review the failure.",
       actionLabel: "Open activity",
       actionTarget: "activity",
     }
@@ -217,7 +217,7 @@ export function createExecutionStartState(
     completedAt: null,
     runId: null,
     runWorkflowPath: workflowPath,
-    workflowName: workflow.name?.trim() || "Untitled workflow",
+    workflowName: workflow.name?.trim() || "Untitled flow",
     projectPath,
     lastError: null,
     workflowSnapshot: structuredClone(workflow),

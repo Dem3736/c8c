@@ -68,7 +68,7 @@ describe("buildPendingApprovalNotifications", () => {
 
     expect(notifications).toEqual([
       expect.objectContaining({
-        title: "Review implementation plan needs review",
+        title: "Review implementation plan needs approval",
         level: "warning",
         source: "workflow",
         persistentKey: "approval-needed:/tmp/workspace-1::approval-approval-1",
@@ -76,7 +76,7 @@ describe("buildPendingApprovalNotifications", () => {
           kind: "open_inbox_task",
           taskKey: "/tmp/workspace-1::approval-approval-1",
           workflowPath: "/tmp/guided.chain",
-          label: "Open review gate",
+          label: "Open approval",
         },
       }),
     ])
@@ -109,7 +109,7 @@ describe("buildPendingApprovalNotifications", () => {
       kind: "open_inbox_task",
       taskKey: "/tmp/workspace-2::approval-approval-1",
       workflowPath: undefined,
-      label: "Open review gate",
+      label: "Open approval",
     })
   })
 

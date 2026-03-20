@@ -277,7 +277,7 @@ describe("workflow execution state", () => {
     expect(transition.nextState.surfaceNotice).toEqual({
       level: "success",
       title: "Run complete",
-      description: "Result is ready to review from this workflow.",
+      description: "Result is ready to review from this flow.",
       actionLabel: "View result",
       actionTarget: "result",
     })
@@ -361,7 +361,7 @@ describe("workflow execution state", () => {
     expect(nextState.surfaceNotice).toEqual({
       level: "warning",
       title: "Run cancelled",
-      description: "The workflow stopped before it finished, but partial result is still available to review.",
+      description: "The flow stopped before it finished, but partial result is still available to review.",
       actionLabel: "View partial result",
       actionTarget: "result",
     })
@@ -399,7 +399,7 @@ describe("workflow execution state", () => {
     expect(notice).toEqual({
       level: "warning",
       title: "Needs review",
-      description: "Approval or structured input is required before the workflow can continue.",
+      description: "Approval or structured input is required before the flow can continue.",
       actionLabel: "Open inbox",
       actionTarget: "inbox",
     })
@@ -418,7 +418,7 @@ describe("workflow execution state", () => {
     expect(notice).toEqual({
       level: "success",
       title: "Run complete",
-      description: "Activity is ready to review from this workflow.",
+      description: "Activity is ready to review from this flow.",
       actionLabel: "Open activity",
       actionTarget: "activity",
     })
@@ -478,7 +478,7 @@ describe("workflow execution state", () => {
       surfaceNotice: {
         level: "warning",
         title: "Run cancelled",
-        description: "The workflow stopped before it finished, but partial result is still available to review.",
+        description: "The flow stopped before it finished, but partial result is still available to review.",
         actionLabel: "View partial result",
         actionTarget: "result",
       },

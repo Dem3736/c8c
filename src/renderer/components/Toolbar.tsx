@@ -18,7 +18,12 @@ import { useToolbarActions } from "@/hooks/useToolbarActions"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 import { resolveWorkflowInput } from "@/lib/input-type"
-import { consumeShortcut, isShortcutConsumed } from "@/lib/keyboard-shortcuts"
+import {
+  consumeShortcut,
+  isEditableKeyboardTarget,
+  isShortcutConsumed,
+  matchesPrimaryShortcut,
+} from "@/lib/keyboard-shortcuts"
 import {
   currentWorkflowAtom,
   selectedWorkflowPathAtom,
@@ -142,15 +147,15 @@ export function Toolbar({
   const commitSaveAsTemplate = async () => {
     const name = templateNameInput.trim()
     if (!name) {
-      toast.error("Template name cannot be empty")
+      toast.error("Starting point name cannot be empty")
       return
     }
     try {
       const filePath = await window.api.saveAsTemplate(name, workflow)
       setTemplateDialogOpen(false)
-      toast.success("Saved as template", { description: filePath })
+      toast.success("Saved as starting point", { description: filePath })
     } catch (err) {
-      toast.error("Failed to save template", { description: String(err) })
+      toast.error("Failed to save starting point", { description: String(err) })
     }
   }
 
@@ -263,7 +268,7 @@ export function Toolbar({
     }
   }, [navigateToValidationIssue, runDisabledReason, workflowValidation])
 
-  const deleteLabel = workflowPath ? (workflow.name || "").trim() || deriveTitleFromPath(workflowPath) : "this workflow"
+  const deleteLabel = workflowPath ? (workflow.name || "").trim() || deriveTitleFromPath(workflowPath) : "this flow"
   const controlGroupClass = "control-cluster flex items-center gap-1 rounded-lg p-1"
   const macToolbarLeadingInset = desktopRuntime.platform === "macos" && desktopRuntime.titlebarHeight > 0 && !sidebarOpen
     ? 108
@@ -349,7 +354,7 @@ export function Toolbar({
       }
       setRunStatus("paused")
       toast.success("Paused", {
-        description: "The current node will finish before the workflow stops.",
+        description: "The current step will finish before the flow stops.",
       })
     } catch (error) {
       toast.error("Could not pause run", {
@@ -373,7 +378,7 @@ export function Toolbar({
         }
         return
       case "import":
-        if (!(await confirmDiscard("import another workflow", workflowDirty))) {
+        if (!(await confirmDiscard("import another flow", workflowDirty))) {
           return
         }
         if (await openFile()) {
@@ -404,9 +409,9 @@ export function Toolbar({
             setCurrentWorkflow(loadedWorkflow)
             setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
             await refreshProjectData()
-            toast.success("Workflow duplicated")
+            toast.success("Flow duplicated")
           } catch (err) {
-            toast.error("Failed to duplicate workflow", { description: String(err) })
+            toast.error("Failed to duplicate flow", { description: String(err) })
           }
         }
         return
@@ -416,7 +421,7 @@ export function Toolbar({
       case "delete":
         if (workflowPath) {
           if (runStatus === "running" || runStatus === "starting" || runStatus === "cancelling" || runStatus === "paused") {
-            toast.error("Stop the workflow before deleting it")
+            toast.error("Stop the flow before deleting it")
             return
           }
           setDeleteDialogOpen(true)
@@ -439,34 +444,21 @@ export function Toolbar({
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isShortcutConsumed(event)) return
 
-      const target = event.target as HTMLElement | null
-      const tag = target?.tagName
-      const isEditable = Boolean(
-        target?.isContentEditable ||
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        target?.closest("[contenteditable=true]"),
-      )
+      const isEditable = isEditableKeyboardTarget(event.target as HTMLElement | null)
 
-      const usesPrimaryModifier = desktopRuntime.primaryModifierKey === "meta"
-        ? event.metaKey
-        : event.ctrlKey
-      if (!usesPrimaryModifier) return
-
-      const key = event.key.toLowerCase()
-      if (key === "k" && event.shiftKey) {
+      if (matchesPrimaryShortcut(event, { key: "k", primaryModifierKey: desktopRuntime.primaryModifierKey, shift: true })) {
         event.preventDefault()
         toggleChatPanel()
         return
       }
 
-      if (event.key === ",") {
+      if (matchesPrimaryShortcut(event, { key: ",", primaryModifierKey: desktopRuntime.primaryModifierKey })) {
         event.preventDefault()
         setMainView("settings")
         return
       }
 
-      if (key === "s") {
+      if (matchesPrimaryShortcut(event, { key: "s", primaryModifierKey: desktopRuntime.primaryModifierKey })) {
         if (isEditable) return
         event.preventDefault()
         if (workflowDirty) {
@@ -475,7 +467,7 @@ export function Toolbar({
         return
       }
 
-      if (event.key !== "Enter" || isEditable) return
+      if (isEditable || !matchesPrimaryShortcut(event, { key: "Enter", primaryModifierKey: desktopRuntime.primaryModifierKey })) return
       if (isRunning) {
         consumeShortcut(event)
         void onCancel()

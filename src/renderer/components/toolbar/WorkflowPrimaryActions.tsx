@@ -79,7 +79,7 @@ export function WorkflowPrimaryActions({
 }: WorkflowPrimaryActionsProps) {
   return (
     <>
-      <div role="group" aria-label="Primary workflow actions" className={controlGroupClass}>
+      <div role="group" aria-label="Primary flow actions" className={controlGroupClass}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -143,14 +143,14 @@ export function WorkflowPrimaryActions({
               size="icon"
               onClick={onSave}
               disabled={Boolean(saveDisabledReason)}
-              aria-label={saveFlash === "saved" ? "Saved" : "Save workflow"}
+              aria-label={saveFlash === "saved" ? "Saved" : "Save flow"}
               title={saveDisabledReason || undefined}
             >
               {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            {saveDisabledReason || `Save workflow (${primaryShortcutLabel}S)`}
+            {saveDisabledReason || `Save flow (${primaryShortcutLabel}S)`}
           </TooltipContent>
         </Tooltip>
 
@@ -167,16 +167,16 @@ export function WorkflowPrimaryActions({
             <DropdownMenuGroup>
               <DropdownMenuLabel>File</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("save_as")}>
-                Save workflow as...
+                Save flow as...
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("export_copy")}>
-                Export workflow copy...
+                Export flow copy...
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("save_as_template")}>
-                Save as template
+                Save as starting point
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("import")}>
-                Import workflow...
+                Import flow...
               </DropdownMenuItem>
               <DropdownMenuItem disabled={!hasSelectedProject} onSelect={() => onActionMenuSelect("refresh")}>
                 Refresh project data
@@ -186,10 +186,10 @@ export function WorkflowPrimaryActions({
             <DropdownMenuGroup>
               <DropdownMenuLabel>Create</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("blank")}>
-                Blank workflow
+                Blank flow
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("templates")}>
-                Browse templates
+                Browse starting points
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("generate")}>
                 Create with agent
@@ -197,15 +197,15 @@ export function WorkflowPrimaryActions({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuLabel>Workflow</DropdownMenuLabel>
+              <DropdownMenuLabel>Flow</DropdownMenuLabel>
               <DropdownMenuItem disabled={!hasWorkflowPath} onSelect={() => onActionMenuSelect("duplicate")}>
-                Duplicate workflow
+                Duplicate flow
               </DropdownMenuItem>
               <DropdownMenuItem disabled={!hasWorkflowPath} onSelect={() => onActionMenuSelect("rename")}>
-                Rename workflow
+                Rename flow
               </DropdownMenuItem>
               <DropdownMenuItem disabled={!hasWorkflowPath} onSelect={() => onActionMenuSelect("delete")}>
-                Delete workflow
+                Delete flow
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
