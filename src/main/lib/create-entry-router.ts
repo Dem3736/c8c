@@ -1,5 +1,6 @@
 import { getDefaultModelForProvider } from "@shared/provider-metadata"
 import type {
+  CreateEntryHelpModeHint,
   CreateEntryRouteInput,
   CreateEntryRouteOption,
   CreateEntryRouteResult,
@@ -7,6 +8,10 @@ import type {
   ProjectInspectionSummary,
   WorkflowTemplate,
 } from "@shared/types"
+import {
+  filterDirectCreateEntryOptions,
+  sanitizeDirectCreateFallbackTemplateId,
+} from "@shared/create-entry-routing"
 import { drainExecutionHandle } from "./agent-execution"
 import { withExecutionSlot } from "./execution-pool"
 import { LogParser } from "./log-parser"
@@ -23,15 +28,38 @@ interface CreateEntryRouteDecision {
 }
 
 const REVIEW_SIGNAL_RE = /\b(review|verify|verification|qa|merge|ship|pull request|pr|branch|diff)\b/i
+const PLAN_SIGNAL_RE = /\b(plan|planning|roadmap|outline|spec|scope|implementation plan|phase plan)\b|распиши|спланир|план/i
+const DO_SIGNAL_RE = /\b(build|implement|change|fix|create|make|apply|add|update|launch|ship)\b|сдела|измени|исправ|добав|реализ|внедр/i
 const REPO_SIGNAL_RE = /\b(repo|repository|codebase|branch|diff|pull request|workspace|project folder|directory|file path|existing code)\b/i
 const BRIEF_SIGNAL_RE = /\b(feature|brief|scope|requirements?|screen|experience|roadmap|plan|upload|checkout|signup|dashboard|onboarding|settings|billing|auth|landing)\b/i
 const MAP_SIGNAL_RE = /\b(map|mapping|architecture|hotspots?|audit|overview)\b|карт(а|у|ы)\s+(проекта|репо|кодбазы)|разбер(и|ём|ем)\s+(проект|репо|кодбаз)/i
+const SECURITY_SIGNAL_RE = /\b(security|secure|vulnerability|vulnerabilities|vuln|auth|authentication|authorization|permissions?|owasp|secret|secrets|exposure|hardening)\b|безопас|уязвим/i
 const UI_POLISH_SIGNAL_RE = /\b(ui|ux|visual|layout|spacing|responsive|accessibility|a11y|design system|polish|pixel[- ]?perfect)\b|ui|ux|интерфейс|дизайн|визуал|вёрстк|верстк|полиш|полир|аудит\s+ui|ревью\s+ui/i
 const PLAYWRIGHT_SIGNAL_RE = /\b(playwright|browser|visual regression|screenshot|screen|viewport|flow test|journey)\b|скриншот|браузер|сценар|визуальн/i
 const DIRECTORY_ROUTE_TEMPLATES = new Set([
   "delivery-map-codebase",
   "ux-ui-polish-audit",
+  "full-stack-code-audit",
 ])
+
+function deriveIntentValue(option: CreateEntryRouteOption): CreateEntryHelpModeHint | null {
+  const label = normalize(option.intentLabel).toLowerCase()
+  if (label === "do it") return "do"
+  if (label === "plan it") return "plan"
+  if (label === "review it") return "review"
+  return null
+}
+
+function filterOptionsForIntent(
+  options: CreateEntryRouteOption[],
+  helpModeHint: CreateEntryHelpModeHint,
+): CreateEntryRouteOption[] {
+  return options.filter((option) => deriveIntentValue(option) === helpModeHint)
+}
+
+function hasRepoBackedReviewContext(projectInspection: ProjectInspectionSummary) {
+  return projectInspection.projectKind === "existing_repo" || projectInspection.projectKind === "review_ready"
+}
 
 function buildCombinedRequestFields(input: CreateEntryRouteInput) {
   return [
@@ -93,10 +121,96 @@ function buildRouteSeed(
     }
   }
 
+  if (templateId === "delivery-review-phase") {
+    return {
+      primaryInputMode: "branch_or_diff",
+      primaryInputValue: projectInspection.git.branch || cleanRequestedResult,
+      attachments: cleanRequestedResult && cleanRequestedResult !== projectInspection.git.branch
+        ? [{ kind: "text", label: "Requested result", content: cleanRequestedResult }]
+        : [],
+    }
+  }
+
   return {
     primaryInputMode: "text",
     primaryInputValue: cleanRequestedResult,
     attachments: [],
+  }
+}
+
+function buildClarificationRoute({
+  input,
+  projectInspection,
+  allowedOptions,
+  title,
+  message,
+  options,
+  fallbackTemplateId,
+}: {
+  input: CreateEntryRouteInput
+  projectInspection: ProjectInspectionSummary
+  allowedOptions: CreateEntryRouteOption[]
+  title: string
+  message: string
+  options: Array<{
+    value: CreateEntryHelpModeHint
+    label: string
+    description?: string
+    disabled?: boolean
+  }>
+  fallbackTemplateId: string
+}): CreateEntryRouteResult {
+  const recommendedTemplateId =
+    fallbackTemplateId
+    || allowedOptions[0]?.templateId
+    || input.fallbackTemplateId
+    || ""
+
+  return {
+    recommendedTemplateId,
+    alternateTemplateIds: allowedOptions
+      .map((option) => option.templateId)
+      .filter((templateId) => templateId !== recommendedTemplateId)
+      .slice(0, 2),
+    reason: message,
+    projectInspection,
+    seed: buildRouteSeed(recommendedTemplateId, projectInspection, input.requestedResult || ""),
+    confidence: 0.2,
+    source: "heuristic",
+    clarification: {
+      kind: "help_mode",
+      title,
+      message,
+      options,
+    },
+  }
+}
+
+function buildHelpModeOption(
+  value: CreateEntryHelpModeHint,
+  overrides?: Partial<CreateEntryRouteOption> & { description?: string; disabled?: boolean },
+) {
+  if (value === "plan") {
+    return {
+      value,
+      label: "Plan it",
+      description: "Prepare a plan without jumping straight into execution.",
+      ...overrides,
+    }
+  }
+  if (value === "review") {
+    return {
+      value,
+      label: "Review it",
+      description: "Critique or verify existing work before moving forward.",
+      ...overrides,
+    }
+  }
+  return {
+    value,
+    label: "Do it",
+    description: "Start from the request and move toward the result.",
+    ...overrides,
   }
 }
 
@@ -128,15 +242,26 @@ export function buildHeuristicCreateEntryRoute(
 ): CreateEntryRouteResult {
   const allowedTemplateIds = new Set(allowedOptions.map((option) => option.templateId))
   const combined = compactFields(buildCombinedRequestFields(input))
-  const planOption = allowedOptions.find((option) => option.templateId === "delivery-plan-phase")
+  const planOptions = filterOptionsForIntent(allowedOptions, "plan")
+  const doOptions = filterOptionsForIntent(allowedOptions, "do")
+  const reviewOptions = filterOptionsForIntent(allowedOptions, "review")
+  const planOption = planOptions.find((option) => option.templateId === "delivery-plan-phase") || planOptions[0]
 
-  const reviewOption = allowedOptions.find((option) => option.templateId === "delivery-verify-phase")
-  const mapOption = allowedOptions.find((option) => option.templateId === "delivery-map-codebase")
-  const shapeOption = allowedOptions.find((option) => option.templateId === "delivery-shape-project")
-  const uiPolishOption = allowedOptions.find((option) => option.templateId === "impeccable-ui-pipeline")
-  const uxAuditOption = allowedOptions.find((option) => option.templateId === "ux-ui-polish-audit")
-  const playwrightAuditOption = allowedOptions.find((option) => option.templateId === "playwright-visual-audit")
+  const reviewOption = reviewOptions.find((option) => option.templateId === "delivery-review-phase") || reviewOptions[0]
+  const mapOption = doOptions.find((option) => option.templateId === "delivery-map-codebase")
+    || allowedOptions.find((option) => option.templateId === "delivery-map-codebase")
+  const shapeOption = doOptions.find((option) => option.templateId === "delivery-shape-project")
+    || allowedOptions.find((option) => option.templateId === "delivery-shape-project")
+  const codeAuditOption = reviewOptions.find((option) => option.templateId === "full-stack-code-audit")
+    || allowedOptions.find((option) => option.templateId === "full-stack-code-audit")
+  const uiPolishOption = doOptions.find((option) => option.templateId === "impeccable-ui-pipeline")
+    || allowedOptions.find((option) => option.templateId === "impeccable-ui-pipeline")
+  const uxAuditOption = reviewOptions.find((option) => option.templateId === "ux-ui-polish-audit")
+    || allowedOptions.find((option) => option.templateId === "ux-ui-polish-audit")
+  const playwrightAuditOption = reviewOptions.find((option) => option.templateId === "playwright-visual-audit")
+    || allowedOptions.find((option) => option.templateId === "playwright-visual-audit")
   const fallbackTemplateId = normalize(input.fallbackTemplateId)
+  const hasRepoBackedContext = hasRepoBackedReviewContext(projectInspection)
 
   let recommendedTemplateId = fallbackTemplateId || mapOption?.templateId || allowedOptions[0]?.templateId || ""
   let reason = "Recommended from the current project and request context."
@@ -144,6 +269,72 @@ export function buildHeuristicCreateEntryRoute(
   const hasExistingUiSurface =
     projectInspection.projectKind === "existing_repo"
     || projectInspection.projectKind === "review_ready"
+  const hasPlanSignal = PLAN_SIGNAL_RE.test(combined)
+  const hasReviewSignal = REVIEW_SIGNAL_RE.test(combined)
+  const hasDoSignal = DO_SIGNAL_RE.test(combined)
+  const hasSpecializedReviewSignal =
+    SECURITY_SIGNAL_RE.test(combined)
+    || UI_POLISH_SIGNAL_RE.test(combined)
+    || PLAYWRIGHT_SIGNAL_RE.test(combined)
+
+  if (!input.helpModeHint) {
+    const ambiguousHelpModes = new Set<CreateEntryHelpModeHint>()
+
+    if (hasPlanSignal && hasDoSignal) {
+      ambiguousHelpModes.add("do")
+      ambiguousHelpModes.add("plan")
+    }
+
+    if (hasRepoBackedContext && hasPlanSignal && hasReviewSignal && !hasSpecializedReviewSignal) {
+      ambiguousHelpModes.add("plan")
+      ambiguousHelpModes.add("review")
+    }
+
+    if (hasRepoBackedContext && hasDoSignal && hasReviewSignal && !hasSpecializedReviewSignal) {
+      ambiguousHelpModes.add("do")
+      ambiguousHelpModes.add("review")
+    }
+
+    const clarificationOptions = (["do", "plan", "review"] as CreateEntryHelpModeHint[])
+      .filter((value) => ambiguousHelpModes.has(value))
+      .map((value) => buildHelpModeOption(value))
+
+    if (clarificationOptions.length >= 2) {
+      return buildClarificationRoute({
+        input,
+        projectInspection,
+        allowedOptions,
+        title: "Choose how to help",
+        message: "This request could mean different kinds of help. Pick what you want first.",
+        options: clarificationOptions,
+        fallbackTemplateId:
+          (clarificationOptions.some((option) => option.value === "plan") ? planOption?.templateId : undefined)
+          || (clarificationOptions.some((option) => option.value === "review") ? reviewOption?.templateId || codeAuditOption?.templateId : undefined)
+          || shapeOption?.templateId
+          || mapOption?.templateId
+          || recommendedTemplateId,
+      })
+    }
+  }
+
+  if (input.helpModeHint === "review" && !hasRepoBackedContext) {
+    return buildClarificationRoute({
+      input,
+      projectInspection,
+      allowedOptions,
+      title: "Choose how to help",
+      message: "Review needs existing work in a repo. Start the work or plan it first, then come back to review.",
+      options: [
+        buildHelpModeOption("do"),
+        buildHelpModeOption("plan"),
+        buildHelpModeOption("review", {
+          description: "Needs existing work in a repo first.",
+          disabled: true,
+        }),
+      ],
+      fallbackTemplateId: planOption?.templateId || shapeOption?.templateId || mapOption?.templateId || recommendedTemplateId,
+    })
+  }
 
   if (input.helpModeHint === "review") {
     if (
@@ -161,17 +352,76 @@ export function buildHeuristicCreateEntryRoute(
         recommendedTemplateId = uxAuditOption.templateId
         reason = "Recommended because review mode points to a repo-wide UX/UI audit."
       }
+    } else if (codeAuditOption && hasRepoBackedContext && (SECURITY_SIGNAL_RE.test(combined) || REVIEW_SIGNAL_RE.test(combined) || hasExistingUiSurface)) {
+      recommendedTemplateId = codeAuditOption.templateId
+      reason = SECURITY_SIGNAL_RE.test(combined)
+        ? "Recommended because review mode and the request both point to a security/codebase audit."
+        : "Recommended because review mode points to a repo-wide code audit."
     } else if (reviewOption) {
       recommendedTemplateId = reviewOption.templateId
       reason = "Recommended because review mode was selected for a review-ready project."
+    } else if (codeAuditOption) {
+      recommendedTemplateId = codeAuditOption.templateId
+      reason = "Recommended because review mode was selected."
     }
   } else if (input.helpModeHint === "plan") {
     if (planOption) {
       recommendedTemplateId = planOption.templateId
       reason = "Recommended because plan mode was selected."
+    } else {
+      return buildClarificationRoute({
+        input,
+        projectInspection,
+        allowedOptions,
+        title: "Choose how to start",
+        message: "Planning is not available for this flow yet. Start the work or review existing work instead.",
+        options: [
+          {
+            value: "do",
+            label: "Do it",
+            description: "Start from the request and let the flow choose the first step.",
+          },
+          {
+            value: "plan",
+            label: "Plan it",
+            description: "No planning start is available here yet.",
+            disabled: true,
+          },
+          {
+            value: "review",
+            label: "Review it",
+            description: "Review existing work when a repo-backed context exists.",
+            disabled: !hasRepoBackedContext,
+          },
+        ],
+        fallbackTemplateId: shapeOption?.templateId || recommendedTemplateId,
+      })
+    }
+  } else if (input.helpModeHint === "do") {
+    if (
+      uiPolishOption
+      && hasExistingUiSurface
+      && UI_POLISH_SIGNAL_RE.test(combined)
+      && /полиш|polish|improve|improvement|fix the ui|clean up ui|harden ui|clarify ui/i.test(combined)
+    ) {
+      recommendedTemplateId = uiPolishOption.templateId
+      reason = "Recommended because do mode points to improving the current UI surface."
+    } else if (
+      mapOption
+      && (
+        REPO_SIGNAL_RE.test(combined)
+        || projectInspection.projectKind === "existing_repo"
+        || projectInspection.projectKind === "review_ready"
+      )
+    ) {
+      recommendedTemplateId = mapOption.templateId
+      reason = "Recommended because do mode on an existing repo starts by exploring the codebase."
     } else if (shapeOption) {
       recommendedTemplateId = shapeOption.templateId
-      reason = "Recommended because plan mode was selected and shaping is the safest planning start."
+      reason = "Recommended because do mode starts from shaping the requested change."
+    } else if (doOptions[0]) {
+      recommendedTemplateId = doOptions[0].templateId
+      reason = "Recommended because do mode was selected."
     }
   } else if (
     (playwrightAuditOption || uiPolishOption || uxAuditOption)
@@ -191,6 +441,25 @@ export function buildHeuristicCreateEntryRoute(
       recommendedTemplateId = uiPolishOption.templateId
       reason = "Recommended because this looks like a UI review-and-polish request on an active product surface."
     }
+  } else if (
+    codeAuditOption
+    && hasRepoBackedContext
+    && (
+      SECURITY_SIGNAL_RE.test(combined)
+      || (REVIEW_SIGNAL_RE.test(combined) && /audit|risk|security|quality|architecture|coverage/i.test(combined))
+    )
+  ) {
+    recommendedTemplateId = codeAuditOption.templateId
+    reason = SECURITY_SIGNAL_RE.test(combined)
+      ? "Recommended because this looks like a security-focused code audit request."
+      : "Recommended because this looks like a repo-wide code audit request."
+  } else if (
+    codeAuditOption
+    && projectInspection.projectKind === "review_ready"
+    && REVIEW_SIGNAL_RE.test(combined)
+  ) {
+    recommendedTemplateId = codeAuditOption.templateId
+    reason = "Recommended because this looks like a broad review request on a review-ready codebase."
   } else if (
     reviewOption
     && projectInspection.projectKind === "review_ready"
@@ -236,6 +505,7 @@ export function buildHeuristicCreateEntryRoute(
     seed: buildRouteSeed(recommendedTemplateId, projectInspection, input.requestedResult || ""),
     confidence: 0.55,
     source: "heuristic",
+    clarification: null,
   }
 }
 
@@ -247,7 +517,7 @@ function buildRouterPrompt(
   const requestSections = {
     draftPrompt: normalize(input.draftPrompt),
     requestedResult: normalize(input.requestedResult),
-    helpModeHint: input.helpModeHint || "auto",
+    helpModeHint: input.helpModeHint || null,
     modeConfig: input.modeConfig || {},
     promptScaffold: input.promptScaffold || {},
   }
@@ -268,9 +538,10 @@ function buildRouterPrompt(
     "",
     "Rules:",
     "- Recommend exactly one allowed templateId.",
-    "- Respect helpModeHint when it is present. `plan` should prefer plan-oriented starts, `review` should prefer review-oriented starts, and `do` should prefer execution-oriented starts.",
+    "- Respect helpModeHint as a hard constraint when it is present. `plan` must stay on plan-oriented starts, `review` must stay on review-oriented starts, and `do` must stay on execution-oriented starts.",
     "- Review entries are only valid when review context genuinely exists.",
     "- Prefer specialized UI audit/polish entries when the request is explicitly about UI review, polish, visual quality, or browser-based visual testing.",
+    "- Prefer a repo-wide code audit when the request is about security, architecture risks, quality gaps, or a broad code review.",
     "- Prefer Shape Project for greenfield or brief-first requests.",
     "- Prefer Map Codebase when existing-repo orientation is the best first move.",
     "- Keep alternates short and relevant.",
@@ -313,9 +584,21 @@ function shouldForceExistingRepoMap(
 export function applyCreateEntryRouteGuards(
   input: CreateEntryRouteInput,
   projectInspection: ProjectInspectionSummary,
+  allowedOptions: CreateEntryRouteOption[],
   agentDecision: CreateEntryRouteDecision,
   heuristicRoute: CreateEntryRouteResult,
 ): CreateEntryRouteResult | null {
+  if (input.helpModeHint) {
+    const recommendedOption = allowedOptions.find((option) => option.templateId === agentDecision.recommendedTemplateId)
+    if (!recommendedOption || deriveIntentValue(recommendedOption) !== input.helpModeHint) {
+      return {
+        ...heuristicRoute,
+        reason: `Recommended because ${input.helpModeHint} was selected for this request.`,
+        confidence: Math.max(heuristicRoute.confidence, 0.72),
+      }
+    }
+  }
+
   if (shouldForceExistingRepoMap(input, projectInspection, agentDecision.recommendedTemplateId)) {
     return {
       ...heuristicRoute,
@@ -389,22 +672,33 @@ export async function routeCreateEntry(
   projectInspection: ProjectInspectionSummary,
   templates: WorkflowTemplate[],
 ): Promise<CreateEntryRouteResult> {
-  const allowedOptions = buildAllowedOptionMap(input.allowedOptions || [], templates)
+  const fallbackTemplateId = sanitizeDirectCreateFallbackTemplateId(input.modeId, input.fallbackTemplateId)
+  const sanitizedInput = fallbackTemplateId === input.fallbackTemplateId
+    ? input
+    : { ...input, fallbackTemplateId }
+  const allowedOptions = filterDirectCreateEntryOptions(
+    input.modeId,
+    buildAllowedOptionMap(input.allowedOptions || [], templates),
+  )
   const boundedOptions = allowedOptions.length > 0
     ? allowedOptions.map(({ template, ...option }) => option)
     : (
-      input.fallbackTemplateId
-        ? [{ templateId: input.fallbackTemplateId, label: "Default start" }]
+      fallbackTemplateId
+        ? [{ templateId: fallbackTemplateId, label: "Default start" }]
         : []
     )
 
-  const agentDecision = await runAgentRouteDecision(input, projectInspection, boundedOptions)
-  const heuristicRoute = buildHeuristicCreateEntryRoute(input, projectInspection, boundedOptions)
+  const heuristicRoute = buildHeuristicCreateEntryRoute(sanitizedInput, projectInspection, boundedOptions)
+  if (heuristicRoute.clarification) {
+    return heuristicRoute
+  }
+
+  const agentDecision = await runAgentRouteDecision(sanitizedInput, projectInspection, boundedOptions)
   if (!agentDecision) {
     return heuristicRoute
   }
 
-  const guardedRoute = applyCreateEntryRouteGuards(input, projectInspection, agentDecision, heuristicRoute)
+  const guardedRoute = applyCreateEntryRouteGuards(sanitizedInput, projectInspection, boundedOptions, agentDecision, heuristicRoute)
   if (guardedRoute) {
     return guardedRoute
   }
@@ -417,5 +711,6 @@ export async function routeCreateEntry(
     seed: buildRouteSeed(agentDecision.recommendedTemplateId, projectInspection, input.requestedResult || ""),
     confidence: agentDecision.confidence ?? 0.8,
     source: "agent",
+    clarification: null,
   }
 }

@@ -603,7 +603,7 @@ export interface ResultModeDefinition {
 export interface CreateEntryRouteOption {
   templateId: string
   label: string
-  stageLabel?: string
+  intentLabel?: string
   recommended?: boolean
 }
 
@@ -630,7 +630,7 @@ export interface ProjectInspectionSummary {
 
 export type CreateEntrySeedInputMode = "text" | "directory" | "branch_or_diff"
 
-export type CreateEntryHelpModeHint = "auto" | "do" | "plan" | "review"
+export type CreateEntryHelpModeHint = "do" | "plan" | "review"
 
 export interface CreateEntryRouteSeed {
   primaryInputMode: CreateEntrySeedInputMode
@@ -650,6 +650,20 @@ export interface CreateEntryRouteInput {
   allowedOptions?: CreateEntryRouteOption[]
 }
 
+export interface CreateEntryRouteClarificationOption {
+  value: CreateEntryHelpModeHint
+  label: string
+  description?: string
+  disabled?: boolean
+}
+
+export interface CreateEntryRouteClarification {
+  kind: "help_mode"
+  title: string
+  message: string
+  options: CreateEntryRouteClarificationOption[]
+}
+
 export interface CreateEntryRouteResult {
   recommendedTemplateId: string
   alternateTemplateIds: string[]
@@ -658,6 +672,7 @@ export interface CreateEntryRouteResult {
   seed: CreateEntryRouteSeed
   confidence: number
   source: "agent" | "heuristic"
+  clarification?: CreateEntryRouteClarification | null
 }
 
 export type WorkflowTemplateJourneyStage =

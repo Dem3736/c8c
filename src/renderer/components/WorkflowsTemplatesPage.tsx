@@ -200,17 +200,17 @@ const TEMPLATE_CATEGORY_META: Record<TemplateCategoryKey, {
   },
   product: {
     label: "Product",
-    summary: "Development, research, design, QA, and ship work.",
+    summary: "Development, research, design, QA, and shipping work.",
     detail: "Use this for repo mapping, specs, implementation planning, UI polish, and software audits.",
   },
   marketing: {
     label: "Marketing",
-    summary: "Research, positioning, trend, SEO, funnel, and audit processes.",
+    summary: "Research, positioning, trend, SEO, funnel, and audit flows.",
     detail: "This includes segment work, messaging, GTM research, landing-page work, and other growth loops.",
   },
   content: {
     label: "Content",
-    summary: "Texts, publishing systems, course-shaped processes, and launch assets.",
+    summary: "Texts, publishing systems, course-shaped flows, and launch assets.",
     detail: "Use this for post pipelines, copy cleanup, editorial systems, curriculum work, and other publish-ready results.",
   },
 }
@@ -315,7 +315,7 @@ function TemplateDetailPanel({
             <p className="mt-1 text-body-sm text-muted-foreground">{template.how}</p>
           </div>
 
-          <DisclosurePanel title="Process outline">
+          <DisclosurePanel title="Flow outline">
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
               {template.steps.map((step, i) => (
                 <li key={i}>{step}</li>
@@ -524,7 +524,7 @@ export function WorkflowsTemplatesPage() {
 
   const doApplyTemplate = async (template: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
-      toast.error("Cannot replace the current process while a run is active", {
+      toast.error("Cannot replace the current flow while a run is active", {
         description: replaceCurrentBlockedReason,
       })
       return
@@ -554,7 +554,7 @@ export function WorkflowsTemplatesPage() {
     })
     setMainView("thread")
     setPendingTemplate(null)
-    toast.success(`"${templateForWorkflowUse.name}" is ready in the current process`, {
+    toast.success(`"${templateForWorkflowUse.name}" is ready in the current flow`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -600,7 +600,7 @@ export function WorkflowsTemplatesPage() {
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || templateForWorkflowUse.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
     } catch (error) {
-      toast.error(`Failed to create process: ${String(error)}`)
+      toast.error(`Failed to create flow: ${String(error)}`)
     }
   }
 
@@ -626,7 +626,7 @@ export function WorkflowsTemplatesPage() {
         disabled={creatingBlankWorkflow}
       >
         {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
-        Blank process
+        Blank flow
       </Button>
       <Button
         size="sm"
@@ -647,14 +647,14 @@ export function WorkflowsTemplatesPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Process library"
-        subtitle="Browse starting points for a concrete process, or start from blank if you want to shape it yourself."
+        title="Starting points"
+        subtitle="Browse starting points for a concrete flow, or start from blank if you want to shape it yourself."
         actions={headerActions}
       />
 
       <section aria-label="Starting point categories" className="overflow-hidden rounded-xl surface-elevated">
         <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
-          <p className="section-kicker">Process library</p>
+          <p className="section-kicker">Starting points</p>
           <h2 className="mt-1 ui-title-text text-foreground">Browse by category</h2>
           <p className="mt-2 text-body-sm text-muted-foreground">
             Categories overlap on purpose. Start broad, then refine by stage only if it helps.
@@ -705,7 +705,7 @@ export function WorkflowsTemplatesPage() {
           <>
             <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">
               {activeCategory === "all"
-                ? "Refine by process stage"
+                ? "Refine by step"
                 : `Refine ${selectedCategoryMeta.label.toLowerCase()} starting points`}
             </span>
             <Button
@@ -809,7 +809,7 @@ export function WorkflowsTemplatesPage() {
               </div>
             ) : (
               <p className="text-body-sm text-muted-foreground">
-                Add a project in the sidebar to create this process there.
+                Add a project in the sidebar to create this flow there.
               </p>
             )}
           </CanvasDialogBody>

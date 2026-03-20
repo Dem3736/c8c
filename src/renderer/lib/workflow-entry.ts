@@ -60,7 +60,7 @@ export interface WorkflowTemplateCaseOverride {
   caseLabel?: string
 }
 
-const DEFAULT_INPUT_PLACEHOLDER = "Enter your input text, paste a URL, or describe what to process..."
+const DEFAULT_INPUT_PLACEHOLDER = "Enter your input text, paste a URL, or describe what to run..."
 
 function collapseWhitespace(value: string) {
   return value.trim().replace(/\s+/g, " ")
@@ -181,6 +181,7 @@ const JOURNEY_STAGE_LABELS: Record<string, string> = {
   research: "Research",
   plan: "Plan",
   execute: "Execute",
+  review: "Review",
   verify: "Verify",
   operate: "Operate",
 }
@@ -191,6 +192,7 @@ const TEMPLATE_STAGE_LABELS: Record<string, string> = {
   "gstack-feature-squad": "Shape / Map",
   "delivery-plan-phase": "Plan",
   "delivery-implement-phase": "Implement",
+  "delivery-review-phase": "Review",
   "delivery-verify-phase": "Verify",
   "gstack-preflight-gate": "Verify",
   "gstack-release-room": "Ship",
@@ -201,6 +203,7 @@ const TEMPLATE_JOB_LABELS: Record<string, string> = {
   "delivery-shape-project": "Build from brief",
   "delivery-plan-phase": "Prepare the implementation plan",
   "delivery-implement-phase": "Apply approved changes",
+  "delivery-review-phase": "Review before ship",
   "delivery-verify-phase": "Verify completion",
   "gstack-preflight-gate": "Verify completion",
   "gstack-release-room": "Ship approved work",
@@ -209,18 +212,48 @@ const TEMPLATE_JOB_LABELS: Record<string, string> = {
   "playwright-visual-audit": "Audit this UI in browser",
 }
 
+const TEMPLATE_CONTINUATION_LABELS: Record<string, string> = {
+  "delivery-map-codebase": "Explore this project",
+  "delivery-shape-project": "Define the change",
+  "delivery-plan-phase": "Plan the change",
+  "delivery-implement-phase": "Apply approved changes",
+  "delivery-review-phase": "Review before ship",
+  "delivery-verify-phase": "Check completion",
+  "gstack-preflight-gate": "Check completion",
+  "gstack-release-room": "Ship approved work",
+  "ux-ui-polish-audit": "Audit this UI",
+  "impeccable-ui-pipeline": "Polish this UI",
+  "playwright-visual-audit": "Run a visual test",
+  "full-stack-code-audit": "Audit the codebase",
+}
+
+const TEMPLATE_CONTINUATION_DESCRIPTIONS: Record<string, string> = {
+  "delivery-map-codebase": "Explore the current codebase before changing it.",
+  "delivery-shape-project": "Define what should change before planning or implementation starts.",
+  "delivery-plan-phase": "Turn the scoped change into an execution-ready plan.",
+  "delivery-implement-phase": "Apply the approved change to the current app.",
+  "delivery-review-phase": "Review the current work and surface concrete gaps before final checks.",
+  "delivery-verify-phase": "Check completion against the expected outcome.",
+  "gstack-preflight-gate": "Check completion before moving toward release.",
+  "gstack-release-room": "Ship the approved work.",
+  "ux-ui-polish-audit": "Audit the current UI and surface concrete UX gaps.",
+  "impeccable-ui-pipeline": "Improve the current UI flow and polish weak spots.",
+  "playwright-visual-audit": "Run a browser-based visual check on the current UI.",
+  "full-stack-code-audit": "Audit the codebase for security, quality, and architecture risks.",
+}
+
 const EXECUTION_POLICY_TAG_LABELS: Record<string, string> = {
   evidence_first: "Evidence-first",
   spec_first: "Spec-first",
   small_tasks: "Small tasks",
   fresh_workers: "Fresh workers",
   test_first: "Test-first",
-  review_gates: "Review gates",
+  review_gates: "Review checks",
   isolated_workspace: "Isolated workspace",
-  human_gate_required: "Human gate required",
+  human_gate_required: "Human approval required",
   voice_locked: "Voice-locked",
   no_slop: "No-slop review",
-  publish_gate: "Publish gate",
+  publish_gate: "Publish approval",
   critique_loops: "Critique loops",
   variant_exploration: "Variant exploration",
   consistency_checks: "Consistency checks",
@@ -294,6 +327,33 @@ export function deriveTemplateJobLabel(
     || null
 }
 
+export function deriveTemplateContinuationLabel(
+  template?: Pick<WorkflowTemplate, "id" | "name" | "pack"> | null,
+) {
+  if (!template) return null
+  return TEMPLATE_CONTINUATION_LABELS[template.id]
+    || deriveTemplateJobLabel(template)
+    || stripPackPrefix(template.name, template.pack?.label)
+    || null
+}
+
+export function deriveTemplateContinuationDescription(
+  template?: Pick<WorkflowTemplate, "id" | "name" | "pack" | "description" | "headline" | "how" | "output"> | null,
+) {
+  if (!template) return null
+  const explicit = TEMPLATE_CONTINUATION_DESCRIPTIONS[template.id]
+  if (explicit) return explicit
+
+  const fallback = collapseWhitespace(
+    template.output
+    || template.description
+    || template.headline
+    || template.how
+    || "",
+  )
+  return fallback ? ensureSentence(fallback, "") : null
+}
+
 export function deriveTemplateContextDisplayLabel(
   context?: Pick<WorkflowTemplateRunContext, "templateId" | "templateName" | "pack"> | null,
 ) {
@@ -352,9 +412,12 @@ function buildTemplateEntrySummary(template: WorkflowTemplate, source: Extract<W
   const stageLabel = deriveTemplateJourneyStageLabel(template)
   const disciplineSummary = collapseWhitespace(template.executionPolicy?.summary || "")
   const summaryParts: string[] = []
+  const jobLabel = deriveTemplateJobLabel(template)
 
-  if (packLabel && stageLabel) {
-    summaryParts.push(`This ${packLabel} starting point opens the ${lowerFirst(stageLabel)} stage.`)
+  if (packLabel && jobLabel) {
+    summaryParts.push(`This ${packLabel} starting point helps you ${lowerFirst(jobLabel)}.`)
+  } else if (packLabel && stageLabel) {
+    summaryParts.push(`This ${packLabel} starting point begins in ${lowerFirst(stageLabel)}.`)
   } else if (source === "template_customize") {
     summaryParts.push("This proven starting point is open for agent refinement.")
   } else {
@@ -414,13 +477,13 @@ function describeWorkflowReadiness(workflow: Workflow) {
   const branchCount = workingStages.filter((node) => node.type === "splitter").length
   const qualityGateCount = workingStages.filter((node) => node.type === "evaluator").length
   const approvalCount = workingStages.filter((node) => node.type === "approval").length
-  const parts = [`${workingStages.length} working ${workingStages.length === 1 ? "stage" : "stages"}`]
+  const parts = [`${workingStages.length} working ${workingStages.length === 1 ? "step" : "steps"}`]
 
   if (branchCount > 0) {
     parts.push(`${branchCount} branch ${branchCount === 1 ? "point" : "points"}`)
   }
   if (qualityGateCount > 0) {
-    parts.push(`${qualityGateCount} quality ${qualityGateCount === 1 ? "gate" : "gates"}`)
+    parts.push(`${qualityGateCount} quality ${qualityGateCount === 1 ? "check" : "checks"}`)
   }
   if (approvalCount > 0) {
     parts.push(`${approvalCount} human ${approvalCount === 1 ? "review" : "reviews"}`)
@@ -602,12 +665,12 @@ export function buildContinuationArtifactPool({
 
 export function buildArtifactAttachmentSeedInput(artifactAttachments: InputAttachment[]) {
   if (artifactAttachments.length === 0) {
-    return "Add the context this stage should work from before running."
+    return "Add the context this step should work from before running."
   }
 
   if (artifactAttachments.length === 1) {
-    return "Use the attached artifact as the primary context for this stage. Add any extra scope or constraints here before running."
+    return "Use the attached result as the primary context for this step. Add any extra scope or constraints here before running."
   }
 
-  return "Use the attached artifacts as the primary context for this stage. Add any extra scope or constraints here before running."
+  return "Use the attached results as the primary context for this step. Add any extra scope or constraints here before running."
 }

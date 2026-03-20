@@ -11,6 +11,8 @@ interface ResolveGuidedStartTemplateOptions {
 
 const REPO_SIGNAL_RE = /\b(repo|repository|codebase|branch|diff|pull request|workspace|project folder|directory|file path|existing code)\b/i
 const BRIEF_SIGNAL_RE = /\b(feature|brief|scope|requirements?|flow|screen|experience|roadmap|plan|upload|checkout|signup|dashboard|onboarding|settings|billing|auth)\b/i
+const REVIEW_SIGNAL_RE = /\b(review|verify|verification|qa|ship|merge|pull request|pr|diff)\b/i
+const SECURITY_SIGNAL_RE = /\b(security|secure|vulnerability|vulnerabilities|vuln|auth|authentication|authorization|permissions?|owasp|secret|secrets|exposure|hardening)\b/i
 const PATH_SIGNAL_RE = /(^|[\s"'`])([~./\\][^\s]+|[A-Za-z]:\\[^\s]+|[A-Za-z0-9._-]+\/[A-Za-z0-9._/-]+)/m
 
 function normalize(value: string | undefined | null) {
@@ -37,6 +39,10 @@ function hasBriefSignal(value: string) {
   return BRIEF_SIGNAL_RE.test(value)
 }
 
+function hasReviewSignal(value: string) {
+  return REVIEW_SIGNAL_RE.test(value)
+}
+
 export function resolveGuidedStartTemplateId({
   modeId,
   fallbackTemplateId,
@@ -56,6 +62,10 @@ export function resolveGuidedStartTemplateId({
 
   if (!combined) {
     return fallbackTemplateId || "delivery-map-codebase"
+  }
+
+  if (hasRepoSignal(combined, projectPath) && (hasReviewSignal(combined) || SECURITY_SIGNAL_RE.test(combined))) {
+    return "full-stack-code-audit"
   }
 
   if (hasRepoSignal(combined, projectPath)) {

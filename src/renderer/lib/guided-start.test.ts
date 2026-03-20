@@ -33,6 +33,15 @@ describe("guided-start", () => {
     })).toBe("delivery-map-codebase")
   })
 
+  it("starts with code audit when repo context and review intent are explicit", () => {
+    expect(resolveGuidedStartTemplateId({
+      modeId: "development",
+      fallbackTemplateId: "delivery-map-codebase",
+      projectPath: "/tmp/chain-runner",
+      draftPrompt: "Review the current branch before ship and surface anything risky.",
+    })).toBe("full-stack-code-audit")
+  })
+
   it("does not override non-development modes", () => {
     expect(resolveGuidedStartTemplateId({
       modeId: "content",

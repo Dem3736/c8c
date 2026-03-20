@@ -4,7 +4,10 @@ import {
   areTemplateContractsSatisfied,
   buildContinuationArtifactPool,
   buildArtifactAttachmentSeedInput,
+  buildTemplateWorkflowEntryState,
   buildTemplateRunContext,
+  deriveTemplateContinuationDescription,
+  deriveTemplateContinuationLabel,
   deriveTemplateDisplayLabel,
   deriveTemplateJobLabel,
   deriveTemplateContextDisplayLabel,
@@ -206,11 +209,11 @@ describe("workflow-entry factory helpers", () => {
     expect(buildArtifactAttachmentSeedInput([])).toContain("Add the context")
     expect(buildArtifactAttachmentSeedInput([
       { kind: "file", path: ".c8c/artifacts/project-brief.md", name: "Project Brief" },
-    ])).toContain("attached artifact as the primary context")
+    ])).toContain("attached result as the primary context")
     expect(buildArtifactAttachmentSeedInput([
       { kind: "file", path: ".c8c/artifacts/project-brief.md", name: "Project Brief" },
       { kind: "file", path: ".c8c/artifacts/roadmap.md", name: "Roadmap" },
-    ])).toContain("attached artifacts as the primary context")
+    ])).toContain("attached results as the primary context")
   })
 
   it("maps core development templates to user-facing stage families", () => {
@@ -222,6 +225,15 @@ describe("workflow-entry factory helpers", () => {
         journeyStage: "map",
       },
     }))).toBe("Shape / Map")
+
+    expect(deriveTemplateJourneyStageLabel(createTemplate({
+      id: "delivery-review-phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "review",
+      },
+    }))).toBe("Review")
 
     expect(deriveTemplateJourneyStageLabel(createTemplate({
       id: "delivery-verify-phase",
@@ -240,6 +252,22 @@ describe("workflow-entry factory helpers", () => {
         journeyStage: "execute",
       },
     }))).toBe("Implement")
+
+    const entryState = buildTemplateWorkflowEntryState({
+      template: createTemplate({
+        id: "delivery-plan-phase",
+        name: "Delivery Factory: Plan Phase",
+        pack: {
+          id: "delivery-foundation",
+          label: "Delivery Factory",
+          journeyStage: "plan",
+        },
+      }),
+      workflowPath: "/tmp/plan-phase.chain",
+    })
+
+    expect(entryState.summary).toContain("helps you prepare the implementation plan")
+    expect(entryState.summary.toLowerCase()).not.toContain("stage")
 
     expect(deriveTemplateContextJourneyStageLabel({
       templateId: "gstack-preflight-gate",
@@ -287,6 +315,16 @@ describe("workflow-entry factory helpers", () => {
     }))).toBe("Prepare the implementation plan")
 
     expect(deriveTemplateJobLabel(createTemplate({
+      id: "delivery-review-phase",
+      name: "Delivery Factory: Review Phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "review",
+      },
+    }))).toBe("Review before ship")
+
+    expect(deriveTemplateJobLabel(createTemplate({
       id: "delivery-verify-phase",
       name: "Delivery Factory: Verify Phase",
       pack: {
@@ -295,6 +333,36 @@ describe("workflow-entry factory helpers", () => {
         journeyStage: "verify",
       },
     }))).toBe("Verify completion")
+
+    expect(deriveTemplateContinuationLabel(createTemplate({
+      id: "delivery-verify-phase",
+      name: "Delivery Factory: Verify Phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "verify",
+      },
+    }))).toBe("Check completion")
+
+    expect(deriveTemplateContinuationLabel(createTemplate({
+      id: "delivery-shape-project",
+      name: "Delivery Factory: Shape Project",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "shape",
+      },
+    }))).toBe("Define the change")
+
+    expect(deriveTemplateContinuationDescription(createTemplate({
+      id: "delivery-plan-phase",
+      description: "Plan the next implementation phase.",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+      },
+    }))).toBe("Turn the scoped change into an execution-ready plan.")
   })
 
   it("prefers current run and current case artifacts for continuation", () => {

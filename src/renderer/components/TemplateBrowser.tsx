@@ -126,8 +126,8 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       || (selectedDisciplineLabels.length > 0 ? selectedDisciplineLabels.join(", ") : null)
     : null
   const selectedExecutionDescription = selected?.executionPolicy?.description?.trim() || null
-  const selectedPrimaryActionLabel = selectedQuickStart?.stageLabel
-    ? `Start at ${selectedQuickStart.stageLabel}`
+  const selectedPrimaryActionLabel = selectedQuickStart
+    ? `Start ${selectedQuickStart.label}`
     : "Start here"
 
   const closeBrowser = useCallback(() => {
@@ -139,7 +139,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
   const doApply = (previousWorkflow: unknown, templateToApply: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
-      toast.error("Cannot replace the current process while a run is active", {
+      toast.error("Cannot replace the current flow while a run is active", {
         description: replaceCurrentBlockedReason,
       })
       return
@@ -171,7 +171,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     setOpen(false)
     setSelectedId(null)
     setConfirmPending(null)
-    toast.success(`"${templateToApply.name}" is ready in the current process`, {
+    toast.success(`"${templateToApply.name}" is ready in the current flow`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -229,14 +229,14 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
         <CanvasDialogHeader className="surface-depth-header">
           <DialogTitle>Choose a starting point</DialogTitle>
           <DialogDescription className="sr-only">
-            Browse ready-to-run starting points, preview their fit, and apply one to the current process.
+            Browse ready-to-run starting points, preview their fit, and apply one to the current flow.
           </DialogDescription>
         </CanvasDialogHeader>
 
         <CanvasDialogBody className="grid grid-cols-1 lg:grid-cols-[1.4fr,1fr] gap-3 flex-1 min-h-0 pt-4 surface-soft">
           <div
             role="listbox"
-            aria-label="Process starting points"
+            aria-label="Flow starting points"
             aria-activedescendant={selectedOptionId}
             tabIndex={0}
             className="overflow-y-auto ui-scroll-region space-y-2 pr-1 focus:outline-none"
@@ -305,7 +305,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                             <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <Badge variant="outline" size="compact">
-                                  {entry.stageLabel}
+                                  {entry.intentLabel}
                                 </Badge>
                                 {entry.recommended ? (
                                   <Badge variant="secondary" size="compact">
@@ -452,7 +452,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                     </Badge>
                     {selectedQuickStart ? (
                       <Badge size="compact" variant="outline">
-                        {selectedQuickStart.stageLabel}
+                        {selectedQuickStart.intentLabel}
                       </Badge>
                     ) : null}
                     {selectedStageLabel ? (
@@ -485,7 +485,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
                 {(selectedExecutionSummary || selectedExecutionDescription) && (
                   <div>
-                    <span className="ui-meta-label text-muted-foreground">Policy</span>
+                    <span className="ui-meta-label text-muted-foreground">Flow rules</span>
                     {selectedExecutionSummary ? (
                       <p className="text-body-sm text-foreground">{selectedExecutionSummary}</p>
                     ) : null}
@@ -510,7 +510,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
                   </div>
                 )}
 
-                <DisclosurePanel summary="Stage structure">
+                <DisclosurePanel summary="Step outline">
                   <ol className="list-decimal list-inside space-y-1 mt-3 text-muted-foreground">
                     {selected.steps.map((step, i) => (
                       <li key={i} className="text-body-sm">{step}</li>
@@ -525,7 +525,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
         {confirmPending ? (
           <div className="mx-6 mt-2 rounded-lg surface-warning-soft p-3">
             <p className="text-body-md">
-              Replace the current process with <strong>{confirmPending.name}</strong>?
+              Replace the current flow with <strong>{confirmPending.name}</strong>?
             </p>
             <div className="flex gap-2 mt-2">
               <Button

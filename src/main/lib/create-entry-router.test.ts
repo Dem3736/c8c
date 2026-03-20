@@ -3,13 +3,15 @@ import type { CreateEntryRouteInput, CreateEntryRouteOption, ProjectInspectionSu
 import { applyCreateEntryRouteGuards, buildHeuristicCreateEntryRoute } from "./create-entry-router"
 
 const developmentOptions: CreateEntryRouteOption[] = [
-  { templateId: "delivery-map-codebase", label: "Map codebase", stageLabel: "Shape / Map" },
-  { templateId: "delivery-shape-project", label: "Shape project", stageLabel: "Shape / Map" },
-  { templateId: "delivery-plan-phase", label: "Plan next phase", stageLabel: "Plan" },
-  { templateId: "delivery-verify-phase", label: "Verify phase", stageLabel: "Verify" },
-  { templateId: "ux-ui-polish-audit", label: "Audit UX/UI polish", stageLabel: "Review" },
-  { templateId: "impeccable-ui-pipeline", label: "Polish a UI feature", stageLabel: "Implement" },
-  { templateId: "playwright-visual-audit", label: "Run visual UI audit", stageLabel: "Review" },
+  { templateId: "delivery-map-codebase", label: "Map codebase", intentLabel: "Do it" },
+  { templateId: "delivery-shape-project", label: "Shape project", intentLabel: "Do it" },
+  { templateId: "delivery-plan-phase", label: "Plan next phase", intentLabel: "Plan it" },
+  { templateId: "full-stack-code-audit", label: "Audit codebase risks", intentLabel: "Review it" },
+  { templateId: "delivery-review-phase", label: "Review phase", intentLabel: "Review it" },
+  { templateId: "delivery-verify-phase", label: "Verify phase", intentLabel: "Review it" },
+  { templateId: "ux-ui-polish-audit", label: "Audit UX/UI polish", intentLabel: "Review it" },
+  { templateId: "impeccable-ui-pipeline", label: "Polish a UI feature", intentLabel: "Do it" },
+  { templateId: "playwright-visual-audit", label: "Run visual UI audit", intentLabel: "Review it" },
 ]
 
 function createInspection(overrides: Partial<ProjectInspectionSummary> = {}): ProjectInspectionSummary {
@@ -89,7 +91,7 @@ describe("buildHeuristicCreateEntryRoute", () => {
     ])
   })
 
-  it("unlocks review entry only when review context is present", () => {
+  it("routes broad repo review requests to a code audit instead of an internal verify stage", () => {
     const route = buildHeuristicCreateEntryRoute(
       createInput({
         draftPrompt: "Review the current branch before merge.",
@@ -104,9 +106,9 @@ describe("buildHeuristicCreateEntryRoute", () => {
       developmentOptions,
     )
 
-    expect(route.recommendedTemplateId).toBe("delivery-verify-phase")
-    expect(route.seed.primaryInputMode).toBe("branch_or_diff")
-    expect(route.seed.primaryInputValue).toBe("feature/pdf-export")
+    expect(route.recommendedTemplateId).toBe("full-stack-code-audit")
+    expect(route.seed.primaryInputMode).toBe("directory")
+    expect(route.seed.primaryInputValue).toBe("/tmp/project")
   })
 
   it("forces map-first when an existing repo request explicitly asks for a map", () => {
@@ -126,6 +128,7 @@ describe("buildHeuristicCreateEntryRoute", () => {
     const guardedRoute = applyCreateEntryRouteGuards(
       input,
       inspection,
+      developmentOptions,
       {
         recommendedTemplateId: "delivery-shape-project",
         alternateTemplateIds: ["delivery-map-codebase"],
@@ -208,6 +211,161 @@ describe("buildHeuristicCreateEntryRoute", () => {
     expect(route.seed.primaryInputMode).toBe("text")
   })
 
+  it("routes security verification requests to the code audit path and preserves the request", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "lets verify security",
+        requestedResult: "lets verify security",
+        helpModeHint: "review",
+      }),
+      createInspection({
+        projectKind: "existing_repo",
+        git: { isRepo: true, branch: "main", hasUncommittedDiff: false },
+        manifests: ["package.json"],
+        codeDirs: ["src", "app"],
+        fileDensity: "active",
+        fileCountEstimate: 42,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.recommendedTemplateId).toBe("full-stack-code-audit")
+    expect(route.seed.primaryInputMode).toBe("directory")
+    expect(route.seed.attachments).toEqual([
+      {
+        kind: "text",
+        label: "Requested result",
+        content: "lets verify security",
+      },
+    ])
+  })
+
+  it("does not route greenfield security intent into a code audit without repo context", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "lets verify security for the product idea before we build it",
+        requestedResult: "lets verify security for the product idea before we build it",
+      }),
+      createInspection({
+        projectKind: "greenfield_empty",
+        git: { isRepo: false, branch: null, hasUncommittedDiff: false },
+        manifests: [],
+        codeDirs: [],
+        fileDensity: "empty",
+        fileCountEstimate: 0,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.recommendedTemplateId).toBe("delivery-shape-project")
+    expect(route.seed.primaryInputMode).toBe("text")
+    expect(route.seed.primaryInputValue).toBe("lets verify security for the product idea before we build it")
+  })
+
+  it("treats do mode as a hard constraint instead of routing to review entries", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "lets verify security",
+        requestedResult: "lets verify security",
+        helpModeHint: "do",
+      }),
+      createInspection({
+        projectKind: "existing_repo",
+        git: { isRepo: true, branch: "main", hasUncommittedDiff: false },
+        manifests: ["package.json"],
+        codeDirs: ["src", "app"],
+        fileDensity: "active",
+        fileCountEstimate: 42,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.recommendedTemplateId).toBe("delivery-map-codebase")
+    expect(route.reason).toContain("do mode")
+  })
+
+  it("returns clarification instead of forcing review mode onto a greenfield project", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "review the product idea",
+        requestedResult: "review the product idea",
+        helpModeHint: "review",
+      }),
+      createInspection({
+        projectKind: "greenfield_empty",
+      }),
+      developmentOptions,
+    )
+
+    expect(route.clarification?.kind).toBe("help_mode")
+    expect(route.clarification?.options.find((option) => option.value === "review")?.disabled).toBe(true)
+    expect(route.reason).toContain("Review needs existing work")
+  })
+
+  it("asks for intent when the request mixes doing the work with planning it", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "plan and implement usage-based billing for settings",
+        requestedResult: "plan and implement usage-based billing for settings",
+      }),
+      createInspection({
+        projectKind: "existing_repo",
+        git: { isRepo: true, branch: "main", hasUncommittedDiff: false },
+        manifests: ["package.json"],
+        codeDirs: ["src", "app"],
+        fileDensity: "active",
+        fileCountEstimate: 42,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.clarification?.kind).toBe("help_mode")
+    expect(route.clarification?.options.map((option) => option.value)).toEqual(["do", "plan"])
+    expect(route.reason).toContain("different kinds of help")
+  })
+
+  it("asks for intent when the request mixes review with fixing the work", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "review the onboarding flow and fix anything confusing",
+        requestedResult: "review the onboarding flow and fix anything confusing",
+      }),
+      createInspection({
+        projectKind: "review_ready",
+        git: { isRepo: true, branch: "feature/onboarding", hasUncommittedDiff: true },
+        manifests: ["package.json"],
+        codeDirs: ["src", "app"],
+        fileDensity: "active",
+        fileCountEstimate: 42,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.clarification?.kind).toBe("help_mode")
+    expect(route.clarification?.options.map((option) => option.value)).toEqual(["do", "review"])
+    expect(route.reason).toContain("different kinds of help")
+  })
+
+  it("keeps existing-repo feature changes on the current-app path by default", () => {
+    const route = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "add usage-based billing to settings",
+        requestedResult: "add usage-based billing to settings",
+      }),
+      createInspection({
+        projectKind: "existing_repo",
+        git: { isRepo: true, branch: "main", hasUncommittedDiff: false },
+        manifests: ["package.json"],
+        codeDirs: ["src", "app"],
+        fileDensity: "active",
+        fileCountEstimate: 42,
+      }),
+      developmentOptions,
+    )
+
+    expect(route.recommendedTemplateId).toBe("delivery-map-codebase")
+  })
+
   it("respects explicit plan mode when the user wants planning without implementation", () => {
     const route = buildHeuristicCreateEntryRoute(
       createInput({
@@ -241,7 +399,53 @@ describe("buildHeuristicCreateEntryRoute", () => {
       developmentOptions,
     )
 
-    expect(route.recommendedTemplateId).toBe("delivery-verify-phase")
+    expect(route.recommendedTemplateId).toBe("full-stack-code-audit")
     expect(route.reason).toContain("review mode")
+  })
+
+  it("forces agent recommendations back to the selected intent when they disagree", () => {
+    const heuristicRoute = buildHeuristicCreateEntryRoute(
+      createInput({
+        draftPrompt: "plan the change",
+        requestedResult: "plan the change",
+        helpModeHint: "plan",
+      }),
+      createInspection({
+        projectKind: "existing_repo",
+        git: { isRepo: true, branch: "main", hasUncommittedDiff: false },
+        manifests: ["package.json"],
+        codeDirs: ["src"],
+        fileDensity: "active",
+        fileCountEstimate: 8,
+      }),
+      developmentOptions,
+    )
+
+    const guardedRoute = applyCreateEntryRouteGuards(
+      createInput({
+        draftPrompt: "plan the change",
+        requestedResult: "plan the change",
+        helpModeHint: "plan",
+      }),
+      createInspection({
+        projectKind: "existing_repo",
+        git: { isRepo: true, branch: "main", hasUncommittedDiff: false },
+        manifests: ["package.json"],
+        codeDirs: ["src"],
+        fileDensity: "active",
+        fileCountEstimate: 8,
+      }),
+      developmentOptions,
+      {
+        recommendedTemplateId: "full-stack-code-audit",
+        alternateTemplateIds: ["delivery-plan-phase"],
+        reason: "Recommended because security review seems useful.",
+        confidence: 0.84,
+      },
+      heuristicRoute,
+    )
+
+    expect(guardedRoute?.recommendedTemplateId).toBe("delivery-plan-phase")
+    expect(guardedRoute?.reason).toContain("plan was selected")
   })
 })
