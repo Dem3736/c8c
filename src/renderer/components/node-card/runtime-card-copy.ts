@@ -96,7 +96,7 @@ function formatBranchSummary(summary: RuntimeBranchSummary) {
   }
 
   if (summary.waitingApproval > 0) {
-    parts.push(`${summary.waitingApproval} review`)
+    parts.push(`${summary.waitingApproval} blocked`)
   }
   if (summary.failed > 0) {
     parts.push(`${summary.failed} issue${summary.failed === 1 ? "" : "s"}`)
@@ -189,10 +189,10 @@ function buildRuntimeSummary({
     const config = node.config as SkillNodeConfig
     const promptSnippet = compactRuntimeText(config.prompt, 110)
     if (status === "running") return { summary: runtimeBranchSummary ? "Branch work active" : "Agent running", detail: latestLogSnippet || outputSnippet || promptSnippet }
-    if (status === "completed") return { summary: runtimeBranchSummary ? "Branches complete" : "Stage complete", detail: outputSnippet || latestLogSnippet }
-    if (status === "failed") return { summary: runtimeBranchSummary ? "Branch issue" : "Stage issue", detail: errorSnippet || latestLogSnippet || promptSnippet }
+    if (status === "completed") return { summary: runtimeBranchSummary ? "Branches complete" : "Step complete", detail: outputSnippet || latestLogSnippet }
+    if (status === "failed") return { summary: runtimeBranchSummary ? "Branch issue" : "Step issue", detail: errorSnippet || latestLogSnippet || promptSnippet }
     return {
-      summary: runtimeFocusKind === "next" ? "Next stage" : runtimeBranchSummary ? "Ready to fan out" : "Ready to run",
+      summary: runtimeFocusKind === "next" ? "Next step" : runtimeBranchSummary ? "Ready to fan out" : "Ready to run",
       detail: promptSnippet,
     }
   }
@@ -214,12 +214,12 @@ function buildRuntimeSummary({
     }
     if (status === "failed") {
       return {
-        summary: "Quality gate issue",
+        summary: "Quality check issue",
         detail: errorSnippet || latestLogSnippet,
       }
     }
     return {
-      summary: runtimeFocusKind === "next" ? "Next quality gate" : "Quality gate queued",
+      summary: runtimeFocusKind === "next" ? "Next quality check" : "Quality check queued",
       detail: `Threshold ${config.threshold}/10${retryLabel ? ` · Retry from ${retryLabel}` : ""}`,
     }
   }
@@ -251,11 +251,11 @@ function buildRuntimeSummary({
     if (status === "completed") return { summary: "Approved", detail: messageSnippet || outputSnippet }
     if (status === "failed") {
       return {
-        summary: errorSnippet?.toLowerCase().includes("reject") ? "Rejected" : "Review issue",
+        summary: errorSnippet?.toLowerCase().includes("reject") ? "Rejected" : "Approval issue",
         detail: errorSnippet || messageSnippet,
       }
     }
-    return { summary: runtimeFocusKind === "next" ? "Next review gate" : "Review gate queued", detail: messageSnippet }
+    return { summary: runtimeFocusKind === "next" ? "Next approval" : "Approval queued", detail: messageSnippet }
   }
 
   if (node.type === "human") {
@@ -280,7 +280,7 @@ function buildRuntimeSummary({
       }
     }
     return {
-      summary: runtimeFocusKind === "next" ? "Next human gate" : "Human gate queued",
+      summary: runtimeFocusKind === "next" ? "Next human check" : "Human check queued",
       detail: requestSnippet,
     }
   }
@@ -327,7 +327,7 @@ export function buildRuntimeCardCopy({
 
 export function getPreviewStatusLabel(status: NodeStatus) {
   if (status === "running") return "Active"
-  if (status === "waiting_approval") return "Review"
+  if (status === "waiting_approval") return "Approval"
   if (status === "waiting_human") return "Input"
   if (status === "failed") return "Issue"
   if (status === "completed") return "Done"

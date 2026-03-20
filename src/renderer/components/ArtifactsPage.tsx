@@ -259,7 +259,7 @@ export function ArtifactsPage() {
   const openArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
     if (!openError) return
-    toast.error("Could not open artifact", {
+    toast.error("Could not open result", {
       description: openError,
     })
   }
@@ -267,7 +267,7 @@ export function ArtifactsPage() {
   const revealArtifact = async (artifact: ArtifactRecord) => {
     const ok = await window.api.showInFinder(artifact.contentPath)
     if (ok) return
-    toast.error("Could not reveal artifact in Finder")
+    toast.error("Could not reveal result in Finder")
   }
 
   const launchTemplate = async (template: WorkflowTemplate, sourceArtifacts = scopeArtifacts) => {
@@ -308,7 +308,7 @@ export function ArtifactsPage() {
 
       toast.success(`Opened ${template.name}`)
     } catch (error) {
-      toast.error("Could not open the selected stage", {
+      toast.error("Could not open the selected step", {
         description: String(error),
       })
     } finally {
@@ -320,8 +320,8 @@ export function ArtifactsPage() {
     return (
       <PageShell>
         <PageHeader
-          title="Artifacts"
-          subtitle="Choose a project in the sidebar to see reusable outputs and start the next stage from them."
+          title="Results"
+          subtitle="Choose a project in the sidebar to see reusable results and start the next step from them."
           actions={(
             <Button variant="outline" size="sm" onClick={() => setMainView("thread")}>
               <FolderOpen size={14} />
@@ -336,13 +336,13 @@ export function ArtifactsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Artifacts"
+        title="Results"
         subtitle={
           selectedCaseOption
-            ? `Reusable outputs for ${selectedCaseOption.label}. Stay in one case and open the next stage without rebuilding context in the terminal.`
+            ? `Reusable results for ${selectedCaseOption.label}. Stay in one case and open the next step without rebuilding context in the terminal.`
             : selectedFactoryLabel
-              ? `Reusable outputs for ${selectedFactoryLabel}. Stay inside one factory while you review artifacts and launch the next stage.`
-            : `Reusable project outputs for ${projectFolderName(selectedProject)}. Use them to open the next stage without rebuilding context in the terminal.`
+              ? `Reusable results for ${selectedFactoryLabel}. Stay inside one factory while you review results and launch the next step.`
+              : `Reusable project results for ${projectFolderName(selectedProject)}. Use them to open the next step without rebuilding context in the terminal.`
         }
         actions={(
           <>
@@ -354,7 +354,7 @@ export function ArtifactsPage() {
             ) : null}
             <Button variant="outline" size="sm" onClick={() => setMainView("templates")}>
               <LayoutTemplate size={14} />
-              Browse templates
+              Browse starting points
             </Button>
             <Button variant="outline" size="sm" onClick={() => void refreshArtifacts()} disabled={artifactsLoading}>
               {artifactsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -365,12 +365,12 @@ export function ArtifactsPage() {
       />
 
       <CollectionToolbar
-        ariaLabel="Artifact controls"
+        ariaLabel="Result controls"
         query={query}
         onQueryChange={setQuery}
-        searchPlaceholder="Search artifacts or next stages"
-        searchAriaLabel="Search artifacts"
-        summary={`${filteredArtifacts.length} artifact${filteredArtifacts.length === 1 ? "" : "s"}`}
+        searchPlaceholder="Search results or next steps"
+        searchAriaLabel="Search results"
+        summary={`${filteredArtifacts.length} result${filteredArtifacts.length === 1 ? "" : "s"}`}
         filters={(
           <>
             <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">Filter by contract</span>
@@ -425,7 +425,7 @@ export function ArtifactsPage() {
         {selectedFactoryLabel && !selectedCaseOption ? (
           <ScopeBanner
             eyebrow="Path scope"
-            description={`Showing outputs for ${selectedFactoryLabel}. Go back to Factory when you need a different outcome or path.`}
+            description={`Showing results for ${selectedFactoryLabel}. Go back to Factory when you need a different outcome or path.`}
             actions={factoryBetaEnabled ? (
               <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
                 <Rocket size={14} />
@@ -438,7 +438,7 @@ export function ArtifactsPage() {
         {selectedCaseOption ? (
           <ScopeBanner
             eyebrow="Case scope"
-            description={`Showing ${selectedCaseOption.count} artifact${selectedCaseOption.count === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`}
+            description={`Showing ${selectedCaseOption.count} result${selectedCaseOption.count === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`}
             actions={(
               <>
                 {factoryBetaEnabled ? (
@@ -456,7 +456,7 @@ export function ArtifactsPage() {
         ) : null}
 
         <SectionHeading
-          title={selectedFactoryLabel ? `${selectedFactoryLabel} outputs` : "Project outputs"}
+          title={selectedFactoryLabel ? `${selectedFactoryLabel} results` : "Project results"}
           meta={compatibleTemplates.length > 0 ? (
             <span className="ui-meta-text text-muted-foreground">
               {compatibleTemplates.length} ready next step{compatibleTemplates.length === 1 ? "" : "s"}
@@ -474,15 +474,15 @@ export function ArtifactsPage() {
           </div>
         ) : artifactsLoading || templatesLoading ? (
           <div className="rounded-xl surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
-            Loading project artifacts and next stages...
+            Loading project results and next steps...
           </div>
         ) : filteredArtifacts.length === 0 ? (
           <div className="rounded-xl surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
             {factoryScopeArtifacts.length === 0
               ? selectedFactoryLabel
-                ? `No outputs have been saved for ${selectedFactoryLabel} yet. Run the first step to create reusable outputs.`
-                : "No outputs saved yet. Run a first step to create reusable outputs."
-              : "No artifacts match this filter."}
+                ? `No results have been saved for ${selectedFactoryLabel} yet. Run the first step to create reusable results.`
+                : "No results saved yet. Run a first step to create reusable results."
+              : "No results match this filter."}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -509,7 +509,7 @@ export function ArtifactsPage() {
                         ) : null}
                       </div>
                       <p className="mt-1 text-body-sm text-muted-foreground">
-                        {artifact.description || "Reusable artifact saved from a previous run."}
+                        {artifact.description || "Reusable result saved from a previous run."}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 ui-meta-text text-muted-foreground">
                         <span>{artifact.templateName || artifact.workflowName || "Saved from run"}</span>
@@ -543,19 +543,19 @@ export function ArtifactsPage() {
 
                   <div className="rounded-lg surface-inset-card px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="ui-meta-label text-muted-foreground">Can start next</div>
-                          <p className="mt-1 text-body-sm text-muted-foreground">
-                            {selectedCaseId || artifactCase
-                              ? "Stages whose required contracts are already satisfied by this case."
-                              : "Stages whose required contracts are already satisfied by this project."}
-                          </p>
-                        </div>
+                      <div>
+                        <div className="ui-meta-label text-muted-foreground">Ready next steps</div>
+                        <p className="mt-1 text-body-sm text-muted-foreground">
+                          {selectedCaseId || artifactCase
+                            ? "Steps whose required contracts are already satisfied by this case."
+                            : "Steps whose required contracts are already satisfied by this project."}
+                        </p>
                       </div>
+                    </div>
 
                     {matchingTemplates.length === 0 ? (
                       <div className="mt-3 text-body-sm text-muted-foreground">
-                        No downstream stages are ready from this artifact alone yet.
+                        No next steps are ready from this result alone yet.
                       </div>
                     ) : (
                       <div className="mt-3 space-y-2">
@@ -594,7 +594,7 @@ export function ArtifactsPage() {
                                 disabled={Boolean(launchingTemplateId)}
                               >
                                 {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                                {isLaunching ? "Opening..." : "Open stage"}
+                                {isLaunching ? "Opening..." : "Open step"}
                               </Button>
                             </div>
                           )

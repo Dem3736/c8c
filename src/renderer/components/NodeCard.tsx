@@ -203,7 +203,7 @@ export function NodeCard({
   const showInlineInputError = showInlineInput && inputTouched && !resolvedInput.valid
   const inlineInputPlaceholder =
     inputConfig?.placeholder
-    || "Enter your input text, paste a URL, or describe what to process..."
+    || "Enter your input text, paste a URL, or describe what to run..."
   const hasExpandedPanel = Boolean(
     (isInput && inputConfig)
     || (isOutput && outputConfig)
@@ -215,12 +215,12 @@ export function NodeCard({
     || (isHuman && humanConfig)
   )
   const moveUpDisabledReason = moveUpDisabledReasonProp ?? (!onMoveUp
-    ? "Reordering is only available for linear workflows."
+    ? "Reordering is only available for linear flows."
     : index <= 1
       ? "This step is already the first editable step."
       : null)
   const moveDownDisabledReason = moveDownDisabledReasonProp ?? (!onMoveDown
-    ? "Reordering is only available for linear workflows."
+    ? "Reordering is only available for linear flows."
     : index >= total - 2
       ? "This step is already the last editable step."
       : null)
@@ -379,12 +379,12 @@ export function NodeCard({
               )}
               {isApproval && !expanded && approvalConfig && (
                 <p className={previewTextClass}>
-                  {approvalConfig.message || "Manual approval gate"}
+                  {approvalConfig.message || "Manual approval"}
                 </p>
               )}
               {isHuman && !expanded && humanConfig && (
                 <p className={previewTextClass}>
-                  {humanConfig.staticRequest?.title || "Human input gate"}
+                  {humanConfig.staticRequest?.title || "Human input check"}
                 </p>
               )}
               {isSkill && skillConfig?.permissionMode && (
@@ -421,6 +421,7 @@ export function NodeCard({
               "ui-reveal-trailing-soft flex items-center gap-1",
               compact ? "pt-0" : "pt-0.5",
             )}
+            data-visible={isSelected ? "true" : undefined}
           >
             <Tooltip>
               <TooltipTrigger asChild>
@@ -434,7 +435,7 @@ export function NodeCard({
                   disabled={Boolean(moveUpDisabledReason)}
                   variant="ghost"
                   size="icon"
-                  title={moveUpDisabledReason || undefined}
+                  title={moveUpDisabledReason || "Move step up (Alt+Up)"}
                   className={cn(
                     "ui-pressable rounded-md text-muted-foreground hover:bg-surface-3 disabled:text-muted-foreground/70",
                     compact ? "h-6 w-6" : "h-control-sm w-control-sm",
@@ -443,7 +444,7 @@ export function NodeCard({
                   <ArrowUp size={12} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{moveUpDisabledReason || "Move up"}</TooltipContent>
+              <TooltipContent>{moveUpDisabledReason || "Move up (Alt+Up)"}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -457,7 +458,7 @@ export function NodeCard({
                   disabled={Boolean(moveDownDisabledReason)}
                   variant="ghost"
                   size="icon"
-                  title={moveDownDisabledReason || undefined}
+                  title={moveDownDisabledReason || "Move step down (Alt+Down)"}
                   className={cn(
                     "ui-pressable rounded-md text-muted-foreground hover:bg-surface-3 disabled:text-muted-foreground/70",
                     compact ? "h-6 w-6" : "h-control-sm w-control-sm",
@@ -466,7 +467,7 @@ export function NodeCard({
                   <ArrowDown size={12} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{moveDownDisabledReason || "Move down"}</TooltipContent>
+              <TooltipContent>{moveDownDisabledReason || "Move down (Alt+Down)"}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -483,11 +484,12 @@ export function NodeCard({
                     "ui-pressable rounded-md text-muted-foreground hover:bg-status-danger/20 hover:text-status-danger",
                     compact ? "h-6 w-6" : "h-control-sm w-control-sm",
                   )}
+                  title="Remove step (Delete)"
                 >
                   <X size={12} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Remove step</TooltipContent>
+              <TooltipContent>Remove step (Delete)</TooltipContent>
             </Tooltip>
           </div>
         )}

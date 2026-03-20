@@ -64,6 +64,15 @@ describe("process-spine", () => {
     }))).toBe("shape_map")
 
     expect(deriveProcessSpineStageId(createTemplate({
+      id: "delivery-review-phase",
+      pack: {
+        id: "delivery-foundation",
+        label: "Delivery Factory",
+        journeyStage: "review",
+      },
+    }))).toBe("review")
+
+    expect(deriveProcessSpineStageId(createTemplate({
       id: "delivery-verify-phase",
       pack: {
         id: "delivery-foundation",
@@ -108,6 +117,14 @@ describe("process-spine", () => {
           },
         }),
         createTemplate({
+          id: "delivery-review-phase",
+          pack: {
+            id: "delivery-foundation",
+            label: "Delivery Factory",
+            journeyStage: "review",
+          },
+        }),
+        createTemplate({
           id: "delivery-verify-phase",
           pack: {
             id: "delivery-foundation",
@@ -124,7 +141,15 @@ describe("process-spine", () => {
       expect.objectContaining({ id: "shape_map", state: "available" }),
       expect.objectContaining({ id: "plan", state: "current" }),
       expect.objectContaining({ id: "implement", state: "next" }),
+      expect.objectContaining({ id: "review", state: "later" }),
       expect.objectContaining({ id: "verify", state: "later" }),
+    ])
+    expect(stages?.map((stage) => stage.label)).toEqual([
+      "Explore",
+      "Plan",
+      "Apply",
+      "Review",
+      "Check",
     ])
   })
 
@@ -175,7 +200,7 @@ describe("process-spine", () => {
           label: "Delivery Factory",
           recipe: {
             packIds: ["delivery-foundation"],
-            stageOrder: ["Shape / Map", "Plan", "Implement", "Verify"],
+            stageOrder: ["Shape / Map", "Plan", "Implement", "Review", "Verify"],
           },
           createdAt: 1,
           updatedAt: 1,

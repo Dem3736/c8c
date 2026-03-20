@@ -30,11 +30,11 @@ export interface ProcessSpineStage {
 }
 
 const PROCESS_STAGE_LABELS: Record<ProcessSpineStageId, string> = {
-  shape_map: "Shape / Map",
+  shape_map: "Explore",
   plan: "Plan",
-  implement: "Implement",
+  implement: "Apply",
   review: "Review",
-  verify: "Verify",
+  verify: "Check",
   ship: "Ship",
 }
 
@@ -67,6 +67,7 @@ const TEMPLATE_STAGE_OVERRIDES: Record<string, ProcessSpineStageId> = {
   "delivery-shape-project": "shape_map",
   "delivery-plan-phase": "plan",
   "delivery-implement-phase": "implement",
+  "delivery-review-phase": "review",
   "delivery-verify-phase": "verify",
   "ux-ui-polish-audit": "review",
   "impeccable-ui-pipeline": "review",
@@ -84,6 +85,7 @@ const JOURNEY_STAGE_TO_PROCESS_STAGE: Record<string, ProcessSpineStageId> = {
   research: "shape_map",
   plan: "plan",
   execute: "implement",
+  review: "review",
   verify: "verify",
   operate: "ship",
 }

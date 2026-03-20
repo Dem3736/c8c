@@ -22,6 +22,7 @@ import { cn } from "@/lib/cn"
 import { PROVIDER_LABELS } from "@shared/provider-metadata"
 import { Activity, GitBranch, Keyboard, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { isEditableKeyboardTarget } from "@/lib/keyboard-shortcuts"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   CanvasDialogBody,
@@ -186,14 +187,7 @@ export function AppStatusBar() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      const tag = target?.tagName
-      const isEditable = Boolean(
-        target?.isContentEditable ||
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        target?.closest("[contenteditable=true]"),
-      )
+      const isEditable = isEditableKeyboardTarget(event.target as HTMLElement | null)
 
       if (
         !event.metaKey
@@ -291,18 +285,24 @@ export function AppStatusBar() {
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
             <DialogTitle>Keyboard shortcuts</DialogTitle>
-            <DialogDescription>High-value commands available from the editor.</DialogDescription>
+            <DialogDescription>High-value commands across the shell and active flow.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <div className="space-y-2">
-                {[
+              {[
                 { keys: commandPaletteShortcutLabel, label: "Open command palette / quick switch" },
-                { keys: `${primaryShortcutLabel}1…9`, label: "Jump to recent or active processes" },
-                { keys: newProcessShortcutLabel, label: "Start a new process" },
+                { keys: `${primaryShortcutLabel}1…5`, label: "Quick-switch flows" },
+                { keys: newProcessShortcutLabel, label: "Start a new flow" },
+                { keys: `${primaryShortcutLabel}⇧S`, label: "Attach a skill to the current flow" },
+                { keys: `A / ${primaryShortcutLabel}⇧A`, label: "Add a skill step in the active editor" },
+                { keys: `${primaryShortcutLabel}⇧L`, label: "Recenter the flow canvas" },
+                { keys: "↑ / ↓ / Home / End", label: "Move selection through steps in list view" },
+                { keys: "Alt+↑ / Alt+↓", label: "Move the selected step in list view" },
+                { keys: "Delete", label: "Remove the selected step or connection" },
                 { keys: `${primaryShortcutLabel}Z`, label: "Undo last structural change" },
                 { keys: redoShortcutLabel, label: "Redo last undone change" },
-                { keys: `${primaryShortcutLabel}S`, label: "Save current workflow" },
-                { keys: runShortcutLabel, label: isRunInFlight(runStatus) ? "Stop current run" : "Run current workflow" },
+                { keys: `${primaryShortcutLabel}S`, label: "Save current flow" },
+                { keys: runShortcutLabel, label: isRunInFlight(runStatus) ? "Stop current run" : "Run current flow" },
                 { keys: chatShortcutLabel, label: "Toggle Agent panel" },
                 { keys: sidebarShortcutLabel, label: "Show or hide the sidebar" },
                 { keys: settingsShortcutLabel, label: "Open global settings" },
