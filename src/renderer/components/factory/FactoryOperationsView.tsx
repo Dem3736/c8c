@@ -147,7 +147,7 @@ export function FactoryOperationsView({
         <StatCard
           label="Ready next steps"
           value={String(readyCasesCount)}
-          hint={readyCasesCount > 0 ? "Cases with a next step ready to open." : "No downstream step is ready yet."}
+          hint={readyCasesCount > 0 ? "Tracks with a next step ready to open." : "No downstream step is ready yet."}
           tone={readyCasesCount > 0 ? "success" : "default"}
         />
       </section>
@@ -155,7 +155,7 @@ export function FactoryOperationsView({
       {scopedCases.length === 0 && availableEntrypointTemplates.length > 0 ? (
         <section className="rounded-xl surface-panel p-5 space-y-4">
           <SectionHeading
-            title="Starting points"
+            title="Library"
             meta={(
               <Badge variant="outline" className="ui-meta-text px-2 py-0">
                 {availableEntrypointTemplates.length} ready
@@ -239,13 +239,13 @@ export function FactoryOperationsView({
           <div className="ui-meta-label text-muted-foreground">Planned items</div>
           {factoryStateLoading ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-              Loading planned item cases...
+              Loading planned tracks...
             </div>
           ) : plannedCaseProgress.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
               {spawnCandidateArtifact
-                ? `Use ${spawnCandidateArtifact.title} to spawn item-level work and compare planned volume against the target.`
-                : "No planning result is available yet to spawn item-level work."}
+                ? `Use ${spawnCandidateArtifact.title} to spawn track-level work and compare planned volume against the target.`
+                : "No planning result is available yet to spawn track-level work."}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -267,14 +267,14 @@ export function FactoryOperationsView({
                           ) : null}
                         </div>
                         <p className="mt-1 text-body-sm text-muted-foreground">
-                          {entry.plannedCase.summary || entry.plannedCase.sourceArtifactTitle || "Item case derived from a planning result."}
+                          {entry.plannedCase.summary || entry.plannedCase.sourceArtifactTitle || "Track derived from a planning result."}
                         </p>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {entry.runtimeCase ? (
                         <Button variant="outline" size="sm" onClick={() => onFocusCase(entry.runtimeCase!.id)}>
-                          Focus case
+                          Open track
                         </Button>
                       ) : null}
                       {!entry.runtimeCase ? (
@@ -401,7 +401,7 @@ export function FactoryOperationsView({
                         </Button>
                       ) : null}
                       <Button variant="ghost" size="sm" onClick={() => onFocusCase(action.caseId)}>
-                        Focus case
+                        Open track
                       </Button>
                     </div>
                   </article>
@@ -413,7 +413,7 @@ export function FactoryOperationsView({
 
         <section className="rounded-xl surface-panel p-5 space-y-4">
           <SectionHeading
-            title="Cases"
+            title="Tracks"
             meta={(
               <Badge variant="outline" className="ui-meta-text px-2 py-0">
                 {scopedCases.length} tracked
@@ -423,7 +423,7 @@ export function FactoryOperationsView({
 
           {scopedCases.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-              No derived cases yet for this factory. Open a starting point and save results to establish case lineage.
+              No derived tracks yet for this lab. Open the library and save results to establish linked work.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 2xl:grid-cols-4">
@@ -437,7 +437,7 @@ export function FactoryOperationsView({
                 >
                   {lane.cases.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-hairline bg-surface-1/50 px-3 py-6 text-body-sm text-muted-foreground">
-                      No cases in this lane right now.
+                      No tracks in this lane right now.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -473,7 +473,7 @@ export function FactoryOperationsView({
                                 <p className="mt-1 text-body-sm text-muted-foreground">
                                   {entry.latestArtifact
                                     ? `${entry.latestArtifact.title} · ${formatRelativeTime(entry.latestArtifact.updatedAt)}`
-                                    : entry.activeRun?.workflowName || "Case in progress"}
+                                    : entry.activeRun?.workflowName || "Track in progress"}
                                 </p>
                               </div>
                               {openWorkflowPath ? (
@@ -594,7 +594,7 @@ export function FactoryOperationsView({
               </div>
             ) : scopedHumanTasks.length === 0 && !humanTasksLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No approvals are blocking this factory right now.
+                No approvals are blocking this lab right now.
               </div>
             ) : (
               <div className="space-y-2">
@@ -648,7 +648,7 @@ export function FactoryOperationsView({
               </div>
             ) : scopedReadyTemplates.length === 0 && !templatesLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No downstream step is fully ready yet for this factory. Use results to build up the required contracts first.
+                No downstream step is fully ready yet for this lab. Use results to build up the required contracts first.
               </div>
             ) : (
               <div className="space-y-2">
@@ -678,7 +678,7 @@ export function FactoryOperationsView({
                         <div className="mt-1 text-body-sm text-muted-foreground">
                           {disciplineLabels.length > 0
                             ? disciplineLabels.join(" · ")
-                            : "Ready from the current factory results."}
+                            : "Ready from the current lab results."}
                         </div>
                       </div>
                       <Button size="sm" onClick={() => { void onLaunchTemplate(template, scopedArtifacts) }} disabled={Boolean(launchingTemplateId)}>
@@ -706,7 +706,7 @@ export function FactoryOperationsView({
 
             {scopedLiveRunEntries.length === 0 && scopedRecentRuns.length === 0 ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No runs to show yet for this factory.
+                No runs to show yet for this lab.
               </div>
             ) : scopedLiveRunEntries.length > 0 ? (
               <div className="space-y-2">
@@ -801,7 +801,7 @@ export function FactoryOperationsView({
               </div>
             ) : scopedRecentArtifacts.length === 0 && !artifactsLoading ? (
               <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-                No reusable results have been saved for this factory yet.
+                No reusable results have been saved for this lab yet.
               </div>
             ) : (
               <div className="space-y-2">

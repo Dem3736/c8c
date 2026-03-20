@@ -261,7 +261,7 @@ const EXECUTION_POLICY_TAG_LABELS: Record<string, string> = {
 
 function deriveEntryTitle(name: string | undefined) {
   const normalized = collapseWhitespace(name || "")
-  if (!normalized || normalized === "new-workflow") {
+  if (!normalized || normalized === "new-workflow" || normalized === "new-flow") {
     return "Runnable flow"
   }
   return normalized
@@ -415,13 +415,13 @@ function buildTemplateEntrySummary(template: WorkflowTemplate, source: Extract<W
   const jobLabel = deriveTemplateJobLabel(template)
 
   if (packLabel && jobLabel) {
-    summaryParts.push(`This ${packLabel} starting point helps you ${lowerFirst(jobLabel)}.`)
+    summaryParts.push(`This ${packLabel} flow helps you ${lowerFirst(jobLabel)}.`)
   } else if (packLabel && stageLabel) {
-    summaryParts.push(`This ${packLabel} starting point begins in ${lowerFirst(stageLabel)}.`)
+    summaryParts.push(`This ${packLabel} flow begins in ${lowerFirst(stageLabel)}.`)
   } else if (source === "template_customize") {
-    summaryParts.push("This proven starting point is open for agent refinement.")
+    summaryParts.push("This proven flow is open for agent refinement.")
   } else {
-    summaryParts.push("This starting point is ready to run as-is.")
+    summaryParts.push("This flow is ready to run as-is.")
   }
 
   if (disciplineSummary) {

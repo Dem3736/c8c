@@ -147,15 +147,15 @@ export function Toolbar({
   const commitSaveAsTemplate = async () => {
     const name = templateNameInput.trim()
     if (!name) {
-      toast.error("Starting point name cannot be empty")
+      toast.error("Library name cannot be empty")
       return
     }
     try {
       const filePath = await window.api.saveAsTemplate(name, workflow)
       setTemplateDialogOpen(false)
-      toast.success("Saved as starting point", { description: filePath })
+      toast.success("Saved to library", { description: filePath })
     } catch (err) {
-      toast.error("Failed to save starting point", { description: String(err) })
+      toast.error("Failed to save to library", { description: String(err) })
     }
   }
 

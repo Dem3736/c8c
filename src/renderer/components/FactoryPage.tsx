@@ -234,7 +234,7 @@ export function FactoryPage() {
       const nextFactory: ProjectFactoryDefinition = {
         id: persistedFactoryId,
         modeId: selectedFactoryDefinition?.modeId,
-        label: blueprintDraft.factoryLabel.trim() || blueprintDraft.outcomeTitle.trim() || selectedFactoryOption?.label || "Untitled factory",
+        label: blueprintDraft.factoryLabel.trim() || blueprintDraft.outcomeTitle.trim() || selectedFactoryOption?.label || "Untitled lab",
         outcome: {
           title: blueprintDraft.outcomeTitle,
           statement: blueprintDraft.outcomeStatement,
@@ -271,10 +271,10 @@ export function FactoryPage() {
       setSelectedFactoryId(saved.selectedFactoryId || persistedFactoryId)
       setDraftFactoryId(null)
       setEditingFactoryBlueprint(false)
-      toast.success("Factory blueprint saved")
+      toast.success("Lab setup saved")
     } catch (error) {
       setFactoryBlueprintError(error instanceof Error ? error.message : String(error))
-      toast.error("Could not save factory blueprint", {
+      toast.error("Could not save lab setup", {
         description: String(error),
       })
     } finally {
@@ -314,16 +314,16 @@ export function FactoryPage() {
       })
       setFactoryState(result.state)
       if (result.plannedCases.length === 0) {
-        toast.message("No new item cases were added", {
-          description: "This planning result already spawned the current item cases.",
+        toast.message("No new tracks were added", {
+          description: "This planning result already spawned the current tracks.",
         })
       } else {
-        toast.success(`Spawned ${result.plannedCases.length} item case${result.plannedCases.length === 1 ? "" : "s"}`)
+        toast.success(`Spawned ${result.plannedCases.length} track${result.plannedCases.length === 1 ? "" : "s"}`)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setFactoryStateError(message)
-      toast.error("Could not spawn item cases", {
+      toast.error("Could not spawn tracks", {
         description: message,
       })
     } finally {
@@ -340,7 +340,7 @@ export function FactoryPage() {
     if (!selectedProject || launchingTemplateId) return
     const template = (plannedCase.templateId && templateById.get(plannedCase.templateId)) || spawnTemplateCandidate
     if (!template) {
-      toast.error("No next starting point is linked to this planned case yet")
+      toast.error("No next library flow is linked to this planned track yet")
       return
     }
 
@@ -386,7 +386,7 @@ export function FactoryPage() {
       })
       toast.success(`Opened ${template.name}`)
     } catch (error) {
-      toast.error("Could not open the planned case", {
+      toast.error("Could not open the planned track", {
         description: String(error),
       })
     } finally {
@@ -499,7 +499,7 @@ export function FactoryPage() {
       <>
         <PageShell>
           <PageHeader
-            title="Factory"
+            title="Lab"
             subtitle="Choose a project in the sidebar to see live work, approvals, reusable results, and next steps."
             actions={(
               <Button variant="outline" size="sm" onClick={() => setMainView("thread")}>
@@ -518,7 +518,7 @@ export function FactoryPage() {
     <>
       <PageShell>
         <PageHeader
-          title="Factory"
+          title="Lab"
           subtitle={`Advanced project view for outcomes, results, live work, and approvals in ${projectFolderName(selectedProject)}.`}
           actions={(
             <>
@@ -549,7 +549,7 @@ export function FactoryPage() {
             </div>
             <Button variant="ghost" size="sm" onClick={() => setMainView("templates")}>
               <Rocket size={14} />
-              Starting points
+              Library
             </Button>
           </div>
 

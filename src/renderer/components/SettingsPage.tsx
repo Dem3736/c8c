@@ -433,7 +433,7 @@ export function SettingsPage() {
             <div>
               <h3 className="text-body-md font-semibold text-foreground">Enable factories (beta)</h3>
               <p className="mt-1 text-body-sm text-muted-foreground">
-                Shows the advanced factory workspace and related navigation. Leave this off for the simpler flow editor and starting-point view.
+                Shows the advanced factory workspace and related navigation. Leave this off for the simpler flow editor and library view.
               </p>
             </div>
             <Switch
@@ -456,7 +456,7 @@ export function SettingsPage() {
           <div>
             <h3 className="text-body-md font-semibold">Web Search Backend</h3>
             <p className="text-body-sm text-muted-foreground mt-1">
-              Defines which web-search path is preferred when using starting points from the
+              Defines which web-search path is preferred when using library flows from the
               <span className="font-medium"> research </span>
               category.
             </p>

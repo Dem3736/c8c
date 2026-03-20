@@ -159,7 +159,7 @@ export function SkillsPageDialogs({
         open={pendingDisablePlugin !== null}
         onOpenChange={(open) => !open && onPendingDisablePluginChange(null)}
         title="Disable plugin?"
-        description={`Disable "${pendingDisablePlugin?.name || "plugin"}" and hide its packaged skills, starting points, and MCP packs from the active profile?`}
+        description={`Disable "${pendingDisablePlugin?.name || "plugin"}" and hide its packaged skills, library flows, and MCP packs from the active profile?`}
         warning="Dependency warning: current flow references skills from this plugin."
         refs={pendingDisablePluginRefs}
         acknowledgeId="acknowledge-disable-plugin-refs"
@@ -236,7 +236,7 @@ export function SkillsPageDialogs({
           <DialogHeader>
             <DialogTitle>{previewPlugin?.name || "Plugin"} preview</DialogTitle>
             <DialogDescription>
-              Packaged skills, starting points, and MCP packs discovered from this installed plugin.
+              Packaged skills, library flows, and MCP packs discovered from this installed plugin.
             </DialogDescription>
           </DialogHeader>
 

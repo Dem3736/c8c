@@ -173,7 +173,7 @@ export function WorkflowPrimaryActions({
                 Export flow copy...
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("save_as_template")}>
-                Save as starting point
+                Save to library
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("import")}>
                 Import flow...
@@ -189,7 +189,7 @@ export function WorkflowPrimaryActions({
                 Blank flow
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("templates")}>
-                Browse starting points
+                Browse library
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onActionMenuSelect("generate")}>
                 Create with agent

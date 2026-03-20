@@ -93,15 +93,15 @@ export function WorkflowToolbarDialogs({
       <Dialog open={templateDialogOpen} onOpenChange={onTemplateDialogOpenChange}>
         <CanvasDialogContent showCloseButton={false}>
           <CanvasDialogHeader>
-            <DialogTitle>Save as starting point</DialogTitle>
-            <DialogDescription>Enter a name for this starting point.</DialogDescription>
+            <DialogTitle>Save to library</DialogTitle>
+            <DialogDescription>Enter a name so you can start from this flow again.</DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogBody>
             <Input
               value={templateNameInput}
               onChange={(event) => onTemplateNameInputChange(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && onCommitSaveAsTemplate()}
-              placeholder="Starting point name"
+              placeholder="Library name"
               autoFocus
             />
           </CanvasDialogBody>

@@ -99,9 +99,9 @@ export function PendingTemplateDialog({
     <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && onClose()}>
       <CanvasDialogContent showCloseButton={false} size="lg">
         <CanvasDialogHeader>
-          <DialogTitle>{pendingQuickStartLabel ? `Start ${pendingQuickStartLabel}` : "Start from this starting point"}</DialogTitle>
+          <DialogTitle>{pendingQuickStartLabel ? `Start ${pendingQuickStartLabel}` : "Start with this"}</DialogTitle>
           <DialogDescription>
-            &ldquo;{pendingQuickStartLabel || (pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : "")}&rdquo; is ready in the selected project.
+            &ldquo;{pendingQuickStartLabel || (pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : "")}&rdquo; is ready.
           </DialogDescription>
         </CanvasDialogHeader>
         <CanvasDialogBody className="space-y-3">
@@ -112,7 +112,7 @@ export function PendingTemplateDialog({
             </div>
           ) : (
             <div className="rounded-lg surface-inset-card px-3 py-3 text-body-sm text-muted-foreground">
-              Select or add a project first so this starting point has somewhere to start.
+              Select or add a project first so this flow has somewhere to start.
             </div>
           )}
           <PendingTemplateDetails

@@ -4,7 +4,7 @@ export function normalizeWorkflowTitle(title: string): string {
 
 export function nextWorkflowTitle(
   existingTitles: string[],
-  baseTitle = "New workflow",
+  baseTitle = "New flow",
 ): string {
   const normalizedExisting = new Set(
     existingTitles.map((name) => normalizeWorkflowTitle(name).toLocaleLowerCase()),
@@ -25,5 +25,5 @@ export function toWorkflowFileStem(title: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+/, "")
     .replace(/-+$/, "")
-  return stem || "workflow"
+  return stem || "flow"
 }

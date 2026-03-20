@@ -310,7 +310,7 @@ export async function spawnFactoryCasesFromArtifact(
   const markdown = await readArtifactContent(artifact)
   const drafts = extractDrafts(markdown)
   if (drafts.length === 0) {
-    throw new Error("Could not derive item cases from this artifact yet")
+    throw new Error("Could not derive item tracks from this artifact yet")
   }
 
   const existing = await loadProjectFactoryState(projectPath)

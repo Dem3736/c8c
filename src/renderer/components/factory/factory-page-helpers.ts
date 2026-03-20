@@ -205,7 +205,7 @@ export function resolveArtifactFactoryIdentity(
   if (artifact.factoryId) {
     return {
       id: artifact.factoryId,
-      label: artifact.factoryLabel || "Factory",
+      label: artifact.factoryLabel || "Lab",
     }
   }
 
@@ -216,7 +216,7 @@ export function resolveContextFactoryIdentity(context: WorkflowTemplateRunContex
   if (context.factoryId) {
     return {
       id: context.factoryId,
-      label: context.factoryLabel || context.pack?.label || "Factory",
+      label: context.factoryLabel || context.pack?.label || "Lab",
     }
   }
 
@@ -347,27 +347,27 @@ export function factoryLaneMeta(status: FactoryCase["status"]) {
   if (status === "blocked") {
     return {
       title: "Waiting on you",
-      description: "Cases blocked on human review or missing input.",
+      description: "Tracks blocked on human review or missing input.",
       tone: "warning" as const,
     }
   }
   if (status === "active") {
     return {
       title: "Running",
-      description: "Cases with live execution already in progress.",
+      description: "Tracks with live execution already in progress.",
       tone: "info" as const,
     }
   }
   if (status === "ready") {
     return {
       title: "Ready",
-      description: "Cases that can move to the next step now.",
+      description: "Tracks that can move to the next step now.",
       tone: "success" as const,
     }
   }
   return {
     title: "Completed",
-    description: "Cases with no open approval and no immediate next step.",
+    description: "Tracks with no open approval and no immediate next step.",
     tone: "default" as const,
   }
 }

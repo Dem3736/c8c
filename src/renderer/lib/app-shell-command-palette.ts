@@ -145,7 +145,7 @@ export function buildAppShellActionEntries(): AppShellActionEntry[] {
   return [
     actionEntry("new_process", "New flow", ["new", "create", "start", "flow", "process"]),
     actionEntry("add_project", "Add project", ["add", "project", "folder", "workspace"]),
-    actionEntry("process_library", "Starting points", ["library", "template", "starting point", "flow", "process"]),
+    actionEntry("process_library", "Library", ["library", "template", "starting point", "flow", "process"]),
     actionEntry("attach_skill", "Attach skill", ["attach", "add", "skill", "tool", "step"], "Open the skill picker for the current flow."),
     actionEntry("inbox", "Inbox", ["inbox", "approval", "tasks", "notifications"]),
     actionEntry("settings", "Settings", ["settings", "preferences", "configuration"]),

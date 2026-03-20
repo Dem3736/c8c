@@ -87,7 +87,7 @@ export function WorkflowCreateComposerFooter({
           onClick={onBrowseStartingPoints}
           className="text-muted-foreground"
         >
-          Starting points
+          Library
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

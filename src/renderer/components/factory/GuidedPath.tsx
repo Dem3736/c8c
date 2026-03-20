@@ -28,7 +28,7 @@ export function GuidedPath({
 
       <article className="rounded-lg border border-hairline bg-surface-2/35 px-4 py-4 space-y-4">
         <div className="space-y-1">
-          <h2 className="text-title-sm text-foreground">{selectedFactoryOption?.label || "Factory"} guided path</h2>
+          <h2 className="text-title-sm text-foreground">{selectedFactoryOption?.label || "Lab"} path</h2>
           <p className="text-body-sm text-muted-foreground">
             {selectedFactoryDefinition?.recipe?.summary
               || "Steps, contracts, and review points for this outcome."}
@@ -87,7 +87,7 @@ export function GuidedPath({
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-title-sm text-foreground">{recipe.label}</h2>
                     <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                      {recipe.activeCaseCount} case{recipe.activeCaseCount === 1 ? "" : "s"}
+                      {recipe.activeCaseCount} track{recipe.activeCaseCount === 1 ? "" : "s"}
                     </Badge>
                   </div>
                   <p className="mt-1 text-body-sm text-muted-foreground">

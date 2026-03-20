@@ -209,7 +209,7 @@ export function useProjectSidebarData({
       const emptyWorkflow = createEmptyWorkflow()
       setCurrentWorkflow(emptyWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-      toast.error("Could not restore the previously opened workflow", {
+      toast.error("Could not restore the previously opened flow", {
         description: String(error),
       })
     })

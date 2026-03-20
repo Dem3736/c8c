@@ -102,7 +102,7 @@ export function formatPluginAssetCount(plugin: InstalledPlugin, capability: Plug
   const asset = plugin.assets.find((item) => item.capability === capability)
   const count = asset?.count ?? 0
   if (capability === "skill") return `${count} skill${count === 1 ? "" : "s"}`
-  if (capability === "template") return `${count} starting point${count === 1 ? "" : "s"}`
+  if (capability === "template") return `${count} library flow${count === 1 ? "" : "s"}`
   return `${count} MCP server${count === 1 ? "" : "s"}`
 }
 

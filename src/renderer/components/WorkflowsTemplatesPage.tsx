@@ -387,7 +387,7 @@ export function WorkflowsTemplatesPage() {
       const loaded = await window.api.listTemplates()
       setTemplates(loaded)
     } catch (error) {
-      toast.error(`Failed to load starting points: ${String(error)}`)
+      toast.error(`Failed to load library: ${String(error)}`)
     } finally {
       setLoading(false)
     }
@@ -634,12 +634,12 @@ export function WorkflowsTemplatesPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Starting points"
+        title="Library"
         subtitle="Choose how to begin, or open a blank flow only if you need full control."
         actions={headerActions}
       />
 
-      <section aria-label="Starting point categories" className="overflow-hidden rounded-xl surface-elevated">
+      <section aria-label="Library categories" className="overflow-hidden rounded-xl surface-elevated">
         <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
           <p className="section-kicker">Library</p>
           <h2 className="mt-1 ui-title-text text-foreground">Browse the library</h2>
@@ -681,18 +681,18 @@ export function WorkflowsTemplatesPage() {
       </section>
 
       <CollectionToolbar
-        ariaLabel="Starting point controls"
+        ariaLabel="Library controls"
         query={query}
         onQueryChange={setQuery}
-        searchPlaceholder="Search starting points"
-        searchAriaLabel="Search starting points"
-        summary={`${filteredTemplates.length} starting point${filteredTemplates.length === 1 ? "" : "s"}`}
+        searchPlaceholder="Search library"
+        searchAriaLabel="Search library"
+        summary={`${filteredTemplates.length} flow${filteredTemplates.length === 1 ? "" : "s"}`}
         filters={(
           <>
             <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">
               {activeCategory === "all"
                 ? "Narrow by work type"
-                : `Narrow ${selectedCategoryMeta.label.toLowerCase()} starting points`}
+                : `Narrow ${selectedCategoryMeta.label.toLowerCase()} flows`}
             </span>
             <Button
               variant={activeFilter === "all" ? "secondary" : "outline"}
@@ -742,8 +742,8 @@ export function WorkflowsTemplatesPage() {
             ) : filteredTemplates.length === 0 ? (
               <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
                 {activeCategory === "all"
-                  ? "No starting points match these filters."
-                  : `No ${selectedCategoryMeta.label.toLowerCase()} starting points match these filters.`}
+                  ? "No library flows match these filters."
+                  : `No ${selectedCategoryMeta.label.toLowerCase()} flows match these filters.`}
               </div>
             ) : (
               renderTemplateGrid(filteredTemplates)
@@ -765,7 +765,7 @@ export function WorkflowsTemplatesPage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <CanvasDialogContent showCloseButton={false} size="lg">
           <CanvasDialogHeader>
-            <DialogTitle>Start from this point</DialogTitle>
+            <DialogTitle>Start with this</DialogTitle>
             <DialogDescription>
               &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready. Pick whether to create it in the selected project or replace the current draft.
             </DialogDescription>

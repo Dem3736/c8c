@@ -46,9 +46,9 @@ export function DeepLinkTemplateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <CanvasDialogContent showCloseButton={false}>
         <CanvasDialogHeader>
-          <DialogTitle>Starting point from c8c Hub</DialogTitle>
+          <DialogTitle>Start with this</DialogTitle>
           <DialogDescription>
-            Do you want to use &ldquo;{template?.name}&rdquo;?
+            &ldquo;{template?.name}&rdquo; is ready. Choose where to start it.
           </DialogDescription>
         </CanvasDialogHeader>
         {template && (
@@ -57,7 +57,7 @@ export function DeepLinkTemplateDialog({
               <p className="text-body-sm text-muted-foreground">{template.description}</p>
             )}
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline">Starting point</Badge>
+              <Badge variant="outline">From c8c Hub</Badge>
               <span className="ui-meta-text text-muted-foreground">
                 {nodeCount} step{nodeCount === 1 ? "" : "s"} ready
               </span>
@@ -86,7 +86,7 @@ export function DeepLinkTemplateDialog({
               </div>
             ) : (
               <p className="text-body-sm text-muted-foreground">
-                Add a project in the sidebar to create a flow from this starting point.
+                Add a project in the sidebar to create this flow there.
               </p>
             )}
           </CanvasDialogBody>
@@ -103,7 +103,7 @@ export function DeepLinkTemplateDialog({
             Create in project
           </Button>
           <Button variant="outline" size="sm" onClick={onReplaceCurrent}>
-            Replace current
+            Replace current draft
           </Button>
         </CanvasDialogFooter>
       </CanvasDialogContent>

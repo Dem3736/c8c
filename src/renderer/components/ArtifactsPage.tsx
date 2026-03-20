@@ -167,9 +167,9 @@ export function ArtifactsPage() {
     if (direct) return direct
     if (selectedFactoryId.startsWith("pack:")) {
       const packId = selectedFactoryId.replace(/^pack:/, "")
-      return templates.find((template) => template.pack?.id === packId)?.pack?.label || "Factory"
+      return templates.find((template) => template.pack?.id === packId)?.pack?.label || "Lab"
     }
-    return "Factory"
+    return "Lab"
   }, [factoryScopeArtifacts, selectedFactoryId, templates])
 
   const artifactKinds = useMemo(() => {
@@ -198,7 +198,7 @@ export function ArtifactsPage() {
         const latestArtifact = [...caseArtifacts].sort((left, right) => right.updatedAt - left.updatedAt)[0]
         return {
           id,
-          label: latestArtifact?.caseLabel || latestArtifact?.workflowName || latestArtifact?.title || "Case",
+          label: latestArtifact?.caseLabel || latestArtifact?.workflowName || latestArtifact?.title || "Track",
           count: caseArtifacts.length,
           updatedAt: latestArtifact?.updatedAt || 0,
         }
@@ -339,9 +339,9 @@ export function ArtifactsPage() {
         title="Results"
         subtitle={
           selectedCaseOption
-            ? `Reusable results for ${selectedCaseOption.label}. Stay in one case and open the next step without rebuilding context in the terminal.`
+            ? `Reusable results for ${selectedCaseOption.label}. Stay in one track and open the next step without rebuilding context in the terminal.`
             : selectedFactoryLabel
-              ? `Reusable results for ${selectedFactoryLabel}. Stay inside one factory while you review results and launch the next step.`
+              ? `Reusable results for ${selectedFactoryLabel}. Stay inside one lab while you review results and launch the next step.`
               : `Reusable project results for ${projectFolderName(selectedProject)}. Use them to open the next step without rebuilding context in the terminal.`
         }
         actions={(
@@ -349,12 +349,12 @@ export function ArtifactsPage() {
             {factoryBetaEnabled ? (
               <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
                 <Rocket size={14} />
-                Open factory
+                Open lab
               </Button>
             ) : null}
             <Button variant="outline" size="sm" onClick={() => setMainView("templates")}>
               <LayoutTemplate size={14} />
-              Browse starting points
+              Browse library
             </Button>
             <Button variant="outline" size="sm" onClick={() => void refreshArtifacts()} disabled={artifactsLoading}>
               {artifactsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -395,14 +395,14 @@ export function ArtifactsPage() {
             ))}
             {(caseOptions.length > 1 || selectedCaseOption) && (
               <>
-                <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">Case</span>
+                <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">Track</span>
                 <Button
                   variant={selectedCaseId === null ? "secondary" : "outline"}
                   size="xs"
                   onClick={() => setSelectedCaseId(null)}
                   aria-pressed={selectedCaseId === null}
                 >
-                  All cases
+                  All tracks
                 </Button>
                 {caseOptions.slice(0, 4).map((entry) => (
                   <Button
@@ -424,12 +424,12 @@ export function ArtifactsPage() {
       <section className="space-y-4" aria-busy={artifactsLoading || templatesLoading}>
         {selectedFactoryLabel && !selectedCaseOption ? (
           <ScopeBanner
-            eyebrow="Path scope"
-            description={`Showing results for ${selectedFactoryLabel}. Go back to Factory when you need a different outcome or path.`}
+            eyebrow="Lab scope"
+            description={`Showing results for ${selectedFactoryLabel}. Go back to the lab when you need a different outcome or path.`}
             actions={factoryBetaEnabled ? (
               <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
                 <Rocket size={14} />
-                Back to factory
+                Back to lab
               </Button>
             ) : undefined}
           />
@@ -437,18 +437,18 @@ export function ArtifactsPage() {
 
         {selectedCaseOption ? (
           <ScopeBanner
-            eyebrow="Case scope"
+            eyebrow="Track scope"
             description={`Showing ${selectedCaseOption.count} result${selectedCaseOption.count === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`}
             actions={(
               <>
                 {factoryBetaEnabled ? (
                   <Button variant="outline" size="sm" onClick={() => setMainView("factory")}>
                     <Rocket size={14} />
-                    Back to factory
+                    Back to lab
                   </Button>
                 ) : null}
                 <Button variant="ghost" size="sm" onClick={() => setSelectedCaseId(null)}>
-                  Show all cases
+                  Show all tracks
                 </Button>
               </>
             )}
@@ -527,7 +527,7 @@ export function ArtifactsPage() {
                           }}
                         >
                           <Rocket size={14} />
-                          Case
+                          Track
                         </Button>
                       ) : null}
                       <Button variant="ghost" size="sm" onClick={() => void revealArtifact(artifact)}>
@@ -547,7 +547,7 @@ export function ArtifactsPage() {
                         <div className="ui-meta-label text-muted-foreground">Ready next steps</div>
                         <p className="mt-1 text-body-sm text-muted-foreground">
                           {selectedCaseId || artifactCase
-                            ? "Steps whose required contracts are already satisfied by this case."
+                            ? "Steps whose required contracts are already satisfied by this track."
                             : "Steps whose required contracts are already satisfied by this project."}
                         </p>
                       </div>

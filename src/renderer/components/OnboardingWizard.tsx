@@ -440,9 +440,9 @@ function StepUnderstandWorkflow({
             <Bot size={20} className="text-foreground" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-title-md text-foreground">Start from a prompt or a starting point</h2>
+            <h2 className="text-title-md text-foreground">Start from a prompt or the library</h2>
             <div className="ui-meta-text text-muted-foreground">
-              Use the Agent for a draft, or start from Starting points and tune the flow later.
+              Use the agent for a draft, or browse the library and tune the flow later.
             </div>
           </div>
         </div>
@@ -450,11 +450,11 @@ function StepUnderstandWorkflow({
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button type="button" variant="default" size="sm" onClick={onOpenAgent}>
             <Bot size={14} />
-            Open the Agent
+            Open agent
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
             <LayoutTemplate size={14} />
-            Browse starting points
+            Browse library
           </Button>
         </div>
       </div>
@@ -477,7 +477,7 @@ function StepUnderstandWorkflow({
           <div className="flex flex-wrap items-center gap-2 rounded-lg control-cluster control-cluster-compact">
             <Badge variant="outline" size="compact">Cmd+Enter Run</Badge>
             <Badge variant="outline" size="compact">Cmd+S Save</Badge>
-            <Badge variant="outline" size="compact">Plugins add skills</Badge>
+            <Badge variant="outline" size="compact">Skills add steps</Badge>
           </div>
         </div>
 

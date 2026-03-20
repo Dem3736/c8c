@@ -202,7 +202,7 @@ export function NotificationsPage() {
       const caseId = deriveArtifactCaseKey(artifact)
       rememberCase(
         caseId,
-        artifact.caseLabel || artifact.workflowName || artifact.title || "Case",
+        artifact.caseLabel || artifact.workflowName || artifact.title || "Track",
         artifact.updatedAt,
         artifact.factoryId,
         artifact.factoryLabel,
@@ -215,7 +215,7 @@ export function NotificationsPage() {
       if (!context.caseId) continue
       rememberCase(
         context.caseId,
-        context.caseLabel || context.workflowName || context.templateName || "Case",
+        context.caseLabel || context.workflowName || context.templateName || "Track",
         0,
         context.factoryId,
         context.factoryLabel,
@@ -245,7 +245,7 @@ export function NotificationsPage() {
     if (!selectedFactoryId) return null
     return visibleCaseOptions[0]?.factoryLabel
       || artifacts.find((artifact) => artifact.factoryId === selectedFactoryId)?.factoryLabel
-      || (selectedFactoryId.startsWith("pack:") ? selectedFactoryId.replace(/^pack:/, "") : "Factory")
+      || (selectedFactoryId.startsWith("pack:") ? selectedFactoryId.replace(/^pack:/, "") : "Lab")
   }, [artifacts, selectedFactoryId, visibleCaseOptions])
 
   const caseIdByTaskKey = useMemo(() => {
@@ -538,7 +538,7 @@ export function NotificationsPage() {
                 onClick={() => setMainView("factory")}
               >
                 <ArrowUpRight size={14} />
-                Back to case
+                Back to track
               </Button>
             )}
             <Button
@@ -590,13 +590,13 @@ export function NotificationsPage() {
               eyebrow="Path scope"
               description={
                 artifactsLoading
-                  ? "Resolving factory scope..."
+                  ? "Resolving lab scope..."
                   : `Showing ${openHumanTaskCount} open decision${openHumanTaskCount === 1 ? "" : "s"} for ${selectedFactoryLabel}.`
               }
               actions={factoryBetaEnabled ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => setMainView("factory")}>
                   <ArrowUpRight size={14} />
-                  Back to factory
+                  Back to lab
                 </Button>
               ) : undefined}
             />
@@ -604,15 +604,15 @@ export function NotificationsPage() {
 
           {selectedCaseOption ? (
             <ScopeBanner
-              eyebrow="Case scope"
+              eyebrow="Track scope"
               description={
                 artifactsLoading
-                  ? "Resolving case lineage..."
+                  ? "Resolving track lineage..."
                   : `Showing ${openHumanTaskCount} open decision${openHumanTaskCount === 1 ? "" : "s"} for ${selectedCaseOption.label}${selectedFactoryLabel ? ` inside ${selectedFactoryLabel}` : ""}.`
               }
               actions={(
                 <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedCaseId(null)}>
-                  Show all cases
+                  Show all tracks
                 </Button>
               )}
             />
@@ -626,7 +626,7 @@ export function NotificationsPage() {
                 size="sm"
                 onClick={() => setSelectedCaseId(null)}
               >
-                All cases
+                All tracks
               </Button>
               {visibleCaseOptions.slice(0, 6).map((entry) => (
                 <Button

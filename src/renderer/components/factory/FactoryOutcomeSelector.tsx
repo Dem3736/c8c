@@ -37,7 +37,7 @@ export function FactoryOutcomeSelector({
 
       {factoryOptions.length === 0 ? (
         <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-8 text-body-sm text-muted-foreground">
-          No saved outcomes yet. Start a mode once, then let cases and outputs accumulate underneath it.
+          No saved outcomes yet. Start a mode once, then let tracks and results accumulate underneath it.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -62,7 +62,7 @@ export function FactoryOutcomeSelector({
                 {factory.summary}
               </p>
               <div className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
-                <span>{factory.caseCount} case{factory.caseCount === 1 ? "" : "s"}</span>
+                <span>{factory.caseCount} track{factory.caseCount === 1 ? "" : "s"}</span>
                 <span className="text-border">•</span>
                 <span>{factory.artifactCount} output{factory.artifactCount === 1 ? "" : "s"}</span>
               </div>

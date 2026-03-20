@@ -440,7 +440,7 @@ const AppShell = memo(function AppShell() {
       setDeepLinkTemplate(template)
     })
     const unsubError = window.api.onDeepLinkTemplateError((err) => {
-      toast.error(`Failed to load starting point "${err.templateId}": ${err.error}`)
+      toast.error(`Failed to load library flow "${err.templateId}": ${err.error}`)
     })
     return () => {
       unsubTemplate()
@@ -484,7 +484,7 @@ const AppShell = memo(function AppShell() {
     })
     setMainView("thread")
     setDeepLinkTemplate(null)
-    toast.success(`Starting point "${deepLinkTemplate.name}" applied`, {
+    toast.success(`Library flow "${deepLinkTemplate.name}" applied`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -522,7 +522,7 @@ const AppShell = memo(function AppShell() {
       })
       setMainView("thread")
       setDeepLinkTemplate(null)
-      toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from starting point`)
+      toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from library`)
     } catch (error) {
       toast.error(`Failed to create flow: ${String(error)}`)
     }

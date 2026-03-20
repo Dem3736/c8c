@@ -73,7 +73,7 @@ export function ProjectSidebarChrome({
 
         <SidebarNavItem
           icon={LayoutTemplate}
-          label="Starting points"
+          label="Library"
           active={mainView === "templates"}
           onClick={onOpenStartingPoints}
         />
@@ -96,7 +96,7 @@ export function ProjectSidebarChrome({
         {factoryBetaEnabled ? (
           <SidebarNavItem
             icon={Factory}
-            label="Factory (beta)"
+            label="Lab (beta)"
             active={mainView === "factory"}
             onClick={onOpenFactory}
           />

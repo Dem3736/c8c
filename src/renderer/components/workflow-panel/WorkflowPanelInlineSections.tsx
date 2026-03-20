@@ -84,7 +84,7 @@ export function EmptyProjectState({ onOpenTemplates }: { onOpenTemplates: () => 
     >
       <Button variant="outline" size="sm" onClick={onOpenTemplates}>
         <LayoutTemplate size={14} />
-        Open a starting point
+        Browse library
       </Button>
     </EmptyState>
   )

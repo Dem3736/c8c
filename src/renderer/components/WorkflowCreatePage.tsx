@@ -253,7 +253,7 @@ export function WorkflowCreatePage() {
           } catch (error) {
             const message = String(error)
             if (!message.includes("No handler registered")) {
-              toast.error(`Failed to load popular starting points: ${message}`)
+              toast.error(`Failed to load popular library flows: ${message}`)
             }
           }
         }
@@ -269,7 +269,7 @@ export function WorkflowCreatePage() {
         if (cancelled) return
         setAvailableTemplates([])
         setPopularTemplates([])
-        toast.error(`Failed to load starting points: ${String(error)}`)
+        toast.error(`Failed to load library: ${String(error)}`)
       } finally {
         if (!cancelled) {
           setLoadingTemplates(false)
@@ -584,7 +584,7 @@ export function WorkflowCreatePage() {
 
   const handleCreateFromTemplate = async (template: WorkflowTemplate) => {
     if (!targetProjectPath || templateAction) return
-    if (!(await confirmDiscard("create a flow from a starting point", workflowDirty))) {
+    if (!(await confirmDiscard("create a flow from the library", workflowDirty))) {
       return
     }
 
@@ -621,7 +621,7 @@ export function WorkflowCreatePage() {
 
   const handleCustomizeTemplate = async (template: WorkflowTemplate) => {
     if (!targetProjectPath || templateAction) return
-    if (!(await confirmDiscard("customize a starting point with agent", workflowDirty))) {
+    if (!(await confirmDiscard("customize a library flow with agent", workflowDirty))) {
       return
     }
 
@@ -755,7 +755,7 @@ export function WorkflowCreatePage() {
       }
 
       const draftWorkflow = createEmptyWorkflow()
-      const filePath = await window.api.createWorkflow(targetProjectPath, "new-workflow", draftWorkflow)
+      const filePath = await window.api.createWorkflow(targetProjectPath, "new-flow", draftWorkflow)
       await openWorkflowFile(filePath, targetProjectPath, {
         pendingMessage: message,
         pendingEntryRequest: message,

@@ -175,7 +175,7 @@ export function useWorkflowCrud({
       setMainView("thread")
       return
     }
-    if (!(await confirmDiscard("open another workflow", workflowDirty))) {
+    if (!(await confirmDiscard("open another flow", workflowDirty))) {
       return
     }
 
@@ -184,7 +184,7 @@ export function useWorkflowCrud({
     }
 
     setMainView("thread")
-    const loadingToastId = toast.loading("Opening workflow...")
+    const loadingToastId = toast.loading("Opening flow...")
     setWorkflowOpenState({
       status: "loading",
       targetPath: workflow.path,
@@ -224,7 +224,7 @@ export function useWorkflowCrud({
 
     setCreatingWorkflow(true)
     try {
-      const name = "new-workflow"
+      const name = "new-flow"
       const chain = createEmptyWorkflow()
       const filePath = await window.api.createWorkflow(projectPath, name, chain)
       const loadedWorkflow = await window.api.loadWorkflow(filePath)
@@ -274,19 +274,19 @@ export function useWorkflowCrud({
 
   const selectGlobalWorkflow = async (workflow: WorkflowFile) => {
     if (!selectedProject) {
-      toast.error("Open a project first to run a global workflow")
+      toast.error("Open a project first to run this flow")
       return
     }
     if (selectedWorkflowPath === workflow.path) {
       setMainView("thread")
       return
     }
-    if (!(await confirmDiscard("open another workflow", workflowDirty))) {
+    if (!(await confirmDiscard("open another flow", workflowDirty))) {
       return
     }
 
     setMainView("thread")
-    const loadingToastId = toast.loading("Opening workflow...")
+    const loadingToastId = toast.loading("Opening flow...")
     setWorkflowOpenState({
       status: "loading",
       targetPath: workflow.path,
@@ -372,7 +372,7 @@ export function useWorkflowCrud({
         const refreshed = await window.api.listProjectWorkflows(selectedProject)
         setWorkflows(refreshed)
       } catch (error) {
-        toast.error("Workflow renamed but sidebar refresh failed", {
+        toast.error("Flow renamed but sidebar refresh failed", {
           description: String(error),
         })
       }
@@ -381,7 +381,7 @@ export function useWorkflowCrud({
 
   const requestDeleteWorkflow = (workflow: WorkflowFile) => {
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the workflow before deleting it")
+      toast.error("Stop the flow before deleting it")
       return
     }
     setPendingDeleteWorkflow(workflow)
@@ -392,7 +392,7 @@ export function useWorkflowCrud({
     if (!workflow) return
     setPendingDeleteWorkflow(null)
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the workflow before deleting it")
+      toast.error("Stop the flow before deleting it")
       return
     }
 
@@ -440,8 +440,8 @@ export function useWorkflowCrud({
         }
       }
 
-      if (!(await confirmDiscard("open duplicated workflow", workflowDirty))) {
-        toast.success("Workflow duplicated")
+      if (!(await confirmDiscard("open duplicated flow", workflowDirty))) {
+        toast.success("Flow duplicated")
         return
       }
 
@@ -453,9 +453,9 @@ export function useWorkflowCrud({
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
       setMainView("thread")
-      toast.success("Workflow duplicated")
+      toast.success("Flow duplicated")
     } catch (error) {
-      toast.error("Failed to duplicate workflow", { description: String(error) })
+      toast.error("Failed to duplicate flow", { description: String(error) })
     }
   }
 

@@ -52,7 +52,7 @@ export function useBlankWorkflowCreation({
     options: CreateBlankWorkflowOptions = {},
   ) => {
     if (creatingBlankWorkflow) return null
-    if (confirmDiscard && !(await confirmDiscard("create a blank workflow", workflowDirty))) {
+    if (confirmDiscard && !(await confirmDiscard("create a blank flow", workflowDirty))) {
       return null
     }
 
@@ -72,12 +72,12 @@ export function useBlankWorkflowCreation({
       setSelectedProject(resolvedProjectPath)
       setWorkflowOpenState({
         status: "loading",
-        targetPath: "Blank workflow",
+        targetPath: "Blank flow",
         message: null,
       })
 
       const nextWorkflow = createEmptyWorkflow()
-      const filePath = await window.api.createWorkflow(resolvedProjectPath, "new-workflow", nextWorkflow)
+      const filePath = await window.api.createWorkflow(resolvedProjectPath, "new-flow", nextWorkflow)
       const [loadedWorkflow, refreshedWorkflows] = await Promise.all([
         window.api.loadWorkflow(filePath),
         window.api.listProjectWorkflows(resolvedProjectPath),
@@ -101,17 +101,17 @@ export function useBlankWorkflowCreation({
         message: null,
       })
 
-      toast.success("Blank workflow ready", {
+      toast.success("Blank flow ready", {
         description: "Start by adding a skill or opening Graph.",
       })
       return filePath
     } catch (error) {
       setWorkflowOpenState({
         status: "error",
-        targetPath: "Blank workflow",
+        targetPath: "Blank flow",
         message: String(error),
       })
-      toast.error("Failed to create blank workflow", {
+      toast.error("Failed to create blank flow", {
         description: String(error),
       })
       return null

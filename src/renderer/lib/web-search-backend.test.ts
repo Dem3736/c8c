@@ -84,7 +84,7 @@ describe("applyWebSearchBackendPreset", () => {
 
 describe("resolveTemplateWorkflow", () => {
   it("uses template display name as workflow name", () => {
-    const workflow = { ...makeWorkflow(), name: "new-workflow" }
+    const workflow = { ...makeWorkflow(), name: "new-flow" }
     const next = resolveTemplateWorkflow({
       name: "Deep Research",
       stage: "research",
@@ -92,6 +92,6 @@ describe("resolveTemplateWorkflow", () => {
     }, "builtin")
 
     expect(next.name).toBe("Deep Research")
-    expect(workflow.name).toBe("new-workflow")
+    expect(workflow.name).toBe("new-flow")
   })
 })

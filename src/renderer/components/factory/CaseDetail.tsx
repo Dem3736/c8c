@@ -69,7 +69,7 @@ export function CaseDetail({
           <div className="ui-meta-label text-muted-foreground">Result lineage</div>
           {selectedCase.artifacts.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-6 text-body-sm text-muted-foreground">
-              No saved results for this case yet.
+              No saved results for this track yet.
             </div>
           ) : (
             <div className="space-y-2">
@@ -134,7 +134,7 @@ export function CaseDetail({
 
           {selectedCase.relatedRuns.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-6 text-body-sm text-muted-foreground">
-              No persisted run history is linked to this case yet.
+              No persisted run history is linked to this track yet.
             </div>
           ) : (
             <div className="space-y-2">
@@ -174,7 +174,7 @@ export function CaseDetail({
       </article>
 
       <aside className="rounded-xl surface-panel p-5 space-y-4">
-        <SectionHeading title="Case detail" />
+        <SectionHeading title="Track detail" />
 
         {selectedCaseSummary ? (
           <>
@@ -218,7 +218,7 @@ export function CaseDetail({
               ) : null}
               <Button variant="ghost" size="sm" onClick={() => onOpenCaseArtifacts(selectedCase.id)}>
                 <FileStack size={14} />
-                Case results
+                Track results
               </Button>
             </div>
           </>
@@ -228,7 +228,7 @@ export function CaseDetail({
           <div className="ui-meta-label text-muted-foreground">Open approvals</div>
           {selectedCase.tasks.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-4 text-body-sm text-muted-foreground">
-              No pending approvals for this case.
+              No pending approvals for this track.
             </div>
           ) : (
             <div className="space-y-2">
@@ -256,7 +256,7 @@ export function CaseDetail({
           <div className="ui-meta-label text-muted-foreground">Next steps</div>
           {selectedCase.nextTemplates.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-4 text-body-sm text-muted-foreground">
-              No downstream step is ready yet for this case.
+              No downstream step is ready yet for this track.
             </div>
           ) : (
             <div className="space-y-2">
@@ -277,7 +277,7 @@ export function CaseDetail({
                           ) : null}
                         </div>
                         <div className="mt-1 text-body-sm text-muted-foreground">
-                          {disciplineLabels.length > 0 ? disciplineLabels.join(" · ") : "Ready from this case context."}
+                          {disciplineLabels.length > 0 ? disciplineLabels.join(" · ") : "Ready from this track context."}
                         </div>
                       </div>
                       <Button

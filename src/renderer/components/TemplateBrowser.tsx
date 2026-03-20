@@ -79,9 +79,9 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       setTemplates(await window.api.listTemplates())
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error("Failed to load starting points:", err)
+      console.error("Failed to load library:", err)
       setTemplates([])
-      setLoadError(message || "Could not load starting points.")
+      setLoadError(message || "Could not load library.")
     } finally {
       setIsLoading(false)
     }
@@ -225,30 +225,30 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
     >
       <CanvasDialogContent size="xl" className="max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
         <CanvasDialogHeader className="surface-depth-header">
-          <DialogTitle>Choose a starting point</DialogTitle>
+          <DialogTitle>Browse library</DialogTitle>
           <DialogDescription className="sr-only">
-            Browse ready-to-run starting points, preview their fit, and apply one to the current flow.
+            Browse ready-to-run flows, preview their fit, and apply one to the current flow.
           </DialogDescription>
         </CanvasDialogHeader>
 
         <CanvasDialogBody className="grid grid-cols-1 lg:grid-cols-[1.4fr,1fr] gap-3 flex-1 min-h-0 pt-4 surface-soft">
           <div
             role="listbox"
-            aria-label="Flow starting points"
+            aria-label="Flow library"
             aria-activedescendant={selectedOptionId}
             tabIndex={0}
             className="overflow-y-auto ui-scroll-region space-y-2 pr-1 focus:outline-none"
             onKeyDown={handleListKeyDown}
           >
             {isLoading && (
-              <p className="text-body-md text-muted-foreground px-1 py-4 text-center">Loading starting points…</p>
+              <p className="text-body-md text-muted-foreground px-1 py-4 text-center">Loading library…</p>
             )}
             {!isLoading && loadError && (
               <div className="rounded-lg surface-danger-soft px-4 py-4 text-center">
                 <div className="ui-status-halo-danger mx-auto flex h-control-lg w-control-lg items-center justify-center rounded-full">
                   <AlertTriangle size={18} />
                 </div>
-                <p className="mt-3 ui-body-text-medium text-foreground">Could not load starting points</p>
+                <p className="mt-3 ui-body-text-medium text-foreground">Could not load library</p>
                 <p className="mt-1 text-body-sm text-status-danger">{loadError}</p>
                 <Button
                   type="button"
@@ -265,7 +265,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             {!isLoading && !loadError && templates.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                 <Layers size={24} className="opacity-40" />
-                <p className="text-body-md">No starting points available</p>
+                <p className="text-body-md">No library flows available</p>
               </div>
             )}
             {!isLoading && !loadError && (
@@ -431,8 +431,8 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             {!selected ? (
               <p className="text-body-md text-muted-foreground">
                 {loadError
-                  ? "Retry loading starting points to preview details before starting."
-                  : "Select a starting point to preview it before starting."}
+                  ? "Retry loading the library to preview details before starting."
+                  : "Select a flow to preview it before starting."}
               </p>
             ) : (
               <div className="space-y-3">

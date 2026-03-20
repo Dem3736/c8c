@@ -277,7 +277,7 @@ export function BlueprintForm({
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-title-sm text-foreground">
-                  {selectedFactoryDefinition?.outcome?.title || selectedFactoryOption?.label || "Untitled factory"}
+                  {selectedFactoryDefinition?.outcome?.title || selectedFactoryOption?.label || "Untitled lab"}
                 </h3>
                 <Badge variant="outline" className="ui-meta-text px-2 py-0">
                   {formatResultModeLabel(selectedFactoryDefinition?.modeId)}

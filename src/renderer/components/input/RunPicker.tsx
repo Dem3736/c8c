@@ -76,9 +76,9 @@ export function RunPicker({ open, onOpenChange }: RunPickerProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <CanvasDialogContent className="p-0 gap-0 max-h-[75vh] flex flex-col" showCloseButton>
         <CanvasDialogHeader className="surface-depth-header">
-          <DialogTitle>Attach Run Output</DialogTitle>
+          <DialogTitle>Attach Saved Result</DialogTitle>
           <DialogDescription className="sr-only">
-            Choose a previous run output to attach as context
+            Choose a previous saved result to attach as context
           </DialogDescription>
         </CanvasDialogHeader>
 
@@ -94,7 +94,7 @@ export function RunPicker({ open, onOpenChange }: RunPickerProps) {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by workflow name..."
+                placeholder="Search by flow name..."
                 aria-label="Search runs"
                 autoFocus
                 className="pl-8"
@@ -121,7 +121,7 @@ export function RunPicker({ open, onOpenChange }: RunPickerProps) {
                         key={run.runId}
                   onClick={() => handleSelect(run)}
                   disabled={alreadyAdded}
-                        aria-label={`Attach output from ${run.workflowName}`}
+                        aria-label={`Attach result from ${run.workflowName}`}
                         variant="ghost"
                         size="auto"
                         className="ui-interactive-card-subtle h-auto w-full justify-start items-center gap-3 rounded-md px-2 py-2 text-left whitespace-normal disabled:opacity-40"

@@ -46,7 +46,7 @@ function handleWorkflowNotification(window: BrowserWindow, event: WorkflowEvent)
 
   if (event.type === "approval-requested") {
     showNotification(window, {
-      body: `Approval needed: ${event.nodeId}`,
+      body: "Approval needed to continue",
       bounce: "critical",
       flash: true,
     })

@@ -66,15 +66,15 @@ function extractTargetDefinition(values: string[]) {
 
 function factoryLabelForMode(mode: WorkflowResultMode, values: ResultModeConfigValues, existingFactory?: ProjectFactoryDefinition | null) {
   if (mode.id === "development") {
-    return firstFilled(values.project_goal, existingFactory?.label, existingFactory?.outcome?.title, "Product Factory")
+    return firstFilled(values.project_goal, existingFactory?.label, existingFactory?.outcome?.title, "Product Lab")
   }
   if (mode.id === "content") {
-    return firstFilled(values.content_goal, existingFactory?.label, existingFactory?.outcome?.title, "Marketing Factory")
+    return firstFilled(values.content_goal, existingFactory?.label, existingFactory?.outcome?.title, "Marketing Lab")
   }
   if (mode.id === "courses") {
-    return firstFilled(values.course_outcome, existingFactory?.label, existingFactory?.outcome?.title, "Content Factory")
+    return firstFilled(values.course_outcome, existingFactory?.label, existingFactory?.outcome?.title, "Content Lab")
   }
-  return firstFilled(existingFactory?.label, existingFactory?.outcome?.title, `${mode.label} Factory`)
+  return firstFilled(existingFactory?.label, existingFactory?.outcome?.title, `${mode.label} Lab`)
 }
 
 function buildOutcomeStatement(mode: WorkflowResultMode, values: ResultModeConfigValues) {
@@ -139,9 +139,9 @@ function defaultQualityPolicy(mode: WorkflowResultMode) {
 }
 
 function defaultCaseGenerationRule(mode: WorkflowResultMode) {
-  if (mode.id === "content") return "Research brief -> campaign or asset cases"
-  if (mode.id === "courses") return "Content plan -> production cases"
-  return "Plan -> implementation cases"
+  if (mode.id === "content") return "Research brief -> campaign or asset tracks"
+  if (mode.id === "courses") return "Content plan -> production tracks"
+  return "Plan -> implementation tracks"
 }
 
 function defaultSuccessSignal(mode: WorkflowResultMode) {
@@ -200,7 +200,7 @@ export function buildFactoryFromResultMode({
   const allTexts = Object.values(normalizedValues).filter(Boolean)
   const target = extractTargetDefinition(allTexts)
   const label = factoryLabelForMode(mode, normalizedValues, existingFactory)
-    || `${mode.label} Factory`
+    || `${mode.label} Lab`
   const outcomeTitle = firstFilled(
     mode.id === "development" ? normalizedValues.project_goal : undefined,
     mode.id === "content" ? normalizedValues.content_goal : undefined,

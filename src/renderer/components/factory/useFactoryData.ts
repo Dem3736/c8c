@@ -350,8 +350,8 @@ export function useFactoryData({
             .map((template) => deriveTemplateJourneyStageLabel(template) || template.name),
         ),
         caseRule: entrypointTemplate
-          ? `A new case starts when you launch ${entrypointTemplate.name}. Later steps reuse saved results to continue that same case.`
-          : "Cases are created from entry steps and then continue through saved results and downstream launches.",
+          ? `A new track starts when you launch ${entrypointTemplate.name}. Later steps reuse saved results to continue that same track.`
+          : "Tracks are created from entry steps and then continue through saved results and downstream launches.",
         activeCaseCount: caseIdsByPack.get(packId)?.size || 0,
       }
     }).sort((left, right) => right.activeCaseCount - left.activeCaseCount)
@@ -413,7 +413,7 @@ export function useFactoryData({
         rememberFactory({
           id: entry.factoryId,
           label: entry.factoryLabel,
-          summary: "Derived from saved results and ongoing case lineage.",
+          summary: "Derived from saved results and ongoing track lineage.",
           caseCount: 1,
           artifactCount: entry.artifacts.length,
           origin: "derived",
@@ -424,8 +424,8 @@ export function useFactoryData({
     if (draftFactoryId) {
       rememberFactory({
         id: draftFactoryId,
-        label: blueprintDraft.factoryLabel.trim() || "New factory",
-        summary: "Unsaved factory draft.",
+        label: blueprintDraft.factoryLabel.trim() || "New lab",
+        summary: "Unsaved lab draft.",
         caseCount: 0,
         artifactCount: 0,
         origin: "draft",
@@ -478,8 +478,8 @@ export function useFactoryData({
             .map((template) => deriveTemplateJourneyStageLabel(template) || template.name),
         ),
         caseRule: entrypointTemplate
-          ? `A new case starts when you launch ${entrypointTemplate.name}. Later steps reuse saved results to continue that same case.`
-          : "Cases are created from entry steps and then continue through saved results and downstream launches.",
+          ? `A new track starts when you launch ${entrypointTemplate.name}. Later steps reuse saved results to continue that same track.`
+          : "Tracks are created from entry steps and then continue through saved results and downstream launches.",
         activeCaseCount: 0,
       }
     }
@@ -647,7 +647,7 @@ export function useFactoryData({
           caseLabel: entry.label,
           kind: "review_gate",
           title: primaryTask.title,
-          description: primaryTask.summary || primaryTask.instructions || "An approval is blocking this case.",
+          description: primaryTask.summary || primaryTask.instructions || "An approval is blocking this track.",
           timestamp: primaryTask.updatedAt,
           tone: "warning",
           task: primaryTask,
@@ -682,7 +682,7 @@ export function useFactoryData({
           title: primaryTemplate.name,
           description: entry.latestArtifact
             ? `Ready from ${entry.latestArtifact.title}.`
-            : "Ready from the results already saved for this case.",
+            : "Ready from the results already saved for this track.",
           timestamp: entry.latestArtifact?.updatedAt || 0,
           tone: "success",
           template: primaryTemplate,
@@ -745,14 +745,14 @@ export function useFactoryData({
     }
 
     let latestArtifactValue = "No result yet"
-    let latestArtifactHint = "This case has not saved any reusable result yet."
+    let latestArtifactHint = "This track has not saved any reusable result yet."
     if (selectedCase.latestArtifact) {
       latestArtifactValue = selectedCase.latestArtifact.title
       latestArtifactHint = `${formatArtifactContractLabel(selectedCase.latestArtifact.kind)} · ${formatRelativeTime(selectedCase.latestArtifact.updatedAt)}`
     }
 
     let nextActionValue = "No action queued"
-    let nextActionHint = "This case is complete or waiting for new input."
+    let nextActionHint = "This track is complete or waiting for new input."
     let nextActionTone: CaseSummaryField["tone"] = "default"
     if (primaryAction) {
       nextActionValue = primaryAction.kind === "open_stage" && primaryAction.template
@@ -827,12 +827,12 @@ export function useFactoryData({
       {
         label: "Planned items",
         value: String(plannedCaseProgress.length),
-        hint: "Item cases generated from planning results.",
+        hint: "Item tracks generated from planning results.",
       },
       {
         label: "Completed items",
         value: String(completedPlannedCaseCount),
-        hint: "Spawned items that already reached a completed case state.",
+        hint: "Spawned items that already reached a completed track state.",
         tone: completedPlannedCaseCount > 0 ? "success" : "default",
       },
       {
@@ -844,7 +844,7 @@ export function useFactoryData({
       {
         label: "Next scheduled",
         value: nextScheduled || "Not scheduled",
-        hint: "Earliest upcoming planned slot across item cases.",
+        hint: "Earliest upcoming planned slot across item tracks.",
       },
     ] satisfies CaseSummaryField[]
   }, [
@@ -858,13 +858,13 @@ export function useFactoryData({
   ])
 
   const overviewFields = useMemo(() => {
-    const outcomeValue = selectedFactoryDefinition?.outcome?.title?.trim() || selectedFactoryOption?.label || "Factory not defined yet"
+    const outcomeValue = selectedFactoryDefinition?.outcome?.title?.trim() || selectedFactoryOption?.label || "Lab not defined yet"
     const bottleneckValue = scopedHumanTasks.length > 0
       ? `${scopedHumanTasks.length} strategist approval${scopedHumanTasks.length === 1 ? "" : "s"}`
       : scopedActiveRunsCount > 0
         ? `${scopedActiveRunsCount} live run${scopedActiveRunsCount === 1 ? "" : "s"}`
         : readyCasesCount > 0
-          ? `${readyCasesCount} case${readyCasesCount === 1 ? "" : "s"} ready`
+          ? `${readyCasesCount} track${readyCasesCount === 1 ? "" : "s"} ready`
           : "No active bottleneck"
     const bottleneckHint = scopedHumanTasks.length > 0
       ? "Approvals or requested input are the main limiter right now."
@@ -872,7 +872,7 @@ export function useFactoryData({
         ? "Execution is the main moving part right now."
         : readyCasesCount > 0
           ? "The system is waiting for you to launch the next step."
-          : "This factory is idle until you start or continue a case."
+          : "This lab is idle until you start or continue a track."
 
     return [
       {
@@ -886,9 +886,9 @@ export function useFactoryData({
         hint: "Current target",
       },
       {
-        label: "Cases",
-        value: `${scopedCases.length} case${scopedCases.length === 1 ? "" : "s"} in this factory`,
-        hint: "Tracked in this factory",
+        label: "Tracks",
+        value: `${scopedCases.length} track${scopedCases.length === 1 ? "" : "s"} in this lab`,
+        hint: "Tracked in this lab",
       },
       {
         label: "Bottleneck",
