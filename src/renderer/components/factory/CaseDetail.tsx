@@ -68,6 +68,11 @@ export function CaseDetail({
               {label}
             </Badge>
           ))}
+          {selectedCase.nextStepLabel ? (
+            <Badge variant="outline" className="ui-meta-text px-2 py-0">
+              Next: {selectedCase.nextStepLabel}
+            </Badge>
+          ) : null}
         </div>
 
         <div className="space-y-3">
@@ -188,6 +193,15 @@ export function CaseDetail({
               className="xl:grid-cols-1"
               compact
             />
+            {selectedCase.lastGate?.summaryText ? (
+              <div className="rounded-lg border border-hairline bg-surface-2/35 px-4 py-3">
+                <div className="ui-meta-label text-muted-foreground">Latest check</div>
+                <div className="mt-1 text-body-sm text-foreground">{selectedCase.lastGate.summaryText}</div>
+                {selectedCase.lastGate.reasonText ? (
+                  <div className="mt-1 ui-meta-text text-muted-foreground">{selectedCase.lastGate.reasonText}</div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap gap-2">
               {primaryAction?.task ? (
@@ -275,7 +289,9 @@ export function CaseDetail({
           <div className="ui-meta-label text-muted-foreground">Next steps</div>
           {selectedCase.nextTemplates.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-4 text-body-sm text-muted-foreground">
-              No downstream step is ready yet for this track.
+              {selectedCase.nextStepLabel
+                ? `Saved work is ready to continue to ${selectedCase.nextStepLabel}, but no matching library step was found yet.`
+                : "No downstream step is ready yet for this track."}
             </div>
           ) : (
             <div className="space-y-2">

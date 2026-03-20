@@ -21,6 +21,24 @@ export function taskSelectionKey(task: Pick<HumanTaskSummary, "workspace" | "tas
   return `${task.workspace}::${task.taskId}`
 }
 
+export function taskActivityAt(
+  task: Pick<HumanTaskSummary, "createdAt" | "updatedAt">
+    | Pick<HumanTaskSnapshot, "createdAt" | "updatedAt">,
+): number {
+  return task.updatedAt || task.createdAt || 0
+}
+
+export function sortHumanTasksByActivity<T extends (
+  Pick<HumanTaskSummary, "createdAt" | "updatedAt">
+  | Pick<HumanTaskSnapshot, "createdAt" | "updatedAt">
+)>(tasks: T[]): T[] {
+  return [...tasks].sort((left, right) => {
+    const byActivity = taskActivityAt(right) - taskActivityAt(left)
+    if (byActivity !== 0) return byActivity
+    return (right.createdAt || 0) - (left.createdAt || 0)
+  })
+}
+
 export function compactTaskText(value?: string | null, maxLength = 140): string | null {
   const normalized = value?.replace(/\s+/g, " ").trim()
   if (!normalized) return null

@@ -21,7 +21,7 @@ export interface ExecutionPreflightSuccess {
 
 export interface ExecutionPreflightFailure {
   ok: false
-  reason: "cli_unavailable" | "auth_required"
+  reason: "cli_unavailable" | "cli_version_unsupported" | "auth_required"
   effectiveProvider: ProviderId
   message: string
   snapshot: ExecutionPreflightSnapshot
@@ -30,6 +30,35 @@ export interface ExecutionPreflightFailure {
 export type ExecutionPreflightResult = ExecutionPreflightSuccess | ExecutionPreflightFailure
 
 type ExecutionPreflightApi = Pick<C8cApi, "getProviderDiagnostics" | "getClaudeCodeSubscriptionStatus">
+
+/**
+ * Minimum Claude CLI version required by c8c.
+ * Bump this when c8c starts relying on newer CLI features.
+ */
+export const MIN_CLAUDE_CLI_VERSION = "1.0.0"
+
+/**
+ * Extract a semver-ish version string (e.g. "1.0.33") from a raw `claude --version` output line.
+ * Returns null when no version can be parsed.
+ */
+export function parseCliVersion(raw: string | undefined | null): string | null {
+  if (!raw) return null
+  const match = raw.match(/(\d+\.\d+\.\d+)/)
+  return match ? match[1] : null
+}
+
+/**
+ * Compare two semver strings.  Returns negative if a < b, 0 if equal, positive if a > b.
+ */
+export function compareSemver(a: string, b: string): number {
+  const pa = a.split(".").map(Number)
+  const pb = b.split(".").map(Number)
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
 
 export function applyExecutionProviderFeatureFlags(
   provider: ProviderId,
@@ -103,6 +132,20 @@ export function evaluateExecutionStartPreflight(
     }
   }
 
+  // Version gate — only enforced for Claude CLI where we can reliably parse semver.
+  if (effectiveProvider === "claude") {
+    const detectedVersion = parseCliVersion(providerHealth?.version)
+    if (detectedVersion && compareSemver(detectedVersion, MIN_CLAUDE_CLI_VERSION) < 0) {
+      return {
+        ok: false,
+        reason: "cli_version_unsupported",
+        effectiveProvider,
+        message: `Claude CLI version ${detectedVersion} is installed, but c8c requires ${MIN_CLAUDE_CLI_VERSION} or newer. Run: npm update -g @anthropic-ai/claude-code`,
+        snapshot,
+      }
+    }
+  }
+
   // Codex can legitimately return unknown auth state when ACP/API-key-backed flows are available.
   if (effectiveProvider === "codex" && providerAuth?.state === "unknown") {
     return {
@@ -147,7 +190,7 @@ export async function loadExecutionStartPreflight(
 
 export function formatExecutionPreflightTitle(provider: ProviderId, reason: ExecutionPreflightFailure["reason"]): string {
   const providerLabel = PROVIDER_LABELS[provider]
-  return reason === "cli_unavailable"
-    ? `${providerLabel} unavailable`
-    : `${providerLabel} login required`
+  if (reason === "cli_unavailable") return `${providerLabel} unavailable`
+  if (reason === "cli_version_unsupported") return `${providerLabel} update required`
+  return `${providerLabel} login required`
 }

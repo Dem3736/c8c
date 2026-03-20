@@ -7,16 +7,19 @@ import {
   artifactPersistenceErrorAtom,
   artifactPersistenceStatusAtom,
   artifactRecordsAtom,
+  completedAtAtom,
   evalResultsAtom,
   finalContentAtom,
   inspectedNodeIdAtom,
   nodeStatesAtom,
   reportPathAtom,
+  runStartedAtAtom,
   runStatusAtom,
   runOutcomeAtom,
   runtimeMetaAtom,
   surfaceNoticeAtom,
   selectedPastRunAtom,
+  workflowNameAtom,
   workflowHistoryRunsAtom,
   workspaceAtom,
 } from "@/features/execution"
@@ -24,6 +27,9 @@ import {
 export function useOutputPanel() {
   const [runStatus] = useAtom(runStatusAtom)
   const [runOutcome] = useAtom(runOutcomeAtom)
+  const [runStartedAt] = useAtom(runStartedAtAtom)
+  const [completedAt] = useAtom(completedAtAtom)
+  const [executionWorkflowName] = useAtom(workflowNameAtom)
   const [nodeStates] = useAtom(nodeStatesAtom)
   const [activeNodeId] = useAtom(activeNodeIdAtom)
   const [selectedNodeId, setSelectedNodeId] = useAtom(inspectedNodeIdAtom)
@@ -43,6 +49,9 @@ export function useOutputPanel() {
   return {
     runStatus,
     runOutcome,
+    runStartedAt,
+    completedAt,
+    executionWorkflowName,
     nodeStates,
     activeNodeId,
     selectedNodeId,

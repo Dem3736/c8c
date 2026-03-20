@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest"
 import type { ClaudeCodeSubscriptionStatus, ProviderDiagnostics, Workflow } from "@shared/types"
 import {
   applyExecutionProviderFeatureFlags,
+  compareSemver,
   evaluateExecutionStartPreflight,
   formatExecutionPreflightTitle,
   loadExecutionStartPreflight,
+  MIN_CLAUDE_CLI_VERSION,
+  parseCliVersion,
   resolveEffectiveExecutionProvider,
 } from "./preflight"
 
@@ -211,6 +214,154 @@ describe("execution preflight", () => {
 
   it("formats provider-specific titles", () => {
     expect(formatExecutionPreflightTitle("claude", "cli_unavailable")).toBe("Claude Code unavailable")
+    expect(formatExecutionPreflightTitle("claude", "cli_version_unsupported")).toBe("Claude Code update required")
     expect(formatExecutionPreflightTitle("codex", "auth_required")).toBe("OpenAI Codex login required")
+  })
+
+  describe("CLI version checking", () => {
+    it("blocks start when Claude CLI version is below minimum", () => {
+      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+        diagnostics: createDiagnostics({
+          health: {
+            claude: {
+              provider: "claude",
+              available: true,
+              version: "0.1.0",
+              error: null,
+            },
+            codex: {
+              provider: "codex",
+              available: true,
+              error: null,
+            },
+          },
+        }),
+        cliStatus: createCliStatus(),
+      })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe("cli_version_unsupported")
+        expect(result.message).toContain("0.1.0")
+        expect(result.message).toContain(MIN_CLAUDE_CLI_VERSION)
+        expect(result.message).toContain("npm update -g @anthropic-ai/claude-code")
+      }
+    })
+
+    it("allows execution when Claude CLI version meets minimum", () => {
+      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+        diagnostics: createDiagnostics({
+          health: {
+            claude: {
+              provider: "claude",
+              available: true,
+              version: "2.0.0",
+              error: null,
+            },
+            codex: {
+              provider: "codex",
+              available: true,
+              error: null,
+            },
+          },
+        }),
+        cliStatus: createCliStatus(),
+      })
+
+      expect(result.ok).toBe(true)
+    })
+
+    it("allows execution when Claude CLI version cannot be parsed (backwards compat)", () => {
+      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+        diagnostics: createDiagnostics({
+          health: {
+            claude: {
+              provider: "claude",
+              available: true,
+              version: "unknown-version-format",
+              error: null,
+            },
+            codex: {
+              provider: "codex",
+              available: true,
+              error: null,
+            },
+          },
+        }),
+        cliStatus: createCliStatus(),
+      })
+
+      expect(result.ok).toBe(true)
+    })
+
+    it("allows execution when version field is absent (backwards compat)", () => {
+      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+        diagnostics: createDiagnostics(),
+        cliStatus: createCliStatus(),
+      })
+
+      expect(result.ok).toBe(true)
+    })
+
+    it("does not version-check Codex provider", () => {
+      const result = evaluateExecutionStartPreflight(createWorkflow("codex"), {
+        diagnostics: createDiagnostics({
+          health: {
+            claude: {
+              provider: "claude",
+              available: true,
+              error: null,
+            },
+            codex: {
+              provider: "codex",
+              available: true,
+              version: "0.0.1",
+              error: null,
+            },
+          },
+        }),
+        cliStatus: null,
+      })
+
+      expect(result.ok).toBe(true)
+    })
+  })
+
+  describe("parseCliVersion", () => {
+    it("extracts semver from plain version string", () => {
+      expect(parseCliVersion("1.0.33")).toBe("1.0.33")
+    })
+
+    it("extracts semver from prefixed string", () => {
+      expect(parseCliVersion("claude 1.0.33")).toBe("1.0.33")
+    })
+
+    it("extracts semver from verbose output", () => {
+      expect(parseCliVersion("Claude Code v2.1.0 (build abc123)")).toBe("2.1.0")
+    })
+
+    it("returns null for unparseable strings", () => {
+      expect(parseCliVersion("unknown")).toBeNull()
+      expect(parseCliVersion("")).toBeNull()
+      expect(parseCliVersion(undefined)).toBeNull()
+      expect(parseCliVersion(null)).toBeNull()
+    })
+  })
+
+  describe("compareSemver", () => {
+    it("returns 0 for equal versions", () => {
+      expect(compareSemver("1.0.0", "1.0.0")).toBe(0)
+    })
+
+    it("returns negative when a < b", () => {
+      expect(compareSemver("0.9.0", "1.0.0")).toBeLessThan(0)
+      expect(compareSemver("1.0.0", "1.0.1")).toBeLessThan(0)
+      expect(compareSemver("1.0.9", "1.1.0")).toBeLessThan(0)
+    })
+
+    it("returns positive when a > b", () => {
+      expect(compareSemver("2.0.0", "1.0.0")).toBeGreaterThan(0)
+      expect(compareSemver("1.1.0", "1.0.9")).toBeGreaterThan(0)
+    })
   })
 })

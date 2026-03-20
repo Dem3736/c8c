@@ -58,9 +58,47 @@ function formatRunCompletedAt(run: RunResult): string {
   return completedDate.toLocaleString()
 }
 
+function formatDurationMs(durationMs: number): string {
+  if (durationMs < 1_000) return `${durationMs}ms`
+  const seconds = durationMs / 1_000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainSeconds}s`
+}
+
+function formatDateShort(timestamp: number): string {
+  const d = new Date(timestamp)
+  if (Number.isNaN(d.getTime())) return "n/a"
+  return d.toLocaleDateString("en-CA") // YYYY-MM-DD
+}
+
+function derivePrimaryModel(nodeStates: Record<string, NodeState>): string | null {
+  const modelCounts = new Map<string, number>()
+  for (const state of Object.values(nodeStates)) {
+    const modelId = state.meta?.model_id
+    if (modelId) {
+      modelCounts.set(modelId, (modelCounts.get(modelId) || 0) + 1)
+    }
+  }
+  if (modelCounts.size === 0) return null
+  let best = ""
+  let bestCount = 0
+  for (const [model, count] of modelCounts) {
+    if (count > bestCount) {
+      best = model
+      bestCount = count
+    }
+  }
+  return best
+}
+
 type UseOutputPanelDerivedStateParams = {
   runStatus: string
   runOutcome: string | null
+  runStartedAt: number | null
+  completedAt: number | null
+  executionWorkflowName: string
   nodeStates: Record<string, NodeState>
   activeNodeId: string | null
   inspectedNodeId: string | null
@@ -87,6 +125,9 @@ type UseOutputPanelDerivedStateParams = {
 export function useOutputPanelDerivedState({
   runStatus,
   runOutcome,
+  runStartedAt,
+  completedAt,
+  executionWorkflowName,
   nodeStates,
   activeNodeId,
   inspectedNodeId,
@@ -432,6 +473,59 @@ export function useOutputPanelDerivedState({
     ),
   )
 
+  // Build copy text with meta-header for sharing
+  const resultCopyTextWithHeader = (() => {
+    if (isDisplayedResultEmpty) return displayedResultContent
+
+    const flowName = reviewingRunHistory
+      ? (selectedReviewRun?.workflowName || workflow.name || "Flow")
+      : (executionWorkflowName || workflow.name || "Flow")
+
+    const metaParts: string[] = []
+
+    // Date
+    const dateTimestamp = reviewingRunHistory
+      ? selectedReviewRun?.completedAt
+      : completedAt
+    if (dateTimestamp && dateTimestamp > 0) {
+      metaParts.push(`Date: ${formatDateShort(dateTimestamp)}`)
+    }
+
+    // Duration
+    if (reviewingRunHistory && selectedReviewRun) {
+      if (typeof selectedReviewRun.durationMs === "number" && selectedReviewRun.durationMs >= 0) {
+        metaParts.push(`Duration: ${formatDurationMs(selectedReviewRun.durationMs)}`)
+      } else if (selectedReviewRun.completedAt > 0 && selectedReviewRun.startedAt > 0) {
+        const delta = selectedReviewRun.completedAt - selectedReviewRun.startedAt
+        if (delta > 0) metaParts.push(`Duration: ${formatDurationMs(delta)}`)
+      }
+    } else if (completedAt && completedAt > 0 && runStartedAt && runStartedAt > 0) {
+      const delta = completedAt - runStartedAt
+      if (delta > 0) metaParts.push(`Duration: ${formatDurationMs(delta)}`)
+    }
+
+    // Cost
+    const cost = reviewingRunHistory
+      ? (selectedReviewRun?.totalCost ?? accumulatedCost)
+      : accumulatedCost
+    if (cost > 0) {
+      metaParts.push(`Cost: ${formatCost(cost)}`)
+    }
+
+    // Model
+    const model = derivePrimaryModel(displayNodeStates)
+    if (model) {
+      metaParts.push(`Model: ${model}`)
+    }
+
+    const metaLine = metaParts.join(" | ")
+    const header = metaLine
+      ? `# ${flowName} \u2014 Result\n${metaLine}\n\n---\n\n`
+      : `# ${flowName} \u2014 Result\n\n---\n\n`
+
+    return header + displayedResultContent
+  })()
+
   return {
     latestPastRun,
     selectedReviewRun,
@@ -454,6 +548,7 @@ export function useOutputPanelDerivedState({
     budgetWarningClassName: budgetProgressRatio >= 0.9 ? "text-status-danger" : "text-status-warning",
     hasResult,
     displayedResultContent,
+    resultCopyTextWithHeader,
     isDisplayedResultEmpty,
     canCopyResult,
     hasMultipleResultOptions,

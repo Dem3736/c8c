@@ -127,6 +127,13 @@ describe("case-summary", () => {
     expect(index.caseByWorkflowPath.get("/tmp/project/implement.flow.yaml")).toBe("case:seller-photo-upload")
     expect(index.latestArtifactByCaseId.get("case:seller-photo-upload")?.title).toBe("Feature Spec")
     expect(index.cases[0]?.lineageLabels).toEqual(["Review", "Plan", "Implement"])
+    expect(index.cases[0]).toMatchObject({
+      continuationStatus: "ready",
+      nextStepLabel: "Apply approved changes",
+      lastGate: {
+        summaryText: "Approval recorded. Review can continue.",
+      },
+    })
   })
 
   it("keeps durable case identity even when only case state is available", () => {

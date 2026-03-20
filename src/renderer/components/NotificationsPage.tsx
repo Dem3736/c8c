@@ -38,6 +38,7 @@ import type { ArtifactRecord, CaseStateRecord, HumanTaskField, HumanTaskSnapshot
 import {
   buildInitialHumanTaskAnswers,
   hasMissingRequiredTaskAnswers,
+  sortHumanTasksByActivity,
   type TaskStageMeta,
   taskSelectionKey,
   taskStageKey,
@@ -209,7 +210,7 @@ export function NotificationsPage() {
   )
 
   const visibleHumanTasks = useMemo(() => {
-    return humanTasks.filter((task) => {
+    const filteredTasks = humanTasks.filter((task) => {
       const taskCaseId = caseIdByTaskKey.get(taskSelectionKey(task)) || null
       if (selectedFactoryId) {
         const taskCase = taskCaseId ? caseIndex.caseById.get(taskCaseId) || null : null
@@ -220,6 +221,7 @@ export function NotificationsPage() {
       }
       return true
     })
+    return sortHumanTasksByActivity(filteredTasks)
   }, [caseIdByTaskKey, caseIndex.caseById, humanTasks, selectedCaseId, selectedFactoryId])
 
   const selectedCaseOption = useMemo(

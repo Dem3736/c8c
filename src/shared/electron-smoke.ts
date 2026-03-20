@@ -16,6 +16,8 @@ export const ELECTRON_SMOKE_SCENARIOS = [
   "quick-switch-rail",
   "canvas-add-recenter-delete",
   "approval-dialog",
+  "create-ready-continuation",
+  "blocked-relaunch",
 ] as const
 
 export type ElectronSmokeScenario = typeof ELECTRON_SMOKE_SCENARIOS[number]
@@ -23,6 +25,17 @@ export type ElectronSmokeScenario = typeof ELECTRON_SMOKE_SCENARIOS[number]
 export function isElectronSmokeScenario(value: string): value is ElectronSmokeScenario {
   return ELECTRON_SMOKE_SCENARIOS.includes(value as ElectronSmokeScenario)
 }
+
+export type ElectronSmokeMainView =
+  | "thread"
+  | "factory"
+  | "workflow_create"
+  | "skills"
+  | "templates"
+  | "artifacts"
+  | "settings"
+  | "inbox"
+  | "onboarding"
 
 export interface ElectronSmokeUiState {
   mainView: string
@@ -66,6 +79,11 @@ export interface ElectronSmokeWorkflowOpenInput {
   projectPath: string
   workflowPath: string
   viewMode?: ElectronSmokeViewMode
+}
+
+export interface ElectronSmokeMainViewInput {
+  mainView: ElectronSmokeMainView
+  projectPath?: string | null
 }
 
 export type ElectronSmokeExecutionRunStatus =
@@ -112,6 +130,7 @@ export interface ElectronSmokeExecutionSeedInput {
 export interface ElectronRendererSmokeHarness {
   getUiState: () => ElectronSmokeUiState
   openWorkflow?: (input: ElectronSmokeWorkflowOpenInput) => Promise<boolean> | boolean
+  setMainView?: (input: ElectronSmokeMainViewInput) => Promise<boolean> | boolean
   seedExecutionState?: (input: ElectronSmokeExecutionSeedInput) => Promise<boolean> | boolean
   getCanvasState?: () => ElectronSmokeCanvasState | null
   setCanvasViewport?: (viewport: ElectronSmokeCanvasViewport) => Promise<boolean> | boolean
@@ -179,6 +198,22 @@ export type ElectronSmokeScenarioInvariants =
       workflowName: string
       dialogOpened: boolean
       dialogClosedAfterShortcut: boolean
+    }
+  | {
+      kind: "create-ready-continuation"
+      title: string
+      readinessText: string
+      actionLabel: string
+      latestCheckText: string | null
+    }
+  | {
+      kind: "blocked-relaunch"
+      workflowName: string
+      createActionLabel: string
+      blockedHeaderVisible: boolean
+      blockedTaskVisible: boolean
+      statusText: string
+      reasonText: string
     }
 
 export interface ElectronSmokeScenarioReport {

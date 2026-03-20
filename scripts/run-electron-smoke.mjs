@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const SCENARIOS = [
@@ -13,6 +13,8 @@ const SCENARIOS = [
   "quick-switch-rail",
   "canvas-add-recenter-delete",
   "approval-dialog",
+  "create-ready-continuation",
+  "blocked-relaunch",
 ]
 
 const require = createRequire(import.meta.url)
@@ -188,6 +190,320 @@ async function writeWorkflowFixture(projectPath, fileName, workflow, updatedAtMs
   return workflowPath
 }
 
+function sanitizeTaskSegment(value) {
+  return value.replace(/[^a-zA-Z0-9-]/g, "_")
+}
+
+async function writeJsonFixture(filePath, payload, updatedAtMs) {
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(payload, null, 2))
+  if (updatedAtMs) {
+    const updatedAt = new Date(updatedAtMs)
+    await utimes(filePath, updatedAt, updatedAt)
+  }
+}
+
+async function writeTextFixture(filePath, content, updatedAtMs) {
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, content, "utf-8")
+  if (updatedAtMs) {
+    const updatedAt = new Date(updatedAtMs)
+    await utimes(filePath, updatedAt, updatedAt)
+  }
+}
+
+async function writeRunWorkspaceFixture(projectPath, {
+  runId,
+  workflowName,
+  workflowPath,
+  status,
+  updatedAtMs,
+  reportBody,
+}) {
+  const workspace = join(projectPath, ".c8c", "runs", runId)
+  const reportPath = join(workspace, "report.md")
+  await mkdir(workspace, { recursive: true })
+  await writeTextFixture(reportPath, reportBody, updatedAtMs)
+  await writeJsonFixture(join(workspace, "run-result.json"), {
+    runId,
+    status,
+    workflowName,
+    workflowPath,
+    startedAt: updatedAtMs - 5_000,
+    completedAt: updatedAtMs,
+    reportPath,
+    workspace,
+  }, updatedAtMs)
+  return { workspace, reportPath }
+}
+
+async function writeArtifactFixture(projectPath, {
+  baseName,
+  id,
+  kind,
+  title,
+  description,
+  workspace,
+  runId,
+  templateId,
+  templateName,
+  workflowPath,
+  workflowName,
+  caseId,
+  caseLabel,
+  factoryId,
+  factoryLabel,
+  updatedAtMs,
+  content,
+}) {
+  const artifactsDir = join(projectPath, ".c8c", "artifacts")
+  const contentPath = join(artifactsDir, `${baseName}.md`)
+  const metadataPath = join(artifactsDir, `${baseName}.json`)
+  const relativePath = `.c8c/artifacts/${baseName}.md`
+  const createdAt = updatedAtMs - 2_000
+
+  const metadata = {
+    version: 1,
+    id,
+    kind,
+    title,
+    description,
+    factoryId,
+    factoryLabel,
+    caseId,
+    caseLabel,
+    projectPath,
+    workspace,
+    runId,
+    templateId,
+    templateName,
+    workflowPath,
+    workflowName,
+    relativePath,
+    contentPath,
+    metadataPath,
+    createdAt,
+    updatedAt: updatedAtMs,
+    contract: {
+      kind,
+      title,
+      ...(description ? { description } : {}),
+    },
+  }
+
+  await writeTextFixture(contentPath, content, updatedAtMs)
+  await writeJsonFixture(metadataPath, metadata, updatedAtMs)
+  return metadata
+}
+
+async function writeCaseStateFixture(projectPath, fileName, record, updatedAtMs) {
+  await writeJsonFixture(
+    join(projectPath, ".c8c", "case-state", `${fileName}.json`),
+    {
+      version: 1,
+      ...record,
+    },
+    updatedAtMs,
+  )
+}
+
+async function writeApprovalTaskFixture({
+  workspace,
+  runId,
+  workflowName,
+  workflowPath,
+  projectPath,
+  nodeId,
+  title,
+  summary,
+  instructions,
+  allowEdit,
+  updatedAtMs,
+}) {
+  const taskId = `approval-${sanitizeTaskSegment(nodeId)}`
+  const taskDir = join(workspace, "human-tasks", taskId)
+  const request = {
+    version: 1,
+    kind: "approval",
+    title,
+    instructions,
+    summary,
+    fields: [
+      {
+        id: "approved",
+        type: "boolean",
+        label: "Approve changes",
+        required: true,
+      },
+    ],
+    defaults: { approved: true },
+    metadata: {
+      generatedByNodeId: nodeId,
+      priority: "normal",
+      allowEdit,
+    },
+  }
+  const state = {
+    version: 1,
+    taskId,
+    chainId: workspace,
+    sourceRunId: runId,
+    kind: "approval",
+    checkpointKind: "approval",
+    status: "open",
+    workspace,
+    nodeId,
+    workflowName,
+    workflowPath,
+    projectPath,
+    title,
+    instructions,
+    summary,
+    allowEdit,
+    requestHash: "smoke-fixture",
+    responseRevision: 0,
+    createdAt: updatedAtMs - 1_000,
+    updatedAt: updatedAtMs,
+  }
+
+  await mkdir(join(taskDir, "responses"), { recursive: true })
+  await writeJsonFixture(join(taskDir, "request.json"), request, updatedAtMs)
+  await writeJsonFixture(join(taskDir, "state.json"), state, updatedAtMs)
+}
+
+async function seedCreateReadyContinuationProject(projectPath, updatedAtMs) {
+  const caseId = "case:delivery-foundation:checkout-polish"
+  const workflowName = "Delivery Lab: Research the Change"
+  const { workspace } = await writeRunWorkspaceFixture(projectPath, {
+    runId: "run-ready-research",
+    workflowName,
+    workflowPath: join(projectPath, ".c8c", "delivery-research-phase.chain"),
+    status: "completed",
+    updatedAtMs,
+    reportBody: "# Research Pack\n\nCheckout polish constraints and open questions.\n",
+  })
+
+  const artifact = await writeArtifactFixture(projectPath, {
+    baseName: "run-ready-research-research-pack",
+    id: "run-ready-research:research_pack",
+    kind: "research_pack",
+    title: "Research Pack",
+    description: "Evidence and constraints for checkout polish.",
+    workspace,
+    runId: "run-ready-research",
+    templateId: "delivery-research-phase",
+    templateName: workflowName,
+    workflowPath: join(projectPath, ".c8c", "delivery-research-phase.chain"),
+    workflowName,
+    caseId,
+    caseLabel: "Checkout polish",
+    factoryId: "factory:delivery-foundation",
+    factoryLabel: "Delivery Lab",
+    updatedAtMs,
+    content: "# Research Pack\n\nEvidence and risks for checkout polish.\n",
+  })
+
+  await writeCaseStateFixture(projectPath, "checkout-polish-ready", {
+    caseId,
+    projectPath,
+    workLabel: "Checkout polish",
+    caseLabel: "Checkout polish",
+    factoryId: "factory:delivery-foundation",
+    factoryLabel: "Delivery Lab",
+    workflowPath: artifact.workflowPath,
+    workflowName,
+    continuationStatus: "ready",
+    nextStepLabel: "Plan the Change",
+    artifactIds: [artifact.id],
+    lastGate: {
+      family: "review_check",
+      outcome: "passed",
+      summaryText: "Research pack saved. Planning can continue.",
+      reasonText: "The latest research pass completed successfully.",
+      stepLabel: "Plan the Change",
+      happenedAt: updatedAtMs,
+    },
+    createdAt: updatedAtMs - 2_000,
+    updatedAt: updatedAtMs,
+  }, updatedAtMs)
+}
+
+async function seedBlockedRelaunchProject(projectPath, updatedAtMs) {
+  const workflowName = "Blocked approval flow"
+  const workflowPath = await writeWorkflowFixture(
+    projectPath,
+    "blocked-approval-flow",
+    buildApprovalWorkflow(workflowName),
+    updatedAtMs - 500,
+  )
+  const caseId = "case:delivery-foundation:checkout-polish"
+  const { workspace } = await writeRunWorkspaceFixture(projectPath, {
+    runId: "run-blocked-approval",
+    workflowName,
+    workflowPath,
+    status: "blocked",
+    updatedAtMs,
+    reportBody: "# Verification Report\n\nVerification is waiting on approval.\n",
+  })
+
+  const artifact = await writeArtifactFixture(projectPath, {
+    baseName: "run-blocked-approval-verification-report",
+    id: "run-blocked-approval:verification_report",
+    kind: "verification_report",
+    title: "Verification Report",
+    description: "Verification findings for checkout polish.",
+    workspace,
+    runId: "run-blocked-approval",
+    templateId: "delivery-verify-phase",
+    templateName: "Delivery Lab: Verify the Change",
+    workflowPath,
+    workflowName,
+    caseId,
+    caseLabel: "Checkout polish",
+    factoryId: "factory:delivery-foundation",
+    factoryLabel: "Delivery Lab",
+    updatedAtMs,
+    content: "# Verification Report\n\nCheckout polish is ready for approval.\n",
+  })
+
+  await writeCaseStateFixture(projectPath, "checkout-polish-blocked", {
+    caseId,
+    projectPath,
+    workLabel: "Checkout polish",
+    caseLabel: "Checkout polish",
+    factoryId: "factory:delivery-foundation",
+    factoryLabel: "Delivery Lab",
+    workflowPath,
+    workflowName,
+    continuationStatus: "awaiting_approval",
+    artifactIds: [artifact.id],
+    lastGate: {
+      family: "approval",
+      outcome: "awaiting_human",
+      summaryText: "Approval pending. Review block before verification continues.",
+      reasonText: "Waiting for an approval decision before the flow can continue.",
+      stepLabel: "Verify the Change",
+      happenedAt: updatedAtMs,
+    },
+    createdAt: updatedAtMs - 2_000,
+    updatedAt: updatedAtMs,
+  }, updatedAtMs)
+
+  await writeApprovalTaskFixture({
+    workspace,
+    runId: "run-blocked-approval",
+    workflowName,
+    workflowPath,
+    projectPath,
+    nodeId: "approval",
+    title: "Review block",
+    summary: "Confirm whether the checkout polish is ready for verification.",
+    instructions: "Approve the verification report before this flow can continue.",
+    allowEdit: false,
+    updatedAtMs: updatedAtMs + 250,
+  })
+}
+
 async function seedScenarioProjects(workspaceDir, scenario) {
   if (scenario === "launch-empty" || scenario === "command-palette-toggle" || scenario === "settings-navigation") {
     return []
@@ -209,6 +525,16 @@ async function seedScenarioProjects(workspaceDir, scenario) {
 
   if (scenario === "canvas-add-recenter-delete") {
     await writeWorkflowFixture(projectAlpha, "canvas-flow", buildLinearWorkflow("Canvas flow", "research/canvas"), baseTime + 1_000)
+    return [projectAlpha]
+  }
+
+  if (scenario === "create-ready-continuation") {
+    await seedCreateReadyContinuationProject(projectAlpha, baseTime + 3_000)
+    return [projectAlpha]
+  }
+
+  if (scenario === "blocked-relaunch") {
+    await seedBlockedRelaunchProject(projectAlpha, baseTime + 4_000)
     return [projectAlpha]
   }
 

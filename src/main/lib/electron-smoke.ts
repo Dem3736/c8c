@@ -13,6 +13,7 @@ import {
   type ElectronSmokeCanvasViewport,
   type ElectronSmokeConsoleEntry,
   type ElectronSmokeExecutionSeedInput,
+  type ElectronSmokeMainViewInput,
   type ElectronSmokeScenario,
   type ElectronSmokeScenarioInvariants,
   type ElectronSmokeScenarioReport,
@@ -135,6 +136,48 @@ async function executeRendererScript<T>(window: BrowserWindow, script: string): 
   return window.webContents.executeJavaScript(script, true) as Promise<T>
 }
 
+async function readElementText(
+  window: BrowserWindow,
+  selector: string,
+): Promise<string | null> {
+  return executeRendererScript<string | null>(
+    window,
+    `(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!(element instanceof HTMLElement)) return null;
+      const text = (element.innerText || element.textContent || "")
+        .replace(/\\s+/g, " ")
+        .trim();
+      return text || null;
+    })()`,
+  )
+}
+
+async function waitForElementText(
+  window: BrowserWindow,
+  label: string,
+  selector: string,
+  predicate: (text: string) => boolean,
+  timeoutMs = 8_000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+  let lastText: string | null = null
+
+  while (Date.now() < deadline) {
+    if (window.isDestroyed()) {
+      throw new Error(`Electron smoke window closed while waiting for ${label}.`)
+    }
+
+    lastText = await readElementText(window, selector)
+    if (lastText && predicate(lastText)) {
+      return lastText
+    }
+    await sleep(120)
+  }
+
+  throw new Error(`Timed out waiting for ${label}.${lastText ? ` Last text: ${lastText}` : ""}`)
+}
+
 async function waitForUiState(
   window: BrowserWindow,
   label: string,
@@ -182,7 +225,7 @@ async function readElementRect(
 
 async function waitForRendererSmokeMethod(
   window: BrowserWindow,
-  methodName: "openWorkflow" | "seedExecutionState" | "getCanvasState" | "setCanvasViewport",
+  methodName: "openWorkflow" | "setMainView" | "seedExecutionState" | "getCanvasState" | "setCanvasViewport",
   timeoutMs = 15_000,
 ) {
   const deadline = Date.now() + timeoutMs
@@ -210,8 +253,8 @@ async function waitForRendererSmokeMethod(
 
 async function callRendererSmokeMethod<T>(
   window: BrowserWindow,
-  methodName: "openWorkflow" | "seedExecutionState" | "getCanvasState" | "setCanvasViewport",
-  input?: ElectronSmokeWorkflowOpenInput | ElectronSmokeExecutionSeedInput | ElectronSmokeCanvasViewport,
+  methodName: "openWorkflow" | "setMainView" | "seedExecutionState" | "getCanvasState" | "setCanvasViewport",
+  input?: ElectronSmokeWorkflowOpenInput | ElectronSmokeMainViewInput | ElectronSmokeExecutionSeedInput | ElectronSmokeCanvasViewport,
 ) {
   await waitForRendererSmokeMethod(window, methodName)
   const invocation = input === undefined
@@ -413,6 +456,11 @@ async function clickElementByText(
 async function openSeededWorkflow(window: BrowserWindow, input: ElectronSmokeWorkflowOpenInput) {
   const result = await callRendererSmokeMethod<boolean>(window, "openWorkflow", input)
   assertSmoke(result.ok && result.value !== false, `Failed to open smoke flow ${input.workflowPath}.`)
+}
+
+async function setSmokeMainView(window: BrowserWindow, input: ElectronSmokeMainViewInput) {
+  const result = await callRendererSmokeMethod<boolean>(window, "setMainView", input)
+  assertSmoke(result.ok && result.value !== false, `Failed to open smoke main view ${input.mainView}.`)
 }
 
 async function seedSmokeExecutionState(window: BrowserWindow, input: ElectronSmokeExecutionSeedInput) {
@@ -810,6 +858,145 @@ async function assertApprovalDialogScenario(
   }
 }
 
+async function assertCreateReadyContinuationScenario(
+  window: BrowserWindow,
+  assertions: ElectronSmokeAssertion[],
+): Promise<ScenarioExecutionResult> {
+  const seed = resolveElectronSmokeSeed()
+  assertSmoke(seed.selectedProject, "create-ready-continuation requires a selected project.")
+
+  await waitForSeededProjectReady(window, seed.selectedProject)
+  await setSmokeMainView(window, {
+    mainView: "workflow_create",
+    projectPath: seed.selectedProject,
+  })
+
+  const state = await waitForUiState(
+    window,
+    "create page visible",
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "workflow_create"
+      && uiState.selectedProject === seed.selectedProject,
+  )
+
+  const continuationText = await waitForElementText(
+    window,
+    "ready continuation card",
+    '[aria-label="Continue saved work"]',
+    (text) =>
+      text.includes("Checkout polish")
+      && text.includes("Ready to continue to Plan the Change."),
+  )
+  assertSmoke(
+    continuationText.includes("Latest check: Research pack saved. Planning can continue."),
+    "Ready continuation should show the durable latest check.",
+  )
+  assertSmoke(
+    continuationText.includes("Continue work"),
+    "Ready continuation should expose Continue work.",
+  )
+  recordAssertion(assertions, "Opened create page from persisted project state")
+  recordAssertion(assertions, "Rendered ready continuation from durable result and case state", "Checkout polish -> Plan the Change")
+
+  return {
+    uiState: state,
+    invariants: {
+      kind: "create-ready-continuation",
+      title: "Checkout polish",
+      readinessText: "Ready to continue to Plan the Change.",
+      actionLabel: "Continue work",
+      latestCheckText: "Research pack saved. Planning can continue.",
+    },
+  }
+}
+
+async function assertBlockedRelaunchScenario(
+  window: BrowserWindow,
+  assertions: ElectronSmokeAssertion[],
+): Promise<ScenarioExecutionResult> {
+  const { projectPath, workflows } = await resolveSeededProjectWorkflows("blocked-relaunch", 1)
+  const blockedWorkflow = findWorkflowByName(workflows, "Blocked approval flow") || workflows[0]
+
+  await waitForSeededProjectReady(window, projectPath, [blockedWorkflow.name])
+  await setSmokeMainView(window, {
+    mainView: "workflow_create",
+    projectPath,
+  })
+  await waitForUiState(
+    window,
+    "blocked create page visible",
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "workflow_create"
+      && uiState.selectedProject === projectPath,
+  )
+
+  const createContinuationText = await waitForElementText(
+    window,
+    "blocked continuation card",
+    '[aria-label="Continue saved work"]',
+    (text) =>
+      text.includes("Checkout polish")
+      && text.includes("Open approval")
+      && text.includes("Waiting on you"),
+  )
+  assertSmoke(
+    createContinuationText.includes("Latest check: Approval pending. Review block before verification continues."),
+    "Blocked continuation should show the durable approval check.",
+  )
+  recordAssertion(assertions, "Rendered blocked continuation on create page", "Checkout polish waiting on approval")
+
+  await clickElementByText(window, "Open approval", "button")
+  const state = await waitForUiState(
+    window,
+    "blocked flow shell open",
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "thread"
+      && uiState.currentWorkflowName === blockedWorkflow.name
+      && uiState.selectedWorkflowPath === blockedWorkflow.path
+      && uiState.viewMode === "list",
+  )
+
+  const headerText = await waitForElementText(
+    window,
+    "blocked resume header",
+    '[data-workflow-resume-header="true"]',
+    (text) =>
+      text.includes("Why paused")
+      && text.includes("Confirm whether the checkout polish is ready for verification."),
+  )
+  assertSmoke(
+    headerText.includes("Blocked: awaiting your approval"),
+    "Blocked resume header should explain the approval pause.",
+  )
+
+  const taskPanelText = await waitForElementText(
+    window,
+    "blocked task panel",
+    '[data-blocked-task-panel="true"]',
+    (text) =>
+      text.includes("Approve and continue run")
+      && text.includes("Reject"),
+  )
+  recordAssertion(assertions, "Opened blocked work into the same flow shell", blockedWorkflow.name)
+  recordAssertion(assertions, "Rendered embedded blocked task panel", "Approve and continue run")
+
+  return {
+    uiState: state,
+    invariants: {
+      kind: "blocked-relaunch",
+      workflowName: blockedWorkflow.name,
+      createActionLabel: "Open approval",
+      blockedHeaderVisible: headerText.includes("Why paused"),
+      blockedTaskVisible: taskPanelText.includes("Approve and continue run"),
+      statusText: "Blocked: awaiting your approval",
+      reasonText: "Confirm whether the checkout polish is ready for verification.",
+    },
+  }
+}
+
 async function executeScenario(
   scenario: ElectronSmokeScenario,
   window: BrowserWindow,
@@ -833,7 +1020,13 @@ async function executeScenario(
   if (scenario === "canvas-add-recenter-delete") {
     return assertCanvasAddRecenterDeleteScenario(window, assertions)
   }
-  return assertApprovalDialogScenario(window, assertions)
+  if (scenario === "approval-dialog") {
+    return assertApprovalDialogScenario(window, assertions)
+  }
+  if (scenario === "create-ready-continuation") {
+    return assertCreateReadyContinuationScenario(window, assertions)
+  }
+  return assertBlockedRelaunchScenario(window, assertions)
 }
 
 export async function prepareElectronSmokeLaunchState(
@@ -884,6 +1077,13 @@ function focusSelectorsForScenario(scenario: ElectronSmokeScenario) {
       return [{ label: "workflow-canvas", selector: ".workflow-canvas" }]
     case "approval-dialog":
       return [{ label: "approval-dialog", selector: '[role="dialog"]' }]
+    case "create-ready-continuation":
+      return [{ label: "create-ready-continuation", selector: '[aria-label="Continue saved work"]' }]
+    case "blocked-relaunch":
+      return [
+        { label: "blocked-resume-header", selector: '[data-workflow-resume-header="true"]' },
+        { label: "blocked-task-panel", selector: '[data-blocked-task-panel="true"]' },
+      ]
     default:
       return [{ label: "application-shell", selector: '[role="application"][aria-label="c8c"]' }]
   }

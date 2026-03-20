@@ -13,6 +13,8 @@ describe("electron-smoke", () => {
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "command-palette-toggle" })).toBe("command-palette-toggle")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "settings-navigation" })).toBe("settings-navigation")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "approval-dialog" })).toBe("approval-dialog")
+    expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "create-ready-continuation" })).toBe("create-ready-continuation")
+    expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "blocked-relaunch" })).toBe("blocked-relaunch")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "unknown" })).toBeNull()
   })
 

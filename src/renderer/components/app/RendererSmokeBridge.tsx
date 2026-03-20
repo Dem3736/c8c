@@ -18,6 +18,7 @@ import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { createEmptyWorkflowExecutionState } from "@/lib/workflow-execution"
 import type {
   ElectronSmokeExecutionSeedInput,
+  ElectronSmokeMainViewInput,
   ElectronSmokeUiState,
   ElectronSmokeWorkflowOpenInput,
 } from "@shared/electron-smoke"
@@ -92,6 +93,26 @@ export function RendererSmokeBridge({
     setWorkflows,
   ])
 
+  const setSmokeMainView = useCallback(async ({
+    mainView: nextMainView,
+    projectPath,
+  }: ElectronSmokeMainViewInput) => {
+    if (projectPath) {
+      setProjects((previous) => (previous.includes(projectPath) ? previous : [...previous, projectPath]))
+      setSelectedProject(projectPath)
+    }
+    if (nextMainView === "thread" || nextMainView === "workflow_create") {
+      setViewMode("list")
+    }
+    setMainView(nextMainView)
+    return true
+  }, [
+    setMainView,
+    setProjects,
+    setSelectedProject,
+    setViewMode,
+  ])
+
   const seedExecutionState = useCallback(async ({
     workflowKey,
     state,
@@ -152,12 +173,14 @@ export function RendererSmokeBridge({
       settingsPageVisible: mainView === "settings" && hasGlobalSettingsHeading(),
     })
     harness.openWorkflow = openWorkflow
+    harness.setMainView = setSmokeMainView
     harness.seedExecutionState = seedExecutionState
 
     return () => {
       if (window.__C8C_RENDERER_SMOKE__ !== harness) return
       delete harness.getUiState
       delete harness.openWorkflow
+      delete harness.setMainView
       delete harness.seedExecutionState
     }
   }, [
@@ -172,6 +195,7 @@ export function RendererSmokeBridge({
     mainView,
     openWorkflow,
     projects.length,
+    setSmokeMainView,
     seedExecutionState,
     selectedProject,
     selectedWorkflowPath,

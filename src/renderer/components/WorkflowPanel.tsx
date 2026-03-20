@@ -88,6 +88,7 @@ import { buildRunProgressSummary, formatElapsedTime } from "@/lib/run-progress"
 import { ProcessSpine } from "@/components/ui/process-spine"
 import { addSkillNodeToWorkflow } from "@/lib/workflow-mutations"
 import type { DiscoveredSkill } from "@shared/types"
+import { CancelFlowConfirmDialog } from "./workflow-panel/CancelFlowConfirmDialog"
 import { useWorkflowPanelResources } from "./workflow-panel/useWorkflowPanelResources"
 import { useWorkflowPanelEntryState } from "./workflow-panel/useWorkflowPanelEntryState"
 import { WorkflowPanelOverlays } from "./workflow-panel/WorkflowPanelOverlays"
@@ -161,6 +162,7 @@ export function WorkflowPanel() {
   const [, setSkillPickerOpen] = useAtom(skillPickerOpenAtom)
   const [, setSelectedNodeId] = useAtom(selectedNodeIdAtom)
   const previousRunStatusRef = useRef(runStatus)
+  const lastRunInputRef = useRef(inputValue)
   const completionSurfaceRef = useRef<string | null>(null)
   const pendingListAutoScrollRef = useRef(false)
   const idleReviewAutoScrollKeyRef = useRef<string | null>(null)
@@ -168,6 +170,22 @@ export function WorkflowPanel() {
   const [stageStartGateOpen, setStageStartGateOpen] = useState(false)
   const [pendingRunMode, setPendingRunMode] = useState<PermissionMode>("edit")
   const [pendingAutoRunPath, setPendingAutoRunPath] = useState<string | null>(null)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+
+  const LONG_RUNNING_THRESHOLD_MS = 2 * 60 * 1000
+
+  const handleCancelRequest = useCallback(() => {
+    if (runStartedAt && Date.now() - runStartedAt >= LONG_RUNNING_THRESHOLD_MS) {
+      setCancelConfirmOpen(true)
+      return
+    }
+    void cancel()
+  }, [cancel, runStartedAt])
+
+  const handleConfirmCancel = useCallback(() => {
+    setCancelConfirmOpen(false)
+    void cancel()
+  }, [cancel])
 
   useWorkflowReset()
   useWorkflowValidation()
@@ -350,8 +368,12 @@ export function WorkflowPanel() {
     if (runStatus !== "running") {
       pendingListAutoScrollRef.current = false
     }
+    // Snapshot the input when a run begins so "New run" can restore it
+    if (previousRunStatus === "idle" && runStatus !== "idle") {
+      lastRunInputRef.current = inputValue
+    }
     previousRunStatusRef.current = runStatus
-  }, [runStatus])
+  }, [inputValue, runStatus])
 
   const clearWorkflowOpenState = useCallback(() => {
     setWorkflowOpenState({
@@ -731,9 +753,15 @@ export function WorkflowPanel() {
   }, [hasResult, openResult, runId, runOutcome, runStatus, selectedWorkflowPath, viewMode])
 
   const handleStartNewRun = () => {
+    // Preserve the previous input so the user can edit rather than retype
+    const previousInput = inputValue || lastRunInputRef.current
     if (runStatus !== "idle") {
       resetExecution()
       setOutputTabRequest(null)
+    }
+    // Restore the input value in case execution reset or any other effect cleared it
+    if (!inputValue && previousInput) {
+      setInputValue(previousInput)
     }
     setPrepareNewRun(true)
     setViewMode("list")
@@ -861,7 +889,7 @@ export function WorkflowPanel() {
   }
 
   const blockedTaskPanel = showBlockedResumeHeader && selectedResumeTask ? (
-    <div ref={blockedTaskPanelRef}>
+    <div ref={blockedTaskPanelRef} data-blocked-task-panel="true">
       <SelectedTaskPanel
         selectedTask={selectedResumeTask}
         taskLoading={false}
@@ -903,7 +931,7 @@ export function WorkflowPanel() {
     <div className="flex-1 min-h-0 flex overflow-hidden">
       {/* Main workflow editor area */}
       <div role="region" aria-label="Flow workspace" className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
-        <Toolbar onRun={handleRunRequest} onCancel={cancel} agentToggleRef={chatPanelToggleRef} />
+        <Toolbar onRun={handleRunRequest} onCancel={handleCancelRequest} agentToggleRef={chatPanelToggleRef} />
 
         {workflowOpenState.status === "loading" ? (
           <WorkflowOpenLoadingState flowLabel={workflowTitleFromPath(workflowOpenState.targetPath)} />
@@ -1057,6 +1085,12 @@ export function WorkflowPanel() {
           primaryModifierKey={desktopRuntime.primaryModifierKey}
           onApproveStageStart={handleApproveStageStart}
           onCancelStageStart={handleCancelStageStart}
+        />
+        <CancelFlowConfirmDialog
+          open={cancelConfirmOpen}
+          onOpenChange={setCancelConfirmOpen}
+          runStartedAt={runStartedAt}
+          onConfirmCancel={handleConfirmCancel}
         />
       </div>
 

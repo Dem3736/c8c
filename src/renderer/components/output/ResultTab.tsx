@@ -112,6 +112,7 @@ export function ResultTab({
   reportPath,
   onOpenReport,
   displayedResultContent,
+  resultCopyTextWithHeader,
   canCopyResult,
   onCopyError,
   onExportResult,
@@ -154,6 +155,7 @@ export function ResultTab({
   reportPath: string | null
   onOpenReport: (path: string) => void | Promise<void>
   displayedResultContent: string
+  resultCopyTextWithHeader: string
   canCopyResult: boolean
   onCopyError: (error: unknown) => void
   onExportResult: () => void
@@ -370,10 +372,10 @@ export function ResultTab({
           </Button>
         )}
         <CopyButton
-          text={displayedResultContent}
+          text={resultCopyTextWithHeader}
           idleLabel="Copy Result"
           copiedLabel="Copied"
-          idleAriaLabel="Copy result"
+          idleAriaLabel="Copy result with flow context"
           disabled={!canCopyResult}
           onCopyError={onCopyError}
         />

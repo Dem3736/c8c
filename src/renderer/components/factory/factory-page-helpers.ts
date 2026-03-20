@@ -3,6 +3,8 @@ import type { WorkflowTemplateRunContext } from "@/lib/workflow-entry"
 import { isRunInFlight, type WorkflowExecutionState } from "@/lib/workflow-execution"
 import type {
   ArtifactRecord,
+  ContinuationStatus,
+  DurableGateRecord,
   FactoryPlannedCase,
   HumanTaskSummary,
   ProjectFactoryDefinition,
@@ -36,6 +38,9 @@ export interface FactoryCase {
   latestRun: FactoryRunEntry | null
   nextTemplates: WorkflowTemplate[]
   lineageLabels: string[]
+  continuationStatus: ContinuationStatus | null
+  nextStepLabel: string | null
+  lastGate: DurableGateRecord | null
   status: "active" | "blocked" | "ready" | "completed"
 }
 

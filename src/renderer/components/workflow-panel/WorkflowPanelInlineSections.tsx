@@ -260,7 +260,7 @@ export function WorkflowResumeHeader({
     ]
 
   return (
-    <section className="space-y-2.5 ui-fade-slide-in">
+    <section data-workflow-resume-header="true" className="space-y-2.5 ui-fade-slide-in">
       <ScopeBanner
         tone="muted"
         eyebrow={(

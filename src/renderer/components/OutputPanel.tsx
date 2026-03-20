@@ -73,6 +73,9 @@ export function OutputPanel({
   const {
     runStatus,
     runOutcome,
+    runStartedAt,
+    completedAt,
+    executionWorkflowName,
     nodeStates,
     activeNodeId,
     selectedNodeId: inspectedNodeId,
@@ -118,6 +121,7 @@ export function OutputPanel({
     budgetWarningClassName,
     hasResult,
     displayedResultContent,
+    resultCopyTextWithHeader,
     isDisplayedResultEmpty,
     canCopyResult,
     hasMultipleResultOptions,
@@ -161,6 +165,9 @@ export function OutputPanel({
   } = useOutputPanelDerivedState({
     runStatus,
     runOutcome,
+    runStartedAt,
+    completedAt,
+    executionWorkflowName,
     nodeStates,
     activeNodeId,
     inspectedNodeId,
@@ -310,9 +317,19 @@ export function OutputPanel({
   const handleCopyResult = useCallback(async () => {
     if (!canCopyResult) return
     try {
-      await navigator.clipboard.writeText(displayedResultContent)
+      await navigator.clipboard.writeText(resultCopyTextWithHeader)
     } catch (error) {
       console.error("[OutputPanel] copy result failed:", error)
+      toastErrorFromCatch("Could not copy result", error)
+    }
+  }, [canCopyResult, resultCopyTextWithHeader])
+
+  const handleCopyResultPlain = useCallback(async () => {
+    if (!canCopyResult) return
+    try {
+      await navigator.clipboard.writeText(displayedResultContent)
+    } catch (error) {
+      console.error("[OutputPanel] copy result (plain) failed:", error)
       toastErrorFromCatch("Could not copy result", error)
     }
   }, [canCopyResult, displayedResultContent])
@@ -633,6 +650,7 @@ export function OutputPanel({
               reportPath={reviewingRunHistory ? selectedReviewRun?.reportPath || null : reportPath}
               onOpenReport={handleOpenReport}
               displayedResultContent={displayedResultContent}
+              resultCopyTextWithHeader={resultCopyTextWithHeader}
               canCopyResult={canCopyResult}
               onCopyError={(error) => {
                 console.error("[OutputPanel] copy result failed:", error)
@@ -695,7 +713,16 @@ export function OutputPanel({
                 setOutputContextMenu(null)
               }}
             >
-              Copy result
+              Copy with context
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!canCopyResult}
+              onSelect={() => {
+                void handleCopyResultPlain()
+                setOutputContextMenu(null)
+              }}
+            >
+              Copy plain
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!reportPath}

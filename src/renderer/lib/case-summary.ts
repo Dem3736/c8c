@@ -1,4 +1,10 @@
-import type { ArtifactRecord, CaseStateRecord, WorkflowTemplate } from "@shared/types"
+import type {
+  ArtifactRecord,
+  CaseStateRecord,
+  ContinuationStatus,
+  DurableGateRecord,
+  WorkflowTemplate,
+} from "@shared/types"
 import {
   deriveArtifactCaseKey,
   deriveTemplateContextJourneyStageLabel,
@@ -24,6 +30,9 @@ export interface ProjectCaseSummaryEntry {
   runIds: string[]
   latestArtifact: ArtifactRecord | null
   lineageLabels: string[]
+  continuationStatus: ContinuationStatus | null
+  nextStepLabel: string | null
+  lastGate: DurableGateRecord | null
 }
 
 export interface ProjectCaseIndex {
@@ -45,6 +54,9 @@ interface MutableProjectCaseSummaryEntry {
   runIds: Set<string>
   latestArtifact: ArtifactRecord | null
   lineageLabels: string[]
+  continuationStatus: ContinuationStatus | null
+  nextStepLabel: string | null
+  lastGate: DurableGateRecord | null
 }
 
 function normalizeLabel(...values: Array<string | null | undefined>) {
@@ -98,6 +110,9 @@ function ensureCase(
     runIds: new Set<string>(),
     latestArtifact: null,
     lineageLabels: [],
+    continuationStatus: null,
+    nextStepLabel: null,
+    lastGate: null,
   }
   entries.set(caseId, created)
   return created
@@ -131,6 +146,9 @@ export function buildProjectCaseIndex({
       entry.workflowPaths.add(state.workflowPath)
       caseByWorkflowPath.set(state.workflowPath, state.caseId)
     }
+    entry.continuationStatus = state.continuationStatus
+    entry.nextStepLabel = state.nextStepLabel || entry.nextStepLabel
+    entry.lastGate = state.lastGate || entry.lastGate
     pushUnique(entry.lineageLabels, state.lastGate?.stepLabel)
   }
 
@@ -197,6 +215,9 @@ export function buildProjectCaseIndex({
       runIds: Array.from(entry.runIds),
       latestArtifact: entry.latestArtifact,
       lineageLabels: entry.lineageLabels,
+      continuationStatus: entry.continuationStatus,
+      nextStepLabel: entry.nextStepLabel,
+      lastGate: entry.lastGate,
     }))
     .sort((left, right) => right.updatedAt - left.updatedAt)
 

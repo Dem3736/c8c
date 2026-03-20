@@ -110,6 +110,8 @@ function createSelectedWorkflowExecutionFieldAtom<K extends keyof WorkflowExecut
 export const runStatusAtom = createSelectedWorkflowExecutionFieldAtom("runStatus")
 export const runOutcomeAtom = createSelectedWorkflowExecutionFieldAtom("runOutcome")
 export const runStartedAtAtom = createSelectedWorkflowExecutionFieldAtom("runStartedAt")
+export const completedAtAtom = createSelectedWorkflowExecutionFieldAtom("completedAt")
+export const workflowNameAtom = createSelectedWorkflowExecutionFieldAtom("workflowName")
 export const runIdAtom = createSelectedWorkflowExecutionFieldAtom("runId")
 export const runWorkflowPathAtom = createSelectedWorkflowExecutionFieldAtom("runWorkflowPath")
 export const nodeStatesAtom = createSelectedWorkflowExecutionFieldAtom("nodeStates")

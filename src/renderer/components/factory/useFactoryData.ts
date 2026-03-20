@@ -142,6 +142,9 @@ export function useFactoryData({
       activeRun: FactoryRunEntry | null
       latestRun: FactoryRunEntry | null
       lineageLabels: string[]
+      continuationStatus: FactoryCase["continuationStatus"]
+      nextStepLabel: string | null
+      lastGate: FactoryCase["lastGate"]
     }>()
 
     for (const summary of caseIndex.cases) {
@@ -160,6 +163,9 @@ export function useFactoryData({
         activeRun: null,
         latestRun: null,
         lineageLabels: [...summary.lineageLabels],
+        continuationStatus: summary.continuationStatus,
+        nextStepLabel: summary.nextStepLabel,
+        lastGate: summary.lastGate,
       })
     }
 
@@ -217,13 +223,18 @@ export function useFactoryData({
         .filter((template) => (template.contractIn?.length || 0) > 0)
         .filter((template) => areTemplateContractsSatisfied(template.contractIn, caseArtifacts))
         .slice(0, 3)
-      const status: FactoryCase["status"] = entry.activeRun
-        ? "active"
-        : entry.tasks.length > 0
-          ? "blocked"
-          : nextTemplatesForCase.length > 0
-            ? "ready"
-            : "completed"
+      let status: FactoryCase["status"] = "completed"
+      if (entry.activeRun) {
+        status = "active"
+      } else if (
+        entry.tasks.length > 0
+        || entry.continuationStatus === "awaiting_approval"
+        || entry.continuationStatus === "blocked_by_check"
+      ) {
+        status = "blocked"
+      } else if (entry.continuationStatus === "ready" || nextTemplatesForCase.length > 0) {
+        status = "ready"
+      }
 
       return {
         id: entry.id,
@@ -239,6 +250,9 @@ export function useFactoryData({
         latestRun: entry.latestRun,
         nextTemplates: nextTemplatesForCase,
         lineageLabels: entry.lineageLabels,
+        continuationStatus: entry.continuationStatus,
+        nextStepLabel: entry.nextStepLabel,
+        lastGate: entry.lastGate,
         status,
       }
     }).sort((left, right) => {
@@ -638,6 +652,24 @@ export function useFactoryData({
           template: primaryTemplate,
           artifacts: entry.artifacts,
         })
+        continue
+      }
+
+      if (entry.status === "ready" && entry.nextStepLabel) {
+        next.push({
+          id: `${entry.id}:ready:${entry.nextStepLabel}`,
+          caseId: entry.id,
+          caseLabel: entry.label,
+          kind: "open_stage",
+          title: entry.nextStepLabel,
+          description: entry.lastGate?.summaryText
+            || (entry.latestArtifact
+              ? `Ready from ${entry.latestArtifact.title}.`
+              : "Saved work is ready to continue."),
+          timestamp: entry.latestArtifact?.updatedAt || entry.latestRun?.completedAt || 0,
+          tone: "success",
+          artifacts: entry.artifacts,
+        })
       }
     }
 
@@ -679,6 +711,9 @@ export function useFactoryData({
     } else if (selectedCase.latestArtifact) {
       currentStageValue = latestLineageLabel(selectedCase) || "Result saved"
       currentStageHint = `${selectedCase.latestArtifact.title} · ${formatRelativeTime(selectedCase.latestArtifact.updatedAt)}`
+    } else if (selectedCase.lastGate?.stepLabel) {
+      currentStageValue = selectedCase.lastGate.stepLabel
+      currentStageHint = selectedCase.lastGate.summaryText
     } else if (primaryAction?.template) {
       currentStageValue = latestLineageLabel(selectedCase) || "Ready to continue"
       currentStageHint = `Prepared to open ${primaryAction.template.name}.`
@@ -695,6 +730,10 @@ export function useFactoryData({
         deriveBlockedTaskLatestResultText(selectedCase.latestArtifact),
         deriveBlockedTaskReasonText(selectedCase.tasks[0], currentStepLabel),
       ].filter(Boolean).join(" ")
+      blockingGateTone = "warning"
+    } else if (selectedCase.status === "blocked" && selectedCase.lastGate) {
+      blockingGateValue = selectedCase.lastGate.summaryText
+      blockingGateHint = selectedCase.lastGate.reasonText || "Saved work is waiting on a previous decision."
       blockingGateTone = "warning"
     }
 
@@ -714,6 +753,14 @@ export function useFactoryData({
         : primaryAction.title
       nextActionHint = primaryAction.description
       nextActionTone = primaryAction.tone
+    } else if (selectedCase.status === "ready" && selectedCase.nextStepLabel) {
+      nextActionValue = selectedCase.nextStepLabel
+      nextActionHint = selectedCase.lastGate?.summaryText || "Saved work is ready to continue."
+      nextActionTone = "success"
+    } else if (selectedCase.status === "blocked" && selectedCase.lastGate) {
+      nextActionValue = "Review block"
+      nextActionHint = selectedCase.lastGate.summaryText
+      nextActionTone = "warning"
     }
 
     const fields: CaseSummaryField[] = [

@@ -524,6 +524,14 @@ export function FactoryOperationsView({
                                 <div className="rounded-md surface-success-soft px-3 py-2 text-body-sm text-foreground">
                                   {primaryTemplate.name}
                                 </div>
+                              ) : entry.status === "ready" && entry.nextStepLabel ? (
+                                <div className="rounded-md surface-success-soft px-3 py-2 text-body-sm text-foreground">
+                                  {entry.nextStepLabel}
+                                </div>
+                              ) : entry.status === "blocked" && entry.lastGate?.summaryText ? (
+                                <div className="rounded-md surface-warning-soft px-3 py-2 text-body-sm text-foreground">
+                                  {entry.lastGate.summaryText}
+                                </div>
                               ) : (
                                 <div className="rounded-md border border-hairline bg-surface-1/70 px-3 py-2 text-body-sm text-muted-foreground">
                                   No next step detected yet.
