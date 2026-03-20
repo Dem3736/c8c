@@ -10,6 +10,8 @@ import {
   Rocket,
 } from "lucide-react"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import { Badge } from "@/components/ui/badge"
 import { BlueprintForm } from "@/components/factory/BlueprintForm"
 import { FactoryOutcomeSelector } from "@/components/factory/FactoryOutcomeSelector"
@@ -65,7 +67,7 @@ import {
   webSearchBackendAtom,
   workflowsAtom,
 } from "@/lib/store"
-import { workflowExecutionStatesAtom, pastRunsAtom } from "@/features/execution"
+import { workflowExecutionStatesAtom, pastRunsAtom, selectedPastRunAtom } from "@/features/execution"
 import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
 import { formatResultModeLabel } from "@/lib/result-mode-factory"
 import { buildRunProgressSummary, formatElapsedTime } from "@/lib/run-progress"
@@ -90,6 +92,7 @@ import type {
   RunResult,
   WorkflowTemplate,
 } from "@shared/types"
+import { taskSelectionKey } from "@/components/notifications/task-ui"
 
 export function FactoryPage() {
   const [selectedProject] = useAtom(selectedProjectAtom)
@@ -107,6 +110,7 @@ export function FactoryPage() {
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
   const [pastRuns] = useAtom(pastRunsAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const {
     artifacts,
@@ -194,13 +198,52 @@ export function FactoryPage() {
     setSelectedCaseId(caseId)
   }, [setSelectedCaseId])
 
-  const openInboxTask = useCallback((task: HumanTaskSummary, caseId?: string) => {
+  const openInboxTask = useCallback(async (task: HumanTaskSummary, caseId?: string) => {
     if (caseId) {
       setSelectedCaseId(caseId)
     }
-    setSelectedInboxTaskKey(`${task.workspace}::${task.taskId}`)
+    setSelectedInboxTaskKey(taskSelectionKey(task))
+
+    if (task.workflowPath) {
+      if (task.workflowPath !== selectedWorkflowPath && !(await confirmDiscard("open blocked work", workflowDirty))) {
+        return
+      }
+      try {
+        const workflow = await window.api.loadWorkflow(task.workflowPath)
+        setSelectedWorkflowPath(task.workflowPath)
+        setWorkflow(workflow)
+        setWorkflowSavedSnapshot(workflowSnapshot(workflow))
+        setSelectedPastRun({
+          runId: task.sourceRunId,
+          status: "blocked",
+          workflowName: task.workflowName,
+          workflowPath: task.workflowPath,
+          startedAt: task.createdAt,
+          completedAt: task.updatedAt,
+          reportPath: "",
+          workspace: task.workspace,
+        })
+        setMainView("thread")
+        return
+      } catch (error) {
+        toastErrorFromCatch("Could not open blocked work", error)
+        return
+      }
+    }
+
     setMainView("inbox")
-  }, [setMainView, setSelectedCaseId, setSelectedInboxTaskKey])
+  }, [
+    confirmDiscard,
+    selectedWorkflowPath,
+    setMainView,
+    setSelectedCaseId,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
+    setSelectedWorkflowPath,
+    setWorkflow,
+    setWorkflowSavedSnapshot,
+    workflowDirty,
+  ])
   useEffect(() => {
     if (editingFactoryBlueprint) return
     setBlueprintDraft(buildBlueprintDraft(selectedFactoryDefinition, selectedPackRecipes))
@@ -273,10 +316,8 @@ export function FactoryPage() {
       setEditingFactoryBlueprint(false)
       toast.success("Lab setup saved")
     } catch (error) {
-      setFactoryBlueprintError(error instanceof Error ? error.message : String(error))
-      toast.error("Could not save lab setup", {
-        description: String(error),
-      })
+      setFactoryBlueprintError(errorToUserMessage(error))
+      toastErrorFromCatch("Could not save lab setup", error)
     } finally {
       setFactoryBlueprintSaving(false)
     }
@@ -321,9 +362,9 @@ export function FactoryPage() {
         toast.success(`Spawned ${result.plannedCases.length} track${result.plannedCases.length === 1 ? "" : "s"}`)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = errorToUserMessage(error)
       setFactoryStateError(message)
-      toast.error("Could not spawn tracks", {
+      toastError("Could not spawn tracks", {
         description: message,
       })
     } finally {
@@ -340,7 +381,7 @@ export function FactoryPage() {
     if (!selectedProject || launchingTemplateId) return
     const template = (plannedCase.templateId && templateById.get(plannedCase.templateId)) || spawnTemplateCandidate
     if (!template) {
-      toast.error("No next library flow is linked to this planned track yet")
+      toastError("No next library flow is linked to this planned track yet")
       return
     }
 
@@ -386,9 +427,7 @@ export function FactoryPage() {
       })
       toast.success(`Opened ${template.name}`)
     } catch (error) {
-      toast.error("Could not open the planned track", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not open the planned track", error)
     } finally {
       setLaunchingTemplateId(null)
     }
@@ -428,16 +467,14 @@ export function FactoryPage() {
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
       setMainView("thread")
     } catch (error) {
-      toast.error("Could not open flow", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not open flow", error)
     }
   }, [confirmDiscard, selectedWorkflowPath, setMainView, setSelectedWorkflowPath, setWorkflow, setWorkflowSavedSnapshot, workflowDirty])
 
   const openArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
     if (!openError) return
-    toast.error("Could not open result", {
+    toastError("Could not open result", {
       description: openError,
     })
   }
@@ -445,7 +482,7 @@ export function FactoryPage() {
   const openReport = async (reportPath: string) => {
     const openError = await window.api.openReport(reportPath)
     if (!openError) return
-    toast.error("Could not open report", {
+    toastError("Could not open report", {
       description: String(openError),
     })
   }
@@ -486,9 +523,7 @@ export function FactoryPage() {
       })
       toast.success(`Opened ${template.name}`)
     } catch (error) {
-      toast.error("Could not open the selected step", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not open the selected step", error)
     } finally {
       setLaunchingTemplateId(null)
     }

@@ -95,10 +95,20 @@ nodes:
       prompt: >-
         Review this change plan. Tighten vague tasks, surface hidden dependencies, and strengthen the validation contract.
         Return the improved final plan ready for execution.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 960
+      y: 200
+    config:
+      criteria: "Rate the plan on: (1) concrete file-level changes identified, (2) risk assessment present, (3) rollback strategy mentioned, (4) estimated scope is realistic, (5) no vague hand-waving like 'refactor as needed'"
+      threshold: 7
+      maxRetries: 2
+      retryFrom: planner-1
   - id: output-1
     type: output
     position:
-      x: 960
+      x: 1320
       y: 200
     config:
       title: Change Plan and Validation Contract
@@ -111,7 +121,15 @@ edges:
     source: planner-1
     target: reviewer-1
     type: default
-  - id: e-reviewer-output
+  - id: e-reviewer-eval
     source: reviewer-1
-    target: output-1
+    target: eval-1
     type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-planner
+    source: eval-1
+    target: planner-1
+    type: fail

@@ -21,6 +21,7 @@ import type {
 } from "@shared/types"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import { PageHeader, PageShell } from "@/components/ui/page-shell"
 import { CollectionToolbar } from "@/components/ui/collection-toolbar"
 import { SkillSourcesAdmin } from "@/components/skills/SkillSourcesAdmin"
@@ -107,7 +108,7 @@ export function SkillsPage() {
       setSkills(scanned)
     } catch (error) {
       if (refreshRequestIdRef.current !== requestId) return
-      toast.error(`Failed to refresh skills: ${String(error)}`)
+      toastErrorFromCatch("Could not refresh skills", error)
     } finally {
       if (refreshRequestIdRef.current !== requestId) return
       setRefreshing(false)
@@ -299,7 +300,7 @@ export function SkillsPage() {
       setStatusMessage(`${library.name} installed`)
       await refresh()
     } catch (error) {
-      toast.error(`Failed to install ${library.name}: ${String(error)}`)
+      toastErrorFromCatch(`Could not install ${library.name}`, error)
       setStatusMessage(`Failed to install ${library.name}`)
     } finally {
       setLibraryAction(null)
@@ -320,7 +321,7 @@ export function SkillsPage() {
       await refresh()
     } catch (error) {
       const verb = action === "installing" ? "install" : action === "updating" ? "update" : "remove"
-      toast.error(`Failed to ${verb} ${marketplace.name}: ${String(error)}`)
+      toastErrorFromCatch(`Could not ${verb} ${marketplace.name}`, error)
       setStatusMessage(`Failed to ${verb} ${marketplace.name}`)
     } finally {
       setMarketplaceAction(null)
@@ -363,7 +364,7 @@ export function SkillsPage() {
       setStatusMessage(`${plugin.name} enabled`)
       await refresh()
     } catch (error) {
-      toast.error(`Failed to enable ${plugin.name}: ${String(error)}`)
+      toastErrorFromCatch(`Could not enable ${plugin.name}`, error)
       setStatusMessage(`Failed to enable ${plugin.name}`)
     } finally {
       setPluginAction(null)
@@ -384,7 +385,7 @@ export function SkillsPage() {
       setStatusMessage(`${plugin.name} disabled`)
       await refresh()
     } catch (error) {
-      toast.error(`Failed to disable ${plugin.name}: ${String(error)}`)
+      toastErrorFromCatch(`Could not disable ${plugin.name}`, error)
       setStatusMessage(`Failed to disable ${plugin.name}`)
     } finally {
       setPluginAction(null)
@@ -400,7 +401,7 @@ export function SkillsPage() {
       setStatusMessage(`${library.name} updated`)
       await refresh()
     } catch (error) {
-      toast.error(`Failed to update ${library.name}: ${String(error)}`)
+      toastErrorFromCatch(`Could not update ${library.name}`, error)
       setStatusMessage(`Failed to update ${library.name}`)
     } finally {
       setLibraryAction(null)
@@ -421,7 +422,7 @@ export function SkillsPage() {
       setStatusMessage(`${library.name} removed`)
       await refresh()
     } catch (error) {
-      toast.error(`Failed to remove ${library.name}: ${String(error)}`)
+      toastErrorFromCatch(`Could not remove ${library.name}`, error)
       setStatusMessage(`Failed to remove ${library.name}`)
     } finally {
       setLibraryAction(null)
@@ -437,11 +438,11 @@ export function SkillsPage() {
 
   const addSkillToWorkflow = useCallback((skill: DiscoveredSkill) => {
     if (!selectedProject) {
-      toast.error("Select a project first.")
+      toastError("Select a project first.")
       return
     }
     if (!selectedWorkflowPath) {
-      toast.error("Open a flow first, then attach a skill.")
+      toastError("Open a flow first, then attach a skill.")
       return
     }
 
@@ -467,7 +468,7 @@ export function SkillsPage() {
 
   const createSkill = async () => {
     if (!selectedProject) {
-      toast.error("Select a project first, then create a skill.")
+      toastError("Select a project first, then create a skill.")
       return
     }
     try {
@@ -488,7 +489,7 @@ export function SkillsPage() {
       }
       setStatusMessage("Skill starter created")
     } catch (error) {
-      toast.error(`Failed to create skill starter: ${String(error)}`)
+      toastErrorFromCatch("Could not create skill starter", error)
       setStatusMessage("Failed to create skill starter")
     }
   }

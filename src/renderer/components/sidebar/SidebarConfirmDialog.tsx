@@ -40,7 +40,12 @@ export function SidebarConfirmDialog({
       >
         <CanvasDialogHeader className={confirmVariant === "destructive" ? "surface-danger-soft" : undefined}>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogDescription>
+            {description}
+            {confirmVariant === "destructive" && (
+              <span className="block mt-1 text-status-danger font-medium">This cannot be undone.</span>
+            )}
+          </DialogDescription>
         </CanvasDialogHeader>
         <CanvasDialogFooter>
           <DialogClose asChild>

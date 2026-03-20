@@ -1,0 +1,235 @@
+import { describe, expect, it } from "vitest"
+import type { ArtifactRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
+import { deriveWorkflowCreateContinuations } from "./workflow-create-continuation"
+
+function createTemplate(overrides: Partial<WorkflowTemplate> = {}): WorkflowTemplate {
+  return {
+    id: "delivery-shape-project",
+    name: "Delivery Factory: Shape Project",
+    description: "Shape the requested change before planning.",
+    stage: "strategy",
+    emoji: "🧭",
+    headline: "Shape the work",
+    how: "Define the change clearly before planning.",
+    input: "Project brief",
+    output: "Feature spec",
+    steps: ["Shape", "Review"],
+    pack: {
+      id: "delivery-pack",
+      label: "Delivery Factory",
+      journeyStage: "shape",
+      recommendedNext: ["delivery-plan-phase"],
+    },
+    contractIn: [
+      { kind: "project_brief", title: "Project Brief" },
+    ],
+    contractOut: [
+      { kind: "requirements_spec", title: "Feature Spec" },
+    ],
+    workflow: {
+      version: 1,
+      name: "Delivery Factory: Shape Project",
+      nodes: [],
+      edges: [],
+    },
+    ...overrides,
+  }
+}
+
+function createArtifact(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord {
+  return {
+    id: "artifact-1",
+    kind: "requirements_spec",
+    title: "Feature Spec",
+    caseId: "case:seller-photo-upload",
+    caseLabel: "Seller photo upload",
+    projectPath: "/tmp/project",
+    workspace: "/tmp/workspace",
+    runId: "run-1",
+    templateId: "delivery-shape-project",
+    templateName: "Delivery Factory: Shape Project",
+    workflowPath: "/tmp/project/shape.flow.yaml",
+    workflowName: "Shape seller photo upload",
+    relativePath: ".c8c/artifacts/feature-spec.md",
+    contentPath: "/tmp/project/.c8c/artifacts/feature-spec.md",
+    metadataPath: "/tmp/project/.c8c/artifacts/feature-spec.json",
+    createdAt: 1,
+    updatedAt: 10,
+    ...overrides,
+  }
+}
+
+function createTask(overrides: Partial<HumanTaskSummary> = {}): HumanTaskSummary {
+  return {
+    task: "Review feature spec",
+    taskId: "task-1",
+    kind: "approval",
+    status: "open",
+    workspace: "/tmp/workspace",
+    chainId: "chain-1",
+    sourceRunId: "run-1",
+    nodeId: "approval-1",
+    workflowName: "Review seller photo upload",
+    workflowPath: "/tmp/project/review.flow.yaml",
+    projectPath: "/tmp/project",
+    title: "Approve the current change",
+    instructions: "Review and approve this change.",
+    summary: "Approval is blocking the next step.",
+    createdAt: 12,
+    updatedAt: 12,
+    responseRevision: 0,
+    allowEdit: true,
+    ...overrides,
+  }
+}
+
+describe("workflow-create-continuation", () => {
+  it("derives a ready continuation from saved results and recommended next steps", () => {
+    const shapeTemplate = createTemplate()
+    const planTemplate = createTemplate({
+      id: "delivery-plan-phase",
+      name: "Delivery Factory: Plan Phase",
+      pack: {
+        id: "delivery-pack",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+        recommendedNext: ["delivery-implement-phase"],
+      },
+      contractIn: [{ kind: "requirements_spec", title: "Feature Spec" }],
+      contractOut: [{ kind: "phase_plan", title: "Implementation Plan" }],
+      workflow: {
+        version: 1,
+        name: "Delivery Factory: Plan Phase",
+        nodes: [],
+        edges: [],
+      },
+    })
+
+    const candidates = deriveWorkflowCreateContinuations({
+      artifacts: [createArtifact()],
+      humanTasks: [],
+      templates: [shapeTemplate, planTemplate],
+    })
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      title: "Seller photo upload",
+      status: "ready",
+      readinessText: "Ready to continue to Plan the change.",
+      supportText: "Using saved Feature Spec from Shape / Map.",
+      latestResultLabel: "Feature Spec",
+      latestStepLabel: "Shape / Map",
+      nextStepLabel: "Plan the change",
+    })
+    expect(candidates[0]?.action.kind).toBe("launch_next_step")
+  })
+
+  it("prioritizes blocked work ahead of other resumable paths", () => {
+    const shapeTemplate = createTemplate()
+    const planTemplate = createTemplate({
+      id: "delivery-plan-phase",
+      name: "Delivery Factory: Plan Phase",
+      pack: {
+        id: "delivery-pack",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+        recommendedNext: [],
+      },
+      contractIn: [{ kind: "requirements_spec", title: "Feature Spec" }],
+      contractOut: [{ kind: "phase_plan", title: "Implementation Plan" }],
+      workflow: {
+        version: 1,
+        name: "Delivery Factory: Plan Phase",
+        nodes: [],
+        edges: [],
+      },
+    })
+
+    const candidates = deriveWorkflowCreateContinuations({
+      artifacts: [
+        createArtifact(),
+        createArtifact({
+          id: "artifact-2",
+          caseId: "case:checkout",
+          caseLabel: "Checkout polish",
+          workflowPath: "/tmp/project/checkout-shape.flow.yaml",
+          workflowName: "Shape checkout polish",
+          runId: "run-2",
+          updatedAt: 30,
+        }),
+      ],
+      humanTasks: [
+        createTask({
+          sourceRunId: "run-2",
+          workflowPath: "/tmp/project/checkout-review.flow.yaml",
+          workflowName: "Checkout review",
+          title: "Approve checkout change",
+          updatedAt: 5,
+        }),
+      ],
+      templates: [shapeTemplate, planTemplate],
+    })
+
+    expect(candidates).toHaveLength(2)
+    expect(candidates[0]?.status).toBe("blocked")
+    expect(candidates[0]?.title).toBe("Checkout polish")
+    expect(candidates[1]?.status).toBe("ready")
+  })
+
+  it("ignores saved work with no open task and no next step", () => {
+    const verifyTemplate = createTemplate({
+      id: "delivery-verify-phase",
+      name: "Delivery Factory: Verify Phase",
+      pack: {
+        id: "delivery-pack",
+        label: "Delivery Factory",
+        journeyStage: "verify",
+      },
+      contractIn: [{ kind: "verification_report", title: "Verification Report" }],
+      contractOut: [{ kind: "verification_report", title: "Verification Report" }],
+      workflow: {
+        version: 1,
+        name: "Delivery Factory: Verify Phase",
+        nodes: [],
+        edges: [],
+      },
+    })
+
+    const candidates = deriveWorkflowCreateContinuations({
+      artifacts: [
+        createArtifact({
+          kind: "verification_report",
+          templateId: "delivery-verify-phase",
+          templateName: "Delivery Factory: Verify Phase",
+        }),
+      ],
+      humanTasks: [],
+      templates: [verifyTemplate],
+    })
+
+    expect(candidates).toEqual([])
+  })
+
+  it("creates a blocked candidate even when the task has no artifact match yet", () => {
+    const candidates = deriveWorkflowCreateContinuations({
+      artifacts: [],
+      humanTasks: [
+        createTask({
+          sourceRunId: "run-9",
+          workflowPath: "/tmp/project/approval.flow.yaml",
+          workflowName: "Seller photo upload",
+          updatedAt: 20,
+        }),
+      ],
+      templates: [],
+    })
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      title: "Seller photo upload",
+      status: "blocked",
+      readinessText: "Blocked: waiting for approval to continue.",
+      supportText: "Open the saved work to respond and continue.",
+    })
+  })
+})

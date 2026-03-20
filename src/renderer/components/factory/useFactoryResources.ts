@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { errorToUserMessage } from "@/lib/error-message"
 import type {
   ArtifactRecord,
   HumanTaskSummary,
@@ -48,7 +49,7 @@ export function useFactoryResources(selectedProject: string | null) {
     } catch (error) {
       if (humanTasksRequestIdRef.current !== requestId) return
       setHumanTasks([])
-      setHumanTasksError(error instanceof Error ? error.message : String(error))
+      setHumanTasksError(errorToUserMessage(error))
     } finally {
       if (humanTasksRequestIdRef.current !== requestId) return
       setHumanTasksLoading(false)
@@ -74,7 +75,7 @@ export function useFactoryResources(selectedProject: string | null) {
     } catch (error) {
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
-      setArtifactsError(error instanceof Error ? error.message : String(error))
+      setArtifactsError(errorToUserMessage(error))
     } finally {
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifactsLoading(false)
@@ -100,7 +101,7 @@ export function useFactoryResources(selectedProject: string | null) {
     } catch (error) {
       if (blueprintRequestIdRef.current !== requestId) return
       setFactoryBlueprint(null)
-      setFactoryBlueprintError(error instanceof Error ? error.message : String(error))
+      setFactoryBlueprintError(errorToUserMessage(error))
     } finally {
       if (blueprintRequestIdRef.current !== requestId) return
       setFactoryBlueprintLoading(false)
@@ -126,7 +127,7 @@ export function useFactoryResources(selectedProject: string | null) {
     } catch (error) {
       if (factoryStateRequestIdRef.current !== requestId) return
       setFactoryState(null)
-      setFactoryStateError(error instanceof Error ? error.message : String(error))
+      setFactoryStateError(errorToUserMessage(error))
     } finally {
       if (factoryStateRequestIdRef.current !== requestId) return
       setFactoryStateLoading(false)
@@ -157,7 +158,7 @@ export function useFactoryResources(selectedProject: string | null) {
     }).catch((error) => {
       if (cancelled) return
       setTemplates([])
-      setTemplatesError(error instanceof Error ? error.message : String(error))
+      setTemplatesError(errorToUserMessage(error))
     }).finally(() => {
       if (!cancelled) {
         setTemplatesLoading(false)

@@ -12,6 +12,10 @@ steps:
   - Map audience awareness levels
   - Sharpen messaging for each level
   - Generate and amplify awareness-matched headlines
+contract_out:
+  - kind: messaging_framework
+    title: Messaging Framework
+    description: Signal-to-noise messaging with awareness-level hooks and resonance headlines
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context

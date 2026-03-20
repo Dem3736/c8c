@@ -630,8 +630,16 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
         }}
         nodesConnectable={!readOnly && !isRunning}
         elementsSelectable={!readOnly}
-        onNodeDoubleClick={(_: React.MouseEvent, node: { id: string }) => {
+        onNodeDoubleClick={(event: React.MouseEvent, node: { id: string }) => {
           setSelectedNodeId(node.id)
+          const target = (event.target as HTMLElement).closest<HTMLElement>(".react-flow__node")
+          if (target) {
+            target.style.transition = "transform 170ms var(--ease-emphasis)"
+            target.style.transform = "scale(1.03)"
+            requestAnimationFrame(() => {
+              setTimeout(() => { target.style.transform = "" }, 170)
+            })
+          }
         }}
         zoomOnDoubleClick={false}
         minZoom={0.45}
@@ -722,7 +730,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
           className="text-muted-foreground enabled:hover:text-status-danger"
           title={
             canDeleteSelection
-              ? "Delete selected step or connection"
+              ? "Delete selected step or connection (Delete)"
               : deleteSelectionDisabledReason || undefined
           }
         >

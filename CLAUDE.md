@@ -92,6 +92,15 @@ Main ↔ Renderer communication via `window.api` (defined in preload). Two patte
 
 **Design system** built on CSS custom properties + Tailwind extensions.
 
+### Runtime shell constraint
+
+Resume/continuation state renders as a **compact header inside the existing runtime shell**, not as a separate mode or landing page. Rules:
+- No full-screen explainers — the header sits above the work surface, not in place of it
+- No text prologues — structured elements (badges, label+value grids, action buttons), not paragraphs
+- Max visual weight: badges row + title + 3-column status grid + action row. No additional expandable sections, history panels, or detail cards without explicit approval
+- The user should reach the primary action (Run / Continue) without scrolling past the header
+- Component name: `WorkflowResumeHeader`, never "landing"
+
 ### Key tokens
 
 - **Surfaces**: `bg-sidebar`, `bg-surface-1`, `bg-surface-2`, `bg-surface-3` — layered depth

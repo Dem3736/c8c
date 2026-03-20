@@ -29,6 +29,7 @@ import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { cn } from "@/lib/cn"
 import { AlertTriangle, Layers, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
+import { toastError } from "@/lib/toast-error"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { getTemplateSourceKind, getTemplateSourceLabel } from "@/lib/template-source"
@@ -137,7 +138,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
 
   const doApply = (previousWorkflow: unknown, templateToApply: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
-      toast.error("Cannot replace the current flow while a run is active", {
+      toastError("Cannot replace the current flow while a run is active", {
         description: replaceCurrentBlockedReason,
       })
       return

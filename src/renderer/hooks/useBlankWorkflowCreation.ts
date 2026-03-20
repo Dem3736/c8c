@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import {
   clearWorkflowTemplateContextForKeyAtom,
   currentWorkflowAtom,
@@ -109,11 +111,9 @@ export function useBlankWorkflowCreation({
       setWorkflowOpenState({
         status: "error",
         targetPath: "Blank flow",
-        message: String(error),
+        message: errorToUserMessage(error),
       })
-      toast.error("Failed to create blank flow", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not create blank flow", error)
       return null
     } finally {
       setCreatingBlankWorkflow(false)

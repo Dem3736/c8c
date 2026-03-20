@@ -15,6 +15,8 @@ import {
 import type { ActiveExecutionSnapshot, BatchEvent } from "@shared/types"
 import type { BatchItemResult, BatchSummary, WorkflowInput } from "@shared/types"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 import { groupValidationIssuesByNode, resolveExecutionStartResult } from "@/features/execution/commands"
 
@@ -277,7 +279,7 @@ export function useBatchExecution() {
     async (inputs: WorkflowInput[], concurrency: number, stopOnFailure: boolean, options?: BatchRunOptions) => {
       if (!workflow.nodes.length || inputs.length === 0) return
       if (pendingBatchRef.current || batchIdRef.current || batchStatus === "running") {
-        toast.error("Batch run is already in progress")
+        toastError("Batch run is already in progress")
         return
       }
 
@@ -335,12 +337,12 @@ export function useBatchExecution() {
         }
       } catch (err) {
         clearBatchTracking()
-        setBatchError(String(err))
+        setBatchError(errorToUserMessage(err))
         setBatchStatus("error")
         setBatchId(null)
         addNotification({
           title: "Batch run failed to start",
-          description: String(err),
+          description: errorToUserMessage(err),
           level: "error",
           source: "batch",
         })
@@ -373,12 +375,10 @@ export function useBatchExecution() {
     } catch (err) {
       console.error("[useBatchExecution] cancelBatch failed:", err)
       setBatchError("Could not cancel batch run. It may still be running.")
-      toast.error("Could not cancel batch run", {
-        description: String(err),
-      })
+      toastErrorFromCatch("Could not cancel batch run", err)
       addNotification({
         title: "Could not cancel batch run",
-        description: String(err),
+        description: errorToUserMessage(err),
         level: "error",
         source: "batch",
       })

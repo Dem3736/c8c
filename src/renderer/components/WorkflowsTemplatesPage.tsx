@@ -43,6 +43,7 @@ import {
 } from "@/lib/store"
 import { runStatusAtom } from "@/features/execution"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import {
   FilePlus2,
   Loader2,
@@ -387,7 +388,7 @@ export function WorkflowsTemplatesPage() {
       const loaded = await window.api.listTemplates()
       setTemplates(loaded)
     } catch (error) {
-      toast.error(`Failed to load library: ${String(error)}`)
+      toastErrorFromCatch("Could not load library", error)
     } finally {
       setLoading(false)
     }
@@ -502,7 +503,7 @@ export function WorkflowsTemplatesPage() {
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
     if (createInProjectOnly) {
       if (!preferredProjectPath) {
-        toast.error("Open or select a project before starting here")
+        toastError("Open or select a project before starting here")
         return
       }
       void doCreateFromTemplate(template, preferredProjectPath)
@@ -520,7 +521,7 @@ export function WorkflowsTemplatesPage() {
 
   const doApplyTemplate = async (template: WorkflowTemplate) => {
     if (replaceCurrentBlockedReason) {
-      toast.error("Cannot replace the current flow while a run is active", {
+      toastError("Cannot replace the current flow while a run is active", {
         description: replaceCurrentBlockedReason,
       })
       return
@@ -596,7 +597,7 @@ export function WorkflowsTemplatesPage() {
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || templateForWorkflowUse.name}" is ready in ${projectPath.split(/[\\/]/).pop() || "project"}`)
     } catch (error) {
-      toast.error(`Failed to create flow: ${String(error)}`)
+      toastErrorFromCatch("Could not create flow", error)
     }
   }
 

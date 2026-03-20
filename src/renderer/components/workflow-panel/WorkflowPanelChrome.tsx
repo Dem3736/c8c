@@ -62,7 +62,7 @@ export function WorkflowOpenErrorBanner({
 
 export function WorkflowPanelHeader({
   runStatus,
-  showEntryLanding,
+  showResumeHeader,
   showEntryEditor,
   workflowName,
   entryTitle,
@@ -73,7 +73,7 @@ export function WorkflowPanelHeader({
   onToggleFlowSurfaceMode,
 }: {
   runStatus: ExecutionRunStatus
-  showEntryLanding: boolean
+  showResumeHeader: boolean
   showEntryEditor: boolean
   workflowName: string
   entryTitle?: string | null
@@ -91,9 +91,9 @@ export function WorkflowPanelHeader({
             className="inline-flex h-control-sm w-control-sm shrink-0 items-center justify-center rounded-md border border-hairline bg-surface-2/80 text-muted-foreground ui-elevation-inset"
             aria-hidden="true"
           >
-            {showEntryLanding && !showEntryEditor ? <Sparkles size={13} /> : <PencilLine size={13} />}
+            {showResumeHeader && !showEntryEditor ? <Sparkles size={13} /> : <PencilLine size={13} />}
           </span>
-          {runStatus === "idle" && !(showEntryLanding && !showEntryEditor) ? (
+          {runStatus === "idle" && !(showResumeHeader && !showEntryEditor) ? (
             <>
               <Label htmlFor="workflow-name" className="sr-only">Flow name</Label>
               <Input
@@ -113,13 +113,15 @@ export function WorkflowPanelHeader({
             </div>
           )}
           {workflowDirty && (
-            <Badge variant="warning" className="ui-meta-text shrink-0 px-2 py-1">
-              Unsaved
-            </Badge>
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-status-warning"
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+            />
           )}
         </div>
         <div className="flex items-center gap-2">
-          {showEntryLanding && !showEntryEditor ? (
+          {showResumeHeader && !showEntryEditor ? (
             <Badge variant="outline" className="ui-meta-text shrink-0 px-2.5 py-1">
               Step shell
             </Badge>
@@ -139,7 +141,7 @@ export function WorkflowPanelHeader({
               </TabsTrigger>
             </TabsList>
           )}
-          {viewMode === "list" && runStatus === "idle" && !showEntryLanding && (
+          {viewMode === "list" && runStatus === "idle" && !showResumeHeader && (
             <Button
               variant={flowSurfaceMode === "edit" ? "secondary" : "ghost"}
               size="sm"

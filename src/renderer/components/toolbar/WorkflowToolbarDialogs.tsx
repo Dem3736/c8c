@@ -77,6 +77,7 @@ export function WorkflowToolbarDialogs({
             <DialogTitle>Delete flow</DialogTitle>
             <DialogDescription>
               Delete &ldquo;{deleteLabel}&rdquo;?{workflowDirty ? " You have unsaved changes that will be lost." : ""} The flow file will be permanently removed.
+              <span className="block mt-1 text-status-danger font-medium">This cannot be undone.</span>
             </DialogDescription>
           </CanvasDialogHeader>
           <CanvasDialogFooter>

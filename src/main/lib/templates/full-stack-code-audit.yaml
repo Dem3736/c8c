@@ -70,10 +70,20 @@ nodes:
       threshold: 7
       maxRetries: 2
       retryFrom: splitter-1
+  - id: approval-1
+    type: approval
+    position:
+      x: 1500
+      y: 200
+    config:
+      title: Review findings before recommendations
+      description: Check the audit findings. Mark any false positives or known trade-offs before the system generates fix recommendations.
+      timeout: 7200
+      defaultAction: approve
   - id: report-1
     type: skill
     position:
-      x: 1500
+      x: 1800
       y: 200
     config:
       prompt: "Output as structured markdown with clear sections, not a presentation. Include: overall health score, findings by category, top 10 critical issues,
@@ -81,7 +91,7 @@ nodes:
   - id: output-1
     type: output
     position:
-      x: 1800
+      x: 2100
       y: 200
     config: {}
 edges:
@@ -101,14 +111,18 @@ edges:
     source: merger-1
     target: evaluator-1
     type: default
-  - id: e-evaluator-report
+  - id: e-evaluator-approval
     source: evaluator-1
-    target: report-1
+    target: approval-1
     type: pass
   - id: e-evaluator-splitter
     source: evaluator-1
     target: splitter-1
     type: fail
+  - id: e-approval-report
+    source: approval-1
+    target: report-1
+    type: default
   - id: e-report-output
     source: report-1
     target: output-1

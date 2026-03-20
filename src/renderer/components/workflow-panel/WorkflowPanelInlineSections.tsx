@@ -36,6 +36,7 @@ import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { InputPanel } from "@/components/InputPanel"
 import { ProjectResultsPanel } from "@/components/workflow/ProjectResultsPanel"
 import { consumeShortcut, isShortcutConsumed, matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
+import type { WorkflowBlockedResumeSummary } from "@/lib/workflow-blocked-resume"
 import type { WorkflowEntryState } from "@/lib/workflow-entry"
 import {
   deriveTemplateContinuationLabel,
@@ -43,6 +44,7 @@ import {
   deriveTemplateJobLabel,
 } from "@/lib/workflow-entry"
 import type { FlowRulePreview } from "@/lib/flow-rules"
+import type { WorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import type {
   ArtifactContract,
   ArtifactRecord,
@@ -171,17 +173,20 @@ export function takeLeadingSentence(value: string | null | undefined, fallback: 
   return sentenceMatch?.[0]?.trim() || normalized
 }
 
-export function WorkflowEntryLanding({
+export function WorkflowResumeHeader({
   entry,
   displayTitle,
   readyToRun,
   startApprovalRequired,
   stageLabel,
+  resumeSummary,
+  blockedResumeSummary,
   flowRules,
   nextStepLabel,
   inputLabels,
   onPrimaryAction,
   primaryActionLabel,
+  onOpenResumeArtifact,
   onRefine,
   onToggleEditor,
   onAttachCapability,
@@ -194,11 +199,14 @@ export function WorkflowEntryLanding({
   readyToRun: boolean
   startApprovalRequired: boolean
   stageLabel?: string | null
+  resumeSummary?: WorkflowResumeEntrySummary | null
+  blockedResumeSummary?: WorkflowBlockedResumeSummary | null
   flowRules: FlowRulePreview[]
   nextStepLabel: string
   inputLabels: string[]
   onPrimaryAction: () => void
   primaryActionLabel: string
+  onOpenResumeArtifact?: (() => void) | null
   onRefine: () => void
   onToggleEditor: () => void
   onAttachCapability: () => void
@@ -206,20 +214,50 @@ export function WorkflowEntryLanding({
   canRefine: boolean
   onDismiss: () => void
 }) {
-  const compactItems = [
-    {
-      label: "Expects",
-      value: inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : entry.inputText,
-    },
-    {
-      label: "Produces",
-      value: entry.outputText,
-    },
-    {
-      label: "Next",
-      value: startApprovalRequired ? "Approval before continue." : nextStepLabel,
-    },
-  ]
+  const compactItems = blockedResumeSummary
+    ? [
+      {
+        label: "Status",
+        value: blockedResumeSummary.statusText,
+      },
+      {
+        label: "Why paused",
+        value: blockedResumeSummary.reasonText,
+      },
+      {
+        label: "Results to attach",
+        value: blockedResumeSummary.attachText,
+      },
+    ]
+    : resumeSummary
+    ? [
+      {
+        label: "Ready because",
+        value: resumeSummary.readyBecauseText,
+      },
+      {
+        label: "Checks",
+        value: resumeSummary.checksText,
+      },
+      {
+        label: "Results to attach",
+        value: resumeSummary.attachText,
+      },
+    ]
+    : [
+      {
+        label: "Expects",
+        value: inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : entry.inputText,
+      },
+      {
+        label: "Produces",
+        value: entry.outputText,
+      },
+      {
+        label: "Next",
+        value: startApprovalRequired ? "Approval before continue." : nextStepLabel,
+      },
+    ]
 
   return (
     <section className="space-y-2.5 ui-fade-slide-in">
@@ -227,15 +265,26 @@ export function WorkflowEntryLanding({
         tone="muted"
         eyebrow={(
           <div className="flex flex-wrap items-center gap-1.5">
+            {resumeSummary && (
+              <Badge variant="outline" className="ui-meta-text px-2 py-0">
+                Saved work
+              </Badge>
+            )}
             {stageLabel && (
               <Badge variant="outline" className="ui-meta-text px-2 py-0">
                 {stageLabel}
               </Badge>
             )}
-            <Badge variant={readyToRun ? "success" : "secondary"} className="ui-meta-text px-2 py-0">
-              {readyToRun ? "Ready" : "Needs input"}
-            </Badge>
-            {startApprovalRequired && (
+            {blockedResumeSummary ? (
+              <Badge variant="warning" className="ui-meta-text px-2 py-0">
+                Blocked
+              </Badge>
+            ) : (
+              <Badge variant={readyToRun ? "success" : "secondary"} className="ui-meta-text px-2 py-0">
+                {readyToRun ? "Ready" : "Needs input"}
+              </Badge>
+            )}
+            {startApprovalRequired && !blockedResumeSummary && (
               <Badge variant="warning" className="ui-meta-text px-2 py-0">
                 Approval before continue
               </Badge>
@@ -243,12 +292,19 @@ export function WorkflowEntryLanding({
           </div>
         )}
         title={displayTitle}
+        description={blockedResumeSummary?.latestResultText || resumeSummary?.latestResultText || undefined}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={onPrimaryAction}>
               <Play size={14} />
               {primaryActionLabel}
             </Button>
+            {(blockedResumeSummary?.primaryArtifact || resumeSummary?.primaryArtifact) && onOpenResumeArtifact ? (
+              <Button variant="outline" size="sm" onClick={onOpenResumeArtifact}>
+                <FileStack size={14} />
+                Open result
+              </Button>
+            ) : null}
             {canRefine ? (
               <Button variant="outline" size="sm" onClick={onRefine}>
                 <MessageSquare size={14} />

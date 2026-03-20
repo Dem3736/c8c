@@ -8,6 +8,7 @@ import {
   mainViewAtom,
   projectsAtom,
   selectedResultModeIdAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   templateLibraryContextAtom,
@@ -29,6 +30,7 @@ import { Button } from "@/components/ui/button"
 import { PromptComposer } from "@/components/ui/prompt-composer"
 import { PageHeader, PageShell } from "@/components/ui/page-shell"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
+import { selectedPastRunAtom } from "@/features/execution"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import {
@@ -39,6 +41,8 @@ import {
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { projectFolderName } from "@/components/sidebar/projectSidebarUtils"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import {
   ArrowUp,
   Loader2,
@@ -81,14 +85,19 @@ import {
 import { resolveGuidedStartTemplateId } from "@/lib/guided-start"
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
+import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
 import { useBlankWorkflowCreation } from "@/hooks/useBlankWorkflowCreation"
 import { buildTemplateStartState, buildTemplateStartStateFromRoute } from "@/lib/template-start"
 import { PendingTemplateDialog, RouteClarificationDialog } from "@/components/create/WorkflowCreateDialogs"
 import { WorkflowCreateProjectPicker } from "@/components/create/WorkflowCreateProjectPicker"
 import { WorkflowCreateDetailsPanel } from "@/components/create/WorkflowCreateDetailsPanel"
+import { WorkflowCreateContinuationCard } from "@/components/create/WorkflowCreateContinuationCard"
 import { WorkflowCreateSuggestionsSection } from "@/components/create/WorkflowCreateSuggestionsSection"
 import { WorkflowCreateModeTabs } from "@/components/create/WorkflowCreateModeTabs"
 import { WorkflowCreateComposerFooter } from "@/components/create/WorkflowCreateComposerFooter"
+import { useWorkflowCreateContinuation } from "@/components/create/useWorkflowCreateContinuation"
+import { taskSelectionKey } from "@/components/notifications/task-ui"
+import type { WorkflowCreateContinuationCandidate } from "@/lib/workflow-create-continuation"
 
 const POPULAR_TEMPLATE_LIMIT = 12
 const CREATE_SURFACE_MAX_WIDTH = "max-w-5xl"
@@ -118,6 +127,16 @@ const DEVELOPMENT_CONTEXTUAL_ROUTE_OPTIONS: CreateEntryRouteOption[] = [
     templateId: "playwright-visual-audit",
     label: "Audit this UI in browser",
     intentLabel: "Review it",
+  },
+  {
+    templateId: "cto-optimise-audit",
+    label: "Run a full CTO-grade audit",
+    intentLabel: "Review it",
+  },
+  {
+    templateId: "delivery-investigate-bug",
+    label: "Investigate a bug",
+    intentLabel: "Do it",
   },
 ]
 
@@ -161,6 +180,8 @@ export function WorkflowCreatePage() {
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setViewMode] = useAtom(viewModeAtom)
   const [, setChatPanelOpen] = useAtom(chatPanelOpenAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [workflowDirty] = useAtom(workflowDirtyAtom)
   const [createContext, setCreateContext] = useAtom(workflowCreateContextAtom)
@@ -184,6 +205,7 @@ export function WorkflowCreatePage() {
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
   const [routeClarification, setRouteClarification] = useState<CreateEntryRouteClarification | null>(null)
   const [templateAction, setTemplateAction] = useState<"create" | "customize" | null>(null)
+  const [continuationPending, setContinuationPending] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const composerRef = useRef<HTMLDivElement | null>(null)
@@ -251,9 +273,8 @@ export function WorkflowCreatePage() {
               POPULAR_TEMPLATE_LIMIT,
             )
           } catch (error) {
-            const message = String(error)
-            if (!message.includes("No handler registered")) {
-              toast.error(`Failed to load popular library flows: ${message}`)
+            if (!String(error).includes("No handler registered")) {
+              toastErrorFromCatch("Could not load popular library flows", error)
             }
           }
         }
@@ -269,7 +290,7 @@ export function WorkflowCreatePage() {
         if (cancelled) return
         setAvailableTemplates([])
         setPopularTemplates([])
-        toast.error(`Failed to load library: ${String(error)}`)
+        toastErrorFromCatch("Could not load library", error)
       } finally {
         if (!cancelled) {
           setLoadingTemplates(false)
@@ -450,6 +471,24 @@ export function WorkflowCreatePage() {
   const pendingPrimaryActionLabel = pendingQuickStart?.intentLabel
     ? `Start ${pendingQuickStart.label}`
     : "Start with this"
+  const {
+    loading: continuationLoading,
+    primaryContinuation,
+    secondaryContinuations,
+    hiddenContinuationCount,
+  } = useWorkflowCreateContinuation({
+    projectPath: targetProjectPath,
+    templates: availableTemplates,
+    templatesLoading: loadingTemplates,
+  })
+
+  const resetCreateSurfaceState = () => {
+    setDraftPrompt("")
+    setPromptScaffold(EMPTY_WORKFLOW_CREATE_SCAFFOLD)
+    setPromptHelperOpen(false)
+    setRouteClarification(null)
+    setSubmitError(null)
+  }
 
   const openWorkflowFile = async (
     filePath: string,
@@ -494,11 +533,115 @@ export function WorkflowCreatePage() {
       key: toWorkflowExecutionKey(filePath),
       context: options?.templateContext ?? null,
     })
-    setDraftPrompt("")
-    setPromptScaffold(EMPTY_WORKFLOW_CREATE_SCAFFOLD)
-    setPromptHelperOpen(false)
+    resetCreateSurfaceState()
     setMainView("thread")
     return loadedWorkflow
+  }
+
+  const openExistingWorkflowFile = async (
+    filePath: string,
+    projectPath: string | null,
+    options?: {
+      pastRun?: {
+        runId: string
+        status: "blocked"
+        workflowName: string
+        workflowPath?: string
+        startedAt: number
+        completedAt: number
+        reportPath: string
+        workspace: string
+      } | null
+    },
+  ) => {
+    const loadedWorkflow = await window.api.loadWorkflow(filePath)
+    if (projectPath) {
+      const refreshedWorkflows = await window.api.listProjectWorkflows(projectPath)
+      setSelectedProject(projectPath)
+      setWorkflows(refreshedWorkflows)
+    }
+    setSelectedWorkflowPath(filePath)
+    setWorkflow(loadedWorkflow)
+    setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+    setWorkflowEntryState(null)
+    setSelectedPastRun(options?.pastRun ?? null)
+    setViewMode("list")
+    setChatPanelOpen(false)
+    resetCreateSurfaceState()
+    setMainView("thread")
+    return loadedWorkflow
+  }
+
+  const handleContinueSavedWork = async (continuation: WorkflowCreateContinuationCandidate) => {
+    if (continuationPending) return
+    if (!(await confirmDiscard("continue saved work", workflowDirty))) {
+      return
+    }
+
+    setContinuationPending(true)
+    try {
+      if (continuation.action.kind === "open_blocked_work") {
+        const task = continuation.action.task
+        const projectPath = task.projectPath || targetProjectPath
+        setSelectedInboxTaskKey(taskSelectionKey(task))
+
+        if (task.workflowPath) {
+          await openExistingWorkflowFile(task.workflowPath, projectPath, {
+            pastRun: {
+              runId: task.sourceRunId,
+              status: "blocked",
+              workflowName: task.workflowName,
+              workflowPath: task.workflowPath,
+              startedAt: task.createdAt,
+              completedAt: task.updatedAt,
+              reportPath: "",
+              workspace: task.workspace,
+            },
+          })
+          return
+        }
+
+        if (projectPath) {
+          setSelectedProject(projectPath)
+        }
+        resetCreateSurfaceState()
+        setMainView("inbox")
+        return
+      }
+
+      if (!targetProjectPath) {
+        toastError("Select a project before continuing saved work.")
+        return
+      }
+
+      const launch = await prepareTemplateStageLaunch({
+        projectPath: targetProjectPath,
+        template: continuation.action.template,
+        webSearchBackend,
+        artifacts: continuation.action.artifacts,
+        factory: continuation.action.factoryId
+          ? {
+            id: continuation.action.factoryId,
+            label: continuation.action.factoryLabel || "Lab",
+          }
+          : null,
+        caseOverride: {
+          caseId: continuation.action.caseId,
+          caseLabel: continuation.action.caseLabel || continuation.title,
+        },
+      })
+
+      await openWorkflowFile(launch.filePath, targetProjectPath, {
+        entryState: launch.entryState,
+        templateContext: launch.templateContext,
+        initialInputValue: launch.inputSeed,
+        initialAttachments: launch.artifactAttachments,
+      })
+    } catch (error) {
+      toastErrorFromCatch("Could not continue saved work", error)
+    } finally {
+      setContinuationPending(false)
+    }
   }
 
   const handleOpenProject = async () => {
@@ -511,7 +654,7 @@ export function WorkflowCreatePage() {
       setSelectedProject(projectPath)
       setCreateContext({ projectPath, locked: false })
     } catch (error) {
-      toast.error(`Failed to add project: ${String(error)}`)
+      toastErrorFromCatch("Could not add project", error)
     } finally {
       setOpeningProject(false)
     }
@@ -613,7 +756,7 @@ export function WorkflowCreatePage() {
       setPendingTemplate(null)
       toast.success(`"${loadedWorkflow.name || templateForWorkflowUse.name}" is ready in ${targetProjectName || "your project"}`)
     } catch (error) {
-      toast.error(`Failed to create flow: ${String(error)}`)
+      toastErrorFromCatch("Could not create flow", error)
     } finally {
       setTemplateAction(null)
     }
@@ -652,7 +795,7 @@ export function WorkflowCreatePage() {
       setPendingTemplate(null)
       toast.success(`"${templateForWorkflowUse.name}" is ready for agent refinement`)
     } catch (error) {
-      toast.error(`Failed to customize flow: ${String(error)}`)
+      toastErrorFromCatch("Could not customize flow", error)
     } finally {
       setTemplateAction(null)
     }
@@ -667,7 +810,7 @@ export function WorkflowCreatePage() {
     if (!targetProjectPath) {
       const errorMessage = "Open or select a project before starting a flow."
       setSubmitError(errorMessage)
-      toast.error(errorMessage)
+      toastError(errorMessage)
       return
     }
 
@@ -764,7 +907,7 @@ export function WorkflowCreatePage() {
       })
     } catch (error) {
       setSubmitError(
-        String(error).replace(
+        errorToUserMessage(error).replace(
           /^Error: Error invoking remote method '[^']+': Error: /,
           "",
         ),
@@ -888,6 +1031,17 @@ export function WorkflowCreatePage() {
             </div>
           ) : null}
         </div>
+
+        <WorkflowCreateContinuationCard
+          continuation={primaryContinuation}
+          secondaryContinuations={secondaryContinuations}
+          hiddenCount={hiddenContinuationCount}
+          loading={continuationLoading}
+          pending={continuationPending}
+          onContinue={(continuation) => {
+            void handleContinueSavedWork(continuation)
+          }}
+        />
 
         <WorkflowCreateSuggestionsSection
           loading={loadingTemplates}

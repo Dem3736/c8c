@@ -4,7 +4,7 @@ import { StageStartApprovalDialog } from "@/components/workflow-panel/WorkflowPa
 import type { DiscoveredSkill } from "@shared/types"
 
 export function WorkflowPanelOverlays({
-  showEntryLanding,
+  showResumeHeader,
   showEntryEditor,
   entryStageLabel,
   onAttachCapabilitySelection,
@@ -23,7 +23,7 @@ export function WorkflowPanelOverlays({
   onApproveStageStart,
   onCancelStageStart,
 }: {
-  showEntryLanding: boolean
+  showResumeHeader: boolean
   showEntryEditor: boolean
   entryStageLabel: string | null
   onAttachCapabilitySelection: (skill: DiscoveredSkill) => void
@@ -44,7 +44,7 @@ export function WorkflowPanelOverlays({
 }) {
   return (
     <>
-      {showEntryLanding && !showEntryEditor && (
+      {showResumeHeader && !showEntryEditor && (
         <SkillPicker
           onAddSkill={onAttachCapabilitySelection}
           title="Attach skill"

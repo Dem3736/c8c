@@ -65,7 +65,7 @@ const CONTENT_TEMPLATE_IDS = new Set([
 ])
 
 const PRODUCT_TEXT_RE = /\b(codebase|repository|repo|feature|implementation|verification|spec|audit|bug|architecture|frontend|ui|ux|design system|component|qa|quality assurance|test|playwright|ship|engineering|release|roadmap)\b/i
-const MARKETING_TEXT_RE = /\b(marketing|growth|seo|geo|reddit|hacker news|hacker-news|twitter|x posting|landing page|positioning|messaging|outreach|campaign|cold email|lead|prospect|editorial|distribution|go-to-market|gtm|show hn|ask hn|social media|trend|segment|audience|jtbd|competitive|ad intelligence)\b/i
+const MARKETING_TEXT_RE = /\b(marketing|growth|seo|geo|reddit|hacker news|hacker-news|twitter|x posting|landing page|positioning|messaging|outreach|campaign|cold email|lead|prospect|editorial|distribution|go-to-market|gtm|show hn|ask hn|social media|trend|segment|audience|jtbd|competitive|ad intelligence|research)\b/i
 const CONTENT_TEXT_RE = /\b(content|post|copy|text|editorial|newsletter|draft|publish|writing|course|curriculum|lesson|module|education|workshop|cohort|training|launch asset|video|script)\b/i
 
 const PRODUCT_SKILL_RE = /^(dev|frontend|design|qa|gstack)\//i

@@ -3,6 +3,7 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import type { InputNodeConfig, PermissionMode } from "@shared/types"
 import { toast } from "sonner"
 import { runIdAtom, runStatusAtom } from "@/features/execution"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import {
   WorkflowPrimaryActions,
   type ToolbarActionMenuValue,
@@ -132,7 +133,7 @@ export function Toolbar({
   const commitRename = async () => {
     if (!workflowPath) return
     if (!renameInput.trim()) {
-      toast.error("Flow name cannot be empty")
+      toastError("Flow name cannot be empty")
       return
     }
     await renameWorkflow(renameInput)
@@ -147,7 +148,7 @@ export function Toolbar({
   const commitSaveAsTemplate = async () => {
     const name = templateNameInput.trim()
     if (!name) {
-      toast.error("Library name cannot be empty")
+      toastError("Library name cannot be empty")
       return
     }
     try {
@@ -155,7 +156,7 @@ export function Toolbar({
       setTemplateDialogOpen(false)
       toast.success("Saved to library", { description: filePath })
     } catch (err) {
-      toast.error("Failed to save to library", { description: String(err) })
+      toastErrorFromCatch("Failed to save to library", err)
     }
   }
 
@@ -328,15 +329,13 @@ export function Toolbar({
     try {
       const resumed = await window.api.resumeRun(runId)
       if (!resumed) {
-        toast.error("Could not resume run")
+        toastError("Could not resume run")
         return
       }
       setRunStatus("running")
       toast.success("Flow resumed")
     } catch (error) {
-      toast.error("Could not resume run", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not resume run", error)
     } finally {
       setRunControlPending(null)
     }
@@ -349,7 +348,7 @@ export function Toolbar({
     try {
       const paused = await window.api.pauseRun(runId)
       if (!paused) {
-        toast.error("Could not pause run")
+        toastError("Could not pause run")
         return
       }
       setRunStatus("paused")
@@ -357,9 +356,7 @@ export function Toolbar({
         description: "The current step will finish before the flow stops.",
       })
     } catch (error) {
-      toast.error("Could not pause run", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not pause run", error)
     } finally {
       setRunControlPending(null)
     }
@@ -411,7 +408,7 @@ export function Toolbar({
             await refreshProjectData()
             toast.success("Flow duplicated")
           } catch (err) {
-            toast.error("Failed to duplicate flow", { description: String(err) })
+            toastErrorFromCatch("Failed to duplicate flow", err)
           }
         }
         return
@@ -421,7 +418,7 @@ export function Toolbar({
       case "delete":
         if (workflowPath) {
           if (runStatus === "running" || runStatus === "starting" || runStatus === "cancelling" || runStatus === "paused") {
-            toast.error("Stop the flow before deleting it")
+            toastError("Stop the flow before deleting it")
             return
           }
           setDeleteDialogOpen(true)

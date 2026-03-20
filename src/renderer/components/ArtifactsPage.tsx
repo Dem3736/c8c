@@ -11,6 +11,8 @@ import {
   Rocket,
 } from "lucide-react"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CollectionToolbar } from "@/components/ui/collection-toolbar"
@@ -108,7 +110,7 @@ export function ArtifactsPage() {
     } catch (error) {
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
-      setArtifactsError(error instanceof Error ? error.message : String(error))
+      setArtifactsError(errorToUserMessage(error))
     } finally {
       if (artifactsRequestIdRef.current === requestId) {
         setArtifactsLoading(false)
@@ -131,7 +133,7 @@ export function ArtifactsPage() {
     }).catch((error) => {
       if (cancelled) return
       setTemplates([])
-      setTemplatesError(error instanceof Error ? error.message : String(error))
+      setTemplatesError(errorToUserMessage(error))
     }).finally(() => {
       if (!cancelled) {
         setTemplatesLoading(false)
@@ -259,7 +261,7 @@ export function ArtifactsPage() {
   const openArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
     if (!openError) return
-    toast.error("Could not open result", {
+    toastError("Could not open result", {
       description: openError,
     })
   }
@@ -267,7 +269,7 @@ export function ArtifactsPage() {
   const revealArtifact = async (artifact: ArtifactRecord) => {
     const ok = await window.api.showInFinder(artifact.contentPath)
     if (ok) return
-    toast.error("Could not reveal result in Finder")
+    toastError("Could not reveal result in Finder")
   }
 
   const launchTemplate = async (template: WorkflowTemplate, sourceArtifacts = scopeArtifacts) => {
@@ -308,9 +310,7 @@ export function ArtifactsPage() {
 
       toast.success(`Opened ${template.name}`)
     } catch (error) {
-      toast.error("Could not open the selected step", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not open the selected step", error)
     } finally {
       setLaunchingTemplateId(null)
     }

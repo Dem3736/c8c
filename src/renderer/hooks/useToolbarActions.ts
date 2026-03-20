@@ -2,6 +2,8 @@ import { useCallback } from "react"
 import { useSetAtom } from "jotai"
 import type { Workflow, WorkflowFile, DiscoveredSkill } from "@shared/types"
 import { toast } from "sonner"
+import { errorToUserMessage } from "@/lib/error-message"
+import { toastError } from "@/lib/toast-error"
 import {
   clearWorkflowTemplateContextForKeyAtom,
   moveWorkflowTemplateContextAtom,
@@ -18,23 +20,6 @@ import {
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error
-  }
-  return fallback
-}
-
-function showPersistentError(message: string, description?: string) {
-  toast.error(message, {
-    description,
-    duration: Infinity,
-  })
-}
 
 interface UseToolbarActionsArgs {
   workflow: Workflow
@@ -77,11 +62,11 @@ export function useToolbarActions({
     } catch (error) {
       addNotification({
         title: "Project refresh failed",
-        description: errorMessage(error, "Failed to refresh project data"),
+        description: errorToUserMessage(error, "Could not refresh project data"),
         level: "error",
         source: "system",
       })
-      showPersistentError(errorMessage(error, "Failed to refresh project data"))
+      toastError(errorToUserMessage(error, "Could not refresh project data"))
     }
   }, [addNotification, selectedProject, setSkills, setWorkflows])
 
@@ -148,11 +133,11 @@ export function useToolbarActions({
     } catch (error) {
       addNotification({
         title: "Flow save failed",
-        description: errorMessage(error, "Failed to save flow"),
+        description: errorToUserMessage(error, "Could not save flow"),
         level: "error",
         source: "workflow",
       })
-      showPersistentError(errorMessage(error, "Failed to save flow"))
+      toastError(errorToUserMessage(error, "Could not save flow"))
       return false
     }
   }, [addNotification, deriveTitleFromPath, ensureWorkflowNameSync, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
@@ -181,11 +166,11 @@ export function useToolbarActions({
     } catch (error) {
       addNotification({
         title: "Save as failed",
-        description: errorMessage(error, "Failed to save flow"),
+        description: errorToUserMessage(error, "Could not save flow"),
         level: "error",
         source: "workflow",
       })
-      showPersistentError(errorMessage(error, "Failed to save flow"))
+      toastError(errorToUserMessage(error, "Could not save flow"))
       return false
     }
   }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
@@ -205,11 +190,11 @@ export function useToolbarActions({
       toast.dismiss(loadingToastId)
       addNotification({
         title: "Flow export failed",
-        description: errorMessage(error, "Failed to export flow"),
+        description: errorToUserMessage(error, "Could not export flow"),
         level: "error",
         source: "workflow",
       })
-      showPersistentError(errorMessage(error, "Failed to export flow"))
+      toastError(errorToUserMessage(error, "Could not export flow"))
       return false
     }
   }, [addNotification, deriveTitleFromPath, selectedProject, workflow])
@@ -239,11 +224,11 @@ export function useToolbarActions({
       toast.dismiss(loadingToastId)
       addNotification({
         title: "Flow import failed",
-        description: errorMessage(error, "Failed to import flow"),
+        description: errorToUserMessage(error, "Could not import flow"),
         level: "error",
         source: "workflow",
       })
-      showPersistentError(errorMessage(error, "Failed to import flow"))
+      toastError(errorToUserMessage(error, "Could not import flow"))
       return false
     }
   }, [addNotification, clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
@@ -274,11 +259,11 @@ export function useToolbarActions({
     } catch (error) {
       addNotification({
         title: "Flow rename failed",
-        description: errorMessage(error, "Failed to rename flow"),
+        description: errorToUserMessage(error, "Could not rename flow"),
         level: "error",
         source: "workflow",
       })
-      showPersistentError(errorMessage(error, "Failed to rename flow"))
+      toastError(errorToUserMessage(error, "Could not rename flow"))
       return false
     }
   }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
@@ -299,11 +284,11 @@ export function useToolbarActions({
     } catch (error) {
       addNotification({
         title: "Flow delete failed",
-        description: errorMessage(error, "Failed to delete flow"),
+        description: errorToUserMessage(error, "Could not delete flow"),
         level: "error",
         source: "workflow",
       })
-      toast.error(errorMessage(error, "Failed to delete flow"))
+      toastError(errorToUserMessage(error, "Could not delete flow"))
       return false
     }
   }, [addNotification, clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])

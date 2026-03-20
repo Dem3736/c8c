@@ -45,6 +45,7 @@ import {
 } from "@/lib/store"
 import { cn } from "@/lib/cn"
 import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { buildTemplateRunContext } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
@@ -172,7 +173,7 @@ const AppShell = memo(function AppShell() {
         setWorkflowSavedSnapshot,
       )
     } catch (error) {
-      toast.error(`Failed to open flow: ${String(error)}`)
+      toastErrorFromCatch("Could not open flow", error)
     }
   }, [
     confirmDiscard,
@@ -202,7 +203,7 @@ const AppShell = memo(function AppShell() {
       }
       toast.success(`Added ${projectPath.split(/[\\/]/).filter(Boolean).pop() || "project"}`)
     } catch (error) {
-      toast.error(`Failed to add project: ${String(error)}`)
+      toastErrorFromCatch("Could not add project", error)
     }
   }, [
     mainView,
@@ -440,7 +441,7 @@ const AppShell = memo(function AppShell() {
       setDeepLinkTemplate(template)
     })
     const unsubError = window.api.onDeepLinkTemplateError((err) => {
-      toast.error(`Failed to load library flow "${err.templateId}": ${err.error}`)
+      toastErrorFromCatch(`Could not load library flow "${err.templateId}"`, err.error)
     })
     return () => {
       unsubTemplate()
@@ -524,7 +525,7 @@ const AppShell = memo(function AppShell() {
       setDeepLinkTemplate(null)
       toast.success(`Created "${loadedWorkflow.name || deepLinkTemplate.name}" from library`)
     } catch (error) {
-      toast.error(`Failed to create flow: ${String(error)}`)
+      toastErrorFromCatch("Could not create flow", error)
     }
   }
 

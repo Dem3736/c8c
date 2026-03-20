@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { toast } from "sonner"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import {
   Activity,
   AlertTriangle,
@@ -382,14 +383,12 @@ export function MultiRunDashboard() {
         return
       } catch (error) {
         if (!restoreWorkflowSnapshot(entry.workflowSnapshot)) {
-          toast.error("Could not open flow", {
-            description: String(error),
-          })
+          toastErrorFromCatch("Could not open flow", error)
           return
         }
       }
     } else if (!restoreWorkflowSnapshot(entry.workflowSnapshot)) {
-      toast.error("Could not open flow", {
+      toastError("Could not open flow", {
         description: "This dashboard entry does not have a restorable flow snapshot.",
       })
       return
@@ -403,7 +402,7 @@ export function MultiRunDashboard() {
     try {
       const paused = await window.api.pauseRun(entry.runId)
       if (!paused) {
-        toast.error("Could not pause run")
+        toastError("Could not pause run")
         return
       }
       updateWorkflowExecutionState({
@@ -411,9 +410,7 @@ export function MultiRunDashboard() {
         update: (previous) => ({ ...previous, runStatus: "paused" }),
       })
     } catch (error) {
-      toast.error("Could not pause run", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not pause run", error)
     }
   }
 
@@ -422,7 +419,7 @@ export function MultiRunDashboard() {
     try {
       const resumed = await window.api.resumeRun(entry.runId)
       if (!resumed) {
-        toast.error("Could not resume run")
+        toastError("Could not resume run")
         return
       }
       updateWorkflowExecutionState({
@@ -430,9 +427,7 @@ export function MultiRunDashboard() {
         update: (previous) => ({ ...previous, runStatus: "running" }),
       })
     } catch (error) {
-      toast.error("Could not resume run", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not resume run", error)
     }
   }
 
@@ -449,16 +444,14 @@ export function MultiRunDashboard() {
           key: entry.workflowKey,
           update: (previous) => ({ ...previous, runStatus: entry.runStatus }),
         })
-        toast.error("Could not stop run")
+        toastError("Could not stop run")
       }
     } catch (error) {
       updateWorkflowExecutionState({
         key: entry.workflowKey,
         update: (previous) => ({ ...previous, runStatus: entry.runStatus }),
       })
-      toast.error("Could not stop run", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not stop run", error)
     }
   }
 

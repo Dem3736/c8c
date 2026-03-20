@@ -19,6 +19,8 @@ import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import type { ChatConversation, ChatSessionMessage, ChatSessionSnapshot, Workflow } from "@shared/types"
 import { sanitizeAssistantText } from "@shared/chat-output"
 import { toast } from "sonner"
+import { toastError } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 import { buildGeneratedWorkflowEntryState } from "@/lib/workflow-entry"
 
@@ -278,7 +280,7 @@ export function useChatSession() {
 
         case "workflow-mutated": {
           if (!isWorkflowPayload(event.workflow)) {
-            toast.error("Received an invalid flow update from the Agent.")
+            toastError("Received an invalid flow update from the Agent.")
             addNotification({
               title: "Agent sent an invalid flow update",
               level: "error",
@@ -322,7 +324,7 @@ export function useChatSession() {
               label: "Undo",
               onClick: () => {
                 if (workflowPathRef.current !== mutationWorkflowPath) {
-                  toast.error("Undo is only available for the current flow")
+                  toastError("Undo is only available for the current flow")
                   return
                 }
                 setUndoStack((prev) => {
@@ -400,7 +402,7 @@ export function useChatSession() {
           }
           removeStreamingPlaceholder()
           resetLocalSessionState()
-          toast.error(event.content || "Agent error")
+          toastError(event.content || "Agent error")
           addNotification({
             title: "Agent error",
             description: event.content || "Agent error",
@@ -502,10 +504,10 @@ export function useChatSession() {
       console.error("[useChatSession] chat session recovery failed:", err)
       setMessages([])
       setHistoryLoadedWorkflowPath(workflowPath)
-      toast.error("Could not load Agent history")
+      toastError("Could not load Agent history")
       addNotification({
         title: "Could not load Agent history",
-        description: String(err),
+        description: errorToUserMessage(err),
         level: "error",
         source: "agent",
       })
@@ -556,11 +558,11 @@ export function useChatSession() {
         setMessages((prev) =>
           prev.filter((m) => m.id !== userMsg.id && !(m.role === "assistant" && m.streaming)),
         )
-        const msg = String(err).replace(
-          /^Error: Error invoking remote method '[^']+': Error: /,
+        const msg = errorToUserMessage(err).replace(
+          /^Error invoking remote method '[^']+': Error: /,
           "",
         )
-        toast.error(msg)
+        toastError(msg)
         addNotification({
           title: "Agent request failed",
           description: msg,
@@ -613,7 +615,7 @@ export function useChatSession() {
 
     const activeSessionId = sessionIdRef.current || pendingSessionRef.current
     if (!activeSessionId && statusRef.current !== "idle") {
-      toast.error("Please wait for the Agent session to initialize before clearing history.")
+      toastError("Please wait for the Agent session to initialize before clearing history.")
       return
     }
 
@@ -622,10 +624,10 @@ export function useChatSession() {
         await window.api.chatCancel(activeSessionId)
       } catch (err) {
         console.error("[useChatSession] chatCancel before clear failed:", err)
-        toast.error("Could not stop the active Agent before clearing history.")
+        toastError("Could not stop the active Agent before clearing history.")
         addNotification({
           title: "Could not stop the active Agent",
-          description: String(err),
+          description: errorToUserMessage(err),
           level: "error",
           source: "agent",
         })
@@ -637,10 +639,10 @@ export function useChatSession() {
       await window.api.chatClearHistory(workflowPath)
     } catch (err) {
       console.error("[useChatSession] chatClearHistory failed:", err)
-      toast.error("Could not clear Agent history")
+      toastError("Could not clear Agent history")
       addNotification({
         title: "Could not clear Agent history",
-        description: String(err),
+        description: errorToUserMessage(err),
         level: "error",
         source: "agent",
       })

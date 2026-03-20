@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
+import { errorToUserMessage } from "@/lib/error-message"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 import type { ArtifactRecord, ProjectFactoryBlueprint, WorkflowTemplate } from "@shared/types"
 import type { WorkflowTemplateRunContext } from "@/lib/workflow-entry"
 
@@ -39,7 +40,7 @@ export function useWorkflowPanelResources({
     }).catch((error) => {
       if (cancelled) return
       setProjectArtifacts([])
-      setProjectArtifactsError(error instanceof Error ? error.message : String(error))
+      setProjectArtifactsError(errorToUserMessage(error))
     }).finally(() => {
       if (!cancelled) {
         setProjectArtifactsLoading(false)
@@ -86,9 +87,7 @@ export function useWorkflowPanelResources({
       if (cancelled) return
       console.error("[WorkflowPanel] failed to load pack templates:", error)
       setPackTemplates([])
-      toast.error("Could not load library", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not load library", error)
     })
 
     return () => {

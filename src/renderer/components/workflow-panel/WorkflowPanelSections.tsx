@@ -137,7 +137,7 @@ export function takeLeadingSentence(value: string | null | undefined, fallback: 
   return text.length > 160 ? `${text.slice(0, 157).trimEnd()}...` : text
 }
 
-export function WorkflowEntryLanding({
+export function WorkflowResumeHeader({
   entry,
   displayTitle,
   readyToRun,

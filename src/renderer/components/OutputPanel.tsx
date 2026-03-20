@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai"
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { CursorMenu } from "@/components/ui/cursor-menu"
 import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
 import { desktopRuntimeAtom } from "@/lib/store"
 import { useOutputPanel } from "@/hooks/useOutputPanel"
 import { HistoryTab } from "@/components/output/HistoryTab"
@@ -18,6 +19,7 @@ import { LogTab } from "@/components/output/OutputSections"
 import { SelectedStepSummaryPanel } from "@/components/output/SelectedStepSummaryPanel"
 import type { ArtifactRecord, LoadedRunResult, RunResult, WorkflowTemplate } from "@shared/types"
 import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 import {
   consumeShortcut,
   isEditableKeyboardTarget,
@@ -26,6 +28,7 @@ import {
 } from "@/lib/keyboard-shortcuts"
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
 import { useOutputPanelDerivedState } from "@/components/output/useOutputPanelDerivedState"
+import { cn } from "@/lib/cn"
 
 // ── Main OutputPanel ─────────────────────────────────────
 
@@ -181,14 +184,26 @@ export function OutputPanel({
     nextStagePending,
   })
 
+  const executionProgress = useMemo(() => {
+    if (runStatus !== "running" && runStatus !== "starting") return null
+    const total = allDisplayNodes.length
+    if (total === 0) return null
+    const completed = allDisplayNodes.filter((node) => {
+      const status = displayNodeStates[node.id]?.status
+      return status === "completed" || status === "failed" || status === "skipped"
+    }).length
+    return { completed, total }
+  }, [runStatus, allDisplayNodes, displayNodeStates])
+
   const handleRerunFrom = useCallback((nodeId: string) => {
     if (!onRerunFrom || !rerunWorkspace) return
     void onRerunFrom(nodeId, { workspace: rerunWorkspace })
   }, [onRerunFrom, rerunWorkspace])
 
   const savedRunLoadingNotice = reviewingRunHistory && reviewedRunLoading ? (
-    <div className="rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
-      Loading saved run details...
+    <div className="flex items-center gap-2 rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
+      <Loader2 size={14} className="animate-spin shrink-0" />
+      Loading saved run details…
     </div>
   ) : null
   const savedRunErrorNotice = reviewingRunHistory && !reviewedRunLoading && reviewedRunError ? (
@@ -261,13 +276,23 @@ export function OutputPanel({
         actionTarget: "activity",
       }}
       children={failedNodeErrors.length > 0 ? (
-        <div className="space-y-1 ui-meta-text text-status-danger">
+        <div className="space-y-1 text-body-sm text-status-danger">
           {failedNodeErrors.map(([id, s]) => {
             const node = allDisplayNodes.find((n) => n.id === id)
-            return (
+            const errorText = s.error || "Unknown error"
+            const isLong = errorText.length > 140
+            return isLong ? (
+              <details key={id} className="text-status-danger/80">
+                <summary className="cursor-pointer list-none">
+                  <span className="font-medium">{node?.label || id}:</span>{" "}
+                  {errorText.slice(0, 140)}…
+                </summary>
+                <pre className="mt-1 whitespace-pre-wrap text-status-danger/70 pl-4 text-body-sm">{errorText}</pre>
+              </details>
+            ) : (
               <div key={id} className="text-status-danger/80">
                 <span className="font-medium">{node?.label || id}:</span>{" "}
-                {s.error}
+                {errorText}
               </div>
             )
           })}
@@ -288,9 +313,7 @@ export function OutputPanel({
       await navigator.clipboard.writeText(displayedResultContent)
     } catch (error) {
       console.error("[OutputPanel] copy result failed:", error)
-      toast.error("Could not copy result", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not copy result", error)
     }
   }, [canCopyResult, displayedResultContent])
 
@@ -314,9 +337,7 @@ export function OutputPanel({
       await Promise.resolve(onOpenReport(path))
     } catch (error) {
       console.error("[OutputPanel] open report failed:", error)
-      toast.error("Could not open report file", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not open report file", error)
     }
   }, [onOpenReport])
 
@@ -464,6 +485,8 @@ export function OutputPanel({
           canStartFreshRun={canStartFreshRun}
           onStartNewRun={onStartNewRun}
           resultReadyPulse={resultReadyPulse}
+          resultLabel={selectedResultPresentation?.artifactLabel}
+          executionProgress={executionProgress}
         />
         {!reviewingRunHistory && surfaceNotice && (
           <ExecutionSurfaceNoticeBanner
@@ -537,7 +560,7 @@ export function OutputPanel({
         >
           {showIdleState ? (
             <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
-              No log yet.
+              No log yet. Run this flow to see detailed execution logs here.
             </div>
           ) : (
             <div className="space-y-2">
@@ -613,9 +636,7 @@ export function OutputPanel({
               canCopyResult={canCopyResult}
               onCopyError={(error) => {
                 console.error("[OutputPanel] copy result failed:", error)
-                toast.error("Could not copy result", {
-                  description: String(error),
-                })
+                toastErrorFromCatch("Could not copy result", error)
               }}
               onExportResult={() => {
                 void handleExportResult()

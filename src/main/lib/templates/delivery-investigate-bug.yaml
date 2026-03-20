@@ -1,0 +1,149 @@
+id: delivery-investigate-bug
+stage: code
+emoji: "\U0001F41E"
+headline: Investigate and fix a bug
+how: Reproduce the problem, trace the root cause, choose a fix approach, implement, and verify the fix does not regress.
+input: Bug description, error message, Sentry link, or reproduction steps
+output: Root cause analysis, fix with verification, and a ready-to-merge PR description
+use_when: Something is broken — a user-reported bug, a production incident, or a regression after a recent deploy.
+time: ~8-15 min.
+steps:
+  - Reproduce the bug and confirm it is real
+  - Trace the root cause through code and recent changes
+  - Propose fix approaches (hotfix vs proper fix)
+  - Implement the chosen fix
+  - Verify the fix resolves the issue without regressions
+pack:
+  id: delivery-foundation
+  label: Delivery Lab
+  journey_stage: apply
+  entrypoint: true
+  recommended_next:
+    - delivery-review-phase
+contract_out:
+  - kind: root_cause_analysis
+    title: Root Cause Analysis
+    description: What broke, why, which commit or change introduced it, and what else might be affected.
+  - kind: implementation_report
+    title: Bug Fix Report
+    description: What was changed to fix the bug, what was verified, and any follow-up work deferred.
+execution_policy:
+  profile_id: delivery_bugfix
+  summary: Reproduce first, fix second
+  description: Never jump to a fix without confirming the root cause. Verify the fix does not introduce regressions.
+  tags:
+    - evidence_first
+    - test_first
+  notes:
+    - Reproduce before diagnosing. If you cannot reproduce, say so explicitly.
+    - Check git log for recent changes that could have introduced the bug.
+    - Prefer the smallest fix that resolves the issue. Broader refactors go in a follow-up.
+    - Always run existing tests after the fix to catch regressions.
+    - "Target operator: solo founder with AI agents, no employees. Under time pressure — keep the process lean."
+version: 1
+name: "Delivery Lab: Investigate Bug"
+description: Reproduce a bug, find the root cause, implement a focused fix, and verify it resolves the problem without regressions.
+defaults:
+  model: sonnet
+  maxTurns: 120
+  timeout_minutes: 30
+nodes:
+  - id: input-1
+    type: input
+    position:
+      x: 0
+      y: 200
+    config:
+      inputType: text
+      required: true
+      placeholder: Describe the bug — error message, reproduction steps, Sentry link, or what the user reported.
+  - id: investigator-1
+    type: skill
+    position:
+      x: 360
+      y: 200
+    config:
+      skillRef: researcher
+      prompt: >-
+        Investigate this bug report against the current codebase.
+
+        1. Reproduce: find the code path that triggers the described behavior.
+           If you cannot reproduce, state what is missing.
+        2. Diagnose: trace the root cause. Check git log for recent changes
+           that could have introduced or exposed this bug.
+        3. Root cause: state clearly — what broke, why, and what else
+           might be affected by the same underlying issue.
+        4. Propose two fix approaches:
+           A) Hotfix — smallest change that resolves the immediate problem.
+           B) Proper fix — addresses the root cause more thoroughly.
+           For each: estimated scope, risk, and what it does NOT fix.
+
+        Output a structured Root Cause Analysis with the above sections.
+  - id: approval-1
+    type: approval
+    position:
+      x: 720
+      y: 200
+    config:
+      title: Choose fix approach
+      description: "Review the root cause analysis and choose: Hotfix (fast, minimal) or Proper Fix (thorough). You can also edit the scope before continuing."
+      timeout: 7200
+      defaultAction: approve
+  - id: fixer-1
+    type: skill
+    position:
+      x: 1080
+      y: 200
+    config:
+      skillRef: dev/code-reviewer
+      prompt: >-
+        Implement the approved fix approach from the Root Cause Analysis.
+
+        1. Make the code changes. Keep the diff focused — fix the bug,
+           do not refactor unrelated code.
+        2. Update or add tests that cover the bug scenario.
+        3. Run existing tests to verify no regressions.
+        4. Produce a Bug Fix Report: what changed, what was verified,
+           tests added, and any follow-up work deferred.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 1440
+      y: 200
+    config:
+      criteria: "Score 1-10: (1) fix directly addresses the stated root cause, (2) diff is focused and minimal, (3) tests cover the bug scenario, (4) existing tests still pass, (5) no obvious regressions introduced."
+      threshold: 7
+      maxRetries: 2
+      retryFrom: fixer-1
+  - id: output-1
+    type: output
+    position:
+      x: 1800
+      y: 200
+    config:
+      title: Bug Fix Report
+edges:
+  - id: e-input-investigator
+    source: input-1
+    target: investigator-1
+    type: default
+  - id: e-investigator-approval
+    source: investigator-1
+    target: approval-1
+    type: default
+  - id: e-approval-fixer
+    source: approval-1
+    target: fixer-1
+    type: default
+  - id: e-fixer-eval
+    source: fixer-1
+    target: eval-1
+    type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-fixer
+    source: eval-1
+    target: fixer-1
+    type: fail

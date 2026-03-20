@@ -1,7 +1,8 @@
 import { useCallback } from "react"
 import { useAtomValue, useSetAtom } from "jotai"
-import { toast } from "sonner"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
+import { errorToUserMessage } from "@/lib/error-message"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import type { WebSearchBackend } from "@/lib/web-search-backend"
 import {
   cliStatusAtom,
@@ -91,7 +92,7 @@ export function useExecutionCommands({
       console.warn("[useChainExecution] late-started run cancel failed:", error)
     }
 
-    toast.error(title, {
+    toastError(title, {
       description,
     })
     recordExecutionError(title, description)
@@ -112,7 +113,7 @@ export function useExecutionCommands({
 
       if (!preflight.ok) {
         const title = formatExecutionPreflightTitle(preflight.effectiveProvider, preflight.reason) || fallbackTitle
-        toast.error(title, {
+        toastError(title, {
           description: preflight.message,
         })
         recordExecutionError(title, preflight.message)
@@ -190,7 +191,7 @@ export function useExecutionCommands({
         if (validationIssues.length > 0) {
           setValidationErrors(groupValidationIssuesByNode(validationIssues))
         }
-        toast.error("Could not start run", {
+        toastError("Could not start run", {
           description: errorMessage || undefined,
         })
         recordExecutionError("Could not start run", errorMessage || undefined)
@@ -203,10 +204,8 @@ export function useExecutionCommands({
       }
     } catch (error) {
       console.error("[useChainExecution] runChain failed:", error)
-      toast.error("Could not start run", {
-        description: String(error),
-      })
-      recordExecutionError("Could not start run", String(error))
+      toastErrorFromCatch("Could not start run", error)
+      recordExecutionError("Could not start run", errorToUserMessage(error))
       controller.rollbackExecutionStart(startHandle)
     }
   }, [
@@ -255,7 +254,7 @@ export function useExecutionCommands({
         "Run cancel timed out. Check the main flow and try again.",
       )
       if (!cancelled) {
-        toast.error("Could not cancel run")
+        toastError("Could not cancel run")
         recordExecutionError("Could not cancel run")
         controller.rollbackCancellation(executionKey, previousRunStatus, currentRunId)
         return
@@ -263,10 +262,8 @@ export function useExecutionCommands({
       controller.cancelExecution(executionKey, currentRunId)
     } catch (error) {
       console.error("[useChainExecution] cancelRun failed:", error)
-      toast.error("Could not cancel run", {
-        description: String(error),
-      })
-      recordExecutionError("Could not cancel run", String(error))
+      toastErrorFromCatch("Could not cancel run", error)
+      recordExecutionError("Could not cancel run", errorToUserMessage(error))
       controller.rollbackCancellation(executionKey, previousRunStatus, currentRunId)
     }
   }, [controller, recordExecutionError, selectedWorkflowPath])
@@ -317,21 +314,19 @@ export function useExecutionCommands({
         if (validationIssues.length > 0) {
           setValidationErrors(groupValidationIssuesByNode(validationIssues))
         }
-        toast.error("Could not restart from selected node", {
+        toastError("Could not restart from selected node", {
           description: errorMessage,
         })
         recordExecutionError("Could not restart from selected node", errorMessage)
         controller.rollbackExecutionStart(startHandle)
         return
       }
-      toast.error("Could not restart from selected node")
+      toastError("Could not restart from selected node")
       recordExecutionError("Could not restart from selected node")
     } catch (error) {
       console.error("[useChainExecution] rerunFrom failed:", error)
-      toast.error("Could not restart from selected node", {
-        description: String(error),
-      })
-      recordExecutionError("Could not restart from selected node", String(error))
+      toastErrorFromCatch("Could not restart from selected node", error)
+      recordExecutionError("Could not restart from selected node", errorToUserMessage(error))
     }
 
     controller.rollbackExecutionStart(startHandle)
@@ -357,14 +352,14 @@ export function useExecutionCommands({
   ) => {
     if (isRunInFlight(runStatus)) return false
     if (!runToContinue.workspace) {
-      toast.error("Could not continue run", {
+      toastError("Could not continue run", {
         description: "Run workspace is missing.",
       })
       recordExecutionError("Could not continue run", "Run workspace is missing.")
       return false
     }
     if (!workflowForRun.nodes.length) {
-      toast.error("Could not continue run", {
+      toastError("Could not continue run", {
         description: "Flow has no steps.",
       })
       recordExecutionError("Could not continue run", "Flow has no steps.")
@@ -417,16 +412,14 @@ export function useExecutionCommands({
       if (validationIssues.length > 0) {
         setValidationErrors(groupValidationIssuesByNode(validationIssues))
       }
-      toast.error("Could not continue run", {
+      toastError("Could not continue run", {
         description: errorMessage || undefined,
       })
       recordExecutionError("Could not continue run", errorMessage || undefined)
     } catch (error) {
       console.error("[useChainExecution] continueRun failed:", error)
-      toast.error("Could not continue run", {
-        description: String(error),
-      })
-      recordExecutionError("Could not continue run", String(error))
+      toastErrorFromCatch("Could not continue run", error)
+      recordExecutionError("Could not continue run", errorToUserMessage(error))
     }
 
     controller.rollbackExecutionStart(startHandle)
@@ -448,7 +441,7 @@ export function useExecutionCommands({
   const continueRun = useCallback(async (runToContinue: RunResult) => {
     if (isRunInFlight(runStatus)) return
     if (!runToContinue.workspace) {
-      toast.error("Could not continue run", {
+      toastError("Could not continue run", {
         description: "Run workspace is missing.",
       })
       recordExecutionError("Could not continue run", "Run workspace is missing.")
@@ -468,15 +461,13 @@ export function useExecutionCommands({
       workflowForRun = resolvedContinuation.workflowForRun
       workflowPathForRun = resolvedContinuation.workflowPathForRun
     } catch (error) {
-      toast.error("Could not continue run", {
-        description: `Failed to load flow file: ${String(error)}`,
-      })
-      recordExecutionError("Could not continue run", `Failed to load flow file: ${String(error)}`)
+      toastErrorFromCatch("Could not continue run", error)
+      recordExecutionError("Could not continue run", errorToUserMessage(error, "Could not load flow file."))
       return
     }
 
     if (!workflowForRun.nodes.length) {
-      toast.error("Could not continue run", {
+      toastError("Could not continue run", {
         description: "Flow has no steps.",
       })
       recordExecutionError("Could not continue run", "Flow has no steps.")

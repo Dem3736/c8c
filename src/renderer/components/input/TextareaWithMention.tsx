@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, forwardRef, useCallback } from "react"
 import { useAtom } from "jotai"
-import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 import { selectedProjectAtom } from "@/lib/store"
 import { Textarea } from "@/components/ui/textarea"
 import { AtMentionDropdown } from "@/components/input/AtMentionDropdown"
@@ -62,9 +62,7 @@ export const TextareaWithMention = forwardRef<
         if (cancelled) return
         setFiles([])
         setLoading(false)
-        toast.error("Could not load project files", {
-          description: String(error),
-        })
+        toastErrorFromCatch("Could not load project files", error)
       })
 
     return () => {

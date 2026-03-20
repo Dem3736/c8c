@@ -7,6 +7,8 @@ import { useSetAtom } from "jotai"
 import type { MainView } from "@/lib/store"
 import type { Workflow, WorkflowFile } from "@shared/types"
 import { toast } from "sonner"
+import { errorToUserMessage } from "@/lib/error-message"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { workflowOpenStateAtom } from "@/lib/store"
@@ -131,7 +133,7 @@ export function useWorkflowCrud({
       )
       onProjectAdd?.(projectPath)
     } catch (error) {
-      toast.error(`Failed to add project: ${String(error)}`)
+      toastErrorFromCatch("Could not add project", error)
     }
   }
 
@@ -154,7 +156,7 @@ export function useWorkflowCrud({
         return next
       })
     } catch (error) {
-      toast.error(`Failed to remove project: ${String(error)}`)
+      toastErrorFromCatch("Could not remove project", error)
       return
     }
 
@@ -210,9 +212,9 @@ export function useWorkflowCrud({
       setWorkflowOpenState({
         status: "error",
         targetPath: workflow.path,
-        message: String(error),
+        message: errorToUserMessage(error),
       })
-      toast.error(`Failed to open flow: ${String(error)}`)
+      toastErrorFromCatch("Could not open flow", error)
     }
   }
 
@@ -252,7 +254,7 @@ export function useWorkflowCrud({
         updatedAt: Date.now(),
       })
     } catch (error) {
-      toast.error(`Failed to create flow: ${String(error)}`)
+      toastErrorFromCatch("Could not create flow", error)
     } finally {
       setCreatingWorkflow(false)
     }
@@ -274,7 +276,7 @@ export function useWorkflowCrud({
 
   const selectGlobalWorkflow = async (workflow: WorkflowFile) => {
     if (!selectedProject) {
-      toast.error("Open a project first to run this flow")
+      toastError("Open a project first to run this flow")
       return
     }
     if (selectedWorkflowPath === workflow.path) {
@@ -312,15 +314,15 @@ export function useWorkflowCrud({
       setWorkflowOpenState({
         status: "error",
         targetPath: workflow.path,
-        message: String(error),
+        message: errorToUserMessage(error),
       })
-      toast.error(`Failed to open flow: ${String(error)}`)
+      toastErrorFromCatch("Could not open flow", error)
     }
   }
 
   const requestRenameWorkflow = (workflow: WorkflowFile) => {
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the flow before renaming it")
+      toastError("Stop the flow before renaming it")
       return
     }
     setRenameInput(workflow.name)
@@ -336,7 +338,7 @@ export function useWorkflowCrud({
       return
     }
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the flow before renaming it")
+      toastError("Stop the flow before renaming it")
       setPendingRenameWorkflow(null)
       return
     }
@@ -363,7 +365,7 @@ export function useWorkflowCrud({
       setPendingRenameWorkflow(null)
       toast.success(`Flow renamed: ${nextName}`)
     } catch (error) {
-      toast.error(`Failed to rename flow: ${String(error)}`)
+      toastErrorFromCatch("Could not rename flow", error)
       return
     }
 
@@ -372,16 +374,14 @@ export function useWorkflowCrud({
         const refreshed = await window.api.listProjectWorkflows(selectedProject)
         setWorkflows(refreshed)
       } catch (error) {
-        toast.error("Flow renamed but sidebar refresh failed", {
-          description: String(error),
-        })
+        toastErrorFromCatch("Flow renamed but sidebar refresh failed", error)
       }
     }
   }
 
   const requestDeleteWorkflow = (workflow: WorkflowFile) => {
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the flow before deleting it")
+      toastError("Stop the flow before deleting it")
       return
     }
     setPendingDeleteWorkflow(workflow)
@@ -392,7 +392,7 @@ export function useWorkflowCrud({
     if (!workflow) return
     setPendingDeleteWorkflow(null)
     if (workflowHasActiveRun(workflow.path)) {
-      toast.error("Stop the flow before deleting it")
+      toastError("Stop the flow before deleting it")
       return
     }
 
@@ -424,7 +424,7 @@ export function useWorkflowCrud({
 
       toast.success(`Flow deleted: ${workflow.name}`)
     } catch (error) {
-      toast.error(`Failed to delete flow: ${String(error)}`)
+      toastErrorFromCatch("Could not delete flow", error)
     }
   }
 
@@ -455,7 +455,7 @@ export function useWorkflowCrud({
       setMainView("thread")
       toast.success("Flow duplicated")
     } catch (error) {
-      toast.error("Failed to duplicate flow", { description: String(error) })
+      toastErrorFromCatch("Could not duplicate flow", error)
     }
   }
 

@@ -27,7 +27,7 @@ import {
   Terminal,
   Bot,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 
 const TOTAL_STEPS = 3
 
@@ -354,9 +354,7 @@ function StepOpenProject({
         onProjectAdded(result)
       }
     } catch (error) {
-      toast.error("Could not add project", {
-        description: error instanceof Error ? error.message : String(error),
-      })
+      toastErrorFromCatch("Could not add project", error)
     } finally {
       setAdding(false)
     }

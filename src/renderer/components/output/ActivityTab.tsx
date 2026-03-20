@@ -90,7 +90,7 @@ export function ActivityTab({
               </p>
             </div>
           )}
-          <div className="ui-meta-text text-muted-foreground">No activity yet.</div>
+          <div className="ui-meta-text text-muted-foreground">No activity yet. Run this flow to see step-by-step progress here.</div>
         </div>
       </div>
     )

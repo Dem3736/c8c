@@ -20,6 +20,8 @@ interface SelectedTaskPanelProps {
   taskSubmitting: boolean
   taskAnswers: Record<string, unknown>
   selectedTaskStageMeta: TaskStageMeta | null
+  showOpenWorkflowButton?: boolean
+  className?: string
   onOpenWorkflow: () => void
   onFieldChange: (field: HumanTaskField, value: unknown) => void
   onSubmit: () => void
@@ -33,6 +35,8 @@ export function SelectedTaskPanel({
   taskSubmitting,
   taskAnswers,
   selectedTaskStageMeta,
+  showOpenWorkflowButton = true,
+  className,
   onOpenWorkflow,
   onFieldChange,
   onSubmit,
@@ -42,7 +46,7 @@ export function SelectedTaskPanel({
   const selectedTaskPrimaryField = primaryTaskFieldLabel(selectedTask)
 
   return (
-    <article className="rounded-lg surface-soft px-5 py-4">
+    <article className={className || "rounded-lg surface-soft px-5 py-4"}>
       {taskLoading ? (
         <div className="flex min-h-[260px] items-center justify-center text-muted-foreground">
           <Loader2 size={18} className="mr-2 animate-spin" />
@@ -86,7 +90,7 @@ export function SelectedTaskPanel({
                 <p className="mt-2 text-body-sm text-muted-foreground whitespace-pre-wrap">{selectedTask.instructions}</p>
               )}
             </div>
-            {selectedTask.workflowPath && (
+            {showOpenWorkflowButton && selectedTask.workflowPath && (
               <Button type="button" variant="outline" size="sm" onClick={onOpenWorkflow}>
                 <ArrowUpRight size={14} />
                 Open flow

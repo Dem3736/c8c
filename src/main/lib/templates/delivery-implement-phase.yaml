@@ -80,10 +80,20 @@ nodes:
         3) checks run and their outcomes,
         4) gaps, risks, or follow-ups still open,
         5) what verification should inspect next.
+  - id: eval-1
+    type: evaluator
+    position:
+      x: 720
+      y: 200
+    config:
+      criteria: "Rate the implementation on: (1) all planned changes are addressed, (2) no obvious bugs or security issues, (3) code follows existing patterns in the codebase, (4) tests are included or justified as unnecessary, (5) diff is focused — no unrelated changes"
+      threshold: 7
+      maxRetries: 2
+      retryFrom: implement-1
   - id: output-1
     type: output
     position:
-      x: 720
+      x: 1080
       y: 200
     config:
       title: Implementation Report
@@ -92,7 +102,15 @@ edges:
     source: input-1
     target: implement-1
     type: default
-  - id: e-implement-output
+  - id: e-implement-eval
     source: implement-1
-    target: output-1
+    target: eval-1
     type: default
+  - id: e-eval-output
+    source: eval-1
+    target: output-1
+    type: pass
+  - id: e-eval-implement
+    source: eval-1
+    target: implement-1
+    type: fail

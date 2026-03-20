@@ -13,6 +13,10 @@ steps:
   - Distill to core job, segment, and value delta
   - Founder approves the chosen segment and strategic focus before sharpening
   - Sharpen positioning and clarify messaging
+contract_out:
+  - kind: positioning_document
+    title: Positioning Document
+    description: JTBD-grounded positioning with segments, jobs, and strategic focus
 execution_policy:
   notes:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."

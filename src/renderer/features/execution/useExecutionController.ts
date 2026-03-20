@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { useAtomValue } from "jotai"
 import { toast } from "sonner"
+import { errorToUserMessage } from "@/lib/error-message"
+import { toastError } from "@/lib/toast-error"
 import { createWorkflowExecutionController } from "./controller"
 import type { WorkflowExecutionController } from "./controller"
 import { DEFAULT_EXECUTION_IPC_TIMEOUT_MS, withIpcTimeout } from "./commands"
@@ -35,7 +37,7 @@ function toInboxLevel(level: ExecutionSurfaceNotice["level"]): "info" | "success
 
 function showExecutionToast(notice: ExecutionSurfaceNotice) {
   if (notice.level === "error") {
-    toast.error(notice.title, { description: notice.description })
+    toastError(notice.title, { description: notice.description })
     return
   }
   if (notice.level === "success") {
@@ -172,7 +174,7 @@ export function useExecutionController({
         if (notice) {
           showExecutionToast(notice)
         } else {
-          toast.error("Run failed", {
+          toastError("Run failed", {
             description: message,
           })
         }
@@ -239,7 +241,7 @@ export function useExecutionController({
             artifactPersistenceError: null,
           }))
         }).catch((error) => {
-          const message = error instanceof Error ? error.message : String(error)
+          const message = errorToUserMessage(error)
           controllerRef.current?.updateExecutionForKey(workflowKey, (previous) => ({
             ...previous,
             artifactPersistenceStatus: "error",

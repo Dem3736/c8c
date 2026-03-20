@@ -6,7 +6,8 @@ import {
 } from "react"
 import { useAtom, useSetAtom } from "jotai"
 import type { DiscoveredSkill, RunResult, Workflow, WorkflowFile } from "@shared/types"
-import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
+import { errorToUserMessage } from "@/lib/error-message"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import {
@@ -71,9 +72,7 @@ export function useProjectSidebarData({
     }).catch((error) => {
       if (cancelled) return
       setProjects([])
-      toast.error("Could not load projects", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not load projects", error)
     })
 
     void window.api.getSelectedProject().then((projectPath) => {
@@ -81,9 +80,7 @@ export function useProjectSidebarData({
       setSelectedProject(projectPath)
     }).catch((error) => {
       if (cancelled) return
-      toast.error("Could not restore the selected project", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not restore the selected project", error)
     })
 
     return () => {
@@ -105,9 +102,7 @@ export function useProjectSidebarData({
         if (cancelled) return
         setWorkflows([])
         setProjectWorkflowsLoading((prev) => ({ ...prev, [selectedProject]: false }))
-        toast.error("Could not load project data", {
-          description: String(error),
-        })
+        toastErrorFromCatch("Could not load project data", error)
       })
 
       void window.api.scanSkills(selectedProject).then((skills) => {
@@ -116,9 +111,7 @@ export function useProjectSidebarData({
       }).catch((error) => {
         if (cancelled) return
         setSkills([])
-        toast.error("Could not load project skills", {
-          description: String(error),
-        })
+        toastErrorFromCatch("Could not load project skills", error)
       })
 
       void window.api.listRuns(selectedProject).then((runs) => {
@@ -133,9 +126,7 @@ export function useProjectSidebarData({
 
       void window.api.setSelectedProject(selectedProject).catch((error) => {
         if (cancelled) return
-        toast.error("Could not persist the selected project", {
-          description: String(error),
-        })
+        toastErrorFromCatch("Could not persist the selected project", error)
       })
 
       return () => {
@@ -203,15 +194,13 @@ export function useProjectSidebarData({
       setWorkflowOpenState({
         status: "error",
         targetPath: selectedWorkflowPath,
-        message: String(error),
+        message: errorToUserMessage(error),
       })
       setSelectedWorkflowPath(null)
       const emptyWorkflow = createEmptyWorkflow()
       setCurrentWorkflow(emptyWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
-      toast.error("Could not restore the previously opened flow", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not restore the previously opened flow", error)
     })
 
     return () => {

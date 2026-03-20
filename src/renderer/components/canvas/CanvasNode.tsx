@@ -39,10 +39,10 @@ const STATUS_LABELS: Record<string, string> = {
   running: "running",
   completed: "completed",
   failed: "failed",
-  queued: "waiting",
+  queued: "queued",
   skipped: "skipped",
-  waiting_approval: "waiting for approval",
-  waiting_human: "waiting for input",
+  waiting_approval: "needs approval",
+  waiting_human: "needs your input",
 }
 
 function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {

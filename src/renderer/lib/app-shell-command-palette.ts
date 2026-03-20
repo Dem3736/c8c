@@ -143,12 +143,12 @@ function actionEntry(
 
 export function buildAppShellActionEntries(): AppShellActionEntry[] {
   return [
-    actionEntry("new_process", "New flow", ["new", "create", "start", "flow", "process"]),
-    actionEntry("add_project", "Add project", ["add", "project", "folder", "workspace"]),
-    actionEntry("process_library", "Library", ["library", "template", "starting point", "flow", "process"]),
-    actionEntry("attach_skill", "Attach skill", ["attach", "add", "skill", "tool", "step"], "Open the skill picker for the current flow."),
-    actionEntry("inbox", "Inbox", ["inbox", "approval", "tasks", "notifications"]),
-    actionEntry("settings", "Settings", ["settings", "preferences", "configuration"]),
+    actionEntry("new_process", "New flow", ["new", "create", "start", "flow", "process"], "Create a flow in your project"),
+    actionEntry("add_project", "Add project", ["add", "project", "folder", "workspace"], "Open a project folder"),
+    actionEntry("process_library", "Library", ["library", "template", "starting point", "flow", "process"], "Browse starting points and templates"),
+    actionEntry("attach_skill", "Attach skill", ["attach", "add", "skill", "tool", "step"], "Open the skill picker for the current flow"),
+    actionEntry("inbox", "Inbox", ["inbox", "approval", "tasks", "notifications"], "View approvals and pending tasks"),
+    actionEntry("settings", "Settings", ["settings", "preferences", "configuration"], "Configure providers and defaults"),
   ]
 }
 

@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Check, X } from "lucide-react"
-import { toast } from "sonner"
+import { toastError } from "@/lib/toast-error"
 import { DEFAULT_EXECUTION_IPC_TIMEOUT_MS, withIpcTimeout } from "@/features/execution"
 import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import { consumeShortcut, isShortcutConsumed, matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
@@ -178,14 +178,14 @@ export function ApprovalDialog() {
         "Approval timed out. Check the main flow and try again.",
       )
       if (!ok) {
-        toast.error("Could not approve step: this flow is no longer active")
+        toastError("Could not approve step: this flow is no longer active")
         shiftQueue()
         return
       }
       shiftQueue()
     } catch (err) {
       console.error("[ApprovalDialog] approve failed:", err)
-      toast.error("Failed to approve step")
+      toastError("Could not approve step")
     } finally {
       if (mountedRef.current) {
         setSubmitting(false)
@@ -203,14 +203,14 @@ export function ApprovalDialog() {
         "Stopping the flow timed out. Check the main flow and try again.",
       )
       if (!ok) {
-        toast.error("Could not stop flow: it is no longer active")
+        toastError("Could not stop flow: it is no longer active")
         shiftQueue()
         return
       }
       shiftQueue()
     } catch (err) {
       console.error("[ApprovalDialog] reject failed:", err)
-      toast.error("Failed to stop flow")
+      toastError("Could not stop flow")
     } finally {
       if (mountedRef.current) {
         setSubmitting(false)
@@ -284,6 +284,7 @@ export function ApprovalDialog() {
                 rows={12}
                 className="font-mono text-body-sm"
               />
+              <p className="ui-meta-text text-muted-foreground">Your edits will be used as the step output when approved.</p>
             </section>
           ) : (
             <DisclosurePanel summary="Show full input">

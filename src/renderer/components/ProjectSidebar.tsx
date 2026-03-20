@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useAtom, useSetAtom } from "jotai"
-import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 import { moveProjectBeforeOrAfterTarget, type ProjectDropPosition } from "@shared/project-order"
 import {
   projectsAtom,
@@ -335,9 +335,7 @@ export function ProjectSidebar({
       } catch {
         setProjects(previousProjects)
       }
-      toast.error("Could not reorder projects", {
-        description: String(error),
-      })
+      toastErrorFromCatch("Could not reorder projects", error)
     })
   }
 

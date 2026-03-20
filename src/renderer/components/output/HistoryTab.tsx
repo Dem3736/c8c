@@ -22,7 +22,7 @@ import type { RunResult } from "@shared/types"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
-import { toast } from "sonner"
+import { toastErrorFromCatch } from "@/lib/toast-error"
 
 const PREVIEW_MAX_W = "max-w-52" as const
 const MARKDOWN_PROSE_CLASS = "prose-c8c"
@@ -129,7 +129,7 @@ export function HistoryTab({
       await Promise.resolve(onOpenReport(path))
     } catch (error) {
       console.error("[HistoryTab] open report failed:", error)
-      toast.error("Could not open report file", { description: String(error) })
+      toastErrorFromCatch("Could not open report file", error)
     }
   }, [onOpenReport])
 
@@ -138,7 +138,7 @@ export function HistoryTab({
       await navigator.clipboard.writeText(runId)
     } catch (error) {
       console.error("[HistoryTab] copy run ID failed:", error)
-      toast.error("Could not copy run ID", { description: String(error) })
+      toastErrorFromCatch("Could not copy run ID", error)
     }
   }, [])
 
@@ -209,7 +209,7 @@ export function HistoryTab({
   if (pastRuns.length === 0) {
     return (
       <div className="rounded-lg surface-soft p-6 ui-empty-state text-body-md text-muted-foreground">
-        No past runs yet. Start a flow run to build history.
+        No past runs yet. Complete a flow run to build history you can review and compare.
       </div>
     )
   }

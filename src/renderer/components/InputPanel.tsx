@@ -319,7 +319,12 @@ export function InputPanel({
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1">
           <span role="status" aria-live="polite">
-            <Badge variant="outline" size="compact" className="control-badge control-badge-compact rounded-full border-hairline bg-surface-1/80">
+            <Badge
+              variant="outline"
+              size="compact"
+              className="control-badge control-badge-compact rounded-full border-hairline bg-surface-1/80"
+              title="Auto-detected from your input. Paste a URL or file path to switch type."
+            >
               Type: {inputTypeLabel}
             </Badge>
           </span>

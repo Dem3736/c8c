@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { errorToUserMessage } from "@/lib/error-message"
 import { useAtom, useAtomValue } from "jotai"
 import {
   AlertTriangle,
@@ -33,12 +34,15 @@ import { getRuntimeStagePresentation } from "@/lib/runtime-flow-labels"
 import { deriveArtifactCaseKey } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { selectedPastRunAtom } from "@/features/execution"
-import type { ArtifactRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult, Workflow } from "@shared/types"
+import type { ArtifactRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, Workflow } from "@shared/types"
 import {
+  buildInitialHumanTaskAnswers,
   compactTaskText,
+  hasMissingRequiredTaskAnswers,
   type TaskStageMeta,
   taskSelectionKey,
   taskStageKey,
+  toContinuationRun,
 } from "@/components/notifications/task-ui"
 import { HumanTaskInboxSection } from "@/components/notifications/HumanTaskInboxSection"
 import { RecentEventsSection } from "@/components/notifications/RecentEventsSection"
@@ -64,12 +68,6 @@ const LEVEL_META: Record<InboxNotification["level"], { icon: typeof CheckCircle2
     tone: "text-status-danger",
     badgeClass: "ui-status-badge-danger",
   },
-}
-
-function buildInitialHumanTaskAnswers(task: HumanTaskSnapshot | null): Record<string, unknown> {
-  if (!task) return {}
-  if (task.latestResponse?.answers) return task.latestResponse.answers
-  return task.request.defaults || {}
 }
 
 interface CaseOption {
@@ -136,7 +134,7 @@ export function NotificationsPage() {
       setHumanTasks(tasks)
     } catch (error) {
       if (humanTasksRequestIdRef.current !== requestId) return
-      setHumanTasksError(error instanceof Error ? error.message : String(error))
+      setHumanTasksError(errorToUserMessage(error))
       setHumanTasks([])
     } finally {
       if (humanTasksRequestIdRef.current !== requestId) return
@@ -322,7 +320,7 @@ export function NotificationsPage() {
       setTaskAnswers(buildInitialHumanTaskAnswers(task))
     }).catch((error) => {
       if (cancelled || selectedTaskRequestIdRef.current !== requestId) return
-      setHumanTasksError(error instanceof Error ? error.message : String(error))
+      setHumanTasksError(errorToUserMessage(error))
       setSelectedTask(null)
       setTaskAnswers({})
     }).finally(() => {
@@ -431,34 +429,9 @@ export function NotificationsPage() {
     }))
   }
 
-  const hasMissingRequiredAnswers = (task: HumanTaskSnapshot) => {
-    for (const field of task.request.fields) {
-      if (!field.required) continue
-      const value = taskAnswers[field.id]
-      const missing = field.type === "multiselect"
-        ? !Array.isArray(value) || value.length === 0
-        : field.type === "boolean"
-          ? value === undefined
-          : value === null || value === undefined || String(value).trim().length === 0
-      if (missing) return true
-    }
-    return false
-  }
-
-  const toContinuationRun = (task: HumanTaskSnapshot): RunResult => ({
-    runId: task.sourceRunId,
-    status: "blocked",
-    workflowName: task.workflowName,
-    workflowPath: task.workflowPath,
-    startedAt: task.createdAt,
-    completedAt: task.updatedAt,
-    reportPath: "",
-    workspace: task.workspace,
-  })
-
   const submitSelectedTask = async () => {
     if (!selectedTask) return false
-    if (hasMissingRequiredAnswers(selectedTask)) return false
+    if (hasMissingRequiredTaskAnswers(selectedTask, taskAnswers)) return false
     const ok = await window.api.submitHumanTask(selectedTask.taskId, selectedTask.workspace, {
       answers: taskAnswers,
     })

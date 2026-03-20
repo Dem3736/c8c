@@ -1,4 +1,4 @@
-import type { ComponentProps, RefObject } from "react"
+import type { ComponentProps, ReactNode, RefObject } from "react"
 import { TabsContent } from "@/components/ui/tabs"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
@@ -11,10 +11,12 @@ import { ChainBuilder } from "@/components/ChainBuilder"
 import {
   StageInputSection,
   WorkflowDraftSkeleton,
-  WorkflowEntryLanding,
+  WorkflowResumeHeader,
 } from "@/components/workflow-panel/WorkflowPanelInlineSections"
 import { cn } from "@/lib/cn"
+import type { WorkflowBlockedResumeSummary } from "@/lib/workflow-blocked-resume"
 import type { FlowRulePreview } from "@/lib/flow-rules"
+import type { WorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import type { ArtifactContract, ArtifactRecord, PersistedRunSnapshot } from "@shared/types"
 import type { WorkflowEntryState } from "@/lib/workflow-entry"
 import type { ExecutionRunStatus, ExecutionSurfaceNotice } from "@/lib/workflow-execution"
@@ -94,16 +96,19 @@ interface WorkflowListTabProps {
   listScrollRegionRef: RefObject<HTMLDivElement | null>
   listShellClass: string
   showCreateDraftSkeleton: boolean
-  showEntryLanding: boolean
+  showResumeHeader: boolean
   activeEntryState: WorkflowEntryState | null
   workflowName: string
   readyToRun: boolean
   startApprovalRequired: boolean
   entryStageLabel: string | null
+  resumeEntrySummary: WorkflowResumeEntrySummary | null
+  blockedResumeSummary: WorkflowBlockedResumeSummary | null
   entryFlowRules: FlowRulePreview[]
   entryNextStepLabel: string
   stageStartInputLabels: string[]
   onPrimaryEntryAction: () => void
+  onOpenResumeArtifact: (() => void) | null
   onRefine: () => void
   onToggleEntryEditor: () => void
   onAttachCapability: () => void
@@ -121,7 +126,8 @@ interface WorkflowListTabProps {
   chainBuilderMode: ComponentProps<typeof ChainBuilder>["mode"]
   onFocusStageDetails: ComponentProps<typeof ChainBuilder>["onStageSelect"]
   reviewSnapshot: PersistedRunSnapshot | null
-  showIdleReviewMode: boolean
+  showReviewOutputMode: boolean
+  blockedTaskPanel?: ReactNode
   runStatus: ExecutionRunStatus
   outputPanelRef: RefObject<HTMLDivElement | null>
   outputPanelProps: ComponentProps<typeof OutputPanel>
@@ -131,16 +137,19 @@ export function WorkflowListTab({
   listScrollRegionRef,
   listShellClass,
   showCreateDraftSkeleton,
-  showEntryLanding,
+  showResumeHeader,
   activeEntryState,
   workflowName,
   readyToRun,
   startApprovalRequired,
   entryStageLabel,
+  resumeEntrySummary,
+  blockedResumeSummary,
   entryFlowRules,
   entryNextStepLabel,
   stageStartInputLabels,
   onPrimaryEntryAction,
+  onOpenResumeArtifact,
   onRefine,
   onToggleEntryEditor,
   onAttachCapability,
@@ -158,7 +167,8 @@ export function WorkflowListTab({
   chainBuilderMode,
   onFocusStageDetails,
   reviewSnapshot,
-  showIdleReviewMode,
+  showReviewOutputMode,
+  blockedTaskPanel = null,
   runStatus,
   outputPanelRef,
   outputPanelProps,
@@ -174,19 +184,22 @@ export function WorkflowListTab({
           <WorkflowDraftSkeleton />
         ) : (
           <>
-            {showEntryLanding && activeEntryState && (
+            {showResumeHeader && activeEntryState && (
               <>
-                <WorkflowEntryLanding
+                <WorkflowResumeHeader
                   entry={activeEntryState}
-                  displayTitle={activeEntryState.title || workflowName}
+                  displayTitle={resumeEntrySummary?.workLabel || activeEntryState.title || workflowName}
                   readyToRun={readyToRun}
                   startApprovalRequired={startApprovalRequired}
                   stageLabel={entryStageLabel}
+                  resumeSummary={resumeEntrySummary}
+                  blockedResumeSummary={blockedResumeSummary}
                   flowRules={entryFlowRules}
                   nextStepLabel={entryNextStepLabel}
                   inputLabels={stageStartInputLabels}
                   onPrimaryAction={onPrimaryEntryAction}
-                  primaryActionLabel={readyToRun ? "Run" : "Add input"}
+                  primaryActionLabel={blockedResumeSummary?.primaryActionLabel || (readyToRun ? (resumeEntrySummary?.continueLabel || "Run") : "Add input")}
+                  onOpenResumeArtifact={onOpenResumeArtifact}
                   onRefine={onRefine}
                   onToggleEditor={onToggleEntryEditor}
                   onAttachCapability={onAttachCapability}
@@ -194,16 +207,19 @@ export function WorkflowListTab({
                   canRefine={canShowAgentPanel}
                   onDismiss={onDismissEntry}
                 />
-                <StageInputSection
-                  inputPanelRef={inputPanelRef}
-                  showTemplateContext={false}
-                  showProjectArtifactsPanel={showProjectArtifactsPanel}
-                  artifacts={combinedArtifactRecords}
-                  loading={projectArtifactsLoading}
-                  error={projectArtifactsError}
-                  requiredContracts={requiredContracts}
-                  onOpenArtifact={onOpenArtifact}
-                />
+                {!blockedResumeSummary && (
+                  <StageInputSection
+                    inputPanelRef={inputPanelRef}
+                    showTemplateContext={false}
+                    showProjectArtifactsPanel={showProjectArtifactsPanel}
+                    artifacts={combinedArtifactRecords}
+                    loading={projectArtifactsLoading}
+                    error={projectArtifactsError}
+                    requiredContracts={requiredContracts}
+                    onOpenArtifact={onOpenArtifact}
+                  />
+                )}
+                {blockedTaskPanel}
               </>
             )}
             {showIdleInputPanel && (
@@ -217,7 +233,7 @@ export function WorkflowListTab({
                 onOpenArtifact={onOpenArtifact}
               />
             )}
-            {(!showEntryLanding || showEntryEditor) && (
+            {(!showResumeHeader || showEntryEditor) && (
               <SectionErrorBoundary sectionName="flow editor">
                 <ChainBuilder
                   compact
@@ -227,7 +243,7 @@ export function WorkflowListTab({
                 />
               </SectionErrorBoundary>
             )}
-            {showIdleReviewMode && (
+            {showReviewOutputMode && (
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"
@@ -238,7 +254,7 @@ export function WorkflowListTab({
                 </SectionErrorBoundary>
               </div>
             )}
-            {(!showEntryLanding || runStatus !== "idle") && !showIdleReviewMode && (
+            {(!showResumeHeader || runStatus !== "idle") && !showReviewOutputMode && (
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"

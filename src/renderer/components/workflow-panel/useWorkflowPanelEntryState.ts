@@ -11,6 +11,7 @@ import {
 } from "@/lib/workflow-entry"
 import { deriveExecutionPolicyFlowRules } from "@/lib/flow-rules"
 import { buildProcessSpine, selectProcessSpineFactory } from "@/lib/process-spine"
+import { deriveWorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import { contextRequiresStartApproval } from "@/lib/stage-run-policy"
 import type { ArtifactRecord, InputAttachment, ProjectFactoryBlueprint, Workflow, WorkflowTemplate } from "@shared/types"
 import {
@@ -147,6 +148,25 @@ export function useWorkflowPanelEntryState({
     () => deriveEntryNextStepLabel({ readyToRun, nextStageTemplate }),
     [nextStageTemplate, readyToRun],
   )
+  const sourceArtifacts = useMemo(() => {
+    const sourceArtifactIds = (selectedWorkflowTemplateContext?.sourceArtifactIds || []).filter(Boolean)
+    if (sourceArtifactIds.length === 0) return [] as ArtifactRecord[]
+
+    const artifactsById = new Map(combinedArtifactRecords.map((artifact) => [artifact.id, artifact]))
+    return sourceArtifactIds
+      .map((artifactId) => artifactsById.get(artifactId) || null)
+      .filter((artifact): artifact is ArtifactRecord => artifact !== null)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+  }, [combinedArtifactRecords, selectedWorkflowTemplateContext?.sourceArtifactIds])
+  const resumeEntrySummary = useMemo(
+    () => deriveWorkflowResumeEntrySummary({
+      context: selectedWorkflowTemplateContext,
+      currentStepLabel: entryStageLabel,
+      sourceArtifacts,
+      startApprovalRequired,
+    }),
+    [entryStageLabel, selectedWorkflowTemplateContext, sourceArtifacts, startApprovalRequired],
+  )
   const stageStartInputLabels = useMemo(() => {
     if (inputAttachments.length > 0) {
       return inputAttachments.map(formatInputAttachmentLabel)
@@ -183,7 +203,7 @@ export function useWorkflowPanelEntryState({
       )
     )
   )
-  const showEntryLanding = (
+  const showResumeHeader = (
     viewMode === "list"
     && runStatus === "idle"
     && activeEntryState !== null
@@ -225,7 +245,7 @@ export function useWorkflowPanelEntryState({
     && runStatus === "idle"
     && Boolean(inputNode)
     && !showCreateDraftSkeleton
-    && !showEntryLanding
+    && !showResumeHeader
     && !showIdleReviewMode
   )
   const showProjectArtifactsPanel = (
@@ -248,12 +268,13 @@ export function useWorkflowPanelEntryState({
     entryFlowRules,
     startApprovalRequired,
     entryNextStepLabel,
+    resumeEntrySummary,
     stageStartInputLabels,
     stageStartPolicyNotes,
     stageStartFlowName,
     stageStartDescription,
     showCreateDraftSkeleton,
-    showEntryLanding,
+    showResumeHeader,
     showIdleReviewMode,
     processSpineStages,
     showIdleInputPanel,

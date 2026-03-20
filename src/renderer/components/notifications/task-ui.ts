@@ -1,4 +1,4 @@
-import type { HumanTaskField, HumanTaskSnapshot, HumanTaskSummary } from "@shared/types"
+import type { HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult } from "@shared/types"
 
 export interface TaskStageMeta {
   title: string
@@ -51,4 +51,43 @@ export function taskCardPreview(task: HumanTaskSummary | HumanTaskSnapshot): str
 export function taskStageKey(task: Pick<HumanTaskSummary, "workflowPath" | "nodeId"> | Pick<HumanTaskSnapshot, "workflowPath" | "nodeId">): string | null {
   if (!task.workflowPath) return null
   return `${task.workflowPath}::${task.nodeId}`
+}
+
+export function buildInitialHumanTaskAnswers(task: Pick<HumanTaskSnapshot, "latestResponse" | "request"> | null): Record<string, unknown> {
+  if (!task) return {}
+  if (task.latestResponse?.answers) return task.latestResponse.answers
+  return task.request.defaults || {}
+}
+
+export function hasMissingRequiredTaskAnswers(
+  task: Pick<HumanTaskSnapshot, "request">,
+  answers: Record<string, unknown>,
+) {
+  for (const field of task.request.fields) {
+    if (!field.required) continue
+    const value = answers[field.id]
+    const missing = field.type === "multiselect"
+      ? !Array.isArray(value) || value.length === 0
+      : field.type === "boolean"
+        ? value === undefined
+        : value === null || value === undefined || String(value).trim().length === 0
+    if (missing) return true
+  }
+  return false
+}
+
+export function toContinuationRun(task: Pick<
+  HumanTaskSnapshot,
+  "sourceRunId" | "workflowName" | "workflowPath" | "createdAt" | "updatedAt" | "workspace"
+>): RunResult {
+  return {
+    runId: task.sourceRunId,
+    status: "blocked",
+    workflowName: task.workflowName,
+    workflowPath: task.workflowPath,
+    startedAt: task.createdAt,
+    completedAt: task.updatedAt,
+    reportPath: "",
+    workspace: task.workspace,
+  }
 }

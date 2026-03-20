@@ -33,6 +33,8 @@ export function OutputPanelHeader({
   canStartFreshRun,
   onStartNewRun,
   resultReadyPulse,
+  resultLabel,
+  executionProgress,
 }: {
   activeTab: string
   hasResult: boolean
@@ -43,10 +45,26 @@ export function OutputPanelHeader({
   canStartFreshRun: boolean
   onStartNewRun?: () => void
   resultReadyPulse: boolean
+  resultLabel?: string | null
+  executionProgress?: { completed: number; total: number } | null
 }) {
   return (
     <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0" />
+      <div className="min-w-0">
+        {executionProgress && (
+          <div className="flex items-center gap-2.5">
+            <div className="ui-progress-track h-1 w-20 rounded-full">
+              <div
+                className="ui-progress-bar h-full rounded-full bg-status-info ui-motion-standard"
+                style={{ width: `${Math.round((executionProgress.completed / executionProgress.total) * 100)}%` }}
+              />
+            </div>
+            <span className="ui-meta-text text-muted-foreground tabular-nums whitespace-nowrap">
+              {executionProgress.completed} / {executionProgress.total} steps
+            </span>
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {pastRuns.length > 0 && runStatus === "idle" && (
           <div className="flex items-center gap-2 rounded-lg border border-hairline bg-surface-1/80 px-2 py-1 ui-elevation-inset">
@@ -94,7 +112,7 @@ export function OutputPanelHeader({
                 <span className="ui-status-beacon-core bg-status-success" />
               </span>
             )}
-            Result
+            {resultLabel || "Result"}
           </TabsTrigger>
           <TabsTrigger value="history" className="px-3 py-1 text-body-sm" disabled={pastRuns.length === 0}>
             <History size={12} className="mr-1" />
