@@ -128,10 +128,11 @@ nodes:
       x: 1760
       y: 200
     config:
-      title: Review findings before recommendations
-      description: Check the audit findings. Mark any false positives or known trade-offs before the system generates fix recommendations.
-      timeout: 7200
-      defaultAction: approve
+      message: Check the audit findings. Mark any false positives or known trade-offs before the system generates fix recommendations.
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 120
+      timeout_action: auto_reject
   - id: output-1
     type: output
     position:

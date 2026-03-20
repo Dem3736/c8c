@@ -19,7 +19,6 @@ import {
 } from "@shared/workflow-name"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
-import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
 interface UseToolbarActionsArgs {
   workflow: Workflow
@@ -46,7 +45,6 @@ export function useToolbarActions({
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const moveWorkflowTemplateContext = useSetAtom(moveWorkflowTemplateContextAtom)
   const clearWorkflowTemplateContextForKey = useSetAtom(clearWorkflowTemplateContextForKeyAtom)
-  const { addNotification } = useInboxNotifications()
   const refreshProjectData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!selectedProject) return
     try {
@@ -60,15 +58,9 @@ export function useToolbarActions({
         toast.success("Refreshed")
       }
     } catch (error) {
-      addNotification({
-        title: "Project refresh failed",
-        description: errorToUserMessage(error, "Could not refresh project data"),
-        level: "error",
-        source: "system",
-      })
       toastError(errorToUserMessage(error, "Could not refresh project data"))
     }
-  }, [addNotification, selectedProject, setSkills, setWorkflows])
+  }, [selectedProject, setSkills, setWorkflows])
 
   const deriveTitleFromPath = useCallback((path: string) =>
     path
@@ -128,19 +120,13 @@ export function useToolbarActions({
         }
       }
       setWorkflowSavedSnapshot(workflowSnapshot(workflow))
-      toast.success(`Flow saved: ${workflowTitle}`)
+      // Save result visible via dirty indicator clearing — no toast needed
       return true
     } catch (error) {
-      addNotification({
-        title: "Flow save failed",
-        description: errorToUserMessage(error, "Could not save flow"),
-        level: "error",
-        source: "workflow",
-      })
       toastError(errorToUserMessage(error, "Could not save flow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, ensureWorkflowNameSync, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
+  }, [deriveTitleFromPath, ensureWorkflowNameSync, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
 
   const saveAs = useCallback(async () => {
     try {
@@ -161,19 +147,13 @@ export function useToolbarActions({
         const wfs = await window.api.listProjectWorkflows(selectedProject)
         setWorkflows(wfs)
       }
-      toast.success(`Flow saved as: ${workflowTitle}`)
+      // Save-as result visible in sidebar — no toast needed
       return true
     } catch (error) {
-      addNotification({
-        title: "Save as failed",
-        description: errorToUserMessage(error, "Could not save flow"),
-        level: "error",
-        source: "workflow",
-      })
       toastError(errorToUserMessage(error, "Could not save flow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
+  }, [deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, selectedProject, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows, workflow, workflowPath])
 
   const exportCopy = useCallback(async () => {
     const loadingToastId = toast.loading("Exporting flow copy...")
@@ -188,16 +168,10 @@ export function useToolbarActions({
       return true
     } catch (error) {
       toast.dismiss(loadingToastId)
-      addNotification({
-        title: "Flow export failed",
-        description: errorToUserMessage(error, "Could not export flow"),
-        level: "error",
-        source: "workflow",
-      })
       toastError(errorToUserMessage(error, "Could not export flow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, selectedProject, workflow])
+  }, [deriveTitleFromPath, selectedProject, workflow])
 
   const openFile = useCallback(async () => {
     const loadingToastId = toast.loading("Importing flow...")
@@ -222,16 +196,10 @@ export function useToolbarActions({
       return true
     } catch (error) {
       toast.dismiss(loadingToastId)
-      addNotification({
-        title: "Flow import failed",
-        description: errorToUserMessage(error, "Could not import flow"),
-        level: "error",
-        source: "workflow",
-      })
       toastError(errorToUserMessage(error, "Could not import flow"))
       return false
     }
-  }, [addNotification, clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
+  }, [clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, selectedProject, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, setWorkflows])
 
   const renameWorkflow = useCallback(async (nextName: string) => {
     if (!workflowPath) return false
@@ -254,19 +222,13 @@ export function useToolbarActions({
       setCurrentWorkflow(renamedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(renamedWorkflow))
       await refreshProjectData({ silent: true })
-      toast.success(`Flow renamed: ${trimmed}`)
+      // Rename result visible in sidebar + title — no toast needed
       return true
     } catch (error) {
-      addNotification({
-        title: "Flow rename failed",
-        description: errorToUserMessage(error, "Could not rename flow"),
-        level: "error",
-        source: "workflow",
-      })
       toastError(errorToUserMessage(error, "Could not rename flow"))
       return false
     }
-  }, [addNotification, deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
+  }, [deriveTitleFromPath, moveWorkflowExecutionState, moveWorkflowTemplateContext, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow, workflow.name, workflowPath])
 
   const deleteWorkflow = useCallback(async () => {
     if (!workflowPath) return false
@@ -279,19 +241,13 @@ export function useToolbarActions({
       setCurrentWorkflow(createEmptyWorkflow())
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
       await refreshProjectData({ silent: true })
-      toast.success(`Flow deleted: ${workflowTitle}`)
+      // Delete result visible — flow removed from sidebar
       return true
     } catch (error) {
-      addNotification({
-        title: "Flow delete failed",
-        description: errorToUserMessage(error, "Could not delete flow"),
-        level: "error",
-        source: "workflow",
-      })
       toastError(errorToUserMessage(error, "Could not delete flow"))
       return false
     }
-  }, [addNotification, clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
+  }, [clearWorkflowExecutionState, clearWorkflowTemplateContextForKey, deriveTitleFromPath, refreshProjectData, setCurrentWorkflow, setSelectedWorkflowPath, setWorkflowSavedSnapshot, workflow.name, workflowPath])
 
   return {
     refreshProjectData,

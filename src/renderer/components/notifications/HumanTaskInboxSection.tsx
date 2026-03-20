@@ -1,11 +1,11 @@
 import { Inbox } from "lucide-react"
-import type { HumanTaskField, HumanTaskSnapshot, HumanTaskSummary } from "@shared/types"
+import type { ArtifactRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary } from "@shared/types"
 import { Badge } from "@/components/ui/badge"
 import { SectionHeading } from "@/components/ui/page-shell"
 import { cn } from "@/lib/cn"
 import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
 import { SelectedTaskPanel } from "./SelectedTaskPanel"
-import { taskCardPreview, taskKindLabel, taskSelectionKey, taskStageKey, type TaskStageMeta } from "./task-ui"
+import { deriveTaskCardContext, taskKindLabel, taskSelectionKey, taskStageKey, type TaskStageMeta } from "./task-ui"
 
 interface HumanTaskInboxSectionProps {
   humanTasksLoading: boolean
@@ -17,6 +17,7 @@ interface HumanTaskInboxSectionProps {
   taskStageMetaByKey: Record<string, TaskStageMeta>
   caseIdByTaskKey: Map<string, string>
   caseLabelById: Map<string, string>
+  latestArtifactByCaseId: Map<string, ArtifactRecord>
   onSelectTaskId: (taskKey: string) => void
   selectedTask: HumanTaskSnapshot | null
   taskLoading: boolean
@@ -40,6 +41,7 @@ export function HumanTaskInboxSection({
   taskStageMetaByKey,
   caseIdByTaskKey,
   caseLabelById,
+  latestArtifactByCaseId,
   onSelectTaskId,
   selectedTask,
   taskLoading,
@@ -55,7 +57,7 @@ export function HumanTaskInboxSection({
   return (
     <section className="rounded-xl surface-panel p-5 space-y-4">
       <SectionHeading
-        title="Needs your input"
+        title="Waiting on you"
         meta={(
           <span className="control-badge border border-hairline bg-surface-2/70 ui-meta-text text-muted-foreground">
             {humanTasksLoading ? "Loading..." : `${openHumanTaskCount} open`}
@@ -63,7 +65,7 @@ export function HumanTaskInboxSection({
         )}
       />
       <p className="text-body-sm text-muted-foreground">
-        Open approvals and structured input requests appear here while a flow is waiting on you.
+        Open review and input tasks appear here while saved work is waiting on you.
       </p>
 
       {humanTasksError ? (
@@ -91,6 +93,11 @@ export function HumanTaskInboxSection({
               const stageMeta = taskStageMetaByKey[taskStageKey(task) || ""] || null
               const taskCaseId = caseIdByTaskKey.get(taskSelectionKey(task)) || null
               const taskCaseLabel = taskCaseId ? caseLabelById.get(taskCaseId) || null : null
+              const latestArtifact = taskCaseId ? latestArtifactByCaseId.get(taskCaseId) || null : null
+              const taskCardContext = deriveTaskCardContext(task, {
+                stageLabel: stageMeta?.title || null,
+                latestArtifact,
+              })
               return (
                 <button
                   key={`${task.workspace}:${task.taskId}`}
@@ -124,8 +131,9 @@ export function HumanTaskInboxSection({
                       {stageMeta && (
                         <p className="mt-1 ui-meta-text text-muted-foreground">{stageMeta.group}</p>
                       )}
-                      {taskCardPreview(task) && (
-                        <p className="mt-2 line-clamp-2 text-body-sm text-muted-foreground">{taskCardPreview(task)}</p>
+                      <p className="mt-2 text-body-sm text-muted-foreground">{taskCardContext.statusText}</p>
+                      {taskCardContext.detailText && (
+                        <p className="mt-1 line-clamp-2 ui-meta-text text-muted-foreground">{taskCardContext.detailText}</p>
                       )}
                     </div>
                     <span className="shrink-0 ui-meta-text text-muted-foreground">{formatRelativeTime(task.createdAt)}</span>

@@ -20,7 +20,7 @@ describe("delivery pack templates", () => {
 
     for (const template of templates) {
       expect(template.pack?.id).toBe("delivery-foundation")
-      expect(template.pack?.label).toBe("Delivery Factory")
+      expect(template.pack?.label).toBe("Delivery Lab")
       expect(template.contractOut?.length || 0).toBeGreaterThan(0)
       expect(template.executionPolicy?.summary).toBeTruthy()
     }

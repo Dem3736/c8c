@@ -1,4 +1,4 @@
-import type { ArtifactRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
 import {
   areTemplateContractsSatisfied,
   deriveArtifactCaseKey,
@@ -32,6 +32,7 @@ export interface WorkflowCreateContinuationCandidate {
   status: "blocked" | "ready"
   readinessText: string
   supportText: string
+  lastGateText: string | null
   latestResultLabel: string | null
   latestStepLabel: string | null
   nextStepLabel: string | null
@@ -48,19 +49,21 @@ interface ContinuationEntry {
 
 function labelForCase({
   label,
+  artifacts,
   latestArtifact,
   latestTask,
 }: {
   label: string
+  artifacts: ArtifactRecord[]
   latestArtifact: ArtifactRecord | null
   latestTask: HumanTaskSummary | null
 }) {
-  return label
-    || latestArtifact?.caseLabel
-    || latestArtifact?.workflowName
-    || latestArtifact?.title
+  return artifacts.find((artifact) => artifact.caseLabel)?.caseLabel
     || latestTask?.workflowName
+    || artifacts.find((artifact) => artifact.workflowName)?.workflowName
     || latestTask?.title
+    || latestArtifact?.title
+    || label
     || "Saved work"
 }
 
@@ -114,14 +117,17 @@ function resolveReadyContinuation(
 
 export function deriveWorkflowCreateContinuations({
   artifacts,
+  caseStates,
   humanTasks,
   templates,
 }: {
   artifacts: ArtifactRecord[]
+  caseStates?: CaseStateRecord[]
   humanTasks: HumanTaskSummary[]
   templates: WorkflowTemplate[]
 }) {
   const templateById = new Map(templates.map((template) => [template.id, template]))
+  const caseStateById = new Map((caseStates || []).map((state) => [state.caseId, state]))
   const caseByRunId = new Map<string, string>()
   const caseByWorkflowPath = new Map<string, string>()
   const entries = new Map<string, ContinuationEntry>()
@@ -170,7 +176,13 @@ export function deriveWorkflowCreateContinuations({
     const latestArtifact = caseArtifacts[0] || null
     const primaryTask = openTasks[0] || null
     const latestStepLabel = deriveSourceStepLabel(latestArtifact, templateById)
-    const title = labelForCase({ label: entry.label, latestArtifact, latestTask: primaryTask })
+    const title = labelForCase({
+      label: entry.label,
+      artifacts: caseArtifacts,
+      latestArtifact,
+      latestTask: primaryTask,
+    })
+    const caseState = caseStateById.get(entry.id) || null
 
     if (primaryTask) {
       return {
@@ -179,6 +191,7 @@ export function deriveWorkflowCreateContinuations({
         status: "blocked" as const,
         readinessText: deriveBlockedTaskStatusText(primaryTask),
         supportText: deriveBlockedTaskReasonText(primaryTask),
+        lastGateText: caseState?.lastGate?.summaryText || null,
         latestResultLabel: latestArtifact?.title || null,
         latestStepLabel,
         nextStepLabel: null,
@@ -205,6 +218,7 @@ export function deriveWorkflowCreateContinuations({
       supportText: readyContinuation.selectedArtifacts.length > 0
         ? `Using saved ${formatArtifactList(readyContinuation.selectedArtifacts)}${readyContinuation.sourceStepLabel ? ` from ${readyContinuation.sourceStepLabel}` : ""}.`
         : "Ready from the saved results already attached to this work.",
+      lastGateText: caseState?.lastGate?.summaryText || null,
       latestResultLabel: latestArtifact?.title || null,
       latestStepLabel: readyContinuation.sourceStepLabel || latestStepLabel,
       nextStepLabel,

@@ -132,7 +132,7 @@ describe("chat-tools add_node", () => {
 describe("chat-tools definitions", () => {
   it("documents the high-level synthesis tool", () => {
     expect(getToolDefinitions()).toContain("synthesize_workflow")
-    expect(getToolDefinitions()).toContain("Create or semantically rewrite the workflow")
+    expect(getToolDefinitions()).toContain("Create or semantically rewrite the flow")
   })
 })
 

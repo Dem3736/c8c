@@ -155,6 +155,20 @@ function normalizeStageOrder(values: string[] | undefined): ProcessSpineStageId[
   return dedupeStageIds(stages)
 }
 
+function matchesFactoryContext(
+  factory: ProjectFactoryDefinition,
+  context?: Pick<WorkflowTemplateRunContext, "factoryId" | "factoryLabel" | "pack"> | null,
+) {
+  if (!context) return false
+  if (context.factoryId) return factory.id === context.factoryId
+
+  const packId = context.pack?.id
+  if (packId && factory.recipe?.packIds?.includes(packId)) return true
+
+  const normalizedLabel = normalizeToken(context.factoryLabel || context.pack?.label || "")
+  return Boolean(normalizedLabel) && normalizeToken(factory.label) === normalizedLabel
+}
+
 function buildPackStageOrder(templates: WorkflowTemplate[], packId: string): ProcessSpineStageId[] {
   const stages = templates
     .filter((template) => template.pack?.id === packId)
@@ -220,6 +234,11 @@ export function selectProcessSpineFactory(
   if (context.factoryId) {
     const direct = factories.find((factory) => factory.id === context.factoryId) || null
     if (direct) return direct
+  }
+
+  if (blueprint.selectedFactoryId) {
+    const selected = factories.find((factory) => factory.id === blueprint.selectedFactoryId) || null
+    if (selected && matchesFactoryContext(selected, context)) return selected
   }
 
   const packId = context.pack?.id

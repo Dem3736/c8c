@@ -7,6 +7,11 @@ import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
 import { cn } from "@/lib/cn"
 import { formatElapsedTime } from "@/lib/run-progress"
 import {
+  deriveBlockedTaskLatestResultText,
+  deriveBlockedTaskReasonText,
+  deriveBlockedTaskStatusText,
+} from "@/lib/workflow-blocked-copy"
+import {
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateJourneyStageLabel,
   formatArtifactContractLabel,
@@ -192,7 +197,7 @@ export function CaseDetail({
                   onClick={() => { if (primaryAction.task) onOpenInboxTask(primaryAction.task, selectedCase.id) }}
                 >
                   <Inbox size={14} />
-                  Approval
+                  Review block
                 </Button>
               ) : null}
               {primaryAction?.run ? (
@@ -225,28 +230,42 @@ export function CaseDetail({
         ) : null}
 
         <div className="space-y-3">
-          <div className="ui-meta-label text-muted-foreground">Open approvals</div>
+          <div className="ui-meta-label text-muted-foreground">Needs your response</div>
           {selectedCase.tasks.length === 0 ? (
             <div className="rounded-lg border border-dashed border-hairline bg-surface-2/30 px-4 py-4 text-body-sm text-muted-foreground">
-              No pending approvals for this track.
+              No blocked steps are waiting on you for this track.
             </div>
           ) : (
             <div className="space-y-2">
-              {selectedCase.tasks.map((task) => (
-                <div key={`${task.workspace}:${task.taskId}`} className="rounded-lg surface-warning-soft px-4 py-3">
-                  <div className="text-body-sm font-medium text-foreground">{task.title}</div>
-                  <div className="mt-1 text-body-sm text-muted-foreground">
-                    {task.kind === "approval" ? "Approval" : "Input needed"} · {formatRelativeTime(task.createdAt)}
+              {selectedCase.tasks.map((task) => {
+                const currentStepLabel = selectedCase.lineageLabels[selectedCase.lineageLabels.length - 1] || null
+                const statusText = deriveBlockedTaskStatusText(task, currentStepLabel)
+                const reasonText = deriveBlockedTaskReasonText(task, currentStepLabel)
+                const latestResultText = deriveBlockedTaskLatestResultText(selectedCase.latestArtifact)
+
+                return (
+                  <div key={`${task.workspace}:${task.taskId}`} className="rounded-lg surface-warning-soft px-4 py-3">
+                    <div className="text-body-sm font-medium text-foreground">{task.title}</div>
+                    <div className="mt-1 text-body-sm text-muted-foreground">
+                      {statusText}
+                    </div>
+                    <div className="mt-1 ui-meta-text text-muted-foreground">
+                      {[latestResultText, reasonText, formatRelativeTime(task.createdAt)].filter(Boolean).join(" · ")}
+                    </div>
                   </div>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" onClick={() => {
-                if (selectedCase.tasks[0]) {
-                  onOpenInboxTask(selectedCase.tasks[0], selectedCase.id)
-                }
-              }}>
+                )
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedCase.tasks[0]) {
+                    onOpenInboxTask(selectedCase.tasks[0], selectedCase.id)
+                  }
+                }}
+              >
                 <Inbox size={14} />
-                Open inbox
+                Review block
               </Button>
             </div>
           )}

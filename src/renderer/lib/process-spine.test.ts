@@ -218,4 +218,43 @@ describe("process-spine", () => {
 
     expect(factory?.id).toBe("factory:delivery")
   })
+
+  it("prefers the actively selected factory when multiple factories match the same pack", () => {
+    const blueprint: ProjectFactoryBlueprint = {
+      version: 2,
+      projectPath: "/tmp/project",
+      factories: [
+        {
+          id: "factory:delivery-legacy",
+          label: "Delivery Factory",
+          recipe: {
+            packIds: ["delivery-foundation"],
+            stageOrder: ["Shape / Map", "Plan", "Implement", "Review", "Verify"],
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "factory:delivery-active",
+          label: "Checkout Delivery Factory",
+          recipe: {
+            packIds: ["delivery-foundation"],
+            stageOrder: ["Shape / Map", "Plan", "Implement", "Review", "Verify"],
+          },
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+      selectedFactoryId: "factory:delivery-active",
+      createdAt: 1,
+      updatedAt: 2,
+    }
+
+    const factory = selectProcessSpineFactory(blueprint, createContext({
+      factoryId: undefined,
+      factoryLabel: undefined,
+    }))
+
+    expect(factory?.id).toBe("factory:delivery-active")
+  })
 })

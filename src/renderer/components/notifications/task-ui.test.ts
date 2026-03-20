@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
-import type { HumanTaskSnapshot } from "@shared/types"
+import type { ArtifactRecord, HumanTaskSnapshot } from "@shared/types"
 import {
   buildInitialHumanTaskAnswers,
+  deriveTaskCardContext,
   hasMissingRequiredTaskAnswers,
   toContinuationRun,
 } from "./task-ui"
@@ -48,6 +49,23 @@ function createTask(overrides: Partial<HumanTaskSnapshot> = {}): HumanTaskSnapsh
   }
 }
 
+function createArtifact(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord {
+  return {
+    id: "artifact-1",
+    kind: "verification_report",
+    title: "Verification Report",
+    projectPath: "/tmp/project",
+    workspace: "/tmp/workspace",
+    runId: "run-1",
+    relativePath: ".c8c/artifacts/verification-report.md",
+    contentPath: "/tmp/project/.c8c/artifacts/verification-report.md",
+    metadataPath: "/tmp/project/.c8c/artifacts/verification-report.json",
+    createdAt: 1,
+    updatedAt: 10,
+    ...overrides,
+  }
+}
+
 describe("task-ui", () => {
   it("hydrates default answers from task defaults", () => {
     expect(buildInitialHumanTaskAnswers(createTask())).toEqual({
@@ -84,6 +102,21 @@ describe("task-ui", () => {
       workflowName: "Ship flow",
       workflowPath: "/tmp/project/ship.flow.yaml",
       workspace: "/tmp/workspace",
+    })
+  })
+
+  it("derives durable task card context from blocked copy helpers", () => {
+    expect(deriveTaskCardContext(
+      createTask({
+        summary: "Final release decision is still waiting on you.",
+      }),
+      {
+        stageLabel: "Ship",
+        latestArtifact: createArtifact(),
+      },
+    )).toEqual({
+      statusText: "Blocked: awaiting your approval before Ship can continue.",
+      detailText: "Latest result: Verification Report. · Final release decision is still waiting on you.",
     })
   })
 })

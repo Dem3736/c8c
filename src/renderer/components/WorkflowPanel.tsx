@@ -140,7 +140,7 @@ export function WorkflowPanel() {
   const [, setMainView] = useAtom(mainViewAtom)
   const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [workflowPastRuns] = useAtom(workflowHistoryRunsAtom)
-  const { run, cancel, rerunFrom, continueRun } = useChainExecution()
+  const { run, cancel, rerunFrom, continueRun, continueWithWorkflow } = useChainExecution()
   const listScrollRegionRef = useRef<HTMLDivElement | null>(null)
   const outputPanelRef = useRef<HTMLDivElement | null>(null)
   const chatPanelShellRef = useRef<HTMLDivElement | null>(null)
@@ -174,6 +174,7 @@ export function WorkflowPanel() {
   useUndoRedo()
   const {
     projectArtifacts,
+    projectCaseStates,
     projectArtifactsLoading,
     projectArtifactsError,
     factoryBlueprint,
@@ -212,6 +213,7 @@ export function WorkflowPanel() {
     inputAttachments,
     artifactRecords,
     projectArtifacts,
+    projectCaseStates,
     selectedWorkflowTemplateContext,
     packTemplates,
     factoryBlueprint,

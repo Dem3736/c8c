@@ -13,7 +13,7 @@ import { deriveExecutionPolicyFlowRules } from "@/lib/flow-rules"
 import { buildProcessSpine, selectProcessSpineFactory } from "@/lib/process-spine"
 import { deriveWorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import { contextRequiresStartApproval } from "@/lib/stage-run-policy"
-import type { ArtifactRecord, InputAttachment, ProjectFactoryBlueprint, Workflow, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, InputAttachment, ProjectFactoryBlueprint, Workflow, WorkflowTemplate } from "@shared/types"
 import {
   deriveEntryNextStepLabel,
   formatInputAttachmentLabel,
@@ -28,6 +28,7 @@ interface UseWorkflowPanelEntryStateParams {
   inputAttachments: InputAttachment[]
   artifactRecords: ArtifactRecord[]
   projectArtifacts: ArtifactRecord[]
+  projectCaseStates: CaseStateRecord[]
   selectedWorkflowTemplateContext: WorkflowTemplateRunContext | null
   packTemplates: WorkflowTemplate[]
   factoryBlueprint: ProjectFactoryBlueprint | null
@@ -51,6 +52,7 @@ export function useWorkflowPanelEntryState({
   inputAttachments,
   artifactRecords,
   projectArtifacts,
+  projectCaseStates,
   selectedWorkflowTemplateContext,
   packTemplates,
   factoryBlueprint,
@@ -158,14 +160,22 @@ export function useWorkflowPanelEntryState({
       .filter((artifact): artifact is ArtifactRecord => artifact !== null)
       .sort((left, right) => right.updatedAt - left.updatedAt)
   }, [combinedArtifactRecords, selectedWorkflowTemplateContext?.sourceArtifactIds])
+  const currentCaseState = useMemo(() => {
+    const caseId = selectedWorkflowTemplateContext?.caseId
+      || sourceArtifacts.find((artifact) => artifact.caseId)?.caseId
+      || null
+    if (!caseId) return null
+    return projectCaseStates.find((entry) => entry.caseId === caseId) || null
+  }, [projectCaseStates, selectedWorkflowTemplateContext?.caseId, sourceArtifacts])
   const resumeEntrySummary = useMemo(
     () => deriveWorkflowResumeEntrySummary({
       context: selectedWorkflowTemplateContext,
       currentStepLabel: entryStageLabel,
       sourceArtifacts,
+      caseState: currentCaseState,
       startApprovalRequired,
     }),
-    [entryStageLabel, selectedWorkflowTemplateContext, sourceArtifacts, startApprovalRequired],
+    [currentCaseState, entryStageLabel, selectedWorkflowTemplateContext, sourceArtifacts, startApprovalRequired],
   )
   const stageStartInputLabels = useMemo(() => {
     if (inputAttachments.length > 0) {

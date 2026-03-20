@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { errorToUserMessage } from "@/lib/error-message"
 import { toastErrorFromCatch } from "@/lib/toast-error"
-import type { ArtifactRecord, ProjectFactoryBlueprint, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, ProjectFactoryBlueprint, WorkflowTemplate } from "@shared/types"
 import type { WorkflowTemplateRunContext } from "@/lib/workflow-entry"
 
 interface UseWorkflowPanelResourcesParams {
@@ -16,6 +16,7 @@ export function useWorkflowPanelResources({
   artifactRecords,
 }: UseWorkflowPanelResourcesParams) {
   const [projectArtifacts, setProjectArtifacts] = useState<ArtifactRecord[]>([])
+  const [projectCaseStates, setProjectCaseStates] = useState<CaseStateRecord[]>([])
   const [projectArtifactsLoading, setProjectArtifactsLoading] = useState(false)
   const [projectArtifactsError, setProjectArtifactsError] = useState<string | null>(null)
   const [factoryBlueprint, setFactoryBlueprint] = useState<ProjectFactoryBlueprint | null>(null)
@@ -24,6 +25,7 @@ export function useWorkflowPanelResources({
   useEffect(() => {
     if (!selectedProject) {
       setProjectArtifacts([])
+      setProjectCaseStates([])
       setProjectArtifactsLoading(false)
       setProjectArtifactsError(null)
       setFactoryBlueprint(null)
@@ -34,12 +36,17 @@ export function useWorkflowPanelResources({
     setProjectArtifactsLoading(true)
     setProjectArtifactsError(null)
 
-    void window.api.listProjectArtifacts(selectedProject).then((artifacts) => {
+    void Promise.all([
+      window.api.listProjectArtifacts(selectedProject),
+      window.api.listProjectCaseStates(selectedProject).catch(() => [] as CaseStateRecord[]),
+    ]).then(([artifacts, caseStates]) => {
       if (cancelled) return
       setProjectArtifacts(artifacts)
+      setProjectCaseStates(caseStates)
     }).catch((error) => {
       if (cancelled) return
       setProjectArtifacts([])
+      setProjectCaseStates([])
       setProjectArtifactsError(errorToUserMessage(error))
     }).finally(() => {
       if (!cancelled) {
@@ -97,6 +104,7 @@ export function useWorkflowPanelResources({
 
   return {
     projectArtifacts,
+    projectCaseStates,
     projectArtifactsLoading,
     projectArtifactsError,
     factoryBlueprint,

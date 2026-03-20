@@ -8,6 +8,7 @@ import type {
   RunResult,
 } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
+import { upsertCaseState } from "./case-store"
 import { isWithinRoot } from "./security-paths"
 import { logWarn } from "./structured-log"
 
@@ -202,6 +203,21 @@ export async function persistArtifactsFromRun(
     await writeFileAtomic(contentPath, buildArtifactMarkdown(contract, record, reportContent))
     await writeFileAtomic(metadataPath, JSON.stringify(storedMetadata, null, 2))
     artifacts.push(record)
+  }
+
+  if (input.caseId && artifacts.length > 0) {
+    await upsertCaseState({
+      projectPath,
+      caseId: input.caseId,
+      workLabel: input.caseLabel || artifacts[0]?.workflowName || artifacts[0]?.title,
+      caseLabel: input.caseLabel,
+      factoryId: input.factoryId,
+      factoryLabel: input.factoryLabel,
+      workflowPath: input.workflowPath || artifacts[0]?.workflowPath,
+      workflowName: input.workflowName || artifacts[0]?.workflowName,
+      artifactIds: artifacts.map((artifact) => artifact.id),
+      updatedAt: artifacts[0]?.updatedAt,
+    })
   }
 
   return { artifacts }

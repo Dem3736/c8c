@@ -21,7 +21,7 @@ describe("content pack templates", () => {
 
     for (const template of templates) {
       expect(template.pack?.id).toBe("content-factory-alpha")
-      expect(template.pack?.label).toBe("Content Factory")
+      expect(template.pack?.label).toBe("Content Lab")
       expect(template.contractOut?.length || 0).toBeGreaterThan(0)
       expect(template.executionPolicy?.summary).toBeTruthy()
     }

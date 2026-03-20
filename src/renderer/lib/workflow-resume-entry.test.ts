@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { ArtifactRecord } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord } from "@shared/types"
 import type { WorkflowTemplateRunContext } from "./workflow-entry"
 import { deriveWorkflowResumeEntrySummary } from "./workflow-resume-entry"
 
@@ -42,6 +42,29 @@ function createArtifact(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord
   }
 }
 
+function createCaseState(overrides: Partial<CaseStateRecord> = {}): CaseStateRecord {
+  return {
+    version: 1,
+    caseId: "case:seller-photo-upload",
+    projectPath: "/tmp/project",
+    workLabel: "Seller photo upload",
+    caseLabel: "Seller photo upload",
+    continuationStatus: "ready",
+    artifactIds: ["artifact-1"],
+    lastGate: {
+      family: "approval",
+      outcome: "passed",
+      summaryText: "Approval recorded. Plan can continue.",
+      reasonText: "The latest approval decision was saved.",
+      stepLabel: "Plan",
+      happenedAt: 10,
+    },
+    createdAt: 1,
+    updatedAt: 10,
+    ...overrides,
+  }
+}
+
 describe("workflow-resume-entry", () => {
   it("builds sentence-form resume copy from saved artifacts", () => {
     const summary = deriveWorkflowResumeEntrySummary({
@@ -72,6 +95,18 @@ describe("workflow-resume-entry", () => {
 
     expect(summary?.checksText).toBe("Approval is still required before continue.")
     expect(summary?.continueLabel).toBe("Continue to Review")
+  })
+
+  it("uses durable gate copy when a saved check or approval is available", () => {
+    const summary = deriveWorkflowResumeEntrySummary({
+      context: createContext(),
+      currentStepLabel: "Plan",
+      sourceArtifacts: [createArtifact()],
+      caseState: createCaseState(),
+      startApprovalRequired: false,
+    })
+
+    expect(summary?.checksText).toBe("Approval recorded. Plan can continue.")
   })
 
   it("returns null when there is no saved-work signal to show", () => {

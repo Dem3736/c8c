@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react"
+import { useEffect, useCallback, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import {
   currentWorkflowAtom,
@@ -199,11 +199,20 @@ export function NodeInspector() {
     }), { coalesceKey: `node-config:${node.id}` })
   }
 
+  const asideRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (selectedNodeId && asideRef.current) {
+      asideRef.current.focus({ preventScroll: true })
+    }
+  }, [selectedNodeId])
+
   return (
     <aside
+      ref={asideRef}
       key={node.id}
+      tabIndex={-1}
       className={cn(
-        "surface-panel border-l border-hairline w-[320px] shrink-0 flex flex-col overflow-hidden",
+        "surface-panel border-l border-hairline w-[320px] shrink-0 flex flex-col overflow-hidden focus:outline-none",
         selectedNodeId ? "ui-fade-slide-in-trailing" : "ui-fade-slide-out-trailing pointer-events-none",
       )}
       aria-label="Node inspector"

@@ -116,6 +116,7 @@ export function FactoryPage() {
     artifacts,
     artifactsError,
     artifactsLoading,
+    caseStates,
     factoryBlueprint,
     factoryBlueprintError,
     factoryBlueprintLoading,
@@ -178,6 +179,7 @@ export function FactoryPage() {
     templateById,
   } = useFactoryData({
     artifacts,
+    caseStates,
     blueprintDraft,
     draftFactoryId,
     factoryBlueprint,

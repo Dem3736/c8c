@@ -2,6 +2,7 @@ import type {
   ActiveExecutionSnapshot,
   ArtifactRecord,
   BatchEvent,
+  CaseStateRecord,
   ChatConversation,
   ChatEvent,
   ChatSessionSnapshot,
@@ -172,6 +173,7 @@ export interface C8cApi {
   getActiveExecutions: () => Promise<ActiveExecutionSnapshot[]>
   persistArtifactsFromRun: (input: PersistArtifactsFromRunRequest) => Promise<PersistArtifactsFromRunResult>
   listProjectArtifacts: (projectPath: string) => Promise<ArtifactRecord[]>
+  listProjectCaseStates: (projectPath: string) => Promise<CaseStateRecord[]>
   loadProjectFactoryBlueprint: (projectPath: string) => Promise<ProjectFactoryBlueprint | null>
   saveProjectFactoryBlueprint: (input: SaveProjectFactoryBlueprintInput) => Promise<ProjectFactoryBlueprint>
   loadProjectFactoryState: (projectPath: string) => Promise<ProjectFactoryState>

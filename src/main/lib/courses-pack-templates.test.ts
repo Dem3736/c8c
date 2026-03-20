@@ -18,7 +18,7 @@ describe("courses pack templates", () => {
 
     for (const template of templates) {
       expect(template.pack?.id).toBe("courses-factory-alpha")
-      expect(template.pack?.label).toBe("Courses Factory")
+      expect(template.pack?.label).toBe("Courses Lab")
       expect(template.contractOut?.length || 0).toBeGreaterThan(0)
       expect(template.executionPolicy?.summary).toBeTruthy()
     }

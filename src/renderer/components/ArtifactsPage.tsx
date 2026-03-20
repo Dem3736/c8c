@@ -3,6 +3,7 @@ import { useAtom, useSetAtom } from "jotai"
 import {
   ArrowUpRight,
   FileStack,
+  FileText,
   FolderOpen,
   LayoutTemplate,
   Loader2,
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { CollectionToolbar } from "@/components/ui/collection-toolbar"
 import { PageHeader, PageShell, SectionHeading } from "@/components/ui/page-shell"
 import { ScopeBanner } from "@/components/ui/scope-banner"
+import { ArtifactInspectPanel } from "@/components/artifacts/ArtifactInspectPanel"
 import { formatRelativeTime, projectFolderName } from "@/components/sidebar/projectSidebarUtils"
 import {
   currentWorkflowAtom,
@@ -45,7 +47,7 @@ import {
 } from "@/lib/workflow-entry"
 import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
-import type { ArtifactRecord, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, WorkflowTemplate } from "@shared/types"
 
 function buildArtifactSearchText(
   artifact: ArtifactRecord,
@@ -81,6 +83,7 @@ export function ArtifactsPage() {
   const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
+  const [caseStates, setCaseStates] = useState<CaseStateRecord[]>([])
   const [artifactsLoading, setArtifactsLoading] = useState(false)
   const [artifactsError, setArtifactsError] = useState<string | null>(null)
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
@@ -89,13 +92,23 @@ export function ArtifactsPage() {
   const [query, setQuery] = useState("")
   const [kindFilter, setKindFilter] = useState<string>("all")
   const [launchingTemplateId, setLaunchingTemplateId] = useState<string | null>(null)
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
+  const [artifactPreviewById, setArtifactPreviewById] = useState<Record<string, {
+    content: string
+    truncated: boolean
+    error: string | null
+  }>>({})
+  const [artifactPreviewLoadingId, setArtifactPreviewLoadingId] = useState<string | null>(null)
   const artifactsRequestIdRef = useRef(0)
+  const artifactPreviewRequestIdRef = useRef(0)
+  const inspectPanelRef = useRef<HTMLDivElement | null>(null)
 
   const refreshArtifacts = useCallback(async () => {
     const requestId = ++artifactsRequestIdRef.current
     if (!selectedProject) {
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
+      setCaseStates([])
       setArtifactsLoading(false)
       setArtifactsError(null)
       return
@@ -104,12 +117,17 @@ export function ArtifactsPage() {
     setArtifactsLoading(true)
     setArtifactsError(null)
     try {
-      const nextArtifacts = await window.api.listProjectArtifacts(selectedProject)
+      const [nextArtifacts, nextCaseStates] = await Promise.all([
+        window.api.listProjectArtifacts(selectedProject),
+        window.api.listProjectCaseStates(selectedProject).catch(() => [] as CaseStateRecord[]),
+      ])
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts(nextArtifacts)
+      setCaseStates(nextCaseStates)
     } catch (error) {
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
+      setCaseStates([])
       setArtifactsError(errorToUserMessage(error))
     } finally {
       if (artifactsRequestIdRef.current === requestId) {
@@ -258,6 +276,84 @@ export function ArtifactsPage() {
     })
   }, [kindFilter, matchingTemplatesByArtifactId, query, scopeArtifacts])
 
+  const selectedArtifact = useMemo(
+    () => filteredArtifacts.find((artifact) => artifact.id === selectedArtifactId) || null,
+    [filteredArtifacts, selectedArtifactId],
+  )
+
+  const selectedArtifactScope = useMemo(() => {
+    if (!selectedArtifact) return []
+    if (selectedCaseId) return scopeArtifacts
+    return artifactsByCaseKey.get(deriveArtifactCaseKey(selectedArtifact)) || [selectedArtifact]
+  }, [artifactsByCaseKey, scopeArtifacts, selectedArtifact, selectedCaseId])
+
+  const selectedArtifactMatchingTemplates = useMemo(
+    () => (selectedArtifact ? (matchingTemplatesByArtifactId.get(selectedArtifact.id) || []) : []),
+    [matchingTemplatesByArtifactId, selectedArtifact],
+  )
+  const caseStateById = useMemo(
+    () => new Map(caseStates.map((entry) => [entry.caseId, entry])),
+    [caseStates],
+  )
+  const selectedArtifactCaseState = useMemo(() => {
+    if (!selectedArtifact) return null
+    return caseStateById.get(deriveArtifactCaseKey(selectedArtifact)) || null
+  }, [caseStateById, selectedArtifact])
+
+  const selectedArtifactPreview = selectedArtifact
+    ? artifactPreviewById[selectedArtifact.id] || null
+    : null
+
+  useEffect(() => {
+    if (!selectedArtifactId) return
+    if (filteredArtifacts.some((artifact) => artifact.id === selectedArtifactId)) return
+    setSelectedArtifactId(null)
+  }, [filteredArtifacts, selectedArtifactId])
+
+  useEffect(() => {
+    if (!selectedArtifact) return
+    if (artifactPreviewById[selectedArtifact.id]) return
+
+    const requestId = ++artifactPreviewRequestIdRef.current
+    setArtifactPreviewLoadingId(selectedArtifact.id)
+
+    void window.api.readFileContent(selectedArtifact.contentPath, selectedArtifact.projectPath)
+      .then(({ content, truncated }) => {
+        if (artifactPreviewRequestIdRef.current !== requestId) return
+        setArtifactPreviewById((current) => ({
+          ...current,
+          [selectedArtifact.id]: {
+            content,
+            truncated,
+            error: null,
+          },
+        }))
+      })
+      .catch((error) => {
+        if (artifactPreviewRequestIdRef.current !== requestId) return
+        setArtifactPreviewById((current) => ({
+          ...current,
+          [selectedArtifact.id]: {
+            content: "",
+            truncated: false,
+            error: errorToUserMessage(error),
+          },
+        }))
+      })
+      .finally(() => {
+        if (artifactPreviewRequestIdRef.current !== requestId) return
+        setArtifactPreviewLoadingId((current) => current === selectedArtifact.id ? null : current)
+      })
+  }, [artifactPreviewById, selectedArtifact])
+
+  useEffect(() => {
+    if (!selectedArtifactId) return
+    const frame = window.requestAnimationFrame(() => {
+      inspectPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedArtifactId])
+
   const openArtifact = async (artifact: ArtifactRecord) => {
     const openError = await window.api.openPath(artifact.contentPath)
     if (!openError) return
@@ -270,6 +366,10 @@ export function ArtifactsPage() {
     const ok = await window.api.showInFinder(artifact.contentPath)
     if (ok) return
     toastError("Could not reveal result in Finder")
+  }
+
+  const inspectArtifact = (artifact: ArtifactRecord) => {
+    setSelectedArtifactId(artifact.id)
   }
 
   const launchTemplate = async (template: WorkflowTemplate, sourceArtifacts = scopeArtifacts) => {
@@ -464,6 +564,26 @@ export function ArtifactsPage() {
           ) : null}
         />
 
+        {selectedArtifact ? (
+          <div ref={inspectPanelRef}>
+            <ArtifactInspectPanel
+              artifact={selectedArtifact}
+              caseState={selectedArtifactCaseState}
+              relatedArtifacts={selectedArtifactScope}
+              matchingTemplates={selectedArtifactMatchingTemplates}
+              loading={artifactPreviewLoadingId === selectedArtifact.id && !selectedArtifactPreview}
+              content={selectedArtifactPreview?.content || ""}
+              truncated={selectedArtifactPreview?.truncated || false}
+              error={selectedArtifactPreview?.error || null}
+              launchingTemplateId={launchingTemplateId}
+              onLaunchTemplate={launchTemplate}
+              onRevealArtifact={revealArtifact}
+              onOpenArtifact={openArtifact}
+              onClearSelection={() => setSelectedArtifactId(null)}
+            />
+          </div>
+        ) : null}
+
         {artifactsError ? (
           <div role="alert" className="rounded-xl border border-status-danger/25 bg-status-danger/5 px-4 py-3 text-body-sm text-status-danger">
             {artifactsError}
@@ -530,6 +650,14 @@ export function ArtifactsPage() {
                           Track
                         </Button>
                       ) : null}
+                      <Button
+                        variant={selectedArtifactId === artifact.id ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => inspectArtifact(artifact)}
+                      >
+                        <FileText size={14} />
+                        {selectedArtifactId === artifact.id ? "Inspecting" : "Inspect"}
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => void revealArtifact(artifact)}>
                         <ArrowUpRight size={14} />
                         Reveal

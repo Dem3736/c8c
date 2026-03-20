@@ -6,6 +6,7 @@ import type {
   TelemetrySettings,
   TelemetryUiEvent,
   ArtifactRecord,
+  CaseStateRecord,
   ChatConversation,
   ChatEvent,
   ChatSessionSnapshot,
@@ -177,6 +178,8 @@ const api: C8cApi = {
     ipcRenderer.invoke("executor:persist-artifacts-from-run", input) as Promise<PersistArtifactsFromRunResult>,
   listProjectArtifacts: (projectPath: string) =>
     ipcRenderer.invoke("executor:list-project-artifacts", projectPath) as Promise<ArtifactRecord[]>,
+  listProjectCaseStates: (projectPath: string) =>
+    ipcRenderer.invoke("executor:list-project-case-states", projectPath) as Promise<CaseStateRecord[]>,
   loadProjectFactoryBlueprint: (projectPath: string) =>
     ipcRenderer.invoke("factory:load-blueprint", projectPath) as Promise<ProjectFactoryBlueprint | null>,
   saveProjectFactoryBlueprint: (input: SaveProjectFactoryBlueprintInput) =>

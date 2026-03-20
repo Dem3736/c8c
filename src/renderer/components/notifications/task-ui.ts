@@ -1,4 +1,9 @@
-import type { HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult } from "@shared/types"
+import type { ArtifactRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult } from "@shared/types"
+import {
+  deriveBlockedTaskLatestResultText,
+  deriveBlockedTaskReasonText,
+  deriveBlockedTaskStatusText,
+} from "@/lib/workflow-blocked-copy"
 
 export interface TaskStageMeta {
   title: string
@@ -46,6 +51,27 @@ export function taskCardPreview(task: HumanTaskSummary | HumanTaskSnapshot): str
   const summary = compactTaskText(task.summary, 120)
   if (summary) return summary
   return compactTaskText(task.instructions, 120)
+}
+
+export function deriveTaskCardContext(
+  task: HumanTaskSummary | HumanTaskSnapshot,
+  options?: {
+    stageLabel?: string | null
+    latestArtifact?: ArtifactRecord | null
+  },
+) {
+  const stageLabel = options?.stageLabel || null
+  const latestArtifact = options?.latestArtifact || null
+  const statusText = deriveBlockedTaskStatusText(task, stageLabel)
+  const detailText = [
+    deriveBlockedTaskLatestResultText(latestArtifact),
+    deriveBlockedTaskReasonText(task, stageLabel),
+  ].filter(Boolean).join(" · ")
+
+  return {
+    statusText,
+    detailText,
+  }
 }
 
 export function taskStageKey(task: Pick<HumanTaskSummary, "workflowPath" | "nodeId"> | Pick<HumanTaskSnapshot, "workflowPath" | "nodeId">): string | null {

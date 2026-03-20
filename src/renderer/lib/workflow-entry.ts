@@ -660,7 +660,7 @@ export function buildContinuationArtifactPool({
     pushUnique(orderedProjectArtifacts.filter((artifact) => artifact.caseId === caseId))
   }
 
-  return pool
+  return [...pool].sort((left, right) => right.updatedAt - left.updatedAt)
 }
 
 export function buildArtifactAttachmentSeedInput(artifactAttachments: InputAttachment[]) {

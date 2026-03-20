@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { listProjectArtifacts, persistArtifactsFromRun } from "./artifact-store"
+import { listProjectCaseStates } from "./case-store"
 
 describe("artifact-store", () => {
   let projectDir: string
@@ -57,6 +58,14 @@ describe("artifact-store", () => {
     expect(storedArtifacts[0]?.factoryId).toBe("factory:delivery-foundation")
     expect(storedArtifacts[0]?.caseId).toBe("case:delivery-foundation:abc123")
     expect(storedArtifacts[0]?.sourceArtifactIds).toEqual(["artifact-0"])
+
+    const caseStates = await listProjectCaseStates(projectDir)
+    expect(caseStates).toHaveLength(1)
+    expect(caseStates[0]).toMatchObject({
+      caseId: "case:delivery-foundation:abc123",
+      workLabel: "Shape project",
+      artifactIds: result.artifacts.map((artifact) => artifact.id),
+    })
 
     const markdown = await readFile(result.artifacts[0]!.contentPath, "utf-8")
     expect(markdown).toContain("# Project Brief")

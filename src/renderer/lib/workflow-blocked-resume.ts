@@ -24,6 +24,10 @@ function formatArtifactList(artifacts: ArtifactRecord[]) {
   return `${artifacts[0].title}, ${artifacts[1].title}, +${artifacts.length - 2} more`
 }
 
+function sortArtifactsByRecency(artifacts: ArtifactRecord[]) {
+  return [...artifacts].sort((left, right) => right.updatedAt - left.updatedAt)
+}
+
 function deriveCurrentStepLabel(workflow: Workflow, nodeId: string) {
   const node = workflow.nodes.find((candidate) => candidate.id === nodeId)
   if (!node) return null
@@ -39,8 +43,9 @@ export function deriveWorkflowBlockedResumeSummary({
   task: HumanTaskSnapshot
   sourceArtifacts: ArtifactRecord[]
 }): WorkflowBlockedResumeSummary {
+  const orderedSourceArtifacts = sortArtifactsByRecency(sourceArtifacts)
   const currentStepLabel = deriveCurrentStepLabel(workflow, task.nodeId)
-  const primaryArtifact = sourceArtifacts[0] || null
+  const primaryArtifact = orderedSourceArtifacts[0] || null
   const workLabel = primaryArtifact?.caseLabel
     || primaryArtifact?.workflowName
     || task.workflowName
@@ -56,8 +61,8 @@ export function deriveWorkflowBlockedResumeSummary({
       summary: task.summary || task.request.summary,
       instructions: task.instructions || task.request.instructions,
     }, currentStepLabel),
-    attachText: sourceArtifacts.length > 0
-      ? formatArtifactList(sourceArtifacts)
+    attachText: orderedSourceArtifacts.length > 0
+      ? formatArtifactList(orderedSourceArtifacts)
       : "Saved work context is already tied to this step.",
     latestResultText: deriveBlockedTaskLatestResultText(primaryArtifact),
     primaryArtifact,

@@ -83,7 +83,7 @@ describe("workflow-blocked-resume", () => {
     expect(summary).toMatchObject({
       workLabel: "PDF export preflight",
       currentStepLabel: "Ship",
-      statusText: "Blocked: awaiting your approval before Ship.",
+      statusText: "Blocked: awaiting your approval before Ship can continue.",
       reasonText: "Review and Check passed; final release decision not yet recorded.",
       attachText: "Verification Report",
       latestResultText: "Latest result: Verification Report.",
@@ -108,9 +108,32 @@ describe("workflow-blocked-resume", () => {
       sourceArtifacts: [],
     })
 
-    expect(summary.statusText).toBe("Blocked: waiting for input before Ship.")
+    expect(summary.statusText).toBe("Blocked: waiting for input before Ship can continue.")
     expect(summary.reasonText).toBe("Ship is waiting for the missing input before the flow can continue.")
     expect(summary.attachText).toBe("Saved work context is already tied to this step.")
     expect(summary.primaryActionLabel).toBe("Provide input")
+  })
+
+  it("uses the most recent artifact even when saved results arrive unsorted", () => {
+    const summary = deriveWorkflowBlockedResumeSummary({
+      workflow: createWorkflow(),
+      task: createTask(),
+      sourceArtifacts: [
+        createArtifact({
+          id: "artifact-older",
+          title: "Older verification",
+          updatedAt: 5,
+        }),
+        createArtifact({
+          id: "artifact-newer",
+          title: "Newest verification",
+          updatedAt: 20,
+        }),
+      ],
+    })
+
+    expect(summary.primaryArtifact?.id).toBe("artifact-newer")
+    expect(summary.latestResultText).toBe("Latest result: Newest verification.")
+    expect(summary.attachText).toBe("Newest verification and Older verification")
   })
 })

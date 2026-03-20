@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { ArtifactRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
 import { deriveWorkflowCreateContinuations } from "./workflow-create-continuation"
 
 function createTemplate(overrides: Partial<WorkflowTemplate> = {}): WorkflowTemplate {
@@ -83,6 +83,29 @@ function createTask(overrides: Partial<HumanTaskSummary> = {}): HumanTaskSummary
   }
 }
 
+function createCaseState(overrides: Partial<CaseStateRecord> = {}): CaseStateRecord {
+  return {
+    version: 1,
+    caseId: "case:seller-photo-upload",
+    projectPath: "/tmp/project",
+    workLabel: "Seller photo upload",
+    caseLabel: "Seller photo upload",
+    continuationStatus: "ready",
+    artifactIds: ["artifact-1"],
+    lastGate: {
+      family: "approval",
+      outcome: "passed",
+      summaryText: "Approval recorded. Plan can continue.",
+      reasonText: "The latest approval decision was saved.",
+      stepLabel: "Plan",
+      happenedAt: 10,
+    },
+    createdAt: 1,
+    updatedAt: 10,
+    ...overrides,
+  }
+}
+
 describe("workflow-create-continuation", () => {
   it("derives a ready continuation from saved results and recommended next steps", () => {
     const shapeTemplate = createTemplate()
@@ -107,6 +130,7 @@ describe("workflow-create-continuation", () => {
 
     const candidates = deriveWorkflowCreateContinuations({
       artifacts: [createArtifact()],
+      caseStates: [createCaseState()],
       humanTasks: [],
       templates: [shapeTemplate, planTemplate],
     })
@@ -117,6 +141,7 @@ describe("workflow-create-continuation", () => {
       status: "ready",
       readinessText: "Ready to continue to Plan the change.",
       supportText: "Using saved Feature Spec from Shape / Map.",
+      lastGateText: "Approval recorded. Plan can continue.",
       latestResultLabel: "Feature Spec",
       latestStepLabel: "Shape / Map",
       nextStepLabel: "Plan the change",
@@ -228,8 +253,8 @@ describe("workflow-create-continuation", () => {
     expect(candidates[0]).toMatchObject({
       title: "Seller photo upload",
       status: "blocked",
-      readinessText: "Blocked: waiting for approval to continue.",
-      supportText: "Open the saved work to respond and continue.",
+      readinessText: "Blocked: awaiting your approval before the flow can continue.",
+      supportText: "Approval is blocking the next step.",
     })
   })
 })

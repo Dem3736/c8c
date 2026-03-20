@@ -14,10 +14,14 @@ export function deriveBlockedTaskStatusText(
   task: Pick<BlockedTaskLike, "kind">,
   stepLabel?: string | null,
 ) {
-  const actionTarget = (stepLabel || "continue").trim()
+  const actionTarget = (stepLabel || "").trim()
   return task.kind === "approval"
-    ? `Blocked: awaiting your approval before ${actionTarget}.`
-    : `Blocked: waiting for input before ${actionTarget}.`
+    ? actionTarget
+      ? `Blocked: awaiting your approval before ${actionTarget} can continue.`
+      : "Blocked: awaiting your approval before the flow can continue."
+    : actionTarget
+      ? `Blocked: waiting for input before ${actionTarget} can continue.`
+      : "Blocked: waiting for input before the flow can continue."
 }
 
 export function deriveBlockedTaskReasonText(

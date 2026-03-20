@@ -37,9 +37,11 @@ export async function prepareTemplateStageLaunch({
 }> {
   const nextWorkflow = resolveTemplateWorkflow(template, webSearchBackend)
   const filePath = await window.api.createWorkflow(projectPath, template.name, nextWorkflow)
-  const loadedWorkflow = await window.api.loadWorkflow(filePath)
-  const refreshedWorkflows = await window.api.listProjectWorkflows(projectPath)
-  await window.api.recordProjectTemplateUsage(projectPath, template.id).catch(() => undefined)
+  void window.api.recordProjectTemplateUsage(projectPath, template.id).catch(() => undefined)
+  const [loadedWorkflow, refreshedWorkflows] = await Promise.all([
+    window.api.loadWorkflow(filePath),
+    window.api.listProjectWorkflows(projectPath),
+  ])
 
   const artifactAttachments: InputAttachment[] = artifacts.map((artifact) => ({
     kind: "file",

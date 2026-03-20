@@ -401,7 +401,7 @@ export function ResultTab({
               ? "No saved result for this run."
               : selectedResultNodeId
                 ? "This step finished without a primary result."
-                : "No result yet."}
+                : "No result yet. Results appear here when the flow completes."}
           </div>
         ) : (
           <div className={MARKDOWN_PROSE_CLASS}>

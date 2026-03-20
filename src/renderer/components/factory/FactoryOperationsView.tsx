@@ -24,6 +24,11 @@ import { SectionHeading } from "@/components/ui/page-shell"
 import { SummaryRail } from "@/components/ui/summary-rail"
 import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
 import { cn } from "@/lib/cn"
+import {
+  deriveBlockedTaskLatestResultText,
+  deriveBlockedTaskReasonText,
+  deriveBlockedTaskStatusText,
+} from "@/lib/workflow-blocked-copy"
 import { formatElapsedTime } from "@/lib/run-progress"
 import {
   deriveTemplateExecutionDisciplineLabels,
@@ -603,29 +608,45 @@ export function FactoryOperationsView({
                     key={`${task.workspace}:${task.taskId}`}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hairline bg-surface-2/45 px-3 py-3"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-body-sm font-medium text-foreground">{task.title}</div>
-                        <Badge variant={task.kind === "approval" ? "warning" : "info"} className="ui-meta-text px-2 py-0">
-                          {task.kind === "approval" ? "Approval" : "Input needed"}
-                        </Badge>
-                      </div>
-                      <div className="mt-1 text-body-sm text-muted-foreground">
-                        {task.workflowName} · {formatRelativeTime(task.createdAt)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {task.workflowPath ? (
-                        <Button variant="ghost" size="sm" onClick={() => { void onOpenWorkflow(task.workflowPath || null) }}>
-                          <ArrowUpRight size={14} />
-                          Open flow
-                        </Button>
-                      ) : null}
-                      <Button variant="outline" size="sm" onClick={() => onOpenInboxTask(task)}>
-                        <Inbox size={14} />
-                        {task.kind === "approval" ? "Open approval" : "Open task"}
-                      </Button>
-                    </div>
+                    {(() => {
+                      const caseEntry = scopedCases.find((entry) =>
+                        entry.tasks.some((candidate) => candidate.taskId === task.taskId && candidate.workspace === task.workspace),
+                      ) || null
+                      const stepLabel = caseEntry ? latestLineageLabel(caseEntry) : null
+                      const statusText = deriveBlockedTaskStatusText(task, stepLabel)
+                      const reasonText = deriveBlockedTaskReasonText(task, stepLabel)
+                      const latestResultText = deriveBlockedTaskLatestResultText(caseEntry?.latestArtifact || null)
+                      return (
+                        <>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-body-sm font-medium text-foreground">{task.title}</div>
+                              <Badge variant={task.kind === "approval" ? "warning" : "info"} className="ui-meta-text px-2 py-0">
+                                {task.kind === "approval" ? "Approval" : "Input needed"}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 text-body-sm text-muted-foreground">
+                              {statusText}
+                            </div>
+                            <div className="mt-1 ui-meta-text text-muted-foreground">
+                              {[latestResultText, reasonText, formatRelativeTime(task.createdAt)].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {task.workflowPath ? (
+                              <Button variant="ghost" size="sm" onClick={() => { void onOpenWorkflow(task.workflowPath || null) }}>
+                                <ArrowUpRight size={14} />
+                                Open flow
+                              </Button>
+                            ) : null}
+                            <Button variant="outline" size="sm" onClick={() => onOpenInboxTask(task)}>
+                              <Inbox size={14} />
+                              Review block
+                            </Button>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>

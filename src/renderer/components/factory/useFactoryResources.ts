@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { errorToUserMessage } from "@/lib/error-message"
 import type {
   ArtifactRecord,
+  CaseStateRecord,
   HumanTaskSummary,
   ProjectFactoryBlueprint,
   ProjectFactoryState,
@@ -19,6 +20,7 @@ export function useFactoryResources(selectedProject: string | null) {
   const [factoryStateLoading, setFactoryStateLoading] = useState(false)
   const [factoryStateError, setFactoryStateError] = useState<string | null>(null)
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
+  const [caseStates, setCaseStates] = useState<CaseStateRecord[]>([])
   const [artifactsLoading, setArtifactsLoading] = useState(false)
   const [artifactsError, setArtifactsError] = useState<string | null>(null)
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
@@ -61,6 +63,7 @@ export function useFactoryResources(selectedProject: string | null) {
     artifactsRequestIdRef.current = requestId
     if (!selectedProject) {
       setArtifacts([])
+      setCaseStates([])
       setArtifactsLoading(false)
       setArtifactsError(null)
       return
@@ -69,12 +72,17 @@ export function useFactoryResources(selectedProject: string | null) {
     setArtifactsLoading(true)
     setArtifactsError(null)
     try {
-      const nextArtifacts = await window.api.listProjectArtifacts(selectedProject)
+      const [nextArtifacts, nextCaseStates] = await Promise.all([
+        window.api.listProjectArtifacts(selectedProject),
+        window.api.listProjectCaseStates(selectedProject).catch(() => [] as CaseStateRecord[]),
+      ])
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts(nextArtifacts)
+      setCaseStates(nextCaseStates)
     } catch (error) {
       if (artifactsRequestIdRef.current !== requestId) return
       setArtifacts([])
+      setCaseStates([])
       setArtifactsError(errorToUserMessage(error))
     } finally {
       if (artifactsRequestIdRef.current !== requestId) return
@@ -174,6 +182,7 @@ export function useFactoryResources(selectedProject: string | null) {
     artifacts,
     artifactsError,
     artifactsLoading,
+    caseStates,
     factoryBlueprint,
     factoryBlueprintError,
     factoryBlueprintLoading,

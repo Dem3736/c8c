@@ -96,7 +96,7 @@ import { WorkflowCreateSuggestionsSection } from "@/components/create/WorkflowCr
 import { WorkflowCreateModeTabs } from "@/components/create/WorkflowCreateModeTabs"
 import { WorkflowCreateComposerFooter } from "@/components/create/WorkflowCreateComposerFooter"
 import { useWorkflowCreateContinuation } from "@/components/create/useWorkflowCreateContinuation"
-import { taskSelectionKey } from "@/components/notifications/task-ui"
+import { taskSelectionKey, toContinuationRun } from "@/components/notifications/task-ui"
 import type { WorkflowCreateContinuationCandidate } from "@/lib/workflow-create-continuation"
 
 const POPULAR_TEMPLATE_LIMIT = 12
@@ -475,7 +475,6 @@ export function WorkflowCreatePage() {
     loading: continuationLoading,
     primaryContinuation,
     secondaryContinuations,
-    hiddenContinuationCount,
   } = useWorkflowCreateContinuation({
     projectPath: targetProjectPath,
     templates: availableTemplates,
@@ -510,6 +509,8 @@ export function WorkflowCreatePage() {
     setSelectedWorkflowPath(filePath)
     setWorkflow(loadedWorkflow)
     setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+    setSelectedPastRun(null)
+    setSelectedInboxTaskKey(null)
     setViewMode("list")
     setChatPanelOpen(Boolean(options?.pendingMessage))
     if (typeof options?.initialInputValue === "string") {
@@ -587,16 +588,7 @@ export function WorkflowCreatePage() {
 
         if (task.workflowPath) {
           await openExistingWorkflowFile(task.workflowPath, projectPath, {
-            pastRun: {
-              runId: task.sourceRunId,
-              status: "blocked",
-              workflowName: task.workflowName,
-              workflowPath: task.workflowPath,
-              startedAt: task.createdAt,
-              completedAt: task.updatedAt,
-              reportPath: "",
-              workspace: task.workspace,
-            },
+            pastRun: toContinuationRun(task),
           })
           return
         }
@@ -1035,7 +1027,6 @@ export function WorkflowCreatePage() {
         <WorkflowCreateContinuationCard
           continuation={primaryContinuation}
           secondaryContinuations={secondaryContinuations}
-          hiddenCount={hiddenContinuationCount}
           loading={continuationLoading}
           pending={continuationPending}
           onContinue={(continuation) => {

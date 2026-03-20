@@ -365,7 +365,7 @@ describe("workflow-entry factory helpers", () => {
     }))).toBe("Turn the scoped change into an execution-ready plan.")
   })
 
-  it("prefers current run and current case artifacts for continuation", () => {
+  it("keeps same-work artifacts in the pool but promotes the latest usable result first", () => {
     const pool = buildContinuationArtifactPool({
       currentArtifacts: [
         {
@@ -384,6 +384,20 @@ describe("workflow-entry factory helpers", () => {
         },
       ],
       projectArtifacts: [
+        {
+          id: "artifact-case-plan-new",
+          kind: "phase_plan",
+          title: "Newer same-case plan",
+          caseId: "case:delivery-foundation:abc123",
+          projectPath: "/tmp/project",
+          workspace: "/tmp/workspace",
+          runId: "run-case-new",
+          relativePath: ".c8c/artifacts/run-case-new-phase-plan.md",
+          contentPath: "/tmp/project/.c8c/artifacts/run-case-new-phase-plan.md",
+          metadataPath: "/tmp/project/.c8c/artifacts/run-case-new-phase-plan.json",
+          createdAt: 8,
+          updatedAt: 8,
+        },
         {
           id: "artifact-unrelated-plan",
           kind: "phase_plan",
@@ -434,9 +448,10 @@ describe("workflow-entry factory helpers", () => {
     })
 
     expect(pool.map((artifact) => artifact.id)).toEqual([
+      "artifact-case-plan-new",
       "artifact-current-plan",
-      "artifact-source-brief",
       "artifact-case-roadmap",
+      "artifact-source-brief",
     ])
   })
 

@@ -10,6 +10,7 @@ import {
   getWorkflowRunSnapshot,
 } from "../lib/workflow-runner"
 import {
+  approvalTaskId,
   getWorkflowHilTask,
   listWorkflowHilTasks,
   writeWorkflowHilTaskResponse,
@@ -20,6 +21,7 @@ import { scanAllSkills } from "../lib/skill-scanner"
 import { trackTelemetryEvent } from "../lib/telemetry/service"
 import { summarizeMissingWorkflowSkillRefs } from "../lib/telemetry/workflow-usage"
 import { listProjectArtifacts, persistArtifactsFromRun } from "../lib/artifact-store"
+import { listProjectCaseStates, upsertCaseState } from "../lib/case-store"
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type {
@@ -27,6 +29,9 @@ import type {
   ActiveExecutionSnapshot,
   ActiveWorkflowRun,
   ArtifactRecord,
+  CaseStateRecord,
+  ContinuationStatus,
+  DurableGateRecord,
   EvaluationResult,
   HumanTaskPointer,
   HumanTaskSnapshot,
@@ -376,6 +381,173 @@ function mapHilTaskSnapshot(record: NonNullable<Awaited<ReturnType<typeof getWor
     request: record.request,
     latestResponse,
   }
+}
+
+function normalizeTaskStepLabel(title: string | undefined, workflowName: string | undefined) {
+  const source = (title || workflowName || "").trim()
+  if (!source) return null
+  const normalized = source
+    .replace(/\bapproval\b/gi, "")
+    .replace(/\binput needed\b/gi, "")
+    .replace(/\breview\b/gi, "")
+    .replace(/^\s*(approve|provide|record)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+  return normalized || null
+}
+
+function buildTaskGateRecord(
+  task: Pick<HumanTaskSnapshot, "kind" | "title" | "workflowName" | "summary" | "instructions">,
+  resolution: "passed" | "rejected" | "blocked",
+): {
+  continuationStatus: ContinuationStatus
+  lastGate: DurableGateRecord
+} {
+  const stepLabel = normalizeTaskStepLabel(task.title, task.workflowName)
+  const reasonText = task.summary || task.instructions
+  const family = task.kind === "approval"
+    ? (stepLabel?.toLowerCase().includes("ship") ? "ship_decision" : "approval")
+    : "input"
+
+  if (task.kind === "approval" && resolution === "passed") {
+    return {
+      continuationStatus: "ready",
+      lastGate: {
+        family,
+        outcome: "passed",
+        summaryText: stepLabel
+          ? `Approval recorded. ${stepLabel} can continue.`
+          : "Approval recorded. The flow can continue.",
+        reasonText,
+        stepLabel: stepLabel || undefined,
+        happenedAt: Date.now(),
+      },
+    }
+  }
+
+  if (task.kind === "approval") {
+    return {
+      continuationStatus: "blocked_by_check",
+      lastGate: {
+        family,
+        outcome: "rejected",
+        summaryText: stepLabel
+          ? `${stepLabel} was rejected and is blocked.`
+          : "The flow was rejected and is blocked.",
+        reasonText,
+        stepLabel: stepLabel || undefined,
+        happenedAt: Date.now(),
+      },
+    }
+  }
+
+  if (resolution === "passed") {
+    return {
+      continuationStatus: "ready",
+      lastGate: {
+        family,
+        outcome: "passed",
+        summaryText: stepLabel
+          ? `Input recorded. ${stepLabel} can continue.`
+          : "Input recorded. The flow can continue.",
+        reasonText,
+        stepLabel: stepLabel || undefined,
+        happenedAt: Date.now(),
+      },
+    }
+  }
+
+  return {
+    continuationStatus: "blocked_by_check",
+    lastGate: {
+      family,
+      outcome: resolution === "blocked" ? "blocked" : "rejected",
+      summaryText: stepLabel
+        ? `${stepLabel} is still blocked until the missing input is provided.`
+        : "The flow is still blocked until the missing input is provided.",
+      reasonText,
+      stepLabel: stepLabel || undefined,
+      happenedAt: Date.now(),
+    },
+  }
+}
+
+async function resolveCaseStateSeedForTask(
+  task: Pick<HumanTaskSnapshot, "projectPath" | "workflowPath" | "sourceRunId" | "workflowName" | "title">,
+): Promise<{
+  projectPath: string
+  caseId: string
+  workLabel: string
+  caseLabel?: string
+  factoryId?: string
+  factoryLabel?: string
+  workflowPath?: string
+  workflowName?: string
+  artifactIds: string[]
+} | null> {
+  if (!task.projectPath) return null
+  const safeProjectPath = await assertProjectPath(task.projectPath)
+  const projectArtifacts = await listProjectArtifacts(safeProjectPath)
+  const relatedArtifacts = projectArtifacts
+    .filter((artifact) =>
+      (task.workflowPath && artifact.workflowPath === task.workflowPath)
+      || artifact.runId === task.sourceRunId,
+    )
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+
+  const primaryArtifact = relatedArtifacts[0] || null
+  if (!primaryArtifact?.caseId) return null
+
+  return {
+    projectPath: safeProjectPath,
+    caseId: primaryArtifact.caseId,
+    workLabel: primaryArtifact.caseLabel || task.workflowName || task.title || "Saved work",
+    caseLabel: primaryArtifact.caseLabel,
+    factoryId: primaryArtifact.factoryId,
+    factoryLabel: primaryArtifact.factoryLabel,
+    workflowPath: task.workflowPath || primaryArtifact.workflowPath,
+    workflowName: task.workflowName || primaryArtifact.workflowName,
+    artifactIds: relatedArtifacts.map((artifact) => artifact.id),
+  }
+}
+
+async function persistCaseStateForTaskResolution(
+  task: HumanTaskSnapshot,
+  resolution: "passed" | "rejected" | "blocked",
+): Promise<void> {
+  const seed = await resolveCaseStateSeedForTask(task)
+  if (!seed) return
+  const gateRecord = buildTaskGateRecord(task, resolution)
+  await upsertCaseState({
+    projectPath: seed.projectPath,
+    caseId: seed.caseId,
+    workLabel: seed.workLabel,
+    caseLabel: seed.caseLabel,
+    factoryId: seed.factoryId,
+    factoryLabel: seed.factoryLabel,
+    workflowPath: seed.workflowPath,
+    workflowName: seed.workflowName,
+    continuationStatus: gateRecord.continuationStatus,
+    artifactIds: seed.artifactIds,
+    lastGate: gateRecord.lastGate,
+    updatedAt: gateRecord.lastGate.happenedAt,
+  })
+}
+
+async function persistCaseStateForApprovalDecision(
+  runId: string,
+  nodeId: string,
+  approved: boolean,
+): Promise<void> {
+  const snapshot = await getWorkflowRunSnapshot(runId)
+  const workspace = snapshot?.workspace
+  if (!workspace) return
+  const task = await getWorkflowHilTask(workspace, approvalTaskId(nodeId))
+  if (!task) return
+  await persistCaseStateForTaskResolution(
+    mapHilTaskSnapshot(task),
+    approved ? "passed" : "rejected",
+  )
 }
 
 async function scaffoldWorkflowWithTelemetry(
@@ -803,6 +975,11 @@ export function registerExecutorHandlers() {
     return listProjectArtifacts(safeProjectPath)
   })
 
+  ipcMain.handle("executor:list-project-case-states", async (_e, projectPath: string): Promise<CaseStateRecord[]> => {
+    const safeProjectPath = await assertProjectPath(projectPath)
+    return listProjectCaseStates(safeProjectPath)
+  })
+
   ipcMain.handle(
     "executor:run-batch",
     async (
@@ -871,14 +1048,34 @@ export function registerExecutorHandlers() {
   ipcMain.handle(
     "executor:approve",
     async (_e, runId: string, nodeId: string, editedContent?: string) => {
-      return resolveApproval(runId, nodeId, true, editedContent)
+      const ok = await resolveApproval(runId, nodeId, true, editedContent)
+      if (ok) {
+        await persistCaseStateForApprovalDecision(runId, nodeId, true).catch((error) => {
+          logWarn("executor-ipc", "persist_case_state_after_approve_failed", {
+            runId,
+            nodeId,
+            error: errorMessage(error),
+          })
+        })
+      }
+      return ok
     },
   )
 
   ipcMain.handle(
     "executor:reject",
     async (_e, runId: string, nodeId: string) => {
-      return resolveApproval(runId, nodeId, false)
+      const ok = await resolveApproval(runId, nodeId, false)
+      if (ok) {
+        await persistCaseStateForApprovalDecision(runId, nodeId, false).catch((error) => {
+          logWarn("executor-ipc", "persist_case_state_after_reject_failed", {
+            runId,
+            nodeId,
+            error: errorMessage(error),
+          })
+        })
+      }
+      return ok
     },
   )
 
@@ -905,6 +1102,7 @@ export function registerExecutorHandlers() {
       try {
         const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
         if (!task) return false
+        const taskSnapshot = mapHilTaskSnapshot(task)
         if (task.request.kind === "approval") {
           await resolveApproval(
             task.state.sourceRunId,
@@ -913,6 +1111,16 @@ export function registerExecutorHandlers() {
             typeof input.answers.editedContent === "string" ? input.answers.editedContent : undefined,
             safeWorkspace,
           )
+          await persistCaseStateForTaskResolution(
+            taskSnapshot,
+            Boolean(input.answers.approved) ? "passed" : "rejected",
+          ).catch((persistError) => {
+            logWarn("executor-ipc", "persist_case_state_after_task_submit_failed", {
+              workspace: safeWorkspace,
+              taskId,
+              error: errorMessage(persistError),
+            })
+          })
         } else {
           await writeWorkflowHilTaskResponse({
             workspace: safeWorkspace,
@@ -922,6 +1130,13 @@ export function registerExecutorHandlers() {
             answeredBy: input.answeredBy,
             idempotencyKey: input.idempotencyKey,
             source: "runtime",
+          })
+          await persistCaseStateForTaskResolution(taskSnapshot, "passed").catch((persistError) => {
+            logWarn("executor-ipc", "persist_case_state_after_task_submit_failed", {
+              workspace: safeWorkspace,
+              taskId,
+              error: errorMessage(persistError),
+            })
           })
         }
         return true
@@ -944,8 +1159,16 @@ export function registerExecutorHandlers() {
       try {
         const task = await getWorkflowHilTask(safeWorkspace, safeTaskId)
         if (!task) return false
+        const taskSnapshot = mapHilTaskSnapshot(task)
         if (task.request.kind === "approval") {
           await resolveApproval(task.state.sourceRunId, task.state.nodeId, false, undefined, safeWorkspace)
+          await persistCaseStateForTaskResolution(taskSnapshot, "rejected").catch((persistError) => {
+            logWarn("executor-ipc", "persist_case_state_after_task_reject_failed", {
+              workspace: safeWorkspace,
+              taskId,
+              error: errorMessage(persistError),
+            })
+          })
         } else {
           await writeWorkflowHilTaskResponse({
             workspace: safeWorkspace,
@@ -955,6 +1178,13 @@ export function registerExecutorHandlers() {
             comment,
             idempotencyKey,
             source: "runtime",
+          })
+          await persistCaseStateForTaskResolution(taskSnapshot, "blocked").catch((persistError) => {
+            logWarn("executor-ipc", "persist_case_state_after_task_reject_failed", {
+              workspace: safeWorkspace,
+              taskId,
+              error: errorMessage(persistError),
+            })
           })
         }
         return true

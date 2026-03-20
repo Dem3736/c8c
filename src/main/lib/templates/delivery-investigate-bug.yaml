@@ -85,10 +85,11 @@ nodes:
       x: 720
       y: 200
     config:
-      title: Choose fix approach
-      description: "Review the root cause analysis and choose: Hotfix (fast, minimal) or Proper Fix (thorough). You can also edit the scope before continuing."
-      timeout: 7200
-      defaultAction: approve
+      message: "Review the root cause analysis and choose: Hotfix (fast, minimal) or Proper Fix (thorough). You can also edit the scope before continuing."
+      show_content: true
+      allow_edit: true
+      timeout_minutes: 120
+      timeout_action: auto_reject
   - id: fixer-1
     type: skill
     position:

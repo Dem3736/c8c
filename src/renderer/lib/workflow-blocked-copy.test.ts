@@ -4,10 +4,13 @@ import { deriveBlockedTaskLatestResultText, deriveBlockedTaskReasonText, deriveB
 describe("workflow-blocked-copy", () => {
   it("builds sentence-form status text for approval and input tasks", () => {
     expect(deriveBlockedTaskStatusText({ kind: "approval" }, "Ship")).toBe(
-      "Blocked: awaiting your approval before Ship.",
+      "Blocked: awaiting your approval before Ship can continue.",
     )
     expect(deriveBlockedTaskStatusText({ kind: "form" }, "Plan")).toBe(
-      "Blocked: waiting for input before Plan.",
+      "Blocked: waiting for input before Plan can continue.",
+    )
+    expect(deriveBlockedTaskStatusText({ kind: "approval" })).toBe(
+      "Blocked: awaiting your approval before the flow can continue.",
     )
   })
 

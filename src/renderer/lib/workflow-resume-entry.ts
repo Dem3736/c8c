@@ -1,4 +1,4 @@
-import type { ArtifactRecord } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord } from "@shared/types"
 import type { WorkflowTemplateRunContext } from "./workflow-entry"
 import { deriveTemplateDisplayLabel } from "./workflow-entry"
 
@@ -33,11 +33,13 @@ export function deriveWorkflowResumeEntrySummary({
   context,
   currentStepLabel,
   sourceArtifacts,
+  caseState,
   startApprovalRequired,
 }: {
   context: WorkflowTemplateRunContext | null
   currentStepLabel: string | null
   sourceArtifacts: ArtifactRecord[]
+  caseState?: CaseStateRecord | null
   startApprovalRequired: boolean
 }): WorkflowResumeEntrySummary | null {
   const primaryArtifact = sourceArtifacts[0] || null
@@ -57,7 +59,7 @@ export function deriveWorkflowResumeEntrySummary({
 
   const checksText = startApprovalRequired
     ? "Approval is still required before continue."
-    : "No blocking checks or approvals."
+    : caseState?.lastGate?.summaryText || "No blocking checks or approvals."
 
   const latestResultText = primaryArtifact
     ? `Latest result: ${primaryArtifact.title}${primaryArtifactStep ? ` from ${primaryArtifactStep}` : ""}.`

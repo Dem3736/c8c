@@ -1,11 +1,11 @@
 import { useEffect, useMemo } from "react"
 import { formatRelativeTime } from "@/components/sidebar/projectSidebarUtils"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
+import { buildProjectCaseIndex } from "@/lib/case-summary"
 import { formatResultModeLabel } from "@/lib/result-mode-factory"
 import { buildRunProgressSummary } from "@/lib/run-progress"
 import {
   areTemplateContractsSatisfied,
-  deriveArtifactCaseKey,
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateJourneyStageLabel,
   deriveTemplatePackStagePath,
@@ -13,8 +13,14 @@ import {
   type WorkflowTemplateRunContext,
 } from "@/lib/workflow-entry"
 import { isRunInFlight, type WorkflowExecutionState } from "@/lib/workflow-execution"
+import {
+  deriveBlockedTaskLatestResultText,
+  deriveBlockedTaskReasonText,
+  deriveBlockedTaskStatusText,
+} from "@/lib/workflow-blocked-copy"
 import type {
   ArtifactRecord,
+  CaseStateRecord,
   HumanTaskSummary,
   ProjectFactoryBlueprint,
   ProjectFactoryState,
@@ -30,7 +36,6 @@ import {
   isVisibleProjectExecutionState,
   latestLineageLabel,
   resolveArtifactFactoryIdentity,
-  resolveContextFactoryIdentity,
   templateHasStrategistCheckpoint,
   type CaseSummaryField,
   type FactoryActionItem,
@@ -45,6 +50,7 @@ import {
 interface UseFactoryDataParams {
   artifacts: ArtifactRecord[]
   blueprintDraft: FactoryBlueprintDraft
+  caseStates: CaseStateRecord[]
   draftFactoryId: string | null
   factoryBlueprint: ProjectFactoryBlueprint | null
   factoryState: ProjectFactoryState | null
@@ -63,6 +69,7 @@ interface UseFactoryDataParams {
 export function useFactoryData({
   artifacts,
   blueprintDraft,
+  caseStates,
   draftFactoryId,
   factoryBlueprint,
   factoryState,
@@ -110,10 +117,17 @@ export function useFactoryData({
     () => new Map(templates.map((template) => [template.id, template])),
     [templates],
   )
+  const caseIndex = useMemo(
+    () => buildProjectCaseIndex({
+      artifacts,
+      caseStates,
+      templates,
+      workflowTemplateContexts,
+    }),
+    [artifacts, caseStates, templates, workflowTemplateContexts],
+  )
 
   const cases = useMemo<FactoryCase[]>(() => {
-    const caseByRunId = new Map<string, string>()
-    const caseByWorkflowPath = new Map<string, string>()
     const next = new Map<string, {
       id: string
       label: string
@@ -123,142 +137,73 @@ export function useFactoryData({
       tasks: HumanTaskSummary[]
       relatedRuns: RunResult[]
       workflowPaths: Set<string>
+      runIds: Set<string>
       latestArtifact: ArtifactRecord | null
       activeRun: FactoryRunEntry | null
       latestRun: FactoryRunEntry | null
       lineageLabels: string[]
     }>()
 
-    const ensureCase = (
-      caseId: string,
-      label: string,
-      factoryId: string,
-      factoryLabel: string,
-    ) => {
-      const existing = next.get(caseId)
-      if (existing) {
-        if (!existing.label && label) existing.label = label
-        if (!existing.factoryLabel && factoryLabel) existing.factoryLabel = factoryLabel
-        return existing
-      }
-
-      const created = {
-        id: caseId,
-        label,
-        factoryId,
-        factoryLabel,
+    for (const summary of caseIndex.cases) {
+      if (!summary.factoryId || !summary.factoryLabel) continue
+      next.set(summary.id, {
+        id: summary.id,
+        label: summary.label,
+        factoryId: summary.factoryId,
+        factoryLabel: summary.factoryLabel,
         artifacts: [],
         tasks: [],
         relatedRuns: [],
-        workflowPaths: new Set<string>(),
-        latestArtifact: null,
+        workflowPaths: new Set(summary.workflowPaths),
+        runIds: new Set(summary.runIds),
+        latestArtifact: summary.latestArtifact,
         activeRun: null,
         latestRun: null,
-        lineageLabels: [],
-      }
-      next.set(caseId, created)
-      return created
+        lineageLabels: [...summary.lineageLabels],
+      })
     }
 
     for (const artifact of artifacts) {
-      const caseId = deriveArtifactCaseKey(artifact)
-      const stageLabel = artifact.templateId
-        ? deriveTemplateJourneyStageLabel(templateById.get(artifact.templateId) || ({
-            pack: undefined,
-          } as WorkflowTemplate))
-        : null
-      const factoryIdentity = resolveArtifactFactoryIdentity(artifact, templateById)
-      if (!factoryIdentity) continue
-      const entry = ensureCase(
-        caseId,
-        artifact.caseLabel || artifact.workflowName || artifact.title,
-        factoryIdentity.id,
-        factoryIdentity.label,
-      )
+      const caseId = caseIndex.caseByRunId.get(artifact.runId)
+        || (artifact.workflowPath ? caseIndex.caseByWorkflowPath.get(artifact.workflowPath) : undefined)
+      if (!caseId) continue
+      const entry = next.get(caseId)
+      if (!entry) continue
       entry.artifacts.push(artifact)
-      if (artifact.workflowPath) {
-        entry.workflowPaths.add(artifact.workflowPath)
-        caseByWorkflowPath.set(artifact.workflowPath, caseId)
-      }
-      caseByRunId.set(artifact.runId, caseId)
-      if (!entry.latestArtifact || artifact.updatedAt > entry.latestArtifact.updatedAt) {
-        entry.latestArtifact = artifact
-      }
-      if (stageLabel && !entry.lineageLabels.includes(stageLabel)) {
-        entry.lineageLabels.push(stageLabel)
-      }
-    }
-
-    for (const [workflowKey, context] of Object.entries(workflowTemplateContexts)) {
-      if (!context.caseId) continue
-      const factoryIdentity = resolveContextFactoryIdentity(context)
-      if (!factoryIdentity) continue
-      const entry = ensureCase(
-        context.caseId,
-        context.caseLabel || context.workflowName || context.templateName,
-        factoryIdentity.id,
-        factoryIdentity.label,
-      )
-      if (context.workflowPath) {
-        entry.workflowPaths.add(context.workflowPath)
-        caseByWorkflowPath.set(context.workflowPath, context.caseId)
-      } else if (workflowKey !== "__draft__") {
-        entry.workflowPaths.add(workflowKey)
-        caseByWorkflowPath.set(workflowKey, context.caseId)
-      }
-      const stageLabel = context.pack?.journeyStage
-        ? deriveTemplateJourneyStageLabel({
-            id: context.templateId,
-            name: context.templateName,
-            description: "",
-            stage: "strategy",
-            emoji: "",
-            headline: "",
-            how: "",
-            input: "",
-            output: "",
-            steps: [],
-            workflow: createEmptyWorkflow(),
-            pack: context.pack,
-          })
-        : null
-      if (stageLabel && !entry.lineageLabels.includes(stageLabel)) {
-        entry.lineageLabels.push(stageLabel)
-      }
+      entry.runIds.add(artifact.runId)
     }
 
     for (const entry of liveRunEntries) {
-      const caseId = (entry.workflowPath && caseByWorkflowPath.get(entry.workflowPath))
-        || (entry.state.runId ? caseByRunId.get(entry.state.runId) : undefined)
+      const caseId = (entry.workflowPath && caseIndex.caseByWorkflowPath.get(entry.workflowPath))
+        || (entry.state.runId ? caseIndex.caseByRunId.get(entry.state.runId) : undefined)
       if (!caseId) continue
       const existing = next.get(caseId)
       if (!existing) continue
-      const target = ensureCase(caseId, entry.workflowName, existing.factoryId, existing.factoryLabel)
-      if (entry.workflowPath) target.workflowPaths.add(entry.workflowPath)
-      if (!target.latestRun || (entry.lastUpdatedAt || 0) > (target.latestRun.lastUpdatedAt || 0)) {
-        target.latestRun = entry
+      if (entry.workflowPath) existing.workflowPaths.add(entry.workflowPath)
+      if (!existing.latestRun || (entry.lastUpdatedAt || 0) > (existing.latestRun.lastUpdatedAt || 0)) {
+        existing.latestRun = entry
       }
       if (isRunInFlight(entry.state.runStatus)) {
-        target.activeRun = entry
+        existing.activeRun = entry
       }
     }
 
     for (const task of humanTasks) {
-      const caseId = (task.workflowPath && caseByWorkflowPath.get(task.workflowPath))
-        || caseByRunId.get(task.sourceRunId)
+      const caseId = (task.workflowPath && caseIndex.caseByWorkflowPath.get(task.workflowPath))
+        || caseIndex.caseByRunId.get(task.sourceRunId)
       if (!caseId) continue
-      const existing = next.get(caseId)
-      if (!existing) continue
-      const target = ensureCase(caseId, task.workflowName, existing.factoryId, existing.factoryLabel)
-      target.tasks.push(task)
+      const entry = next.get(caseId)
+      if (!entry) continue
+      entry.tasks.push(task)
       if (task.workflowPath) {
-        target.workflowPaths.add(task.workflowPath)
+        entry.workflowPaths.add(task.workflowPath)
       }
     }
 
     return Array.from(next.values()).map((entry) => {
       const caseArtifacts = [...entry.artifacts].sort((left, right) => right.updatedAt - left.updatedAt)
       const relatedRunIds = new Set<string>([
+        ...entry.runIds,
         ...caseArtifacts.map((artifact) => artifact.runId),
         ...entry.tasks.map((task) => task.sourceRunId),
       ])
@@ -301,7 +246,7 @@ export function useFactoryData({
       const rightUpdated = right.activeRun?.lastUpdatedAt || right.latestArtifact?.updatedAt || right.latestRun?.lastUpdatedAt || 0
       return rightUpdated - leftUpdated
     })
-  }, [artifacts, humanTasks, liveRunEntries, pastRuns, templateById, templates, workflowTemplateContexts])
+  }, [artifacts, caseIndex, humanTasks, liveRunEntries, pastRuns, templates])
 
   const packRecipes = useMemo<FactoryPackRecipe[]>(() => {
     const localTemplateById = new Map(templates.map((template) => [template.id, template]))
@@ -322,7 +267,7 @@ export function useFactoryData({
 
     for (const artifact of artifacts) {
       const template = artifact.templateId ? localTemplateById.get(artifact.templateId) : undefined
-      rememberCaseForPack(template?.pack?.id, deriveArtifactCaseKey(artifact))
+      rememberCaseForPack(template?.pack?.id, caseIndex.caseByRunId.get(artifact.runId))
     }
 
     for (const context of Object.values(workflowTemplateContexts)) {
@@ -355,7 +300,7 @@ export function useFactoryData({
         activeCaseCount: caseIdsByPack.get(packId)?.size || 0,
       }
     }).sort((left, right) => right.activeCaseCount - left.activeCaseCount)
-  }, [artifacts, templates, workflowTemplateContexts])
+  }, [artifacts, caseIndex.caseByRunId, templates, workflowTemplateContexts])
 
   const factoryOptions = useMemo(() => {
     const next = new Map<string, {
@@ -641,13 +586,18 @@ export function useFactoryData({
     for (const entry of cases) {
       const primaryTask = entry.tasks[0]
       if (primaryTask) {
+        const currentStepLabel = latestLineageLabel(entry)
         next.push({
           id: `${entry.id}:task:${primaryTask.taskId}`,
           caseId: entry.id,
           caseLabel: entry.label,
           kind: "review_gate",
           title: primaryTask.title,
-          description: primaryTask.summary || primaryTask.instructions || "An approval is blocking this track.",
+          description: [
+            deriveBlockedTaskStatusText(primaryTask, currentStepLabel),
+            deriveBlockedTaskLatestResultText(entry.latestArtifact),
+            deriveBlockedTaskReasonText(primaryTask, currentStepLabel),
+          ].filter(Boolean).join(" "),
           timestamp: primaryTask.updatedAt,
           tone: "warning",
           task: primaryTask,
@@ -739,8 +689,12 @@ export function useFactoryData({
     let blockingGateHint = "Nothing is waiting on human input."
     let blockingGateTone: CaseSummaryField["tone"] = "default"
     if (selectedCase.tasks[0]) {
-      blockingGateValue = selectedCase.tasks[0].kind === "approval" ? "Approval" : "Input needed"
-      blockingGateHint = selectedCase.tasks[0].title
+      const currentStepLabel = latestLineageLabel(selectedCase)
+      blockingGateValue = deriveBlockedTaskStatusText(selectedCase.tasks[0], currentStepLabel)
+      blockingGateHint = [
+        deriveBlockedTaskLatestResultText(selectedCase.latestArtifact),
+        deriveBlockedTaskReasonText(selectedCase.tasks[0], currentStepLabel),
+      ].filter(Boolean).join(" ")
       blockingGateTone = "warning"
     }
 
