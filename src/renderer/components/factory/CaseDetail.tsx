@@ -189,7 +189,7 @@ export function CaseDetail({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => onOpenInboxTask(primaryAction.task!, selectedCase.id)}
+                  onClick={() => { if (primaryAction.task) onOpenInboxTask(primaryAction.task, selectedCase.id) }}
                 >
                   <Inbox size={14} />
                   Approval
@@ -209,7 +209,7 @@ export function CaseDetail({
               {primaryAction?.template ? (
                 <Button
                   size="sm"
-                  onClick={() => { void onLaunchTemplate(primaryAction.template!, selectedCase.artifacts) }}
+                  onClick={() => { if (primaryAction.template) void onLaunchTemplate(primaryAction.template, selectedCase.artifacts) }}
                   disabled={Boolean(launchingTemplateId)}
                 >
                   {launchingTemplateId === primaryAction.template.id ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}

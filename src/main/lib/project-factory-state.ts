@@ -304,13 +304,13 @@ export async function spawnFactoryCasesFromArtifact(
   const artifacts = await listProjectArtifacts(projectPath)
   const artifact = artifacts.find((entry) => entry.id === input.artifactId)
   if (!artifact) {
-    throw new Error("Could not find the selected artifact")
+    throw new Error("Could not find the selected result")
   }
 
   const markdown = await readArtifactContent(artifact)
   const drafts = extractDrafts(markdown)
   if (drafts.length === 0) {
-    throw new Error("Could not derive item tracks from this artifact yet")
+    throw new Error("Could not derive item tracks from this result yet")
   }
 
   const existing = await loadProjectFactoryState(projectPath)

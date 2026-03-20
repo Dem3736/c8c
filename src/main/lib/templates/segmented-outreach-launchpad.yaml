@@ -12,18 +12,18 @@ steps:
   - Build one self-contained outreach prompt with voice, proof, banned phrasing, and CTA rules baked in.
   - Split by segment so Tier 1 and Tier 2 cohorts get sharper messages instead of one generic blast.
   - Generate follow-up sequences for each branch so the first touch is not the only touch.
-  - Merge the best copy, gate quality, and prep provider upload without activating anything.
+  - Merge the best copy, run a quality check, and prep provider upload without activating anything.
   - Founder approves the final outreach pack before sequencer handoff.
 execution_policy:
   notes:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Segmented Outreach Launchpad
-description: Start from a segmented contact list, branch message generation by who is being targeted and why they should care, then hand off a send-ready pack with realistic quality gates and provider prep
+description: Start from a segmented contact list, branch message generation by who is being targeted and why they should care, then hand off a send-ready pack with realistic quality checks and provider prep
 credits:
   - label: GTM Skills
     href: https://github.com/extruct-ai/gtm-skills
-    note: Original Extruct GTM skill pack this workflow composes.
+    note: Original Extruct GTM skill pack this flow composes.
 defaults:
   model: sonnet
   maxTurns: 120

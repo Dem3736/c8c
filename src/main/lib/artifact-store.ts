@@ -59,35 +59,35 @@ function buildArtifactMarkdown(
   const headerLines = [
     `# ${record.title}`,
     "",
-    `Artifact kind: \`${record.kind}\``,
+    `Result type: \`${record.kind}\``,
     `Generated from run: \`${record.runId}\``,
   ]
 
   if (record.caseLabel) {
-    headerLines.push(`Case: ${record.caseLabel}`)
+    headerLines.push(`Track: ${record.caseLabel}`)
   }
   if (record.caseId) {
-    headerLines.push(`Case ID: \`${record.caseId}\``)
+    headerLines.push(`Track ID: \`${record.caseId}\``)
   }
   if (record.factoryLabel) {
-    headerLines.push(`Factory: ${record.factoryLabel}`)
+    headerLines.push(`Lab: ${record.factoryLabel}`)
   }
   if (record.factoryId) {
-    headerLines.push(`Factory ID: \`${record.factoryId}\``)
+    headerLines.push(`Lab ID: \`${record.factoryId}\``)
   }
 
   if (record.workflowName) {
-    headerLines.push(`Workflow: ${record.workflowName}`)
+    headerLines.push(`Flow: ${record.workflowName}`)
   }
   if (record.templateName) {
-    headerLines.push(`Template: ${record.templateName}`)
+    headerLines.push(`Starting point: ${record.templateName}`)
   }
   if (contract.description?.trim()) {
     headerLines.push("")
     headerLines.push(contract.description.trim())
   }
 
-  const body = reportContent.trim() || "_No report content was available for this artifact._"
+  const body = reportContent.trim() || "_No report content was available for this result._"
   return `${headerLines.join("\n")}\n\n---\n\n${body}\n`
 }
 

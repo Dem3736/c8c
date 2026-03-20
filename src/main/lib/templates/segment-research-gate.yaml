@@ -2,7 +2,7 @@ id: segment-research-gate
 stage: research
 emoji: "\U0001F3AF"
 headline: Validate market segments with evidence
-how: Analyzes input context first, then generates grounded segment hypotheses, researches each, and filters by quality gate
+how: Analyzes input context first, then generates grounded segment hypotheses, researches each, and filters by quality check
 input: A landing page, deep research document, product description, or market area to segment
 output: Scored and validated segment list with evidence and quality ratings
 use_when: You have a market hunch and need evidence before committing a segment strategy.
@@ -11,15 +11,15 @@ steps:
   - Analyze the input to extract product context, trends, audience signals, and vocabulary
   - Generate grounded segment hypotheses based on context analysis
   - Research each segment in parallel with signal grounding
-  - Score and filter segments through quality gate
+  - Score and filter segments through a quality check
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context
   notes:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 2
-name: Segment Research with Quality Gate
-description: Analyzes input context, generates grounded segment hypotheses, researches each, scores and filters by quality gate
+name: Segment Research with Quality Check
+description: Analyzes input context, generates grounded segment hypotheses, researches each, scores and filters by quality check
 defaults:
   model: sonnet
   maxTurns: 120

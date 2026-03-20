@@ -99,7 +99,7 @@ export function ResultModeCard({
 
       {!compact && mode.guidedPath?.length ? (
         <div className="mt-4 w-full space-y-1.5">
-          <p className="ui-meta-label text-muted-foreground">Stages</p>
+          <p className="ui-meta-label text-muted-foreground">Steps</p>
           <div className="flex flex-wrap gap-1.5">
             {mode.guidedPath.map((stage) => (
               <span

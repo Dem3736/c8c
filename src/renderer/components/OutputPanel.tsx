@@ -46,6 +46,7 @@ export function OutputPanel({
   nextStageArtifacts = [],
   onRunNextStage,
   nextStagePending = false,
+  fillHeight = false,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
   onRerunFrom?: (nodeId: string, options?: { workspace?: string | null }) => Promise<void> | void
@@ -63,6 +64,7 @@ export function OutputPanel({
   nextStageArtifacts?: ArtifactRecord[]
   onRunNextStage?: (() => Promise<void> | void) | null
   nextStagePending?: boolean
+  fillHeight?: boolean
 }) {
   const desktopRuntime = useAtomValue(desktopRuntimeAtom)
   const {
@@ -275,8 +277,8 @@ export function OutputPanel({
   ) : null
   const openNodeDetails = useCallback((nodeId: string) => {
     setInspectedNodeId(nodeId)
-    const hasNodeOutput = typeof displayNodeStates[nodeId]?.output?.content === "string"
-      && displayNodeStates[nodeId]!.output!.content.trim().length > 0
+    const nodeOutput = displayNodeStates[nodeId]?.output?.content
+    const hasNodeOutput = typeof nodeOutput === "string" && nodeOutput.trim().length > 0
     setActiveTab(hasNodeOutput ? "result" : "log")
   }, [displayNodeStates, setInspectedNodeId])
 
@@ -438,7 +440,16 @@ export function OutputPanel({
 
   return (
     <>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2.5 ui-fade-slide-in">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className={cn(
+          "ui-fade-slide-in",
+          fillHeight
+            ? "flex min-h-0 flex-1 flex-col gap-2.5"
+            : "space-y-2.5",
+        )}
+      >
         <OutputPanelHeader
           activeTab={activeTab}
           hasResult={hasResult}
@@ -467,7 +478,10 @@ export function OutputPanel({
         )}
         {blockedReviewBanner}
 
-        <TabsContent value="nodes" className="mt-0 ui-fade-slide-in">
+        <TabsContent
+          value="nodes"
+          className={cn("mt-0 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
+        >
           {reviewingRunHistory && (
             <div className="mb-2 rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -517,7 +531,10 @@ export function OutputPanel({
           )}
         </TabsContent>
 
-        <TabsContent value="log" className="mt-2 ui-fade-slide-in">
+        <TabsContent
+          value="log"
+          className={cn("mt-2 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
+        >
           {showIdleState ? (
             <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
               No log yet.
@@ -552,7 +569,10 @@ export function OutputPanel({
           )}
         </TabsContent>
 
-        <TabsContent value="result" className="mt-2 ui-fade-slide-in">
+        <TabsContent
+          value="result"
+          className={cn("mt-2 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
+        >
           {hasResult ? (
             <ResultTab
               reviewingRunHistory={reviewingRunHistory}
@@ -618,7 +638,10 @@ export function OutputPanel({
           )}
         </TabsContent>
 
-        <TabsContent value="history" className="mt-2 ui-fade-slide-in">
+        <TabsContent
+          value="history"
+          className={cn("mt-2 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
+        >
           <HistoryTab
             pastRuns={pastRuns}
             runStatus={runStatus}

@@ -48,7 +48,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "AI CMO: Reddit Engine"
-description: Research subreddit fit, draft native Reddit motions, and hold them behind a manual review gate.
+description: Research subreddit fit, draft native Reddit motions, and hold them behind a manual review approval.
 defaults:
   model: sonnet
   maxTurns: 120

@@ -293,7 +293,7 @@ describe("workflow edge mutations", () => {
     const next = moveMiddleNodeByDirection(workflow, "skill-a", "down")
     expect(next).toEqual(workflow)
     expect(getLinearChainReorderBlockReason(workflow)).toBe(
-      "Reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows.",
+      "Reordering is unavailable once the flow branches. Use Canvas to restructure branching flows.",
     )
   })
 

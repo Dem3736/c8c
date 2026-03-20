@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 c8c (cybernetic) is a flow composer with hidden orchestration underneath. Simple on the outside (one input, one flow), powerful inside (directed graphs of skill nodes executed via CLI backends).
 
-North star: the user describes point B, c8c picks the right starting point, then reveals state instead of structure as the flow runs.
+North star: the user describes point B, c8c picks the best first step, then reveals state instead of structure as the flow runs.
 
 ## Product Vocabulary (R2-CANON)
 
@@ -30,6 +30,7 @@ Internal code (variable names, types, file names) keeps existing vocabulary. Onl
 ```bash
 npm run dev          # Start Electron with hot reload
 npm run build        # Build for production
+npm run canon:check  # Check renderer copy against canon vocabulary
 npm run test         # Run all tests (vitest)
 npm run test:watch   # Run tests in watch mode
 npx tsc --noEmit     # Type-check without emitting
@@ -71,7 +72,7 @@ Jotai atoms in `src/renderer/lib/store.ts`. Key patterns:
 
 ### View Routing
 
-`mainViewAtom` switches between: `"thread"` (flow editor), `"skills"`, `"templates"` (starting points), `"settings"`.
+`mainViewAtom` switches between: `"thread"` (flow editor), `"skills"`, `"templates"` (Library), `"settings"`.
 
 Two flow editing modes via `viewModeAtom`: `"list"` (linear chain builder) and `"canvas"` (React Flow graph).
 

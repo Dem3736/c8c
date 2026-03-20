@@ -11,7 +11,7 @@ steps:
   - Map the product surface and propose executable visual test scenarios
   - Split the plan into self-contained browser scenarios
   - Run each scenario end-to-end and capture visual QA evidence
-  - Merge findings into one prioritized audit and quality-gate it
+  - Merge findings into one prioritized audit and quality-check it
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context
@@ -110,13 +110,13 @@ nodes:
         - If a local app must be started, inspect the repo docs/scripts first and reuse an already-running server if one
           is available instead of starting a second copy.
         - If a Codex Playwright wrapper is available at $CODEX_HOME/skills/playwright/scripts/playwright_cli.sh or
-          ~/.codex/skills/playwright/scripts/playwright_cli.sh and npx is available, prefer that workflow.
+          ~/.codex/skills/playwright/scripts/playwright_cli.sh and npx is available, prefer that runner.
         - Otherwise use project-native Playwright tooling or the best browser automation available in the environment.
         - Click through the full scenario, not just the landing screen.
         - Re-snapshot or refresh context after major UI changes so selectors and references stay current.
-        - Capture artifacts in output/playwright/<scenario-id>/ when possible: screenshots, notes, console errors, and
+        - Capture evidence in output/playwright/<scenario-id>/ when possible: screenshots, notes, console errors, and
           any relevant traces.
-        - Do not modify product source code. Only create audit artifacts or minimal temporary execution files if needed.
+        - Do not modify product source code. Only create audit evidence or minimal temporary execution files if needed.
         - If auth, data setup, or environment readiness blocks progress, stop cleanly and document the blocker precisely.
 
         Audit for:
@@ -133,7 +133,7 @@ nodes:
         - Findings
         - Console/Runtime Issues
         - Responsiveness Notes
-        - Artifacts
+        - Evidence
         - Blockers
 
         Every finding must include severity (blocker/high/medium/low), concrete evidence, and a recommended fix.
@@ -154,7 +154,7 @@ nodes:
         - Recurring Visual/UX Patterns
         - Scenario-by-Scenario Findings
         - Recommended Fix Order
-        - Artifact Index
+        - Evidence Index
 
         Deduplicate overlaps, preserve evidence and scenario ids, and clearly separate environment blockers from actual
         product defects.

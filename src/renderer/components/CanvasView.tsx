@@ -453,7 +453,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
         : connection.sourceHandle === "fail" ? "fail" as const
         : "default" as const
       setWorkflow((prev) => {
-        const result = addEdgeToWorkflow(prev, connection.source!, connection.target!, edgeType)
+        const result = addEdgeToWorkflow(prev, connection.source ?? "", connection.target ?? "", edgeType)
         if (result.error) {
           toast.warning(result.error, { duration: 8000 })
         }
@@ -660,7 +660,7 @@ export function CanvasView({ readOnly = false, onAddSkill, surfaceBanner = null 
           {runStatus === "paused" && (
             <div className="inline-flex items-center gap-2 rounded-lg surface-soft px-3 py-2 text-body-sm text-foreground backdrop-blur">
               <PauseCircle size={15} className="text-status-warning" />
-              Paused — current node will finish before the workflow stops.
+              Paused — current node will finish before the flow stops.
             </div>
           )}
           {surfaceBanner}

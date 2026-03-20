@@ -22,6 +22,7 @@
     "pretest": "npm run build:shared",
     "test": "vitest run",
     "test:watch": "vitest",
+    "canon:check": "node scripts/check-canon-vocabulary.mjs",
     "smoke:electron": "npm run build:test-mode && node scripts/run-electron-smoke.mjs",
     "smoke:electron:ci": "npm run build:test-mode && node scripts/run-electron-smoke.mjs --json --no-keep-artifacts-on-success",
     "codex:download": "node scripts/download-codex-binary.mjs --version=0.114.0",

@@ -1,24 +1,24 @@
 id: content-pipeline
 stage: content
 emoji: "\U0001F4F0"
-headline: Turn strategy into marketing assets
-how: Builds the strategy, turns it into a report, then drafts the first marketing assets from it.
+headline: Turn strategy into marketing outputs
+how: Builds the strategy, turns it into a report, then drafts the first marketing outputs from it.
 input: Product or feature brief
-output: Strategy report plus marketing artifacts (positioning, messaging, content ideas)
-use_when: You have the product strategy and need the first set of marketing assets from it.
+output: Strategy report plus marketing results (positioning, messaging, content ideas)
+use_when: You have the product strategy and need the first set of marketing outputs from it.
 time: ~10-15 min.
 steps:
   - Develop product strategy and positioning
-  - Founder approves the strategy before downstream artifacts are generated
+  - Founder approves the strategy before downstream results are generated
   - Generate comprehensive strategy report
-  - Create marketing artifacts from the strategy
+  - Create marketing results from the strategy
   - Evaluate quality and iterate if needed
 execution_policy:
   notes:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Content Pipeline
-description: Develop product strategy, generate structured report, create marketing artifacts, evaluate quality
+description: Develop product strategy, generate a structured report, create marketing results, and evaluate quality
 defaults:
   model: sonnet
   maxTurns: 120
@@ -65,7 +65,7 @@ nodes:
       y: 200
     config:
       skillRef: marketing-generator
-      prompt: "Create marketing artifacts from the strategy and report: positioning statements, value propositions, messaging
+      prompt: "Create marketing outputs from the strategy and report: positioning statements, value propositions, messaging
         framework for each target segment, and content ideas matrix."
   - id: evaluator-1
     type: evaluator

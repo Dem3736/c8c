@@ -11,7 +11,7 @@ steps:
   - Map the full user-facing surface of the project
   - Fan out repo-wide UX/UI audit tracks by lens
   - Merge findings into one prioritized polish report
-  - Run a report quality gate before output
+  - Run a report quality check before output
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context

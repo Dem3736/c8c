@@ -241,7 +241,7 @@ export function BatchPanel() {
               <div className="ui-progress-track">
                 <div
                   className="ui-progress-bar ui-running-pulse"
-                  style={{ width: `${batchProgress.total > 0 ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }}
+                  style={{ transform: `scaleX(${batchProgress.total > 0 ? batchProgress.completed / batchProgress.total : 0})` }}
                 />
               </div>
               <BatchInputPreview

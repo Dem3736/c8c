@@ -122,7 +122,7 @@ export function getRuntimeStagePresentation(
     const config = node.config as EvaluatorNodeConfig
     const artifactLabel = artifactOverrideLabel || "Quality decision"
     return {
-      kind: "Gate",
+      kind: "Check",
       group: "Quality check",
       title: config.threshold ? `Quality check ${config.threshold}/10` : "Quality check",
       outcomeLabel: "Decides",
@@ -173,7 +173,7 @@ export function getRuntimeStagePresentation(
     const config = node.config as ApprovalNodeConfig
     const artifactLabel = artifactOverrideLabel || "Approved content"
     return {
-      kind: "Gate",
+      kind: "Approval",
       group: "Review check",
       title: compactCopy(config.message, 42) || "Review and continue",
       outcomeLabel: "Approves",
@@ -187,7 +187,7 @@ export function getRuntimeStagePresentation(
     const config = node.config as HumanNodeConfig
     const artifactLabel = artifactOverrideLabel || "Human response"
     return {
-      kind: "Gate",
+      kind: config.mode === "approval" ? "Approval" : "Input",
       group: config.mode === "approval" ? "Review check" : "Human input",
       title: compactCopy(config.staticRequest?.title, 42) || (config.mode === "approval" ? "Review and continue" : "Provide input"),
       outcomeLabel: config.mode === "approval" ? "Approves" : "Collects",

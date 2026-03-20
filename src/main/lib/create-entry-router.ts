@@ -523,7 +523,7 @@ function buildRouterPrompt(
   }
 
   return [
-    "Choose the best start for this process request.",
+    "Choose the best first step for this flow request.",
     "You are routing a create request to one known starting point.",
     "Return JSON only.",
     "",
@@ -636,7 +636,7 @@ async function runAgentRouteDecision(
         model,
         maxTurns: 8,
         systemPrompts: [
-          "You are a process entry router. Output ONLY valid JSON. Do NOT use tools. Do NOT inspect files. Choose one allowed starting point from the provided options.",
+          "You are a flow entry router. Output ONLY valid JSON. Do NOT use tools. Do NOT inspect files. Choose one allowed starting point from the provided options.",
         ],
         mcpConfigPath: runtimeMcpConfig.path,
         disableBuiltInTools: providerId === "claude",

@@ -278,9 +278,9 @@ export function useChatSession() {
 
         case "workflow-mutated": {
           if (!isWorkflowPayload(event.workflow)) {
-            toast.error("Received an invalid workflow update from the Agent.")
+            toast.error("Received an invalid flow update from the Agent.")
             addNotification({
-              title: "Agent sent an invalid workflow update",
+              title: "Agent sent an invalid flow update",
               level: "error",
               source: "agent",
             })
@@ -317,12 +317,12 @@ export function useChatSession() {
               return next
             })
           }
-          toast.success("Workflow updated from Agent", {
+          toast.success("Flow updated from Agent", {
             action: {
               label: "Undo",
               onClick: () => {
                 if (workflowPathRef.current !== mutationWorkflowPath) {
-                  toast.error("Undo is only available for the current workflow")
+                  toast.error("Undo is only available for the current flow")
                   return
                 }
                 setUndoStack((prev) => {

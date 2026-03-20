@@ -1,7 +1,7 @@
 id: gstack-preflight-gate
 stage: code
 emoji: "\U0001F6A7"
-headline: Review a branch, QA it, and hold a release gate
+headline: Review a branch, QA it, and hold a release approval
 how: Runs gstack review on the current branch, verifies the resulting branch with report-only QA, merges both signals, and pauses for explicit approval
 input: Repo and branch context, local or staging URL, auth or setup notes, and any risky areas that must be checked
 output: Approved preflight brief with code-review findings, QA evidence, and release recommendation
@@ -24,15 +24,15 @@ credits:
     note: Built around Garry Tan's gstack skill pack.
 contract_out:
   - kind: validation_contract
-    title: Preflight Gate
+    title: Preflight Approval
     description: The combined code-review and QA decision logic that determines whether the branch is ready to ship.
   - kind: verification_report
     title: Preflight Verification Report
     description: Review findings, QA evidence, unresolved risks, and the human decision recorded at the gate.
 execution_policy:
   profile_id: gstack_preflight_gate
-  summary: Review-gated branch verification
-  description: Review the branch, verify it in the product surface, and require an explicit human release decision.
+  summary: Review-backed branch verification
+  description: Review the branch, verify it in the product surface, and require an explicit human release approval.
   tags:
     - review_gates
     - critique_loops
@@ -43,7 +43,7 @@ execution_policy:
     - Prefer concrete blockers and diffs over generic readiness language.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Gstack Team: Preflight Gate"
+name: "Gstack Team: Preflight Review"
 description: Review the branch, run report-only QA on the resulting state, and require human approval before calling it release-ready.
 defaults:
   model: sonnet

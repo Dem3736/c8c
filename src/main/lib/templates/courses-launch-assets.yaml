@@ -10,10 +10,10 @@ time: ~8-12 min.
 steps:
   - Turn the lesson system into launch-ready assets and offer framing
   - Evaluate clarity, consistency, and launch usefulness
-  - Hold a human review gate before finalizing the bundle
+  - Hold a human review approval before finalizing the bundle
 pack:
   id: courses-factory-alpha
-  label: Courses Factory
+  label: Courses Lab
   journey_stage: verify
 contract_in:
   - kind: lesson_system
@@ -36,8 +36,8 @@ execution_policy:
     - Assets should stay aligned with the audience promise.
     - Keep the final framing specific and commercially usable.
 version: 1
-name: "Courses Factory: Launch Assets"
-description: Turn the lesson system into launch-ready assets with a visible human review gate.
+name: "Courses Lab: Launch Assets"
+description: Turn the lesson system into launch-ready assets with a visible human review approval.
 defaults:
   model: sonnet
   maxTurns: 150
@@ -83,7 +83,7 @@ nodes:
       x: 960
       y: 200
     config:
-      message: Review the launch asset bundle before the course factory is marked complete.
+      message: Review the launch asset bundle before the course path is marked complete.
       show_content: true
       allow_edit: true
       timeout_minutes: 180

@@ -69,10 +69,10 @@ export function WorkflowSettingsPanel() {
   }
 
   return (
-    <section aria-label="Workflow defaults" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
-      <h2 className="section-kicker">Workflow Defaults</h2>
+    <section aria-label="Flow defaults" className="rounded-lg surface-panel p-4 space-y-3 ui-fade-slide-in">
+      <h2 className="section-kicker">Flow Defaults</h2>
       <p className="max-w-[620px] text-body-sm text-muted-foreground">
-        App-wide provider access lives in Settings, the workflow's provider and model live in the Input step, and any node-specific overrides stay with that step.
+        App-wide provider access lives in Settings, the flow provider and model live in the Input step, and any node-specific overrides stay with that step.
       </p>
 
       <div className="w-full max-w-[620px] surface-inset-card space-y-2">
@@ -137,7 +137,7 @@ export function WorkflowSettingsPanel() {
           </div>
         </div>
         <p className="ui-meta-text text-muted-foreground">
-          Provider and model are configured from the workflow Input step. These values stay as workflow-wide execution defaults.
+          Provider and model are configured from the flow Input step. These values stay as flow-wide execution defaults.
         </p>
       </div>
 

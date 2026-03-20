@@ -237,7 +237,7 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
             aria-label="Flow library"
             aria-activedescendant={selectedOptionId}
             tabIndex={0}
-            className="overflow-y-auto ui-scroll-region space-y-2 pr-1 focus:outline-none"
+            className="overflow-y-auto ui-scroll-region space-y-2 pr-1 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/14 focus-visible:rounded-lg"
             onKeyDown={handleListKeyDown}
           >
             {isLoading && (

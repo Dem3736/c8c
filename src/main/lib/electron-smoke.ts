@@ -412,7 +412,7 @@ async function clickElementByText(
 
 async function openSeededWorkflow(window: BrowserWindow, input: ElectronSmokeWorkflowOpenInput) {
   const result = await callRendererSmokeMethod<boolean>(window, "openWorkflow", input)
-  assertSmoke(result.ok && result.value !== false, `Failed to open smoke workflow ${input.workflowPath}.`)
+  assertSmoke(result.ok && result.value !== false, `Failed to open smoke flow ${input.workflowPath}.`)
 }
 
 async function seedSmokeExecutionState(window: BrowserWindow, input: ElectronSmokeExecutionSeedInput) {
@@ -434,7 +434,7 @@ async function resolveSeededProjectWorkflows(
   const workflows = await listProjectWorkflows(seed.selectedProject)
   assertSmoke(
     workflows.length >= minCount,
-    `${scenario} requires at least ${minCount} seeded workflow${minCount === 1 ? "" : "s"}.`,
+    `${scenario} requires at least ${minCount} seeded flow${minCount === 1 ? "" : "s"}.`,
   )
   return {
     projectPath: seed.selectedProject,
@@ -613,13 +613,13 @@ async function assertQuickSwitchRailScenario(
   await dispatchShortcut(window, { key: "2", primary: true })
   const shortcutState = await waitForUiState(
     window,
-    "quick switched workflow",
+    "quick switched flow",
     (state) =>
       state.currentWorkflowName === betaWorkflow.name
       && state.selectedWorkflowPath === betaWorkflow.path
       && state.flowStatusRailVisible,
   )
-  recordAssertion(assertions, "Switched workflows with primary+2", `selected=${betaWorkflow.name}`)
+  recordAssertion(assertions, "Switched flows with primary+2", `selected=${betaWorkflow.name}`)
 
   await clickElementByAriaLabel(window, `Open ${alphaWorkflow.name}`)
   const finalState = await waitForUiState(
@@ -630,7 +630,7 @@ async function assertQuickSwitchRailScenario(
       && state.selectedWorkflowPath === alphaWorkflow.path
       && state.flowStatusRailVisible,
   )
-  recordAssertion(assertions, "Switched workflows from rail click", `selected=${alphaWorkflow.name}`)
+  recordAssertion(assertions, "Switched flows from rail click", `selected=${alphaWorkflow.name}`)
   return {
     uiState: finalState,
     invariants: {
@@ -658,7 +658,7 @@ async function assertCanvasAddRecenterDeleteScenario(
   })
   await waitForUiState(
     window,
-    "canvas workflow open",
+    "canvas flow open",
     (state) =>
       state.applicationShellVisible
       && state.currentWorkflowName === canvasWorkflow.name
@@ -671,7 +671,7 @@ async function assertCanvasAddRecenterDeleteScenario(
     (state) => state.nodeCount >= 3 && Boolean(state.viewport),
   )
   assertSmoke(baselineCanvasState.viewport, "Canvas scenario requires an initial viewport.")
-  recordAssertion(assertions, "Opened seeded canvas workflow", `nodes=${baselineCanvasState.nodeCount}`)
+  recordAssertion(assertions, "Opened seeded canvas flow", `nodes=${baselineCanvasState.nodeCount}`)
 
   const offsetViewport: ElectronSmokeCanvasViewport = {
     x: baselineCanvasState.viewport.x + 420,
@@ -755,7 +755,7 @@ async function assertApprovalDialogScenario(
   })
   await waitForUiState(
     window,
-    "approval workflow open",
+    "approval flow open",
     (state) =>
       state.applicationShellVisible
       && state.currentWorkflowName === approvalWorkflow.name

@@ -5,7 +5,7 @@ headline: Create an approval-gated X posting queue from product context
 how: Extracts voice and proof, generates multiple X angles, drafts a queue of posts, evaluates the whole batch, and holds it for review
 input: Website, launch context, product update, or upstream AI CMO strategy pack
 output: X posting queue with angle labels, hooks, CTAs, and posting notes ready for review
-use_when: You want a product-specific X motion with real angles and review gates, not a generic viral-thread generator.
+use_when: You want a product-specific X motion with real angles and review approvals, not a generic viral-thread generator.
 time: ~8-12 min.
 steps:
   - Extract voice, proof points, audience tension, and claims to avoid
@@ -47,7 +47,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "AI CMO: X Engine"
-description: Generate a product-specific X posting queue with multiple angles, evaluation, and an explicit review gate.
+description: Generate a product-specific X posting queue with multiple angles, evaluation, and an explicit review approval.
 defaults:
   model: sonnet
   maxTurns: 120

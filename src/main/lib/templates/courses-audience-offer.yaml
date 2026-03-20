@@ -13,7 +13,7 @@ steps:
   - Evaluate clarity, specificity, and strategic fit before downstream curriculum work
 pack:
   id: courses-factory-alpha
-  label: Courses Factory
+  label: Courses Lab
   journey_stage: intake
   entrypoint: true
   recommended_next:
@@ -33,7 +33,7 @@ execution_policy:
     - Keep the promise specific and outcome-based.
     - Avoid broad "for everyone" positioning.
 version: 1
-name: "Courses Factory: Audience & Offer"
+name: "Courses Lab: Audience & Offer"
 description: Shape the audience and promise for a course, workshop, or expertise product before planning curriculum.
 defaults:
   model: sonnet

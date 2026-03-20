@@ -581,12 +581,12 @@ export function getLinearChainReorderBlockReason(workflow: Workflow): string | n
   const inputNodes = workflow.nodes.filter((node) => node.type === "input")
   const outputNodes = workflow.nodes.filter((node) => node.type === "output")
   if (inputNodes.length !== 1 || outputNodes.length !== 1) {
-    return "Reordering is only available for linear workflows."
+    return "Reordering is only available for linear flows."
   }
 
   // Reorder in list mode must not flatten fan-out/fan-in topology.
   if (workflow.nodes.some((node) => node.type === "splitter" || node.type === "merger")) {
-    return "Reordering is unavailable once the workflow branches. Use Canvas to restructure branching flows."
+    return "Reordering is unavailable once the flow branches. Use Canvas to restructure branching flows."
   }
 
   const nodeIds = new Set(workflow.nodes.map((node) => node.id))
@@ -596,11 +596,11 @@ export function getLinearChainReorderBlockReason(workflow: Workflow): string | n
 
   for (const edge of workflow.edges) {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
-      return "Reordering is only available for linear workflows."
+      return "Reordering is only available for linear flows."
     }
     if (edge.type === "fail") {
       if (edge.source === edge.target) {
-        return "Reordering is only available for linear workflows."
+        return "Reordering is only available for linear flows."
       }
       continue
     }
@@ -611,30 +611,30 @@ export function getLinearChainReorderBlockReason(workflow: Workflow): string | n
     outgoing.set(edge.source, outgoingCount)
     incoming.set(edge.target, incomingCount)
     if (outgoingCount > 1 || incomingCount > 1) {
-      return "Reordering is only available for linear workflows."
+      return "Reordering is only available for linear flows."
     }
   }
 
   if (nonFailEdges !== workflow.nodes.length - 1) {
-    return "Reordering is only available for linear workflows."
+    return "Reordering is only available for linear flows."
   }
 
   const inputId = inputNodes[0].id
   const outputId = outputNodes[0].id
   if ((incoming.get(inputId) || 0) !== 0) {
-    return "Reordering is only available for linear workflows."
+    return "Reordering is only available for linear flows."
   }
   if ((outgoing.get(outputId) || 0) !== 0) {
-    return "Reordering is only available for linear workflows."
+    return "Reordering is only available for linear flows."
   }
 
   for (const node of workflow.nodes) {
     if (node.id === inputId || node.id === outputId) continue
     if ((incoming.get(node.id) || 0) !== 1) {
-      return "Reordering is only available for linear workflows."
+      return "Reordering is only available for linear flows."
     }
     if ((outgoing.get(node.id) || 0) !== 1) {
-      return "Reordering is only available for linear workflows."
+      return "Reordering is only available for linear flows."
     }
   }
 

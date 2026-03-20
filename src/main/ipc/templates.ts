@@ -171,7 +171,7 @@ export function registerTemplateHandlers() {
       const senderId = event.sender.id
 
       if (activeGenerateControllers.has(senderId)) {
-        throw new Error("Workflow generation already in progress")
+        throw new Error("Flow generation is already in progress")
       }
 
       const controller = new AbortController()
@@ -219,7 +219,7 @@ export function registerTemplateHandlers() {
               model,
               maxTurns: 120,
               systemPrompts: [
-                "You are a workflow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the workflow definition directly from the prompt and available skills list.",
+                "You are a flow JSON generator. Output ONLY valid JSON. Do NOT invoke skills, do NOT read files, do NOT use tools. Generate the flow definition directly from the prompt and available skills list.",
               ],
               mcpConfigPath: runtimeMcpConfig.path,
               disableBuiltInTools: providerId === "claude",
@@ -250,7 +250,7 @@ export function registerTemplateHandlers() {
         } catch (err) {
           const msg = String(err)
           if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
-            throw new Error("Workflow generation timed out — try a simpler description")
+            throw new Error("Flow generation timed out — try a simpler description")
           }
           throw new Error(`${providerId} process failed: ${msg.slice(0, 200)}`)
         } finally {
@@ -276,13 +276,13 @@ export function registerTemplateHandlers() {
 
         if (!result.success) {
           if (result.killed) {
-            throw new Error("Workflow generation timed out — try a simpler description")
+            throw new Error("Flow generation timed out — try a simpler description")
           }
           if (result.aborted) {
-            throw new Error("Workflow generation was cancelled")
+            throw new Error("Flow generation was cancelled")
           }
           const preview = logParser.textContent.trim() || logParser.rawOutput.slice(0, 200)
-          throw new Error(`Workflow generation failed (exit ${result.exitCode}): ${preview || "no output"}`)
+          throw new Error(`Flow generation failed (exit ${result.exitCode}): ${preview || "no output"}`)
         }
 
         if (logParser.textContent.length === 0) {
@@ -298,7 +298,7 @@ export function registerTemplateHandlers() {
           workflow = parseGeneratedWorkflow(logParser.textContent)
         } catch (err) {
           const preview = logParser.textContent.slice(0, 300)
-          throw new Error(`Could not parse workflow from AI response: ${(err as Error).message}\n\nResponse preview: ${preview}`)
+          throw new Error(`Could not parse flow from AI response: ${(err as Error).message}\n\nResponse preview: ${preview}`)
         }
 
         if (projectPath) {

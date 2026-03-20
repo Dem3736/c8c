@@ -24,11 +24,11 @@ interface WorkflowSynthesisOptions {
 }
 
 const SYNTHESIS_SYSTEM_PROMPT = [
-  "You are a workflow JSON generator.",
-  "The user message describes the desired behavior of the workflow, not a task for you to execute yourself.",
-  "Output ONLY valid JSON for the workflow.",
+  "You are a flow JSON generator.",
+  "The user message describes the desired behavior of the flow, not a task for you to execute yourself.",
+  "Output ONLY valid JSON for the flow.",
   "Do NOT invoke skills, do NOT read files, do NOT use tools.",
-  "Generate or update the workflow definition directly from the prompt and available skills list.",
+  "Generate or update the flow definition directly from the prompt and available skills list.",
 ].join(" ")
 
 export async function synthesizeWorkflowFromRequest(
@@ -88,18 +88,18 @@ async function runWorkflowSynthesis(
 
     if (!result.success) {
       if (result.killed) {
-        throw new Error("Workflow synthesis timed out — try a tighter request")
+        throw new Error("Flow generation timed out — try a tighter request")
       }
       if (result.aborted) {
-        throw new Error("Workflow synthesis was cancelled")
+        throw new Error("Flow generation was cancelled")
       }
       const preview = logParser.textContent.trim() || logParser.rawOutput.slice(0, 200)
-      throw new Error(`Workflow synthesis failed (exit ${result.exitCode}): ${preview || "no output"}`)
+      throw new Error(`Flow generation failed (exit ${result.exitCode}): ${preview || "no output"}`)
     }
 
     if (logParser.textContent.trim().length === 0) {
       const raw = logParser.rawOutput.trim()
-      throw new Error(`Workflow synthesis produced no text output: ${raw.slice(0, 200) || "empty response"}`)
+      throw new Error(`Flow generation produced no text output: ${raw.slice(0, 200) || "empty response"}`)
     }
 
     let workflow: Workflow
@@ -107,7 +107,7 @@ async function runWorkflowSynthesis(
       workflow = parseGeneratedWorkflow(logParser.textContent)
     } catch (error) {
       const preview = logParser.textContent.slice(0, 300)
-      throw new Error(`Could not parse workflow JSON: ${(error as Error).message}\n\nResponse preview: ${preview}`)
+      throw new Error(`Could not parse flow JSON: ${(error as Error).message}\n\nResponse preview: ${preview}`)
     }
 
     workflow = await scaffoldMissingSkills(workflow, options.availableSkills, options.projectPath)

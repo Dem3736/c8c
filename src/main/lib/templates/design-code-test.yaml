@@ -2,7 +2,7 @@ id: design-code-test
 stage: code
 emoji: "\U0001F9EA"
 headline: Design a component, build it, and test it
-how: Generates a frontend component, reviews code quality, gates on standards, writes tests, and gates on coverage
+how: Generates a frontend component, reviews code quality, checks standards, writes tests, and checks coverage
 input: A component specification or UI requirement
 output: Production-ready component with tests and quality checks passed
 use_when: You have a component or feature to build and want design, implementation, and tests lined up in one pass.
@@ -18,7 +18,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Design → Code → Test
-description: Generate frontend component, review code quality, gate on standards, write tests, gate on coverage
+description: Generate a frontend component, review code quality, check standards, write tests, and check coverage
 defaults:
   model: sonnet
   maxTurns: 120

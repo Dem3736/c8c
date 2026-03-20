@@ -23,7 +23,7 @@ description: Enter a new market end to end, from external pain research through 
 credits:
   - label: GTM Skills
     href: https://github.com/extruct-ai/gtm-skills
-    note: Original Extruct GTM skill pack this workflow composes.
+    note: Original Extruct GTM skill pack this flow composes.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -52,7 +52,7 @@ nodes:
         Capture:
         - what we sell in email-safe language
         - ICP and target roles
-        - best proof points and win cases
+        - best proof points
         - banned phrasing, risky claims, and DNC domains
   - id: research-1
     type: skill
@@ -275,7 +275,7 @@ nodes:
       criteria: >-
         Score 1-10 on: (1) research-to-message coherence, (2) list and contact quality, (3) differentiation between
         copy branches, (4) realism of the simulation feedback, (5) manual-review discipline, and (6) upload readiness.
-        Fail if the workflow still produces generic copy or shaky campaign inputs.
+        Fail if the flow still produces generic copy or shaky campaign inputs.
       threshold: 8
       maxRetries: 2
       retryFrom: prompt-builder-1

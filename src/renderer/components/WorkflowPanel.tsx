@@ -257,9 +257,7 @@ export function WorkflowPanel() {
     const outputPanel = outputPanelRef.current
     if (!listScrollRegion || !outputPanel) return false
 
-    const regionRect = listScrollRegion.getBoundingClientRect()
-    const panelRect = outputPanel.getBoundingClientRect()
-    const nextTop = listScrollRegion.scrollTop + panelRect.top - regionRect.top - padding
+    const nextTop = outputPanel.offsetTop - listScrollRegion.offsetTop - padding
 
     listScrollRegion.scrollTo({ top: Math.max(0, nextTop), behavior: "auto" })
     return true
@@ -332,7 +330,7 @@ export function WorkflowPanel() {
   }), [activeNodeId, nodeStates, runOutcome, runStatus, runtimeMeta, runtimeNodes, workflow])
   const isRuntimeFlowView = viewMode === "list" && runStatus !== "idle"
   const listShellClass = isRuntimeFlowView
-    ? "w-full px-[var(--content-gutter)] py-4 space-y-3"
+    ? "flex min-h-full w-full flex-col px-[var(--content-gutter)] py-4 space-y-3"
     : "ui-content-shell py-3 space-y-3"
   const reviewFlowHasSnapshot = showIdleReviewMode && !!reviewedRunDetails?.snapshot
   const requestOutputTab = useCallback((tab: "nodes" | "log" | "result" | "history", nodeId?: string) => {
@@ -593,10 +591,15 @@ export function WorkflowPanel() {
     if (idleReviewAutoScrollKeyRef.current === reviewKey) return
 
     idleReviewAutoScrollKeyRef.current = reviewKey
+    const tryScroll = () => {
+      if (scrollOutputPanelToListViewportStart(16)) return
+      outputPanelRef.current?.scrollIntoView({ behavior: "auto", block: "start" })
+    }
+
     window.requestAnimationFrame(() => {
+      tryScroll()
       window.requestAnimationFrame(() => {
-        if (scrollOutputPanelToListViewportStart(16)) return
-        outputPanelRef.current?.scrollIntoView({ behavior: "auto", block: "start" })
+        tryScroll()
       })
     })
   }, [scrollOutputPanelToListViewportStart, selectedPastRun?.runId, selectedWorkflowPath, showIdleReviewMode, viewMode])

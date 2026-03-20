@@ -232,7 +232,9 @@ export function useBatchExecution() {
   }, [processBatchEvent])
 
   useEffect(() => {
+    let cancelled = false
     window.api.getActiveExecutions().then((executions: ActiveExecutionSnapshot[]) => {
+      if (cancelled) return
       const activeBatch = executions.find((execution) =>
         execution.kind === "batch"
         && (
@@ -257,8 +259,9 @@ export function useBatchExecution() {
         running: activeBatch.running,
       })
     }).catch((error) => {
-      console.error("[useBatchExecution] getActiveExecutions failed:", error)
+      if (!cancelled) console.error("[useBatchExecution] getActiveExecutions failed:", error)
     })
+    return () => { cancelled = true }
   }, [
     selectedProject,
     selectedWorkflowPath,

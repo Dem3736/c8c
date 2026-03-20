@@ -1,18 +1,18 @@
 id: delivery-plan-phase
 stage: strategy
 emoji: "\U0001F4D0"
-headline: Plan the next implementation phase before coding starts
-how: Break the next phase into concrete slices, dependencies, and validation checks before execution begins.
+headline: Plan the next change before coding starts
+how: Break the next change into concrete slices, dependencies, and validation checks before execution begins.
 input: A project brief, scoped feature, or roadmap segment to plan
-output: Phase plan with small tasks, sequencing notes, and a validation contract
-use_when: You know what should be built next and want a concrete phase plan before execution starts.
+output: Delivery plan with small tasks, sequencing notes, and a validation contract
+use_when: You know what should be built next and want a concrete plan before execution starts.
 time: ~5-8 min.
 steps:
-  - Break the next phase into ordered task slices with dependencies and risks
+  - Break the next change into ordered task slices with dependencies and risks
   - Review and tighten the plan, then produce a validation contract
 pack:
   id: delivery-foundation
-  label: Delivery Factory
+  label: Delivery Lab
   journey_stage: plan
   recommended_next:
     - delivery-implement-phase
@@ -23,7 +23,7 @@ contract_in:
     required: true
   - kind: research_pack
     title: Research Pack
-    description: Helpful evidence and open questions gathered before planning this phase.
+    description: Helpful evidence and open questions gathered before planning this change.
     required: false
   - kind: requirements_spec
     title: Requirements Spec
@@ -31,19 +31,19 @@ contract_in:
     required: false
   - kind: roadmap
     title: Roadmap
-    description: Useful sequencing context for the next phase.
+    description: Useful sequencing context for the next change.
     required: false
 contract_out:
   - kind: phase_plan
-    title: Phase Plan
-    description: Concrete tasks, sequence, dependencies, and risks for the next build phase.
+    title: Change Plan
+    description: Concrete tasks, sequence, dependencies, and risks for the next build step.
   - kind: validation_contract
     title: Validation Contract
-    description: How this phase will be checked before it is considered complete.
+    description: How this change will be checked before it is considered complete.
 execution_policy:
   profile_id: delivery_plan
-  summary: Small-task planning with review gates
-  description: Make the next phase executable, testable, and reviewable before implementation starts.
+  summary: Small-task planning with review approvals
+  description: Make the next change executable, testable, and reviewable before implementation starts.
   tags:
     - spec_first
     - small_tasks
@@ -53,8 +53,8 @@ execution_policy:
     - Define validation before execution starts.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Delivery Factory: Plan Phase"
-description: Convert shaped project context into a concrete phase plan and validation contract before implementation begins.
+name: "Delivery Lab: Plan the Change"
+description: Convert shaped project context into a concrete plan and validation contract before implementation begins.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -77,7 +77,7 @@ nodes:
     config:
       skillRef: researcher
       prompt: >-
-        Create a concrete Phase Plan for the next implementation stage. Include:
+        Create a concrete Change Plan for the next implementation step. Include:
         1) objective,
         2) scope and non-scope,
         3) ordered task slices,
@@ -93,7 +93,7 @@ nodes:
     config:
       skillRef: researcher
       prompt: >-
-        Review this phase plan. Tighten vague tasks, surface hidden dependencies, and strengthen the validation contract.
+        Review this change plan. Tighten vague tasks, surface hidden dependencies, and strengthen the validation contract.
         Return the improved final plan ready for execution.
   - id: output-1
     type: output
@@ -101,7 +101,7 @@ nodes:
       x: 960
       y: 200
     config:
-      title: Phase Plan and Validation Contract
+      title: Change Plan and Validation Contract
 edges:
   - id: e-input-planner
     source: input-1

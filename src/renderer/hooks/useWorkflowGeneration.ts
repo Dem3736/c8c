@@ -79,7 +79,7 @@ export function useWorkflowGeneration({
   const generate = async (target: GenerationTarget) => {
     if (!description.trim()) return
     if (target === "new" && !selectedProject) {
-      setError("Select a project before generating a new workflow file.")
+      setError("Select a project before generating a new flow file.")
       return
     }
 
@@ -114,7 +114,7 @@ export function useWorkflowGeneration({
       const previousWorkflowPath = selectedWorkflowPath
 
       if (target === "new") {
-        const baseName = generatedWorkflow.name.trim() || "generated-workflow"
+        const baseName = generatedWorkflow.name.trim() || "generated-flow"
         const createdPath = await window.api.createWorkflow(selectedProject!, baseName, generatedWorkflow)
         const savedWorkflow = await window.api.loadWorkflow(createdPath)
         const refreshed = await window.api.listProjectWorkflows(selectedProject!)
@@ -132,7 +132,7 @@ export function useWorkflowGeneration({
           target,
         })
         toast.success("Ready to run", {
-          description: "The agent prepared a new workflow in your project.",
+          description: "The agent prepared a new flow in your project.",
         })
       } else {
         setWorkflow(generatedWorkflow)

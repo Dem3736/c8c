@@ -28,11 +28,11 @@ export function ChainBuilderRemoveDialog({
       <CanvasDialogContent showCloseButton={false}>
         <CanvasDialogHeader>
           <DialogTitle>Remove step?</DialogTitle>
-          <DialogDescription>This will remove the step and its connections from the workflow.</DialogDescription>
+          <DialogDescription>This will remove the step and its connections from the flow.</DialogDescription>
         </CanvasDialogHeader>
         <CanvasDialogBody>
           <p className="text-body-md text-muted-foreground">
-            Remove &ldquo;{stepLabel}&rdquo; from the chain?
+            Remove &ldquo;{stepLabel}&rdquo; from this flow?
           </p>
         </CanvasDialogBody>
         <CanvasDialogFooter>

@@ -1,25 +1,25 @@
 id: delivery-verify-phase
 stage: operations
 emoji: "\U0001F9EA"
-headline: Verify a finished phase before sign-off
-how: Run automated checks first, then compare implemented outcome against the phase plan in a verification report, evaluate report quality, and require explicit human approval before completion.
-input: Implementation notes, evidence, or links that should be checked against the phase plan
+headline: Verify a finished change before sign-off
+how: Run automated checks first, then compare the implemented outcome against the plan in a verification report, evaluate report quality, and require explicit human approval before completion.
+input: Implementation notes, evidence, or links that should be checked against the plan
 output: Approved verification report with findings, gaps, and completion decision
-use_when: A phase has been implemented and you want a visible verification pass before declaring it complete.
+use_when: A change has been implemented and you want a visible verification pass before declaring it complete.
 time: ~5-8 min.
 steps:
   - Run automated checks (tests, types, lint) and report raw results
-  - Compare delivered work against the phase plan and validation contract
+  - Compare delivered work against the change plan and validation contract
   - Evaluate verification report quality and evidence
   - Require explicit founder review before finalizing
 pack:
   id: delivery-foundation
-  label: Delivery Factory
+  label: Delivery Lab
   journey_stage: verify
 contract_in:
   - kind: phase_plan
-    title: Phase Plan
-    description: The agreed objective, slices, and scope for the phase.
+    title: Change Plan
+    description: The agreed objective, slices, and scope for the change.
     required: true
   - kind: review_notes
     title: Review Notes
@@ -36,10 +36,10 @@ contract_in:
 contract_out:
   - kind: verification_report
     title: Verification Report
-    description: Approved summary of what passed, what failed, and whether the phase is ready to close.
+    description: Approved summary of what passed, what failed, and whether the change is ready to close.
 execution_policy:
   profile_id: delivery_verify
-  summary: Review-gated verification
+  summary: Review-backed verification
   description: Compare the work against its contract, then require explicit human signoff before completion.
   tags:
     - test_first
@@ -50,8 +50,8 @@ execution_policy:
     - The final report is only complete after human review.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Delivery Factory: Verify Phase"
-description: Check the delivered outcome against the phase plan and validation contract, then finalize an approved verification report.
+name: "Delivery Lab: Verify the Change"
+description: Check the delivered outcome against the plan and validation contract, then finalize an approved verification report.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -65,7 +65,7 @@ nodes:
     config:
       inputType: text
       required: true
-      placeholder: Paste implementation notes, test evidence, or review context for the phase you want verified.
+      placeholder: Paste implementation notes, test evidence, or review context for the change you want verified.
   - id: checker-1
     type: skill
     position:
@@ -84,8 +84,8 @@ nodes:
     config:
       skillRef: researcher
       prompt: >-
-        Create a Verification Report for this delivery phase. Compare the available implementation evidence
-        against the Phase Plan, Validation Contract, and any attached Review Notes. Include:
+        Create a Verification Report for this delivery change. Compare the available implementation evidence
+        against the Change Plan, Validation Contract, and any attached Review Notes. Include:
         1) what was verified,
         2) checks that appear to pass,
         3) gaps or failures,
@@ -108,7 +108,7 @@ nodes:
       x: 1280
       y: 200
     config:
-      message: Approve the verification report before this phase is marked ready to close.
+      message: Approve the verification report before this change is marked ready to close.
       show_content: true
       allow_edit: true
       timeout_minutes: 120

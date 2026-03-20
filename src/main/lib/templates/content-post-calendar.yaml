@@ -13,7 +13,7 @@ steps:
   - Evaluate for coverage, cadence, and non-repetitive angles before output
 pack:
   id: content-factory-alpha
-  label: Content Factory
+  label: Content Lab
   journey_stage: plan
   recommended_next:
     - content-ready-posts
@@ -39,7 +39,7 @@ execution_policy:
     - Avoid repetitive hooks and overlapping angles.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Content Factory: Post Calendar"
+name: "Content Lab: Post Calendar"
 description: Turn a trend digest into a concrete post calendar that can feed directly into post drafting.
 defaults:
   model: sonnet

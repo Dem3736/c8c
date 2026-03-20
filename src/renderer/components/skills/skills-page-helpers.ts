@@ -56,7 +56,7 @@ export const LIBRARY_PREVIEW_HINTS: Record<string, string[]> = {
     "Website and design QA skills",
   ],
   "jeff-allan-skills": [
-    "Architecture and code review workflows",
+    "Architecture and code review flows",
     "Debugging and incident-response helpers",
     "Testing and CI/CD optimization skills",
   ],

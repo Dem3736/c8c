@@ -13,7 +13,7 @@ steps:
   - Evaluate progression, coherence, and practical scope before lesson planning
 pack:
   id: courses-factory-alpha
-  label: Courses Factory
+  label: Courses Lab
   journey_stage: plan
   recommended_next:
     - courses-lesson-system
@@ -37,7 +37,7 @@ execution_policy:
     - Keep scope realistic for the intended format.
     - Each module should clearly contribute to the promised transformation.
 version: 1
-name: "Courses Factory: Curriculum Map"
+name: "Courses Lab: Curriculum Map"
 description: Turn an audience and offer brief into a curriculum map that can guide lesson production.
 defaults:
   model: sonnet

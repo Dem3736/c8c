@@ -349,7 +349,7 @@ function McpServerFormDialog({
     setSaving(true)
     setError(null)
     try {
-      onSave(formStateToServer(form), isEdit ? editingServer!.name : undefined)
+      onSave(formStateToServer(form), isEdit ? editingServer?.name : undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

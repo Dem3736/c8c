@@ -1,26 +1,26 @@
 id: delivery-review-phase
 stage: code
 emoji: "\U0001F50D"
-headline: Review a finished phase before final verification
-how: Review the current implementation against the phase plan and validation contract, surface concrete issues, and hand focused review notes to verification.
+headline: Review a finished change before final verification
+how: Review the current implementation against the plan and validation contract, surface concrete issues, and hand focused review notes to verification.
 input: Current branch, diff, implementation notes, or links that should be reviewed before final verification
 output: Review notes covering strengths, gaps, risky changes, and what should be fixed or double-checked before verification
-use_when: A phase is implemented and you want a visible review pass before final verification and sign-off.
+use_when: A change is implemented and you want a visible review pass before final verification and sign-off.
 time: ~4-7 min.
 steps:
-  - Review the current implementation against the phase plan and validation contract
+  - Review the current implementation against the plan and validation contract
   - Call out gaps, risky changes, and scope drift with concrete evidence
   - Produce concise review notes that verification can use next
 pack:
   id: delivery-foundation
-  label: Delivery Factory
+  label: Delivery Lab
   journey_stage: review
   recommended_next:
     - delivery-verify-phase
 contract_in:
   - kind: phase_plan
-    title: Phase Plan
-    description: The approved objective, scope, and slices for the implementation phase.
+    title: Change Plan
+    description: The approved objective, scope, and slices for the implementation step.
     required: true
   - kind: implementation_report
     title: Implementation Report
@@ -47,12 +47,12 @@ execution_policy:
     - test_first
   notes:
     - Prefer concrete findings over generic praise.
-    - Name scope drift explicitly when the implementation diverges from the approved phase.
-    - The goal is to sharpen the work before verification, not to re-plan the whole phase.
+    - Name scope drift explicitly when the implementation diverges from the approved change plan.
+    - The goal is to sharpen the work before verification, not to re-plan the whole change.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Delivery Factory: Review Phase"
-description: Review the finished phase, surface concrete issues, and hand focused review notes to verification.
+name: "Delivery Lab: Review the Change"
+description: Review the finished change, surface concrete issues, and hand focused review notes to verification.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -66,7 +66,7 @@ nodes:
     config:
       inputType: text
       required: true
-      placeholder: Paste the current branch, diff, implementation notes, or review context for the phase you want reviewed.
+      placeholder: Paste the current branch, diff, implementation notes, or review context for the change you want reviewed.
   - id: reviewer-1
     type: skill
     position:
@@ -75,7 +75,7 @@ nodes:
     config:
       skillRef: dev/code-reviewer
       prompt: >-
-        Review this delivery phase against the attached Phase Plan, Validation Contract, and Implementation Report.
+        Review this delivery change against the attached Change Plan, Validation Contract, and Implementation Report.
         Use the current repo context when it is available.
 
         Return concise Review Notes with:
@@ -83,7 +83,7 @@ nodes:
         2) defects, gaps, or risky changes,
         3) scope drift or contract misses,
         4) fixes or follow-ups required before verification,
-        5) whether the phase looks ready for verification or needs another implementation pass.
+        5) whether the change looks ready for verification or needs another implementation pass.
         Keep the notes concrete, prioritized, and easy to verify.
   - id: eval-1
     type: evaluator

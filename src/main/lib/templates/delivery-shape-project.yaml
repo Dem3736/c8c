@@ -2,9 +2,9 @@ id: delivery-shape-project
 stage: strategy
 emoji: "\U0001F9ED"
 headline: Turn a repo or idea into a build-ready project shape
-how: Turn the available context into a project brief, requirements, and roadmap, then run a review pass for consistency and assumptions before routing through an approval gate.
+how: Turn the available context into a project brief, requirements, and roadmap, then run a review pass for consistency and assumptions before routing through an approval step.
 input: A project brief, feature request, or repo context
-output: Project brief, requirements, and roadmap ready for phase planning
+output: Project brief, requirements, and roadmap ready for planning
 use_when: You need to turn a messy idea or repo context into a clear project shape before planning implementation.
 time: ~8-12 min.
 steps:
@@ -15,7 +15,7 @@ steps:
   - Output approved project shape
 pack:
   id: delivery-foundation
-  label: Delivery Factory
+  label: Delivery Lab
   journey_stage: shape
   entrypoint: true
   recommended_next:
@@ -39,7 +39,7 @@ contract_out:
 execution_policy:
   profile_id: delivery_shape
   summary: Spec-first shaping
-  description: Make the desired outcome and constraints explicit before phase planning starts.
+  description: Make the desired outcome and constraints explicit before change planning starts.
   tags:
     - evidence_first
     - spec_first
@@ -48,7 +48,7 @@ execution_policy:
     - Separate requirements from implementation guesses.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Delivery Factory: Shape Project"
+name: "Delivery Lab: Shape Project"
 description: Convert available context into a project brief, requirements, and roadmap that can drive downstream planning.
 defaults:
   model: sonnet
@@ -72,7 +72,7 @@ nodes:
     config:
       skillRef: researcher
       prompt: >-
-        Turn this input into three explicit artifacts in one structured response:
+        Turn this input into three explicit outputs in one structured response:
         1) Project Brief — problem, scope, goals, constraints, assumptions.
         2) Requirements Spec — functional and non-functional, each testable.
         3) Roadmap — phases, milestones, sequencing realistic for a solo operator with AI tools.
@@ -86,7 +86,7 @@ nodes:
       skillRef: researcher
       prompt: >-
         Review the project brief, requirements, and roadmap for:
-        1) Internal consistency — do the three artifacts agree with each other?
+        1) Internal consistency — do the three outputs agree with each other?
         2) Hidden assumptions — what is being taken for granted?
         3) Testability — can each requirement actually be verified?
         4) Scope realism — is this achievable by one person with AI tools?
@@ -97,7 +97,7 @@ nodes:
       x: 960
       y: 200
     config:
-      criteria: "Score 1-10: brief is specific not generic, requirements are testable not vague, roadmap is realistic for a solo operator with AI agents, assumptions are explicitly surfaced, no contradictions between artifacts."
+      criteria: "Score 1-10: brief is specific not generic, requirements are testable not vague, roadmap is realistic for a solo operator with AI agents, assumptions are explicitly surfaced, no contradictions between outputs."
       threshold: 7
       maxRetries: 2
       retryFrom: shaper-1

@@ -36,12 +36,12 @@ async function fetchTemplateFromUrl(url: string, notFoundMessage: string): Promi
 
   const contentLength = response.headers.get("content-length")
   if (contentLength && Number(contentLength) > MAX_BODY_SIZE) {
-    throw new Error("Template file too large")
+    throw new Error("Library flow file is too large")
   }
 
   const body = await response.text()
   if (body.length > MAX_BODY_SIZE) {
-    throw new Error("Template file too large")
+    throw new Error("Library flow file is too large")
   }
 
   // Validate YAML structure before passing to parseTemplate
@@ -49,33 +49,33 @@ async function fetchTemplateFromUrl(url: string, notFoundMessage: string): Promi
   try {
     parsed = YAML.parse(body) as Record<string, unknown>
   } catch {
-    throw new Error("Invalid template format")
+    throw new Error("Invalid library flow format")
   }
 
   if (!parsed || typeof parsed !== "object") {
-    throw new Error("Invalid template format")
+    throw new Error("Invalid library flow format")
   }
 
   const { id, name, version, nodes, edges, stage, emoji, headline, steps } = parsed
   if (!id || !name || !version || !Array.isArray(nodes) || !Array.isArray(edges)) {
-    throw new Error("Invalid template format")
+    throw new Error("Invalid library flow format")
   }
 
   if (typeof stage !== "string" || !VALID_STAGES.includes(stage as WorkflowTemplateStage)) {
-    throw new Error("Invalid template format")
+    throw new Error("Invalid library flow format")
   }
 
   if (!emoji || !headline || !Array.isArray(steps) || steps.length === 0) {
-    throw new Error("Invalid template format")
+    throw new Error("Invalid library flow format")
   }
 
   return parseTemplate(body)
 }
 
 export async function fetchRemoteTemplate(templateId: string): Promise<WorkflowTemplate> {
-  return fetchTemplateFromUrl(`${HUB_BASE_URL}${templateId}.yaml`, "Template not found on hub")
+  return fetchTemplateFromUrl(`${HUB_BASE_URL}${templateId}.yaml`, "Library flow not found on hub")
 }
 
 export async function fetchRemoteTemplateByUrl(url: string): Promise<WorkflowTemplate> {
-  return fetchTemplateFromUrl(url, "Template not found")
+  return fetchTemplateFromUrl(url, "Library flow not found")
 }

@@ -1,18 +1,18 @@
 id: delivery-research-phase
 stage: research
 emoji: "\U0001F52C"
-headline: Research the next phase before implementation starts
-how: Gather the evidence, constraints, and unknowns that should shape the next implementation phase before code begins.
-input: A scoped phase, feature, or decision that needs grounded research
-output: Research pack with evidence, constraints, risks, and open questions for the next phase
-use_when: You already know roughly what should happen next and need evidence before locking the phase plan.
+headline: Research the next change before implementation starts
+how: Gather the evidence, constraints, and unknowns that should shape the next change before code begins.
+input: A scoped change, feature, or decision that needs grounded research
+output: Research pack with evidence, constraints, risks, and open questions for the next change
+use_when: You already know roughly what should happen next and need evidence before locking the plan.
 time: ~8-12 min.
 steps:
-  - Gather relevant evidence, constraints, known risks, and open questions for the next phase
+  - Gather relevant evidence, constraints, known risks, and open questions for the next change
   - Tighten the research into a practical pack that downstream planning can use directly
 pack:
   id: delivery-foundation
-  label: Delivery Factory
+  label: Delivery Lab
   journey_stage: research
   recommended_next:
     - delivery-plan-phase
@@ -27,7 +27,7 @@ contract_in:
     required: false
   - kind: roadmap
     title: Roadmap
-    description: Useful milestone context for which phase needs research now.
+    description: Useful milestone context for which change needs research now.
     required: false
   - kind: codebase_map
     title: Codebase Map
@@ -36,11 +36,11 @@ contract_in:
 contract_out:
   - kind: research_pack
     title: Research Pack
-    description: Evidence, constraints, risks, open questions, and recommended focus for the next phase.
+    description: Evidence, constraints, risks, open questions, and recommended focus for the next change.
 execution_policy:
   profile_id: delivery_research
-  summary: Evidence-first phase research
-  description: Research the next phase before locking task breakdowns or implementation details.
+  summary: Evidence-first change research
+  description: Research the next change before locking task breakdowns or implementation details.
   tags:
     - evidence_first
     - fresh_workers
@@ -49,8 +49,8 @@ execution_policy:
     - Call out what still needs a human decision.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Delivery Factory: Research Phase"
-description: Turn scoped delivery context into a research pack that can strengthen the next phase plan.
+name: "Delivery Lab: Research the Change"
+description: Turn scoped delivery context into a research pack that can strengthen the next plan.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -64,7 +64,7 @@ nodes:
     config:
       inputType: text
       required: true
-      placeholder: Paste the phase, decision, or scoped feature you want researched before planning.
+      placeholder: Paste the change, decision, or scoped feature you want researched before planning.
   - id: researcher-1
     type: skill
     position:
@@ -73,13 +73,13 @@ nodes:
     config:
       skillRef: researcher
       prompt: >-
-        Build a Research Pack for the next delivery phase. Include:
+        Build a Research Pack for the next delivery change. Include:
         1) objective and scope,
         2) relevant evidence and constraints,
         3) known technical or product risks,
         4) dependencies and unknowns,
         5) questions that still need a decision,
-        6) what the next phase plan should optimize for.
+        6) what the next change plan should optimize for.
         Keep the output practical and clearly labeled.
   - id: reviewer-1
     type: skill

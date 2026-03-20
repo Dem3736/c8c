@@ -2,14 +2,14 @@ id: cold-outreach-pipeline
 stage: outreach
 emoji: "\U0001F4E7"
 headline: Generate personalized cold emails that get replies
-how: Builds company context, generates pain hypotheses, crafts templates, generates personalized emails, and simulates buyer response
+how: Builds company context, generates pain hypotheses, crafts reusable prompts, generates personalized emails, and simulates buyer response
 input: Target company or prospect information
 output: Personalized cold email sequences with buyer-response simulation
 use_when: You have a prospect list and need emails that sound specific, not batch-blasted.
 time: ~8-12 min.
 steps:
   - Build company context and generate pain hypotheses
-  - Craft email templates from pain points
+  - Craft email prompts from pain points
   - Generate personalized emails and follow-up sequences
   - Simulate buyer response and evaluate email quality
   - Founder approves final outreach before sending
@@ -18,7 +18,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Cold Outreach Pipeline
-description: Build company context, generate pain hypotheses, craft email templates, generate personalized emails,
+description: Build company context, generate pain hypotheses, craft email prompts, generate personalized emails,
   simulate buyer response, evaluate quality
 defaults:
   model: sonnet

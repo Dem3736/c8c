@@ -10,10 +10,10 @@ time: ~6-8 min.
 steps:
   - Draft the planned posts from the calendar
   - Evaluate them for voice, specificity, and no-slop quality
-  - Hold a human review gate before final output
+  - Hold a human review approval before final output
 pack:
   id: content-factory-alpha
-  label: Content Factory
+  label: Content Lab
   journey_stage: execute
 contract_in:
   - kind: editorial_calendar
@@ -27,7 +27,7 @@ contract_out:
 execution_policy:
   profile_id: content_ready_posts
   summary: Voice-locked no-slop drafting
-  description: Generate publish-ready posts from a plan while keeping tone, specificity, and quality gates visible.
+  description: Generate publish-ready posts from a plan while keeping tone, specificity, and quality checks visible.
   tags:
     - voice_locked
     - no_slop
@@ -38,7 +38,7 @@ execution_policy:
     - Keep format consistent with the intended publishing channel.
     - Require a human checkpoint before calling the bundle done.
 version: 1
-name: "Content Factory: Ready Posts"
+name: "Content Lab: Ready Posts"
 description: Turn a post calendar into ready-to-publish posts with visible quality control.
 defaults:
   model: sonnet
@@ -84,7 +84,7 @@ nodes:
       x: 960
       y: 200
     config:
-      message: Review the ready posts bundle before this factory stage is considered done.
+      message: Review the ready posts bundle before this path is considered done.
       show_content: true
       allow_edit: true
       timeout_minutes: 180

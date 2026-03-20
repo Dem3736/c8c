@@ -163,7 +163,7 @@ export function useOutputPanelDerivedState({
     const shouldDisambiguateTemplate = !!templateLabel && (templateLabelCounts.get(templateLabel) || 0) > 1
     const templateSuffix = templateLabel
       ? shouldDisambiguateTemplate
-        ? `${templateLabel} [${meta.templateId}]`
+        ? `${templateLabel} · branch ${meta.branchIndex + 1}`
         : templateLabel
       : meta.templateId
 

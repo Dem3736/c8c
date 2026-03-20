@@ -12,7 +12,7 @@ steps:
   - Rewrite to eliminate AI slop and generic phrasing
   - Apply infostyle rules — remove buzzwords, enforce positive rules
   - Polish for consistency, number deduplication, and flow
-  - Run quality-gate evaluation loop
+  - Run a quality-check retry loop
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context

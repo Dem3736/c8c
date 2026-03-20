@@ -273,7 +273,7 @@ export function FactoryOperationsView({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {entry.runtimeCase ? (
-                        <Button variant="outline" size="sm" onClick={() => onFocusCase(entry.runtimeCase!.id)}>
+                        <Button variant="outline" size="sm" onClick={() => { if (entry.runtimeCase) onFocusCase(entry.runtimeCase.id) }}>
                           Open track
                         </Button>
                       ) : null}
@@ -367,7 +367,7 @@ export function FactoryOperationsView({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => onOpenInboxTask(action.task!, action.caseId)}
+                          onClick={() => { if (action.task) onOpenInboxTask(action.task, action.caseId) }}
                         >
                           <Inbox size={14} />
                           Approval
@@ -392,7 +392,7 @@ export function FactoryOperationsView({
                           size="sm"
                           onClick={() => {
                             onFocusCase(action.caseId)
-                            void onLaunchTemplate(action.template!, action.artifacts)
+                            if (action.template) void onLaunchTemplate(action.template, action.artifacts)
                           }}
                           disabled={Boolean(launchingTemplateId)}
                         >

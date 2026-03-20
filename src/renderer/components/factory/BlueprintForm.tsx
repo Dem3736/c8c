@@ -233,7 +233,7 @@ export function BlueprintForm({
                 id="factory-case-rules"
                 value={draft.caseGenerationRulesText}
                 onChange={(event) => onFieldChange("caseGenerationRulesText", event.target.value)}
-                placeholder={"Editorial calendar -> post cases\nApproved sample set -> scale production"}
+                placeholder={"Editorial calendar -> post tracks\nApproved sample set -> scale production"}
                 rows={4}
               />
             </div>

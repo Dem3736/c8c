@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, memo, useCallback } from "react"
 import { useAtom } from "jotai"
 import {
   skillsAtom,
@@ -30,6 +30,73 @@ const TYPE_ICONS = {
   agent: Bot,
   command: Terminal,
 } as const
+
+interface SkillWithFit {
+  skill: DiscoveredSkill
+  fit: ReturnType<typeof deriveSkillStageFit>
+  sourceBadge: string
+  provenanceLabel: string
+}
+
+const SkillRow = memo(function SkillRow({
+  entry,
+  isFeatured,
+  onAdd,
+}: {
+  entry: SkillWithFit
+  isFeatured: boolean
+  onAdd: (skill: DiscoveredSkill) => void
+}) {
+  const { skill, fit, sourceBadge, provenanceLabel } = entry
+  const Icon = TYPE_ICONS[skill.type]
+  return (
+    <Button
+      type="button"
+      onClick={() => onAdd(skill)}
+      aria-label={isFeatured ? `Attach ${skill.name}` : `Add ${skill.name} skill`}
+      variant="ghost"
+      size="auto"
+      className="ui-interactive-card h-auto w-full justify-start items-start gap-3 rounded-md px-2 py-2 text-left whitespace-normal"
+    >
+      <Icon
+        size={16}
+        aria-hidden="true"
+        className="text-muted-foreground mt-0.5 flex-shrink-0"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="ui-badge-row">
+          <span className="text-body-md font-medium truncate">{skill.name}</span>
+          <Badge variant={isFeatured || fit.score >= 3 ? "success" : "outline"} size="compact">
+            {fit.label}
+          </Badge>
+          <Badge variant="outline" size="compact">{sourceBadge}</Badge>
+        </div>
+        <div className="mt-1 line-clamp-2 ui-meta-text">
+          {isFeatured ? (
+            <span className="text-muted-foreground">{fit.reason}</span>
+          ) : (
+            fit.score >= 3 ? fit.reason : skill.description
+          )}
+        </div>
+        {isFeatured ? (
+          <div className="mt-1 ui-badge-row">
+            <Badge variant="secondary" size="compact">{provenanceLabel}</Badge>
+            <Badge variant="outline" size="compact">{skill.type}</Badge>
+          </div>
+        ) : (
+          <div className="mt-1 ui-meta-text text-muted-foreground">
+            {provenanceLabel}
+          </div>
+        )}
+      </div>
+      {!isFeatured && (
+        <Badge variant="outline" size="compact" className="mt-0.5">
+          {skill.type}
+        </Badge>
+      )}
+    </Button>
+  )
+})
 
 interface SkillPickerProps {
   onAddSkill: (skill: DiscoveredSkill) => void
@@ -83,15 +150,23 @@ export function SkillPicker({
       })
       .sort((left, right) => compareSkillsForStage(left, right, stageLabel))
 
-    const featured = filtered.filter((skill) => deriveSkillStageFit(skill, stageLabel).score >= 3).slice(0, 6)
-    const featuredPaths = new Set(featured.map((skill) => skill.path))
-    const remaining = filtered.filter((skill) => !featuredPaths.has(skill.path))
+    // Pre-compute fit, source badge, and provenance for each skill once
+    const withFit: SkillWithFit[] = filtered.map((skill) => ({
+      skill,
+      fit: deriveSkillStageFit(skill, stageLabel),
+      sourceBadge: deriveSkillSourceBadge(skill),
+      provenanceLabel: deriveSkillProvenanceLabel(skill),
+    }))
 
-    const groups = new Map<string, DiscoveredSkill[]>()
-    for (const skill of remaining) {
-      const key = skill.category || "uncategorized"
+    const featured = withFit.filter((entry) => entry.fit.score >= 3).slice(0, 6)
+    const featuredPaths = new Set(featured.map((entry) => entry.skill.path))
+    const remaining = withFit.filter((entry) => !featuredPaths.has(entry.skill.path))
+
+    const groups = new Map<string, SkillWithFit[]>()
+    for (const entry of remaining) {
+      const key = entry.skill.category || "uncategorized"
       const list = groups.get(key) || []
-      list.push(skill)
+      list.push(entry)
       groups.set(key, list)
     }
     return {
@@ -100,10 +175,10 @@ export function SkillPicker({
     }
   }, [skills, search, sourceFilter, stageLabel])
 
-  const handleAddSkill = (skill: DiscoveredSkill) => {
+  const handleAddSkill = useCallback((skill: DiscoveredSkill) => {
     onAddSkill(skill)
     setPickerOpen(false)
-  }
+  }, [onAddSkill, setPickerOpen])
 
   return (
     <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
@@ -193,39 +268,14 @@ export function SkillPicker({
                 <div className="px-2 py-1 section-kicker">
                   Best fit now
                 </div>
-                {grouped.featured.map((skill) => {
-                  const Icon = TYPE_ICONS[skill.type]
-                  const fit = deriveSkillStageFit(skill, stageLabel)
-                  return (
-                    <Button
-                      type="button"
-                      key={`featured-${skill.path}`}
-                      onClick={() => handleAddSkill(skill)}
-                      aria-label={`Attach ${skill.name}`}
-                      variant="ghost"
-                      size="auto"
-                      className="ui-interactive-card h-auto w-full justify-start items-start gap-3 rounded-md px-2 py-2 text-left whitespace-normal"
-                    >
-                      <Icon
-                        size={16}
-                        aria-hidden="true"
-                        className="text-muted-foreground mt-0.5 flex-shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="ui-badge-row">
-                          <span className="text-body-md font-medium truncate">{skill.name}</span>
-                          <Badge variant="success" size="compact">{fit.label}</Badge>
-                          <Badge variant="outline" size="compact">{deriveSkillSourceBadge(skill)}</Badge>
-                        </div>
-                        <div className="mt-1 ui-meta-text text-muted-foreground">{fit.reason}</div>
-                        <div className="mt-1 ui-badge-row">
-                          <Badge variant="secondary" size="compact">{deriveSkillProvenanceLabel(skill)}</Badge>
-                          <Badge variant="outline" size="compact">{skill.type}</Badge>
-                        </div>
-                      </div>
-                    </Button>
-                  )
-                })}
+                {grouped.featured.map((entry) => (
+                  <SkillRow
+                    key={`featured-${entry.skill.path}`}
+                    entry={entry}
+                    isFeatured
+                    onAdd={handleAddSkill}
+                  />
+                ))}
               </div>
             )}
 
@@ -234,45 +284,14 @@ export function SkillPicker({
                 <div className="px-2 py-1 section-kicker">
                   {category}
                 </div>
-                {categorySkills.map((skill) => {
-                  const Icon = TYPE_ICONS[skill.type]
-                  const fit = deriveSkillStageFit(skill, stageLabel)
-                  return (
-                    <Button
-                      type="button"
-                      key={skill.path}
-                      onClick={() => handleAddSkill(skill)}
-                      aria-label={`Add ${skill.name} skill`}
-                      variant="ghost"
-                      size="auto"
-                      className="ui-interactive-card h-auto w-full justify-start items-start gap-3 rounded-md px-2 py-2 text-left whitespace-normal"
-                    >
-                      <Icon
-                        size={16}
-                        aria-hidden="true"
-                        className="text-muted-foreground mt-0.5 flex-shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="ui-badge-row">
-                          <span className="text-body-md font-medium truncate">{skill.name}</span>
-                          <Badge variant={fit.score >= 3 ? "success" : "outline"} size="compact">
-                            {fit.label}
-                          </Badge>
-                          <Badge variant="outline" size="compact">{deriveSkillSourceBadge(skill)}</Badge>
-                        </div>
-                        <div className="mt-1 line-clamp-2 ui-meta-text">
-                          {fit.score >= 3 ? fit.reason : skill.description}
-                        </div>
-                        <div className="mt-1 ui-meta-text text-muted-foreground">
-                          {deriveSkillProvenanceLabel(skill)}
-                        </div>
-                      </div>
-                      <Badge variant="outline" size="compact" className="mt-0.5">
-                        {skill.type}
-                      </Badge>
-                    </Button>
-                  )
-                })}
+                {categorySkills.map((entry) => (
+                  <SkillRow
+                    key={entry.skill.path}
+                    entry={entry}
+                    isFeatured={false}
+                    onAdd={handleAddSkill}
+                  />
+                ))}
               </div>
             ))}
           </div>

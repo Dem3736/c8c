@@ -365,9 +365,9 @@ export function useExecutionCommands({
     }
     if (!workflowForRun.nodes.length) {
       toast.error("Could not continue run", {
-        description: "Workflow has no steps.",
+        description: "Flow has no steps.",
       })
-      recordExecutionError("Could not continue run", "Workflow has no steps.")
+      recordExecutionError("Could not continue run", "Flow has no steps.")
       return false
     }
 
@@ -477,9 +477,9 @@ export function useExecutionCommands({
 
     if (!workflowForRun.nodes.length) {
       toast.error("Could not continue run", {
-        description: "Workflow has no steps.",
+        description: "Flow has no steps.",
       })
-      recordExecutionError("Could not continue run", "Workflow has no steps.")
+      recordExecutionError("Could not continue run", "Flow has no steps.")
       return
     }
 

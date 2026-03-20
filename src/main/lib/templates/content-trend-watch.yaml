@@ -13,7 +13,7 @@ steps:
   - Evaluate digest quality for evidence backing, specificity, and niche coverage before output
 pack:
   id: content-factory-alpha
-  label: Content Factory
+  label: Content Lab
   journey_stage: research
   entrypoint: true
   recommended_next:
@@ -34,7 +34,7 @@ execution_policy:
     - Make the evidence base usable for downstream ideation.
     - “Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions.”
 version: 1
-name: "Content Factory: Trend Watch"
+name: "Content Lab: Trend Watch"
 description: Turn incoming research into a trend digest that can seed a content campaign.
 defaults:
   model: sonnet

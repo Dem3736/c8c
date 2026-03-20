@@ -169,7 +169,7 @@ export function WorkflowRunControls({
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="end" className="w-[360px] max-h-[24rem] overflow-y-auto">
-                <DropdownMenuLabel>Workflow issues</DropdownMenuLabel>
+                <DropdownMenuLabel>Flow issues</DropdownMenuLabel>
                 {groupedValidationIssues.map((group, groupIndex) => (
                   <div key={group.nodeId}>
                     {groupIndex > 0 && <DropdownMenuSeparator />}
@@ -265,7 +265,7 @@ export function WorkflowRunControls({
                 <span className="flex min-w-0 flex-col">
                   <span className="text-body-sm font-medium text-foreground">Batch run</span>
                   <span className="ui-meta-text text-muted-foreground">
-                    {batchDisabledReason || "Run the workflow on multiple inputs"}
+                    {batchDisabledReason || "Run the flow on multiple inputs"}
                   </span>
                 </span>
               </DropdownMenuItem>

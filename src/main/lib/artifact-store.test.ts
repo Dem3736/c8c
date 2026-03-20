@@ -60,8 +60,10 @@ describe("artifact-store", () => {
 
     const markdown = await readFile(result.artifacts[0]!.contentPath, "utf-8")
     expect(markdown).toContain("# Project Brief")
-    expect(markdown).toContain("Factory: Delivery Factory")
-    expect(markdown).toContain("Case: Shape project")
+    expect(markdown).toContain("Lab: Delivery Factory")
+    expect(markdown).toContain("Track: Shape project")
+    expect(markdown).toContain("Flow: Delivery Factory: Shape Project")
+    expect(markdown).toContain("Starting point: Delivery Factory: Shape Project")
     expect(markdown).toContain("Structured project shape.")
   })
 

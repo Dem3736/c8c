@@ -75,7 +75,7 @@ const toolHandlers: Record<string, ToolHandler> = {
     }
 
     return {
-      output: `${mode === "edit" ? "Updated" : "Created"} workflow "${nextWorkflow.name}" with ${nextWorkflow.nodes.length} nodes and ${nextWorkflow.edges.length} edges`,
+      output: `${mode === "edit" ? "Updated" : "Created"} flow "${nextWorkflow.name}" with ${nextWorkflow.nodes.length} nodes and ${nextWorkflow.edges.length} edges`,
       workflowMutated: true,
     }
   },
@@ -90,10 +90,10 @@ const toolHandlers: Record<string, ToolHandler> = {
   update_workflow(ctx, input) {
     const newWorkflow = input.workflow as any
     if (!newWorkflow || typeof newWorkflow !== "object") {
-      return { output: "Error: workflow object is required", workflowMutated: false }
+      return { output: "Error: flow object is required", workflowMutated: false }
     }
     if (!Array.isArray(newWorkflow.nodes) || !Array.isArray(newWorkflow.edges)) {
-      return { output: "Error: workflow must have nodes and edges arrays", workflowMutated: false }
+      return { output: "Error: flow must have nodes and edges arrays", workflowMutated: false }
     }
 
     ctx.workflow.name = newWorkflow.name || ctx.workflow.name
@@ -103,7 +103,7 @@ const toolHandlers: Record<string, ToolHandler> = {
     ctx.workflow.edges = normalizeEdges(newWorkflow.edges)
 
     return {
-      output: `Workflow updated: ${ctx.workflow.nodes.length} nodes, ${ctx.workflow.edges.length} edges`,
+      output: `Flow updated: ${ctx.workflow.nodes.length} nodes, ${ctx.workflow.edges.length} edges`,
       workflowMutated: true,
     }
   },
@@ -321,7 +321,7 @@ const toolHandlers: Record<string, ToolHandler> = {
 
     ctx.workflow.defaults = { ...ctx.workflow.defaults, ...defaults }
     return {
-      output: `Updated workflow defaults: ${JSON.stringify(ctx.workflow.defaults)}`,
+      output: `Updated flow defaults: ${JSON.stringify(ctx.workflow.defaults)}`,
       workflowMutated: true,
     }
   },
@@ -388,9 +388,9 @@ const toolHandlers: Record<string, ToolHandler> = {
 
     const parts: string[] = []
     if (result.valid) {
-      parts.push("✓ Workflow is valid")
+      parts.push("✓ Flow is valid")
     } else {
-      parts.push("✗ Workflow has errors:")
+      parts.push("✗ Flow has errors:")
       for (const err of result.errors) {
         parts.push(`  ERROR: ${err}`)
       }
@@ -421,7 +421,7 @@ export async function executeTool(
   if (!handler) {
     const available = Object.keys(toolHandlers).sort().join(", ")
     return {
-      output: `Unknown tool: "${toolName}". Available workflow tools: ${available}`,
+      output: `Unknown tool: "${toolName}". Available flow tools: ${available}`,
       workflowMutated: false,
     }
   }
@@ -435,26 +435,26 @@ export function getToolDefinitions(): string {
   return `## Available Tools
 
 ### synthesize_workflow
-Create or semantically rewrite the workflow from a human-language request.
-Use this when the user is describing what the workflow should do, not asking for a tiny node-level patch.
+Create or semantically rewrite the flow from a human-language request.
+Use this when the user is describing what the flow should do, not asking for a tiny node-level patch.
 Parameters:
-- request (required): Natural-language description of the desired workflow behavior
+- request (required): Natural-language description of the desired flow behavior
 - mode (optional): "create" or "edit" (default: "create")
 
 ### get_workflow
-Read the current workflow state.
+Read the current flow state.
 Parameters: none
 
 ### update_workflow
-Replace entire workflow with a new definition.
+Replace the entire flow with a new definition.
 Parameters:
 - workflow (required): Complete Workflow object with nodes and edges arrays
 
 ### add_node
-Insert a new node into the workflow with optional auto-wiring.
+Insert a new node into the flow with optional auto-wiring.
 Parameters:
 - node (required): Node object with at minimum { type, config }
-  - For skill nodes: config needs { prompt } and may include { skillRef, allowedTools[], disallowedTools[], permissionMode? }; leave skillRef empty when no available skill is a close semantic match. permissionMode overrides workflow default for this node ("plan" or "edit"). For external web tasks include allowedTools with at least ["WebFetch", "WebSearch"] unless blocked
+  - For skill nodes: config needs { prompt } and may include { skillRef, allowedTools[], disallowedTools[], permissionMode? }; leave skillRef empty when no available skill is a close semantic match. permissionMode overrides the flow default for this node ("plan" or "edit"). For external web tasks include allowedTools with at least ["WebFetch", "WebSearch"] unless blocked
   - For evaluator nodes: config needs { criteria, threshold, maxRetries } and can optionally include { retryFrom, skillRefs[] }. Do not use skillRef on evaluator nodes.
   - For splitter nodes: config needs { strategy } — strategy is a natural-language hint describing HOW to decompose the input (e.g. "Each item is an independent task. Create one subtask per item preserving all details."). It is NOT a keyword — write a clear sentence explaining the decomposition logic for this specific use case.
   - For merger nodes: config needs { strategy }
@@ -484,7 +484,7 @@ Parameters:
 - edge_id (required): ID of the edge to remove
 
 ### set_defaults
-Update workflow-level defaults.
+Update flow-level defaults.
 Parameters:
 - defaults (required): Partial defaults object { model?, maxTurns?, maxParallel?, timeout_minutes?, allowedTools?, disallowedTools?, permissionMode? }
   - permissionMode: "plan" (read-only, no file edits) or "edit" (can modify files). Default: "edit"
@@ -502,7 +502,7 @@ Parameters:
 - path (optional): Category path like "marketing/seo". Omit for root.
 
 ### validate_workflow
-Run structural and semantic validation on the current workflow.
+Run structural and semantic validation on the current flow.
 Parameters: none
 
 ## Tool Call Format

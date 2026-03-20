@@ -140,7 +140,7 @@ export function SkillSourcesAdmin({
 
         {enabledPlugins.length === 0 ? (
           <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
-            Install a marketplace and enable a plugin pack to bring in pipeline skills, templates, or MCP integrations.
+            Install a marketplace and enable a plugin pack to bring in skills, library flows, or MCP integrations.
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

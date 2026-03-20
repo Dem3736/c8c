@@ -231,10 +231,10 @@ export function WorkflowListTab({
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"
-                className="scroll-mt-4 space-y-3"
+                className="scroll-mt-4 flex min-h-0 flex-1 flex-col space-y-3"
               >
                 <SectionErrorBoundary sectionName="output panel">
-                  <OutputPanel {...outputPanelProps} reviewingPastRun />
+                  <OutputPanel {...outputPanelProps} reviewingPastRun fillHeight />
                 </SectionErrorBoundary>
               </div>
             )}
@@ -242,10 +242,10 @@ export function WorkflowListTab({
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"
-                className={cn("scroll-mt-4")}
+                className={cn("scroll-mt-4", "flex min-h-0 flex-1 flex-col")}
               >
                 <SectionErrorBoundary sectionName="output panel">
-                  <OutputPanel {...outputPanelProps} />
+                  <OutputPanel {...outputPanelProps} fillHeight />
                 </SectionErrorBoundary>
               </div>
             )}

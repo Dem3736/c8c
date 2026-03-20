@@ -132,7 +132,7 @@ export function Toolbar({
   const commitRename = async () => {
     if (!workflowPath) return
     if (!renameInput.trim()) {
-      toast.error("Workflow name cannot be empty")
+      toast.error("Flow name cannot be empty")
       return
     }
     await renameWorkflow(renameInput)
@@ -332,7 +332,7 @@ export function Toolbar({
         return
       }
       setRunStatus("running")
-      toast.success("Workflow resumed")
+      toast.success("Flow resumed")
     } catch (error) {
       toast.error("Could not resume run", {
         description: String(error),

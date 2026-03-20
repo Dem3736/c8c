@@ -43,7 +43,7 @@ c8c turns AI skills into flows you can read, run, and control.
 - **Run until it needs you.** Skills execute in sequence. Evaluator nodes catch failures and auto-retry from the step that failed. You intervene only at approval points.
 - **Rerun from state, not from scratch.** A step fails? Resume from that step. The rest of the flow stays intact. Come back hours later — the state is durable.
 - **Human loop beyond approve/reject.** Approvals, editable review points, human-task forms, inbox with timeout policies. You decide on your schedule.
-- **50+ built-in flows.** Dev flow, code audit, content pipeline, competitor analysis, cold outreach, UI polish — pick a starting point, paste your input, run it.
+- **50+ built-in flows.** Dev flow, code audit, content pipeline, competitor analysis, cold outreach, UI polish — pick a flow from the library, paste your input, run it.
 - **Full observability after the run ends.** Per-node logs, token usage, duration, active step, typed results — inspectable at any point, not just during execution.
 
 <table>
@@ -114,7 +114,7 @@ npm run dev
 > ```
 > Or right-click → Open → Open.
 
-No custom skills needed to start. Built-in starting points work out of the box. Bring your own skills later.
+No custom skills needed to start. Built-in library flows work out of the box. Bring your own skills later.
 
 ## How it works
 
@@ -170,6 +170,7 @@ Open source, MIT license. Runs locally. No account, no server, no fees. Works wi
 ```bash
 npm run dev          # Start Electron with hot reload
 npm run build        # Build for production
+npm run canon:check  # Check user-facing renderer copy against canon vocabulary
 npm run test         # Run all tests
 npm run test:watch   # Watch mode
 npx tsc --noEmit     # Type-check
@@ -203,5 +204,5 @@ MIT © 2026 c8c
 ---
 
 <p align="center">
-  <sub>Start with one flow. Grow into a factory.</sub>
+  <sub>Start with one flow. Grow into a lab.</sub>
 </p>

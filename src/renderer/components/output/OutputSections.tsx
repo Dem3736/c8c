@@ -348,7 +348,7 @@ export function NodesTab({
     <div className="rounded-lg surface-soft overflow-hidden">
       {nodes.length === 0 && (
         <div className="px-3 py-4 text-body-md text-muted-foreground text-center">
-          No skill steps in this workflow
+          No skill steps in this flow
         </div>
       )}
       {nodes.map((node) => {
@@ -674,10 +674,10 @@ export function LogTab({
                         <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">
                           <div
                             className={cn(
-                              "h-full rounded-full ui-transition-width ui-motion-standard",
+                              "h-full w-full origin-left rounded-full ui-transition-transform ui-motion-standard",
                               c.score >= 7 ? "bg-status-success" : c.score >= 4 ? "bg-status-warning" : "bg-status-danger",
                             )}
-                            style={{ width: `${(c.score / 10) * 100}%` }}
+                            style={{ transform: `scaleX(${c.score / 10})` }}
                           />
                         </div>
                         <span className="w-8 text-right font-mono text-muted-foreground">{c.score}/10</span>

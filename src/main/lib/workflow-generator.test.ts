@@ -42,7 +42,7 @@ describe("buildWorkflowEditPrompt", () => {
   it("includes the current workflow and edit request", () => {
     const currentWorkflow: Workflow = {
       version: 1,
-      name: "Existing Workflow",
+      name: "Existing Flow",
       nodes: [
         { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
         { id: "output-1", type: "output", position: { x: 300, y: 0 }, config: {} },
@@ -58,10 +58,10 @@ describe("buildWorkflowEditPrompt", () => {
       MOCK_SKILLS,
     )
 
-    expect(prompt).toContain("Existing Workflow")
-    expect(prompt).toContain("\"name\": \"Existing Workflow\"")
+    expect(prompt).toContain("Existing Flow")
+    expect(prompt).toContain("\"name\": \"Existing Flow\"")
     expect(prompt).toContain("Add a JTBD audit step before the final output")
-    expect(prompt).toContain("Return ONLY the full updated JSON workflow object.")
+    expect(prompt).toContain("Return ONLY the full updated JSON flow object.")
   })
 })
 

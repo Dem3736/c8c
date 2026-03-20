@@ -113,7 +113,7 @@ function sanitizeFactory(
   return {
     id: sanitizeFactoryLabel(input.id) || buildFactoryId(label || "factory", fallbackIndex),
     modeId: typeof input.modeId === "string" ? input.modeId.trim() || undefined : undefined,
-    label: label || `Factory ${fallbackIndex + 1}`,
+    label: label || `Lab path ${fallbackIndex + 1}`,
     outcome,
     recipe,
     createdAt: typeof input.createdAt === "number" ? input.createdAt : now,
@@ -136,7 +136,7 @@ function normalizeBlueprint(
 ): ProjectFactoryBlueprint | null {
   const legacyFactory = sanitizeFactory({
     id: "factory:default",
-    label: sanitizeFactoryLabel(input.outcome?.title) || "Project factory",
+    label: sanitizeFactoryLabel(input.outcome?.title) || "Project lab",
     outcome: input.outcome,
     recipe: input.recipe,
     createdAt: typeof input.createdAt === "number" ? input.createdAt : undefined,
@@ -218,7 +218,7 @@ export async function saveProjectFactoryBlueprint(
   })
 
   if (!normalized) {
-    throw new Error("Factory blueprint must include at least one factory")
+    throw new Error("Lab blueprint must include at least one path")
   }
 
   await mkdir(join(projectPath, FACTORY_BLUEPRINT_DIR), { recursive: true })

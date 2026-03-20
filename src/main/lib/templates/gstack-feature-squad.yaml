@@ -45,7 +45,7 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: "Gstack Team: Feature Squad"
-description: Run a feature brief through gstack's founder and engineering planning roles, then quality-gate the resulting execution plan.
+description: Run a feature brief through gstack's founder and engineering planning roles, then quality-check the resulting execution plan.
 defaults:
   model: sonnet
   maxTurns: 120

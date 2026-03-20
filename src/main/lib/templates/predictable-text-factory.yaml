@@ -2,7 +2,7 @@ id: predictable-text-factory
 stage: content
 emoji: "\U0001F3ED"
 headline: Write long-form content with quality checks
-how: Plans sections, processes each independently, runs section-level and final quality gates, iterates until pass
+how: Plans sections, processes each independently, runs section-level and final quality checks, iterates until pass
 input: A content brief or outline with target structure
 output: Polished long-form document with each section quality-checked
 use_when: You need a long piece that stays coherent across sections, not just a fast first draft.
@@ -10,11 +10,11 @@ time: ~10-15 min.
 steps:
   - Plan document sections from the brief
   - Write each section independently in parallel
-  - Run section-level quality gates
-  - Run final document-wide quality gate
+  - Run section-level quality checks
+  - Run the final document-wide quality check
 version: 1
-name: Predictable Text Factory
-description: Plan sections, process each section independently, run section-level and final quality gates, iterate until pass
+name: Predictable Text Lab
+description: Plan sections, process each section independently, run section-level and final quality checks, iterate until pass
 defaults:
   model: sonnet
   maxTurns: 120

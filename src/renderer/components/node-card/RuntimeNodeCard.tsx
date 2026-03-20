@@ -227,7 +227,7 @@ export function RuntimeNodeCard({
                 runtimeProgress.barClass,
                 runtimeProgress.animate && "ui-running-pulse",
               )}
-              style={{ width: `${runtimeProgress.value}%` }}
+              style={{ transform: `scaleX(${runtimeProgress.value / 100})` }}
             />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">

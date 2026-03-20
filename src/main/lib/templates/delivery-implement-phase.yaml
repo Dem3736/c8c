@@ -1,25 +1,25 @@
 id: delivery-implement-phase
 stage: code
 emoji: "\U0001F6E0"
-headline: Implement the approved phase in the repo before verification starts
-how: Use the approved phase plan and validation contract to make the repo changes, then hand a concrete implementation report to the verification stage.
-input: Approved phase context, implementation notes, and any constraints that still matter during execution
+headline: Implement the approved plan in the repo before verification starts
+how: Use the approved plan and validation contract to make the repo changes, then hand a concrete implementation report to the verification step.
+input: Approved plan context, implementation notes, and any constraints that still matter during execution
 output: Implementation report with changed files, checks run, and follow-ups ready for verification
-use_when: You have an approved phase plan and want the code changes made before verification starts.
+use_when: You have an approved plan and want the code changes made before verification starts.
 steps:
-  - Apply the approved phase plan in the repo
+  - Apply the approved plan in the repo
   - Keep the changes scoped to the validation contract
   - Record changed files, checks run, and open follow-ups for verification
 pack:
   id: delivery-foundation
-  label: Delivery Factory
+  label: Delivery Lab
   journey_stage: execute
   recommended_next:
     - delivery-review-phase
 contract_in:
   - kind: phase_plan
-    title: Phase Plan
-    description: The approved slices and sequence for the current implementation phase.
+    title: Change Plan
+    description: The approved slices and sequence for the current implementation step.
     required: true
   - kind: validation_contract
     title: Validation Contract
@@ -32,22 +32,22 @@ contract_in:
 contract_out:
   - kind: implementation_report
     title: Implementation Report
-    description: What changed, what checks ran, and what the verification stage should inspect next.
+    description: What changed, what checks ran, and what verification should inspect next.
 execution_policy:
   profile_id: delivery_implement
   summary: Plan-bound implementation
-  description: Execute the approved phase inside the repo, stay within scope, and leave a concrete handoff for verification.
+  description: Execute the approved change inside the repo, stay within scope, and leave a concrete handoff for verification.
   tags:
     - spec_first
     - small_tasks
   notes:
-    - Stay inside the approved phase plan unless the input explicitly re-scopes the work.
+    - Stay inside the approved change plan unless the input explicitly re-scopes the work.
     - Name changed files, checks run, and any follow-up work that verification should inspect.
     - If a required check cannot run, say exactly why.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Delivery Factory: Implement Phase"
-description: Apply the approved phase plan in the repo, keep scope tight, and hand a concrete implementation report to verification.
+name: "Delivery Lab: Implement the Change"
+description: Apply the approved plan in the repo, keep scope tight, and hand a concrete implementation report to verification.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -62,7 +62,7 @@ nodes:
     config:
       inputType: text
       required: true
-      placeholder: Paste the approved phase plan, validation contract, and any implementation notes or constraints for this phase.
+      placeholder: Paste the approved change plan, validation contract, and any implementation notes or constraints for this change.
   - id: implement-1
     type: skill
     position:
@@ -71,7 +71,7 @@ nodes:
     config:
       skillRef: ""
       prompt: >-
-        Use the attached Phase Plan and Validation Contract plus the input brief to implement this delivery phase in the current repo.
+        Use the attached Change Plan and Validation Contract plus the input brief to implement this delivery change in the current repo.
         Make the required code changes directly. Stay within the approved scope unless the input explicitly changes it.
 
         When you finish, return a structured Implementation Report with:
@@ -79,7 +79,7 @@ nodes:
         2) files changed,
         3) checks run and their outcomes,
         4) gaps, risks, or follow-ups still open,
-        5) what the verification stage should inspect next.
+        5) what verification should inspect next.
   - id: output-1
     type: output
     position:

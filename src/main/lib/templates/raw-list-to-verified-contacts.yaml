@@ -23,7 +23,7 @@ description: Take a rough account list and turn it into a usable contact book wi
 credits:
   - label: GTM Skills
     href: https://github.com/extruct-ai/gtm-skills
-    note: Original Extruct GTM skill pack this workflow composes.
+    note: Original Extruct GTM skill pack this flow composes.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -51,7 +51,7 @@ nodes:
         Focus on:
         - ICP: which company shapes and roles are actually worth pursuing
         - What We Do: a crisp email-safe value prop the later steps can reason from
-        - Win Cases: the customers or patterns that define good fit
+        - Proof Points: the customers or patterns that define good fit
         - DNC: excluded domains, partners, customers, or markets
 
         Ask only for the missing pieces needed to make downstream decisions.
@@ -87,7 +87,7 @@ nodes:
         - rows uploaded
         - rows skipped and why
         - duplicates removed
-        - table URL or ID for the rest of the workflow
+        - table URL or ID for the rest of the flow
   - id: enrichment-design-1
     type: skill
     position:

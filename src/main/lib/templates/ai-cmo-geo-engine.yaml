@@ -2,7 +2,7 @@ id: ai-cmo-geo-engine
 stage: content
 emoji: "\U0001F310"
 headline: Build answer-ready assets for AI search and answer engines
-how: Maps buyer questions and entities, creates a GEO answer brief, drafts answer-ready site assets, and adds a human publish gate
+how: Maps buyer questions and entities, creates a GEO answer brief, drafts answer-ready site assets, and adds a human publish approval
 input: Website, product brief, FAQ notes, or upstream AI CMO strategy pack
 output: GEO answer brief, answer-pack draft, and fact/citation checklist ready for review
 use_when: You want the CMO motion to optimize for AI answers and overviews, not just classic search rankings.

@@ -248,7 +248,7 @@ export function SettingsPage() {
     <PageShell>
       <PageHeader
         title="Global Settings"
-        subtitle="Configure app-wide defaults, providers, and services used across workflows."
+        subtitle="Configure app-wide defaults, providers, and services used across flows."
       />
 
       {process.env.NODE_ENV !== "development" && (
@@ -307,7 +307,7 @@ export function SettingsPage() {
               <div className="ui-progress-track">
                 <div
                   className="ui-progress-bar"
-                  style={{ width: `${updateInfo.progress ?? 0}%` }}
+                  style={{ transform: `scaleX(${(updateInfo.progress ?? 0) / 100})` }}
                 />
               </div>
             </div>
@@ -348,9 +348,9 @@ export function SettingsPage() {
 
         <article className="rounded-lg surface-panel p-4 space-y-3">
           <div>
-            <h3 className="text-body-md font-semibold">New Workflow Defaults</h3>
+            <h3 className="text-body-md font-semibold">New Flow Defaults</h3>
             <p className="text-body-sm text-muted-foreground mt-1">
-              Default values applied when creating new workflows. These do not affect existing saved workflows.
+              Default values applied when creating new flows. These do not affect existing saved flows.
             </p>
           </div>
 
@@ -431,14 +431,14 @@ export function SettingsPage() {
         <article className="rounded-lg surface-panel p-4 space-y-3">
           <div className="flex items-start justify-between gap-3 rounded-lg border border-hairline bg-surface-1/60 px-3 py-3">
             <div>
-              <h3 className="text-body-md font-semibold text-foreground">Enable factories (beta)</h3>
+              <h3 className="text-body-md font-semibold text-foreground">Enable lab view (beta)</h3>
               <p className="mt-1 text-body-sm text-muted-foreground">
-                Shows the advanced factory workspace and related navigation. Leave this off for the simpler flow editor and library view.
+                Shows the advanced lab workspace and related navigation. Leave this off for the simpler flow editor and library view.
               </p>
             </div>
             <Switch
               checked={factoryBetaEnabled}
-              aria-label="Enable factories beta"
+              aria-label="Enable lab view beta"
               onCheckedChange={setFactoryBetaEnabled}
             />
           </div>

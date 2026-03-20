@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { memo, useEffect, useMemo, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { toast } from "sonner"
 import {
@@ -205,11 +205,14 @@ function summarizeCost(entry: DashboardEntry): { totalCost: number; totalTokens:
     }
   }
 
-  const totalCost = Object.values(entry.nodeStates).reduce((sum, nodeState) => sum + (nodeState.metrics?.cost_usd || 0), 0)
-  const totalTokens = Object.values(entry.nodeStates).reduce(
-    (sum, nodeState) => sum + (nodeState.metrics?.tokens_in || 0) + (nodeState.metrics?.tokens_out || 0),
-    0,
-  )
+  let totalCost = 0
+  let totalTokens = 0
+  for (const nodeState of Object.values(entry.nodeStates)) {
+    if (nodeState.metrics) {
+      totalCost += nodeState.metrics.cost_usd || 0
+      totalTokens += (nodeState.metrics.tokens_in || 0) + (nodeState.metrics.tokens_out || 0)
+    }
+  }
   return { totalCost, totalTokens }
 }
 
@@ -223,6 +226,55 @@ interface DashboardEntry extends WorkflowExecutionState {
   progress: ReturnType<typeof summarizeExecution>
   pastRun: RunResult | null
 }
+
+const DashboardSidebarEntry = memo(function DashboardSidebarEntry({
+  entry,
+  isSelected,
+  onSelect,
+}: {
+  entry: DashboardEntry
+  isSelected: boolean
+  onSelect: (key: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(entry.workflowKey)}
+      className={cn(
+        "ui-pressable ui-surface-lift w-full rounded-lg border p-3 text-left ui-transition-colors ui-motion-fast",
+        isSelected
+          ? "border-primary/40 bg-primary/8 shadow-[inset_0_1px_0_hsl(var(--primary)/0.08),0_10px_22px_hsl(var(--foreground)/0.08)]"
+          : "border-hairline bg-surface-1/80 ui-elevation-base hover:bg-surface-2/70",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-body-sm font-medium text-foreground">
+            {entry.workflowName || (entry.workflowPath ? "Untitled flow" : "Unsaved draft")}
+          </p>
+          <p className="mt-0.5 truncate ui-meta-text text-muted-foreground">
+            {folderName(entry.projectPath)}
+          </p>
+        </div>
+        <span className={cn("ui-status-badge shrink-0 ui-meta-text", outcomeClasses(entry))}>
+          {outcomeIcon(entry)}
+          {outcomeLabel(entry)}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
+        <span className="tabular-nums">
+          Step {Math.min(entry.progress.completedSteps, entry.progress.totalSteps)}/{entry.progress.totalSteps || 0}
+        </span>
+        {entry.activeNodeLabel && (
+          <span className="truncate">Active: {entry.activeNodeLabel}</span>
+        )}
+        {entry.approvalCount > 0 && (
+          <span className="text-status-warning">{entry.approvalCount} approval pending</span>
+        )}
+      </div>
+    </button>
+  )
+})
 
 export function MultiRunDashboard() {
   const [open, setOpen] = useAtom(multiRunDashboardOpenAtom)
@@ -453,43 +505,12 @@ export function MultiRunDashboard() {
                 ) : (
                   <div className="space-y-2">
                     {entriesWithHistory.map((entry) => (
-                      <button
+                      <DashboardSidebarEntry
                         key={entry.workflowKey}
-                        type="button"
-                        onClick={() => setSelectedEntryKey(entry.workflowKey)}
-                        className={cn(
-                          "ui-pressable ui-surface-lift w-full rounded-lg border p-3 text-left ui-transition-colors ui-motion-fast",
-                          selectedEntry?.workflowKey === entry.workflowKey
-                            ? "border-primary/40 bg-primary/8 shadow-[inset_0_1px_0_hsl(var(--primary)/0.08),0_10px_22px_hsl(var(--foreground)/0.08)]"
-                            : "border-hairline bg-surface-1/80 ui-elevation-base hover:bg-surface-2/70",
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-body-sm font-medium text-foreground">
-                              {entry.workflowName || (entry.workflowPath ? "Untitled flow" : "Unsaved draft")}
-                            </p>
-                            <p className="mt-0.5 truncate ui-meta-text text-muted-foreground">
-                              {folderName(entry.projectPath)}
-                            </p>
-                          </div>
-                          <span className={cn("ui-status-badge shrink-0 ui-meta-text", outcomeClasses(entry))}>
-                            {outcomeIcon(entry)}
-                            {outcomeLabel(entry)}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
-                          <span className="tabular-nums">
-                            Step {Math.min(entry.progress.completedSteps, entry.progress.totalSteps)}/{entry.progress.totalSteps || 0}
-                          </span>
-                          {entry.activeNodeLabel && (
-                            <span className="truncate">Active: {entry.activeNodeLabel}</span>
-                          )}
-                          {entry.approvalCount > 0 && (
-                            <span className="text-status-warning">{entry.approvalCount} approval pending</span>
-                          )}
-                        </div>
-                      </button>
+                        entry={entry}
+                        isSelected={selectedEntryKey === entry.workflowKey}
+                        onSelect={setSelectedEntryKey}
+                      />
                     ))}
                   </div>
                 )}
@@ -577,7 +598,7 @@ export function MultiRunDashboard() {
                                 selectedEntry.runStatus === "running" && "ui-running-pulse",
                               )}
                               style={{
-                                width: `${Math.min(100, (selectedEntry.progress.completedSteps / selectedEntry.progress.totalSteps) * 100)}%`,
+                                transform: `scaleX(${Math.min(1, selectedEntry.progress.completedSteps / selectedEntry.progress.totalSteps)})`,
                               }}
                             />
                           </div>
@@ -648,6 +669,8 @@ export function MultiRunDashboard() {
                         <div
                           data-open={selectedEntry.approvalMessages.length > 0 ? "true" : "false"}
                           className="ui-collapsible"
+                          role="status"
+                          aria-live="polite"
                         >
                           <div className="ui-collapsible-inner">
                             <div className="mt-4 rounded-md surface-warning-soft p-3">
@@ -666,6 +689,8 @@ export function MultiRunDashboard() {
                         <div
                           data-open={selectedEntry.lastError ? "true" : "false"}
                           className="ui-collapsible"
+                          role="alert"
+                          aria-live="assertive"
                         >
                           <div className="ui-collapsible-inner">
                             <div className="mt-4 rounded-md surface-danger-soft p-3">

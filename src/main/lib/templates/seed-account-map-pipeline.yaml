@@ -23,7 +23,7 @@ description: Starting from real customers that already bought, build a target-ac
 credits:
   - label: GTM Skills
     href: https://github.com/extruct-ai/gtm-skills
-    note: Original Extruct GTM skill pack this workflow composes.
+    note: Original Extruct GTM skill pack this flow composes.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -51,7 +51,7 @@ nodes:
         Prioritize:
         - What We Do: email-safe value prop, key numbers, and language we can safely use in outreach
         - ICP: who usually buys, what company shapes convert, and who gets involved
-        - Win Cases: the specific customers or deals the user gave us
+        - Proof Points: the specific customers or deals the user gave us
         - Proof Library: proof points that can later support outreach
         - DNC: domains or account types that should be excluded
 

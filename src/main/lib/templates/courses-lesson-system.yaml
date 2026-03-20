@@ -13,7 +13,7 @@ steps:
   - Evaluate coherence, pacing, and student progression before launch preparation
 pack:
   id: courses-factory-alpha
-  label: Courses Factory
+  label: Courses Lab
   journey_stage: execute
   recommended_next:
     - courses-launch-assets
@@ -37,7 +37,7 @@ execution_policy:
     - Keep each lesson tied to a concrete learning objective.
     - Avoid duplicate lesson scopes across the curriculum.
 version: 1
-name: "Courses Factory: Lesson System"
+name: "Courses Lab: Lesson System"
 description: Turn a curriculum map into lesson briefs and a reusable lesson system.
 defaults:
   model: sonnet

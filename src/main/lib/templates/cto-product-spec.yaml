@@ -81,7 +81,7 @@ nodes:
         - Big-picture product architecture
         - Cross-cutting standards (security, observability, reliability, DX)
         - Detailed specs by product part
-        - Delivery phases and milestones
+        - Delivery steps and milestones
         - Risk register and open questions
         Deduplicate overlaps, resolve terminology conflicts, and keep the final document coherent.
   - id: eval-1

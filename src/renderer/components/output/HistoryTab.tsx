@@ -209,7 +209,7 @@ export function HistoryTab({
   if (pastRuns.length === 0) {
     return (
       <div className="rounded-lg surface-soft p-6 ui-empty-state text-body-md text-muted-foreground">
-        No past runs yet. Start a workflow run to build history.
+        No past runs yet. Start a flow run to build history.
       </div>
     )
   }

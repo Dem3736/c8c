@@ -15,7 +15,7 @@ steps:
   - Evaluate variant quality for platform-native language, CTA presence, and message consistency
 pack:
   id: content-factory-alpha
-  label: Content Factory
+  label: Content Lab
   journey_stage: operate
 contract_in:
   - kind: draft
@@ -43,7 +43,7 @@ execution_policy:
     - Preserve any publish or distribution notes the operator will need later.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Content Factory: Distribution Bundle"
+name: "Content Lab: Distribution Bundle"
 description: Package an approved draft into a reusable distribution bundle with publish-ready variants and notes.
 defaults:
   model: sonnet

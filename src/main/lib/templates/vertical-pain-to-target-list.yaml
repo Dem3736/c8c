@@ -23,7 +23,7 @@ description: Enter a new market with an evidence-backed hypothesis set, a first 
 credits:
   - label: GTM Skills
     href: https://github.com/extruct-ai/gtm-skills
-    note: Original Extruct GTM skill pack this workflow composes.
+    note: Original Extruct GTM skill pack this flow composes.
 defaults:
   model: sonnet
   maxTurns: 120
@@ -51,7 +51,7 @@ nodes:
         Capture:
         - what we sell in email-safe language
         - who usually buys
-        - any relevant win cases or proof points
+        - any relevant proof points
         - any exclusions or DNC domains already known
 
         Keep the context concise and decision-useful.
@@ -66,7 +66,7 @@ nodes:
         Research this vertical as if we are entering it cold.
 
         Requirements:
-        - run focused queries on workflow pain, tool gaps, and scaling failures
+        - run focused queries on operational pain, tool gaps, and scaling failures
         - prefer concrete numbers, examples, and operator language over generic summaries
         - distill 4-7 pain hypotheses that downstream list-building can use
         - call out which hypotheses appear urgent versus merely interesting
@@ -78,7 +78,7 @@ nodes:
       y: 220
     config:
       criteria: >-
-        Score 1-10 on: (1) specificity of the workflow pains, (2) presence of real data points or evidence, (3)
+        Score 1-10 on: (1) specificity of the operational pains, (2) presence of real data points or evidence, (3)
         distinctness of the resulting hypotheses, (4) usefulness of the hypotheses for company search, and (5)
         whether the research teaches something non-obvious about the market. Fail if the output reads like a generic
         industry overview.

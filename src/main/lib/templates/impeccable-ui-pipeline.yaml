@@ -11,7 +11,7 @@ steps:
   - Audit the feature for design and code issues
   - Normalize, harden, and clarify the implementation
   - Optimize performance and polish details
-  - Run quality-gate evaluation loop
+  - Run a quality-check retry loop
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context
@@ -20,7 +20,7 @@ execution_policy:
 version: 1
 name: Impeccable UI Pipeline
 description: Audit a frontend feature, then systematically normalize, harden, clarify, optimize, and polish it with
-  quality-gate evaluation loop
+  a quality-check retry loop
 credits:
   - label: Impeccable
     href: https://github.com/pbakaus/impeccable

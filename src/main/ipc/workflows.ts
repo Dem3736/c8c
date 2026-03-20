@@ -33,7 +33,7 @@ async function uniqueWorkflowPath(
   stem: string,
   extension: ".chain" | ".yaml" | ".yml",
 ): Promise<string> {
-  const baseStem = stem || "workflow"
+  const baseStem = stem || "flow"
   let index = 1
   let candidate = join(dir, `${baseStem}${extension}`)
 
@@ -48,7 +48,7 @@ async function uniqueWorkflowPath(
 function assertSupportedWorkflowExtension(filePath: string): void {
   const extension = extname(filePath).toLowerCase()
   if (extension !== ".chain" && extension !== ".yaml" && extension !== ".yml") {
-    throw new Error(`Unsupported workflow extension: ${extension || "(none)"}`)
+    throw new Error(`Unsupported flow file extension: ${extension || "(none)"}`)
   }
 }
 
@@ -56,7 +56,7 @@ async function assertWorkflowFilePath(filePath: string): Promise<string> {
   const resolvedPath = resolve(filePath)
   assertSupportedWorkflowExtension(resolvedPath)
   const workflowRoots = await allowedWorkflowRoots()
-  return assertWithinRoots(resolvedPath, workflowRoots, "Workflow path")
+  return assertWithinRoots(resolvedPath, workflowRoots, "Flow path")
 }
 
 function isOutsideAllowedWorkflowRootsError(error: unknown): boolean {
@@ -79,9 +79,9 @@ async function withWorkflowRootGuidance<T>(
     }
     const roots = await allowedWorkflowRoots()
     throw new Error(
-      `${actionLabel} is limited to registered workflow folders.\n\n`
-      + `Allowed workflow folders:\n${formatAllowedWorkflowRoots(roots)}\n\n`
-      + "Move the workflow into one of these folders, or add/open the project first.",
+      `${actionLabel} is limited to registered flow folders.\n\n`
+      + `Allowed flow folders:\n${formatAllowedWorkflowRoots(roots)}\n\n`
+      + "Move the flow file into one of these folders, or add/open the project first.",
     )
   }
 }
@@ -90,7 +90,7 @@ function defaultWorkflowFilename(data: Workflow | ChainDefinition): string {
   const title = "nodes" in data
     ? normalizeWorkflowTitle((data as Workflow).name || "")
     : ""
-  return `${toWorkflowFileStem(title || "workflow")}.chain`
+  return `${toWorkflowFileStem(title || "flow")}.chain`
 }
 
 async function saveWorkflowDefinition(
@@ -180,7 +180,7 @@ export function registerWorkflowsHandlers() {
   ipcMain.handle(
     "workflows:save-as",
     async (_e, data: Workflow | ChainDefinition, projectPath?: string) => {
-      return withWorkflowRootGuidance("Workflow save destination", async () => {
+      return withWorkflowRootGuidance("Flow save destination", async () => {
         const window = BrowserWindow.getFocusedWindow()
         if (!window) return null
 
@@ -189,10 +189,10 @@ export function registerWorkflowsHandlers() {
           : await ensureChainsDir()
 
         const result = await dialog.showSaveDialog(window, {
-          title: "Save Workflow As",
+          title: "Save Flow As",
           defaultPath: join(defaultDir, defaultWorkflowFilename(data)),
           filters: [
-            { name: "Chain Workflow", extensions: ["chain"] },
+            { name: "Chain Flow", extensions: ["chain"] },
             { name: "YAML (legacy)", extensions: ["yaml", "yml"] },
           ],
         })
@@ -207,7 +207,7 @@ export function registerWorkflowsHandlers() {
   ipcMain.handle(
     "workflows:export-copy",
     async (_e, data: Workflow | ChainDefinition, projectPath?: string) => {
-      return withWorkflowRootGuidance("Workflow export destination", async () => {
+      return withWorkflowRootGuidance("Flow export destination", async () => {
         const window = BrowserWindow.getFocusedWindow()
         if (!window) return null
 
@@ -216,10 +216,10 @@ export function registerWorkflowsHandlers() {
           : await ensureChainsDir()
 
         const result = await dialog.showSaveDialog(window, {
-          title: "Export Workflow Copy",
+          title: "Export Flow Copy",
           defaultPath: join(defaultDir, defaultWorkflowFilename(data)),
           filters: [
-            { name: "Chain Workflow", extensions: ["chain"] },
+            { name: "Chain Flow", extensions: ["chain"] },
             { name: "YAML (legacy)", extensions: ["yaml", "yml"] },
           ],
         })
@@ -232,13 +232,13 @@ export function registerWorkflowsHandlers() {
   )
 
   ipcMain.handle("workflows:open-file", async () => {
-    return withWorkflowRootGuidance("Workflow import", async () => {
+    return withWorkflowRootGuidance("Flow import", async () => {
       const window = BrowserWindow.getFocusedWindow()
       if (!window) return null
 
       const result = await dialog.showOpenDialog(window, {
-        title: "Open Workflow",
-        filters: [{ name: "Workflows", extensions: ["chain", "yaml", "yml"] }],
+        title: "Open Flow",
+        filters: [{ name: "Flows", extensions: ["chain", "yaml", "yml"] }],
         properties: ["openFile"],
       })
 
@@ -295,7 +295,7 @@ export function registerWorkflowsHandlers() {
 
       const normalizedTitle = normalizeWorkflowTitle(nextTitle)
       if (!normalizedTitle) {
-        throw new Error("Workflow name cannot be empty")
+        throw new Error("Flow name cannot be empty")
       }
 
       const destinationPath = join(
@@ -304,7 +304,7 @@ export function registerWorkflowsHandlers() {
       )
       await assertWorkflowFilePath(destinationPath)
       if (destinationPath !== safeFilePath && (await pathExists(destinationPath))) {
-        throw new Error(`Workflow "${normalizedTitle}" already exists`)
+        throw new Error(`Flow "${normalizedTitle}" already exists`)
       }
 
       if (destinationPath !== safeFilePath) {
@@ -352,10 +352,10 @@ export function registerWorkflowsHandlers() {
     } catch (error: unknown) {
       const code = (error as NodeJS.ErrnoException).code
       if (code === "EPERM" || code === "EACCES") {
-        throw new Error("This workflow file is read-only and can't be deleted.")
+        throw new Error("This flow file is read-only and can't be deleted.")
       }
       if (code === "ENOENT") {
-        throw new Error("This workflow was already deleted.")
+        throw new Error("This flow was already deleted.")
       }
       throw error
     }

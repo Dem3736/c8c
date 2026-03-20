@@ -2,7 +2,7 @@ id: gstack-release-room
 stage: operations
 emoji: "\U0001F6A2"
 headline: Prep docs and hand a branch to ship
-how: Updates release-facing docs from the current branch, requires a human ship decision, and then runs gstack's ship workflow with that approved context
+how: Updates release-facing docs from the current branch, requires a human ship decision, and then runs gstack's ship step with that approved context
 input: Release context, target branch or PR framing, docs to refresh, and anything the ship operator must know
 output: Release-room summary covering docs updated, release context approved, and ship outcome
 use_when: You want a final operator flow that makes docs current before invoking a real ship step.
@@ -10,7 +10,7 @@ time: ~5-8 min.
 steps:
   - Update release-facing docs to match the branch
   - Pause for a human ship decision with editable release context
-  - Run the ship workflow using the approved context
+  - Run the ship step using the approved context
 pack:
   id: gstack-team
   label: Gstack Team
@@ -26,7 +26,7 @@ contract_out:
 execution_policy:
   profile_id: gstack_release_room
   summary: Human-approved release execution
-  description: Make the docs match reality, pause for a deliberate ship decision, and only then execute the release workflow.
+  description: Make the docs match reality, pause for a deliberate ship decision, and only then run the release step.
   tags:
     - publish_gate
     - human_gate_required
@@ -93,7 +93,7 @@ nodes:
       prompt: |-
         Use the approved release context to ship the current branch.
 
-        Run the release workflow, keep a concise operator log, and surface blockers explicitly instead of guessing.
+        Run the release step, keep a concise operator log, and surface blockers explicitly instead of guessing.
   - id: output-1
     type: output
     position:

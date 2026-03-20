@@ -30,7 +30,7 @@ export function useSelectedRunReview(enabled: boolean) {
         if (cancelled) return
         if (!result) {
           setReviewedRunDetails(null)
-          setReviewedRunError("Saved run details are unavailable for this workflow.")
+          setReviewedRunError("Saved run details are unavailable for this flow.")
           return
         }
         setReviewedRunDetails(result)

@@ -331,7 +331,7 @@ function InputFields({
   return (
     <>
       <div className="surface-inset-card px-2 py-2 space-y-2">
-        <p className="ui-meta-label text-muted-foreground">Workflow defaults (all nodes)</p>
+        <p className="ui-meta-label text-muted-foreground">Flow defaults (all nodes)</p>
         <div className="space-y-1">
           <Label htmlFor={`insp-workflow-provider-${nodeId}`} className="ui-meta-text text-muted-foreground">
             Provider

@@ -13,7 +13,7 @@ steps:
   - Evaluate evidence quality, faithfulness to the course input, and practical usability
 pack:
   id: courses-factory-alpha
-  label: Courses Factory
+  label: Courses Lab
   journey_stage: execute
   recommended_next:
     - courses-launch-assets
@@ -33,7 +33,7 @@ execution_policy:
     - Separate what comes from the source materials from what is newly grounded to the course input.
     - Do not invent course claims, promises, or outcomes that are absent from the input.
 version: 1
-name: "Courses Factory: Trigger Playbook"
+name: "Courses Lab: Trigger Playbook"
 description: Inspect a folder of source materials, extract the trigger system they teach or model, and ground those triggers to a specific course or offer input.
 defaults:
   model: sonnet

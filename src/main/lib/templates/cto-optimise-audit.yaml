@@ -11,7 +11,7 @@ steps:
   - Map the system across code, runtime, and delivery surfaces
   - Fan out repo-wide CTO audit tracks by optimization lens
   - Merge findings into one prioritized optimization report
-  - Run a report quality gate before output
+  - Run a report quality check before output
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context
@@ -104,7 +104,7 @@ nodes:
         - Highest-leverage optimization opportunities
         - Categorize recommendations: what to automate with AI now / what needs manual founder decision / what to defer until product-market fit
         - Effort vs impact matrix
-        - File, module, and workflow hotspots
+        - File, module, and flow hotspots
 
         Deduplicate overlaps, preserve concrete evidence, call out dependencies between recommendations, and keep the
         result useful for technical leadership planning.

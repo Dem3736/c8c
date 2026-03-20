@@ -2,15 +2,15 @@ id: irresistible-resonance-pipeline
 stage: strategy
 emoji: "\U0001F4A1"
 headline: Craft messaging that resonates at every awareness level
-how: Extracts signal from product data, maps audience awareness stages, sharpens messaging, and generates awareness-matched headlines
+how: Extracts signal from product data, maps audience awareness levels, sharpens messaging, and generates awareness-matched headlines
 input: Product data, landing pages, or marketing copy
-output: Awareness-stage-matched headlines and sharpened messaging framework
+output: Awareness-level-matched headlines and sharpened messaging framework
 use_when: The offer is clear to you, but the message still is not landing across awareness levels.
 time: ~8-12 min.
 steps:
   - Extract signal and strip noise from product data
-  - Map audience awareness stages
-  - Sharpen messaging for each stage
+  - Map audience awareness levels
+  - Sharpen messaging for each level
   - Generate and amplify awareness-matched headlines
 execution_policy:
   profile_id: solo_operator
@@ -20,7 +20,7 @@ execution_policy:
 version: 1
 name: Irresistible Resonance Pipeline
 description: Extract signal from product data, strip noise, map audience awareness, sharpen messaging,
-  generate awareness-matched headlines, and amplify — with quality-gate evaluation loop
+  generate awareness-matched headlines, and amplify — with a quality-check retry loop
 defaults:
   model: sonnet
   maxTurns: 120

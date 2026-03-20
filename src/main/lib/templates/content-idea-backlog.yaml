@@ -13,7 +13,7 @@ steps:
   - Evaluate idea quality for diversity, concrete hooks, and effort estimates before output
 pack:
   id: content-factory-alpha
-  label: Content Factory
+  label: Content Lab
   journey_stage: plan
   recommended_next:
     - content-editorial-calendar
@@ -39,7 +39,7 @@ execution_policy:
     - Tie ideas back to the trend digest instead of free-associating.
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
-name: "Content Factory: Idea Backlog"
+name: "Content Lab: Idea Backlog"
 description: Turn a trend digest into a structured backlog of content ideas with hooks and thesis statements.
 defaults:
   model: sonnet

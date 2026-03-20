@@ -224,7 +224,7 @@ function StepCheckCli() {
         <h2 className="text-title-md text-foreground">Check CLI</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
-        c8c can run workflows through Claude Code or Codex. If only one CLI is
+        c8c can run flows through Claude Code or Codex. If only one CLI is
         detected, it becomes the default provider automatically.
       </p>
 
@@ -371,7 +371,7 @@ function StepOpenProject({
         <h2 className="text-title-md text-foreground">Open a project</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
-        Select a folder to use as your project root. Workflows and skills will be
+        Select a folder to use as your project root. Flows and skills will be
         stored relative to this directory.
       </p>
 

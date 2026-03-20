@@ -120,13 +120,13 @@ function CanvasNodeComponent({ data }: NodeProps<CanvasNodeType>) {
                 </Tooltip>
               )}
               {data.permissionModeOverride === "plan" && (
-                <span className="inline-flex items-center gap-0.5 rounded-sm border border-hairline px-1 py-0 ui-meta-text text-muted-foreground bg-surface-1/80" title="Plan mode (read-only)">
-                  <Eye size={9} />
+                <span className="inline-flex items-center gap-0.5 rounded-sm border border-hairline px-1 py-0 ui-meta-text text-muted-foreground bg-surface-1/80" title="Plan mode (read-only)" role="img" aria-label="Plan mode (read-only)">
+                  <Eye size={9} aria-hidden="true" />
                 </span>
               )}
               {data.permissionModeOverride === "edit" && (
-                <span className="inline-flex items-center gap-0.5 rounded-sm border border-status-warning/30 px-1 py-0 ui-meta-text text-status-warning bg-status-warning/10" title="Edit mode override">
-                  <Pencil size={9} />
+                <span className="inline-flex items-center gap-0.5 rounded-sm border border-status-warning/30 px-1 py-0 ui-meta-text text-status-warning bg-status-warning/10" title="Edit mode override" role="img" aria-label="Edit mode override">
+                  <Pencil size={9} aria-hidden="true" />
                 </span>
               )}
             </div>

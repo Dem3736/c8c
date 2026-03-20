@@ -159,37 +159,35 @@ export function useChainBuilderRuntimeState({
 
   const runtimeBranchIds = useMemo(() => Object.keys(displayRuntimeMeta || {}), [displayRuntimeMeta])
 
-  const runtimeBranchSummariesByTemplate = useMemo(() => {
-    const branchIdsByTemplate = new Map<string, string[]>()
+  const branchIdsByTemplate = useMemo(() => {
+    const map = new Map<string, string[]>()
     for (const [branchId, meta] of Object.entries(displayRuntimeMeta || {})) {
       if (!meta?.templateId) continue
-      const existing = branchIdsByTemplate.get(meta.templateId)
-      if (existing) {
-        existing.push(branchId)
-      } else {
-        branchIdsByTemplate.set(meta.templateId, [branchId])
-      }
+      const existing = map.get(meta.templateId)
+      if (existing) existing.push(branchId)
+      else map.set(meta.templateId, [branchId])
     }
+    return map
+  }, [displayRuntimeMeta])
 
+  const runtimeBranchSummariesByTemplate = useMemo(() => {
     const summaries = new Map<string, RuntimeBranchSummary>()
     for (const [templateId, branchIds] of branchIdsByTemplate.entries()) {
       const summary = buildRuntimeBranchSummary(branchIds, displayNodeStates, displayRuntimeMeta || {})
       if (summary) summaries.set(templateId, summary)
     }
     return summaries
-  }, [displayNodeStates, displayRuntimeMeta])
+  }, [branchIdsByTemplate, displayNodeStates, displayRuntimeMeta])
 
   const aggregateBranchStatesByTemplate = useMemo(() => {
     const aggregateStates = new Map<string, NodeState>()
     for (const [templateId, summary] of runtimeBranchSummariesByTemplate.entries()) {
-      const branchIds = Object.entries(displayRuntimeMeta || {})
-        .filter(([, meta]) => meta.templateId === templateId)
-        .map(([branchId]) => branchId)
-      if (branchIds.length === 0) continue
+      const branchIds = branchIdsByTemplate.get(templateId)
+      if (!branchIds || branchIds.length === 0) continue
       aggregateStates.set(templateId, buildAggregateBranchState(branchIds, summary, displayNodeStates))
     }
     return aggregateStates
-  }, [displayNodeStates, displayRuntimeMeta, runtimeBranchSummariesByTemplate])
+  }, [branchIdsByTemplate, displayNodeStates, runtimeBranchSummariesByTemplate])
 
   const singleSplitterBranchSummary = useMemo(() => {
     const splitterCount = workflowNodes.filter((node) => node.type === "splitter").length
@@ -269,13 +267,15 @@ export function useChainBuilderRuntimeState({
     if (!runtimeMode) {
       return { completed: 0, pending: 0, blocked: 0 }
     }
-    return {
-      completed: orderedMonitorStages.filter((entry) => entry.status === "completed" || entry.status === "skipped").length,
-      pending: orderedMonitorStages.filter((entry) => entry.status === "pending" || entry.status === "queued").length,
-      blocked: orderedMonitorStages.filter((entry) =>
-        entry.status === "failed" || entry.status === "waiting_approval" || entry.status === "waiting_human",
-      ).length,
+    let completed = 0
+    let pending = 0
+    let blocked = 0
+    for (const entry of orderedMonitorStages) {
+      if (entry.status === "completed" || entry.status === "skipped") completed += 1
+      else if (entry.status === "pending" || entry.status === "queued") pending += 1
+      else if (entry.status === "failed" || entry.status === "waiting_approval" || entry.status === "waiting_human") blocked += 1
     }
+    return { completed, pending, blocked }
   }, [orderedMonitorStages, runtimeMode])
 
   return {

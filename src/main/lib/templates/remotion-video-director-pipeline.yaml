@@ -2,16 +2,16 @@ id: remotion-video-director-pipeline
 stage: code
 emoji: "\U0001F3AC"
 headline: Turn a video brief into Remotion delivery
-how: Frames the video, gates the scenario, builds each scene, assembles the project, adds audio, and loops through expert review before handoff
+how: Frames the video, checks the scenario, builds each scene, assembles the project, adds audio, and loops through expert review before handoff
 input: A video brief with audience, desired action, constraints, assets, and either an existing Remotion repo path or permission to scaffold one
 output: A render-ready Remotion project, first-pass MP4 or blocked render plan, audio direction, and a scored revision list
 use_when: You have a video brief and need script, scenes, assets, and review lined up before production.
 time: ~15-25 min.
 steps:
   - Frame the brief, archetype, and creative direction
-  - Design a build-ready scene system and gate it before implementation
+  - Design a build-ready scene system and check it before implementation
   - Split scene implementation into parallel build tickets and assemble the project
-  - Add audio, render a first pass, and run multi-expert review plus final ship gate
+  - Add audio, render a first pass, and run multi-expert review plus a final ship approval
 execution_policy:
   profile_id: solo_operator
   summary: Solo founder operational context
@@ -19,11 +19,11 @@ execution_policy:
     - "Target operator: solo founder with AI agents, no employees. Filter recommendations by what one person can execute with AI tools within a week. Avoid team-dependent suggestions."
 version: 1
 name: Remotion Video Director Pipeline
-description: Turn Remotion Video Director into a production pipeline with per-scene builds, assembly, audio integration, and explicit review gates
+description: Turn Remotion Video Director into a production pipeline with per-scene builds, assembly, audio integration, and explicit review approvals
 credits:
   - label: Remotion Video Director
     href: https://github.com/BayramAnnakov/remotion-video-director
-    note: Original skill and four-phase creative workflow this template wraps.
+    note: Original skill and four-step creative flow this template wraps.
   - label: remotion-dev/skills
     href: https://github.com/remotion-dev/skills
     note: Official Remotion skill pack used here for API-level build guidance.

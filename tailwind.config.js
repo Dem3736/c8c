@@ -65,8 +65,8 @@ module.exports = {
         sm: "calc(var(--radius-control) - 2px)",
       },
       boxShadow: {
-        "inset-highlight": "inset 0 1px 0 rgba(255, 255, 255, 0.64)",
-        "inset-highlight-subtle": "inset 0 1px 0 rgba(255, 255, 255, 0.24)",
+        "inset-highlight": "inset 0 1px 0 var(--inset-highlight)",
+        "inset-highlight-subtle": "inset 0 1px 0 var(--inset-highlight-subtle, var(--inset-highlight))",
       },
       spacing: {
         "space-1": "var(--space-1)",

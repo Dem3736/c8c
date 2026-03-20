@@ -72,7 +72,7 @@ export function ChainBuilder({
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
   const isReorderSafe = isLinearChainReorderSafe(workflow)
   const reorderBlockReason = useMemo(() => getLinearChainReorderBlockReason(workflow), [workflow])
-  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null)
+  const draggedNodeIdRef = useRef<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const undoToastIdRef = useRef<string | number | null>(null)
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -85,11 +85,14 @@ export function ChainBuilder({
   const runtimeMode = mode === "monitor"
   // Order nodes: input first, then middle nodes in array order, then output last
   const orderedNodes = useMemo(() => {
-    const inputNodes = workflow.nodes.filter((n) => n.type === "input")
-    const outputNodes = workflow.nodes.filter((n) => n.type === "output")
-    const middleNodes = workflow.nodes.filter(
-      (n) => n.type !== "input" && n.type !== "output",
-    )
+    const inputNodes: WorkflowNode[] = []
+    const middleNodes: WorkflowNode[] = []
+    const outputNodes: WorkflowNode[] = []
+    for (const n of workflow.nodes) {
+      if (n.type === "input") inputNodes.push(n)
+      else if (n.type === "output") outputNodes.push(n)
+      else middleNodes.push(n)
+    }
     return [...inputNodes, ...middleNodes, ...outputNodes]
   }, [workflow.nodes])
   const selectedNodeId = flowCardMode ? inspectedNodeId : builderSelectedNodeId
@@ -122,7 +125,10 @@ export function ChainBuilder({
       }
     }
   }, [])
-  const hasSkillNodes = workflow.nodes.some((n) => n.type === "skill")
+  const hasSkillNodes = useMemo(
+    () => workflow.nodes.some((n) => n.type === "skill"),
+    [workflow.nodes],
+  )
   const contextNode = chainContextMenu
     ? workflow.nodes.find((node) => node.id === chainContextMenu.nodeId) || null
     : null
@@ -163,21 +169,22 @@ export function ChainBuilder({
     step?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
   }, [flowCardMode, resolvedSelectedNodeId])
 
-  const getNodeDisplayLabel = (nodeId: string) => {
-    const node = workflow.nodes.find((n) => n.id === nodeId)
-    if (!node) return nodeId
-    if (node.type === "skill") {
-      return node.config.skillRef || "Skill"
+  const nodeLabelMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const node of workflow.nodes) {
+      if (node.type === "skill") map.set(node.id, node.config.skillRef || "Skill")
+      else if (node.type === "evaluator") map.set(node.id, "Evaluator")
+      else if (node.type === "splitter") map.set(node.id, "Split work")
+      else if (node.type === "merger") map.set(node.id, "Merger")
+      else if (node.type === "approval") map.set(node.id, "Approval")
+      else if (node.type === "human") map.set(node.id, "Human")
+      else if (node.type === "input") map.set(node.id, "Input")
+      else if (node.type === "output") map.set(node.id, "Output")
+      else map.set(node.id, node.id)
     }
-    if (node.type === "evaluator") return "Evaluator"
-    if (node.type === "splitter") return "Split work"
-    if (node.type === "merger") return "Merger"
-    if (node.type === "approval") return "Approval"
-    if (node.type === "human") return "Human"
-    if (node.type === "input") return "Input"
-    if (node.type === "output") return "Output"
-    return nodeId
-  }
+    return map
+  }, [workflow.nodes])
+  const getNodeDisplayLabel = (nodeId: string) => nodeLabelMap.get(nodeId) || nodeId
 
   const getAddedNodes = (previous: typeof workflow, next: typeof workflow) => {
     const previousIds = new Set(previous.nodes.map((node) => node.id))
@@ -301,6 +308,22 @@ export function ChainBuilder({
     }
   }
 
+  // Ref holds mutable state so the keyboard listener doesn't need frequent re-attachment
+  const kbStateRef = useRef({
+    orderedNodes,
+    resolvedSelectedNodeId,
+    selectedNodeId,
+    workflowNodes: workflow.nodes,
+    primaryModifierKey: desktopRuntime.primaryModifierKey,
+  })
+  kbStateRef.current = {
+    orderedNodes,
+    resolvedSelectedNodeId,
+    selectedNodeId,
+    workflowNodes: workflow.nodes,
+    primaryModifierKey: desktopRuntime.primaryModifierKey,
+  }
+
   useEffect(() => {
     if (flowCardMode) return
 
@@ -308,16 +331,17 @@ export function ChainBuilder({
       if (event.defaultPrevented) return
       if (isEditableKeyboardTarget(event.target as HTMLElement | null)) return
 
-      const selectedNode = selectedNodeId
-        ? workflow.nodes.find((node) => node.id === selectedNodeId) ?? null
+      const state = kbStateRef.current
+      const selectedNode = state.selectedNodeId
+        ? state.workflowNodes.find((node) => node.id === state.selectedNodeId) ?? null
         : null
       const intent = resolveChainBuilderShortcutIntent({
         event,
-        primaryModifierKey: desktopRuntime.primaryModifierKey,
+        primaryModifierKey: state.primaryModifierKey,
         flowCardMode,
         isEditable: false,
-        orderedNodeIds: orderedNodes.map((node) => node.id),
-        resolvedSelectedNodeId,
+        orderedNodeIds: state.orderedNodes.map((node) => node.id),
+        resolvedSelectedNodeId: state.resolvedSelectedNodeId,
         selectedNodeId: selectedNode?.id ?? null,
         selectedNodeType: selectedNode?.type ?? null,
       })
@@ -347,15 +371,7 @@ export function ChainBuilder({
 
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [
-    desktopRuntime.primaryModifierKey,
-    flowCardMode,
-    orderedNodes,
-    resolvedSelectedNodeId,
-    selectedNodeId,
-    setPickerOpen,
-    workflow.nodes,
-  ])
+  }, [flowCardMode, setPickerOpen])
 
   const handleInsertBlock = (value: "evaluator" | "fanout" | "approval" | "human") => {
     if (value === "evaluator") {
@@ -385,14 +401,14 @@ export function ChainBuilder({
       })
       return
     }
-    setDraggedNodeId(node.id)
+    draggedNodeIdRef.current = node.id
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", node.id)
   }
 
   const handleDragOver = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
-    if (!draggedNodeId) return
-    if (node.type === "input" || node.type === "output" || draggedNodeId === node.id) {
+    if (!draggedNodeIdRef.current) return
+    if (node.type === "input" || node.type === "output" || draggedNodeIdRef.current === node.id) {
       if (dragOverNodeId) {
         setDragOverNodeId(null)
       }
@@ -412,7 +428,7 @@ export function ChainBuilder({
 
   const handleDrop = (node: WorkflowNode, event: React.DragEvent<HTMLDivElement>) => {
     if (flowCardMode) return
-    if (!draggedNodeId) return
+    if (!draggedNodeIdRef.current) return
     if (node.type === "input" || node.type === "output") return
     const blockedReason = getLinearChainReorderBlockReason(workflow)
     if (blockedReason) {
@@ -424,13 +440,13 @@ export function ChainBuilder({
       return
     }
     event.preventDefault()
-    setWorkflow((prev) => moveMiddleNodeBeforeTarget(prev, draggedNodeId, node.id))
+    setWorkflow((prev) => moveMiddleNodeBeforeTarget(prev, draggedNodeIdRef.current!, node.id))
     setDragOverNodeId(null)
-    setDraggedNodeId(null)
+    draggedNodeIdRef.current = null
   }
 
   const clearDragState = () => {
-    setDraggedNodeId(null)
+    draggedNodeIdRef.current = null
     setDragOverNodeId(null)
   }
 

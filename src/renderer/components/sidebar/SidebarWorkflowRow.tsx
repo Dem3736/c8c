@@ -71,10 +71,11 @@ export function SidebarWorkflowRow({
           )}
         >
           {showSpinningIndicator ? (
-            <span title={indicatorTitle} className="mt-0.5 inline-flex flex-shrink-0">
+            <span title={indicatorTitle} className="mt-0.5 inline-flex flex-shrink-0" role="img" aria-label={indicatorTitle}>
               <Loader2
                 size={12}
                 className={cn("animate-spin flex-shrink-0", rowMetaClass)}
+                aria-hidden="true"
               />
             </span>
           ) : (
@@ -84,6 +85,8 @@ export function SidebarWorkflowRow({
                 indicatorDotClass,
               )}
               title={indicatorTitle}
+              role="img"
+              aria-label={indicatorTitle}
             />
           )}
           <span className="min-w-0 flex-1">
@@ -178,7 +181,7 @@ export function SidebarWorkflowRow({
               progressBarClass,
               runStatus === "running" && "ui-running-pulse",
             )}
-            style={{ width: `${showProgressTrack ? progress : 0}%` }}
+            style={{ transform: `scaleX(${showProgressTrack ? progress / 100 : 0})` }}
           />
         </div>
       </div>

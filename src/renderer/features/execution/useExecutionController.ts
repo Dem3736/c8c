@@ -301,14 +301,17 @@ export function useExecutionController({
   }, [addNotification, inboxNotifications, pendingApprovalNotifications, removeByPersistentKeys])
 
   useEffect(() => {
+    let cancelled = false
     window.api.getActiveExecutions().then((executions: ActiveExecutionSnapshot[]) => {
+      if (cancelled) return
       for (const execution of executions) {
         if (execution.kind !== "run") continue
         controller.rehydrateActiveRun(execution)
       }
     }).catch((error) => {
-      console.error("[useExecutionController] getActiveExecutions failed:", error)
+      if (!cancelled) console.error("[useExecutionController] getActiveExecutions failed:", error)
     })
+    return () => { cancelled = true }
   }, [controller])
 
   return controller
