@@ -1,5 +1,7 @@
 import { atom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
+import { createDefaultDesktopMenuState, type DesktopMenuState } from "@shared/desktop-commands"
+import { createDefaultOutputSurfaceCommandState, type OutputSurfaceCommandState } from "@/lib/output-surface-commands"
 import { SIDEBAR_DEFAULT_WIDTH } from "@/lib/sidebar-layout"
 import type { TemplateLibraryContextState } from "./template-library-context"
 import {
@@ -9,8 +11,10 @@ import {
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { workflowHasMeaningfulContent } from "@/lib/workflow-content"
 import { toWorkflowExecutionKey } from "./workflow-execution"
+import { DEFAULT_DETAIL_BUDGET } from "./workflow-detail-budget"
 import type {
   BatchItemResult,
+  ArtifactRecord,
   BatchSummary,
   ChatMessage,
   Workflow,
@@ -116,6 +120,24 @@ export const workflowsAtom = atom<WorkflowFile[]>([])
 export const projectWorkflowsCacheAtom = atom<Record<string, WorkflowFile[]>>({})
 export const projectLatestRunsCacheAtom = atom<Record<string, Record<string, RunResult>>>({})
 export const projectWorkflowsLoadingAtom = atom<Record<string, boolean>>({})
+export const workflowSidebarSeenRunIdsAtom = atomWithStorage<Record<string, string>>(
+  "c8c:workflow-sidebar-seen-run-ids",
+  {},
+)
+export const markWorkflowSidebarRunSeenAtom = atom(
+  null,
+  (get, set, payload: { workflowPath: string | null | undefined; runId: string | null | undefined }) => {
+    const workflowPath = payload.workflowPath?.trim()
+    const runId = payload.runId?.trim()
+    if (!workflowPath || !runId) return
+    const existing = get(workflowSidebarSeenRunIdsAtom)
+    if (existing[workflowPath] === runId) return
+    set(workflowSidebarSeenRunIdsAtom, {
+      ...existing,
+      [workflowPath]: runId,
+    })
+  },
+)
 export const selectedWorkflowPathAtom = atomWithStorage<string | null>("c8c:selectedWorkflowPath", null)
 export const projectSidebarWidthAtom = atomWithStorage<number>(
   "c8c:sidebar-width",
@@ -123,7 +145,7 @@ export const projectSidebarWidthAtom = atomWithStorage<number>(
 )
 export const projectSidebarOpenAtom = atomWithStorage<boolean>("c8c:sidebar-open", true)
 
-// Graph-aware workflow
+// Active workflow
 export const currentWorkflowAtom = atom<Workflow>({
   version: 1,
   name: "",
@@ -175,12 +197,8 @@ export const selectedNodeIdAtom = atom<string | null>(null)
 
 // Desktop runtime
 export const desktopRuntimeAtom = atom<DesktopRuntimeInfo>(defaultDesktopRuntime())
-
-// Canvas manual positions — derived from workflow.canvasLayout for persistence and undo support.
-// Read-only: write via currentWorkflowAtom.canvasLayout instead.
-export const canvasManualPositionsAtom = atom<Record<string, { x: number; y: number }>>(
-  (get) => get(currentWorkflowAtom).canvasLayout ?? {},
-)
+export const desktopMenuStateAtom = atom<DesktopMenuState>(createDefaultDesktopMenuState())
+export const outputSurfaceCommandStateAtom = atom<OutputSurfaceCommandState>(createDefaultOutputSurfaceCommandState())
 
 // Global execution defaults (applied to new/generated workflows)
 export const globalExecutionDefaultsAtom = atomWithStorage<{
@@ -189,6 +207,10 @@ export const globalExecutionDefaultsAtom = atomWithStorage<{
   timeout_minutes: number
   maxParallel: number
 }>("c8c:global-execution-defaults", { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 })
+export const globalDetailBudgetAtom = atomWithStorage<number>(
+  "c8c:global-detail-budget",
+  DEFAULT_DETAIL_BUDGET,
+)
 
 export const providerSettingsAtom = atom<ProviderSettings>({
   defaultProvider: "claude",
@@ -235,11 +257,24 @@ export const cliStatusAtom = atom<ClaudeCodeSubscriptionStatus | null>(null)
 export const cliStatusBannerDismissedAtom = atom(false)
 
 // View mode
-export type ViewMode = "list" | "canvas" | "settings"
-export const viewModeAtom = atomWithStorage<ViewMode>("c8c:view-mode", "list")
+export type ViewMode = "list" | "settings"
+type LegacyStoredViewMode = ViewMode | "canvas"
+
+function sanitizeViewMode(value: unknown): ViewMode {
+  return value === "settings" ? "settings" : "list"
+}
+
+const viewModeStorageAtom = atomWithStorage<LegacyStoredViewMode>("c8c:view-mode", "list")
+export const viewModeAtom = atom(
+  (get) => sanitizeViewMode(get(viewModeStorageAtom)),
+  (_get, set, next: ViewMode) => {
+    set(viewModeStorageAtom, sanitizeViewMode(next))
+  },
+)
 export type FlowSurfaceMode = "outline" | "edit"
 export const flowSurfaceModeAtom = atomWithStorage<FlowSurfaceMode>("c8c:flow-surface-mode", "edit")
 export const workflowReviewModeAtom = atom(false)
+export const workflowRunBlockReasonAtom = atom<string | null>(null)
 export type WorkflowOpenStatus = "idle" | "loading" | "error"
 export interface WorkflowOpenState {
   status: WorkflowOpenStatus
@@ -253,8 +288,11 @@ export const workflowOpenStateAtom = atom<WorkflowOpenState>({
 })
 
 // First launch / onboarding
-const DEFAULT_FIRST_LAUNCH = typeof __TEST_MODE__ !== "undefined" ? !__TEST_MODE__ : true
-export const firstLaunchAtom = atomWithStorage("c8c:firstLaunch", DEFAULT_FIRST_LAUNCH)
+const IS_TEST_MODE = typeof __TEST_MODE__ !== "undefined" && __TEST_MODE__
+const DEFAULT_FIRST_LAUNCH = IS_TEST_MODE ? false : true
+export const firstLaunchAtom = IS_TEST_MODE
+  ? atom(DEFAULT_FIRST_LAUNCH)
+  : atomWithStorage("c8c:firstLaunch", DEFAULT_FIRST_LAUNCH)
 export const hasCompletedFirstFlowAtom = atomWithStorage("c8c:has-completed-first-flow", false)
 
 // App pages
@@ -268,10 +306,12 @@ export type MainView =
   | "settings"
   | "inbox"
   | "onboarding"
-export const mainViewAtom = atomWithStorage<MainView>(
-  "c8c:main-view",
-  "thread",
-)
+export const mainViewAtom = IS_TEST_MODE
+  ? atom<MainView>("thread")
+  : atomWithStorage<MainView>(
+    "c8c:main-view",
+    "thread",
+  )
 
 export const selectedFactoryCaseIdAtom = atomWithStorage<string | null>(
   "c8c:selected-factory-case-id",
@@ -495,8 +535,11 @@ export const workflowCreateDraftPromptAtom = atom("")
 export const workflowCreatePromptScaffoldAtom = atom<WorkflowCreatePromptScaffold>(
   EMPTY_WORKFLOW_CREATE_SCAFFOLD,
 )
+export const workflowCreateSourceArtifactsAtom = atom<ArtifactRecord[]>([])
+export const workflowCreateSourceAttachmentsAtom = atom<InputAttachment[]>([])
 export const workflowCreatePendingMessageAtom = atom<Record<string, string>>({})
 export const workflowCreatePendingEntryAtom = atom<Record<string, string>>({})
+export const workflowQueuedAutoRunPathAtom = atom<string | null>(null)
 export const workflowEntryStateAtom = atom<WorkflowEntryState | null>(null)
 export const workflowTemplateContextsAtom = atom<Record<string, WorkflowTemplateRunContext>>({})
 export const selectedWorkflowTemplateContextAtom = atom(

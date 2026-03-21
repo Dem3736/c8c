@@ -5,13 +5,20 @@ import { normalizeWorkflowTitle } from "@shared/workflow-name"
 import { writeFileAtomic } from "./atomic-write"
 import { logWarn } from "./structured-log"
 
+function stripCanvasWorkflowFields(workflow: Workflow): Workflow {
+  const { canvasLayout: _canvasLayout, ...rest } = workflow as Workflow & {
+    canvasLayout?: unknown
+  }
+  return rest
+}
+
 export async function loadChain(filePath: string): Promise<Workflow> {
   const content = await readFile(filePath, "utf-8")
-  return JSON.parse(content) as Workflow
+  return stripCanvasWorkflowFields(JSON.parse(content) as Workflow)
 }
 
 export async function saveChain(filePath: string, workflow: Workflow): Promise<void> {
-  const content = JSON.stringify(workflow, null, 2)
+  const content = JSON.stringify(stripCanvasWorkflowFields(workflow), null, 2)
   await writeFileAtomic(filePath, content)
 }
 

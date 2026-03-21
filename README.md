@@ -182,7 +182,7 @@ Electron app with three layers:
 
 - **Main** (`src/main/`) — Electron main process, IPC handlers, flow execution engine
 - **Preload** (`src/preload/`) — Context bridge exposing `window.api`
-- **Renderer** (`src/renderer/`) — React UI with visual canvas editor
+- **Renderer** (`src/renderer/`) — React UI with list-based flow editor and runtime surfaces
 
 Flows are directed graphs defined in YAML. The runtime expands the graph at execution time — splitter nodes create parallel branches, evaluators loop on failure. Each skill node spawns a fresh subprocess with clean context.
 

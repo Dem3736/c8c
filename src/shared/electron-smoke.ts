@@ -13,11 +13,13 @@ export const ELECTRON_SMOKE_SCENARIOS = [
   "seeded-project-sidebar",
   "command-palette-toggle",
   "settings-navigation",
-  "quick-switch-rail",
-  "canvas-add-recenter-delete",
+  "quick-switch-shortcuts",
   "approval-dialog",
   "create-ready-continuation",
   "blocked-relaunch",
+  "factory-thin-bridge",
+  "blocked-approve-resolution",
+  "blocked-reject-resolution",
 ] as const
 
 export type ElectronSmokeScenario = typeof ELECTRON_SMOKE_SCENARIOS[number]
@@ -52,28 +54,12 @@ export interface ElectronSmokeUiState {
   applicationShellVisible: boolean
   desktopPlatform: string
   primaryModifierKey: "meta" | "ctrl"
-  flowStatusRailVisible: boolean
-  flowStatusRailLabels: string[]
   availableWorkflowNames: string[]
   approvalDialogOpen: boolean
   settingsPageVisible: boolean
 }
 
-export interface ElectronSmokeCanvasViewport {
-  x: number
-  y: number
-  zoom: number
-}
-
-export interface ElectronSmokeCanvasState {
-  nodeCount: number
-  nodeLabels: string[]
-  selectedNodeId: string | null
-  selectedNodeLabel: string | null
-  viewport: ElectronSmokeCanvasViewport | null
-}
-
-export type ElectronSmokeViewMode = "list" | "canvas" | "settings"
+export type ElectronSmokeViewMode = "list" | "settings"
 
 export interface ElectronSmokeWorkflowOpenInput {
   projectPath: string
@@ -132,8 +118,6 @@ export interface ElectronRendererSmokeHarness {
   openWorkflow?: (input: ElectronSmokeWorkflowOpenInput) => Promise<boolean> | boolean
   setMainView?: (input: ElectronSmokeMainViewInput) => Promise<boolean> | boolean
   seedExecutionState?: (input: ElectronSmokeExecutionSeedInput) => Promise<boolean> | boolean
-  getCanvasState?: () => ElectronSmokeCanvasState | null
-  setCanvasViewport?: (viewport: ElectronSmokeCanvasViewport) => Promise<boolean> | boolean
 }
 
 export interface ElectronSmokeAssertion {
@@ -179,19 +163,11 @@ export type ElectronSmokeScenarioInvariants =
       settingsPageVisible: boolean
     }
   | {
-      kind: "quick-switch-rail"
+      kind: "quick-switch-shortcuts"
       workflowNames: string[]
       selectedInitially: string
       selectedAfterShortcut: string
-      selectedAfterClick: string
-    }
-  | {
-      kind: "canvas-add-recenter-delete"
-      nodeCountBefore: number
-      nodeCountAfterAdd: number
-      nodeCountAfterDelete: number
-      viewportChanged: boolean
-      addedNodeLabel: string | null
+      selectedAfterReturnShortcut: string
     }
   | {
       kind: "approval-dialog"
@@ -214,6 +190,28 @@ export type ElectronSmokeScenarioInvariants =
       blockedTaskVisible: boolean
       statusText: string
       reasonText: string
+    }
+  | {
+      kind: "factory-thin-bridge"
+      workLabel: string
+      latestResult: string
+      latestCheckText: string
+      actionLabel: string
+      runtimeWorkflowName: string
+    }
+  | {
+      kind: "blocked-approve-resolution"
+      workflowName: string
+      finalRunStatus: string
+      continuationStatus: string
+      openTaskCount: number
+    }
+  | {
+      kind: "blocked-reject-resolution"
+      workflowName: string
+      continuationStatus: string
+      lastGateOutcome: string
+      openTaskCount: number
     }
 
 export interface ElectronSmokeScenarioReport {

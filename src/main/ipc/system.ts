@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron"
+import { app, BrowserWindow, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron"
 import { promisify } from "node:util"
 import { execFile as execFileCb } from "node:child_process"
 import type {
@@ -10,6 +10,7 @@ import type {
   ProviderSettings,
   TelemetryUiEvent,
 } from "@shared/types"
+import { createDefaultDesktopMenuState, type DesktopCommandId, type DesktopMenuState } from "@shared/desktop-commands"
 import { getClaudeCodeSubscriptionStatus } from "../lib/claude-subscription"
 import { allowedOpenPathRoots, allowedProjectRoots, assertWithinRoots } from "../lib/security-paths"
 import { resolve } from "node:path"
@@ -33,6 +34,7 @@ import { resolveAgentProvider } from "../lib/providers"
 const execFile = promisify(execFileCb)
 
 let runtimeWindowProvider: (() => BrowserWindow | null) | null = null
+let desktopMenuState: DesktopMenuState = createDefaultDesktopMenuState()
 
 function desktopPlatform(): DesktopPlatform {
   if (process.platform === "darwin") return "macos"
@@ -48,6 +50,113 @@ function resolveRuntimeWindow(): BrowserWindow | null {
   const focused = BrowserWindow.getFocusedWindow()
   if (focused && !focused.isDestroyed()) return focused
   return BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) ?? null
+}
+
+function emitDesktopCommand(commandId: DesktopCommandId): void {
+  const window = resolveRuntimeWindow()
+  if (!window || window.isDestroyed()) return
+  window.webContents.send("system:desktop-command", commandId)
+}
+
+function fileMenuItem(
+  label: string,
+  accelerator: string | undefined,
+  state: { enabled: boolean; visible?: boolean },
+  commandId: DesktopCommandId,
+): MenuItemConstructorOptions {
+  return {
+    label,
+    accelerator,
+    enabled: state.enabled,
+    visible: state.visible ?? true,
+    click: () => emitDesktopCommand(commandId),
+  }
+}
+
+function checkboxMenuItem(
+  label: string,
+  accelerator: string | undefined,
+  state: { enabled: boolean; checked?: boolean; visible?: boolean },
+  commandId: DesktopCommandId,
+): MenuItemConstructorOptions {
+  return {
+    type: "checkbox",
+    label,
+    accelerator,
+    enabled: state.enabled,
+    checked: Boolean(state.checked),
+    visible: state.visible ?? true,
+    click: () => emitDesktopCommand(commandId),
+  }
+}
+
+function buildDesktopMenuTemplate(state: DesktopMenuState): MenuItemConstructorOptions[] {
+  const template: MenuItemConstructorOptions[] = []
+
+  if (process.platform === "darwin") {
+    template.push({
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    })
+  }
+
+  template.push(
+    {
+      label: "File",
+      submenu: [
+        fileMenuItem("Save", "CommandOrControl+S", state.file.save, "file.save"),
+        fileMenuItem("Save As...", "CommandOrControl+Shift+S", state.file.saveAs, "file.save_as"),
+        { type: "separator" },
+        fileMenuItem("Export Flow...", undefined, state.file.export, "file.export"),
+        fileMenuItem("Import Flow...", undefined, state.file.import, "file.import"),
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        fileMenuItem("Undo", "CommandOrControl+Z", state.edit.undo, "edit.undo"),
+        fileMenuItem("Redo", "CommandOrControl+Shift+Z", state.edit.redo, "edit.redo"),
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        checkboxMenuItem("Flow Defaults", undefined, state.view.defaults, "view.defaults"),
+        checkboxMenuItem("Edit Flow", "CommandOrControl+E", state.view.editFlow, "view.edit_flow"),
+        checkboxMenuItem("Toggle Agent Panel", "CommandOrControl+L", state.view.toggleAgentPanel, "view.toggle_agent_panel"),
+      ],
+    },
+    {
+      label: "Flow",
+      submenu: [
+        fileMenuItem("Run", "CommandOrControl+Enter", state.flow.run, "flow.run"),
+        fileMenuItem("Run Again", undefined, state.flow.runAgain, "flow.run_again"),
+        fileMenuItem("Rerun from Step...", undefined, state.flow.rerunFromStep, "flow.rerun_from_step"),
+        fileMenuItem("Cancel", undefined, state.flow.cancel, "flow.cancel"),
+        fileMenuItem("Batch Run", undefined, state.flow.batchRun, "flow.batch_run"),
+        { type: "separator" },
+        fileMenuItem("History", undefined, state.flow.history, "flow.history"),
+      ],
+    },
+  )
+
+  return template
+}
+
+function refreshDesktopMenu(): void {
+  if (typeof app.isReady === "function" && !app.isReady()) return
+  const menu = Menu.buildFromTemplate(buildDesktopMenuTemplate(desktopMenuState))
+  Menu.setApplicationMenu(menu)
 }
 
 function desktopRuntimeInfo(window: BrowserWindow | null = resolveRuntimeWindow()): DesktopRuntimeInfo {
@@ -67,6 +176,7 @@ function desktopRuntimeInfo(window: BrowserWindow | null = resolveRuntimeWindow(
 
 export function setDesktopRuntimeWindowProvider(provider: (() => BrowserWindow | null) | null): void {
   runtimeWindowProvider = provider
+  refreshDesktopMenu()
 }
 
 export function emitDesktopRuntimeUpdate(window: BrowserWindow | null): void {
@@ -164,10 +274,18 @@ function getTestSubscriptionStatus(): ClaudeCodeSubscriptionStatus {
 }
 
 export function registerSystemHandlers() {
+  refreshDesktopMenu()
+
   ipcMain.handle("system:get-app-version", () => app.getVersion())
 
   ipcMain.handle("system:get-desktop-runtime", () => {
     return desktopRuntimeInfo()
+  })
+
+  ipcMain.handle("system:update-desktop-menu-state", async (_event, state: DesktopMenuState) => {
+    desktopMenuState = state
+    refreshDesktopMenu()
+    return true
   })
 
   ipcMain.handle("system:get-project-status", async (_event, projectPath: string | null) => {

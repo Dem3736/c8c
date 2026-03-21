@@ -67,7 +67,7 @@ describe("yamlToChain", () => {
     expect((skill.config as any).maxTurns).toBe(20)
   })
 
-  it("assigns sequential x positions for canvas layout", () => {
+  it("assigns sequential x positions for migrated nodes", () => {
     const yaml = {
       steps: [
         { key: "s1", agent: "a/b", prompt: "1" },

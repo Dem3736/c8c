@@ -1,11 +1,13 @@
 import { useAtom, useAtomValue } from "jotai"
-import { useEffect, useCallback } from "react"
+import { useLayoutEffect, useCallback } from "react"
 import {
   currentWorkflowAtom,
+  factoryBetaEnabledAtom,
   firstLaunchAtom,
   mainViewAtom,
   projectWorkflowsCacheAtom,
   projectsAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   viewModeAtom,
@@ -13,10 +15,11 @@ import {
   workflowsAtom,
   desktopRuntimeAtom,
 } from "@/lib/store"
-import { approvalRequestsAtom, workflowExecutionStatesAtom } from "@/features/execution"
+import { approvalRequestsAtom, selectedPastRunAtom, workflowExecutionStatesAtom } from "@/features/execution"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { createEmptyWorkflowExecutionState } from "@/lib/workflow-execution"
 import type {
+  ElectronRendererSmokeHarness,
   ElectronSmokeExecutionSeedInput,
   ElectronSmokeMainViewInput,
   ElectronSmokeUiState,
@@ -27,36 +30,54 @@ function hasGlobalSettingsHeading() {
   return Array.from(document.querySelectorAll("h1")).some((heading) => heading.textContent?.trim() === "Global Settings")
 }
 
-function ensureRendererSmokeHarness() {
-  const existing = window.__C8C_RENDERER_SMOKE__ ?? {}
-  window.__C8C_RENDERER_SMOKE__ = existing
-  return existing
+function ensureRendererSmokeHarness(): ElectronRendererSmokeHarness {
+  const existing = (window.__C8C_RENDERER_SMOKE__ ?? {}) as Partial<ElectronRendererSmokeHarness>
+  window.__C8C_RENDERER_SMOKE__ = existing as ElectronRendererSmokeHarness
+  return window.__C8C_RENDERER_SMOKE__ as ElectronRendererSmokeHarness
 }
 
 export function RendererSmokeBridge({
   commandPaletteOpen,
   sidebarOpen,
-  flowStatusRailLabels,
   availableWorkflowNames,
 }: {
   commandPaletteOpen: boolean
   sidebarOpen: boolean
-  flowStatusRailLabels: string[]
   availableWorkflowNames: string[]
 }) {
   const [mainView, setMainView] = useAtom(mainViewAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
-  const [firstLaunch] = useAtom(firstLaunchAtom)
+  const [firstLaunch, setFirstLaunch] = useAtom(firstLaunchAtom)
+  const [factoryBetaEnabled, setFactoryBetaEnabled] = useAtom(factoryBetaEnabledAtom)
   const [projects, setProjects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [currentWorkflow, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [projectWorkflowsCache, setProjectWorkflowsCache] = useAtom(projectWorkflowsCacheAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setWorkflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [approvalRequests, setApprovalRequests] = useAtom(approvalRequestsAtom)
   const desktopRuntime = useAtomValue(desktopRuntimeAtom)
+  const clearReviewState = useCallback(() => {
+    setSelectedInboxTaskKey(null)
+    setSelectedPastRun(null)
+  }, [setSelectedInboxTaskKey, setSelectedPastRun])
+
+  useLayoutEffect(() => {
+    if (!__TEST_MODE__) return
+    if (firstLaunch) {
+      setFirstLaunch(false)
+    }
+    if (!factoryBetaEnabled) {
+      setFactoryBetaEnabled(true)
+    }
+    if (mainView === "onboarding") {
+      setMainView("thread")
+    }
+  }, [factoryBetaEnabled, firstLaunch, mainView, setFactoryBetaEnabled, setFirstLaunch, setMainView])
 
   const openWorkflow = useCallback(async ({
     projectPath,
@@ -78,10 +99,12 @@ export function RendererSmokeBridge({
     setSelectedWorkflowPath(workflowPath)
     setCurrentWorkflow(loadedWorkflow)
     setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+    clearReviewState()
     setMainView("thread")
-    setViewMode(nextViewMode)
+    setViewMode(nextViewMode === "settings" ? "settings" : "list")
     return true
   }, [
+    clearReviewState,
     setCurrentWorkflow,
     setMainView,
     setProjectWorkflowsCache,
@@ -102,11 +125,13 @@ export function RendererSmokeBridge({
       setSelectedProject(projectPath)
     }
     if (nextMainView === "thread" || nextMainView === "workflow_create") {
+      clearReviewState()
       setViewMode("list")
     }
     setMainView(nextMainView)
     return true
   }, [
+    clearReviewState,
     setMainView,
     setProjects,
     setSelectedProject,
@@ -147,9 +172,7 @@ export function RendererSmokeBridge({
     setWorkflowExecutionStates,
   ])
 
-  useEffect(() => {
-    if (!__TEST_MODE__) return
-
+  if (__TEST_MODE__) {
     const harness = ensureRendererSmokeHarness()
     harness.getUiState = (): ElectronSmokeUiState => ({
       mainView,
@@ -166,8 +189,6 @@ export function RendererSmokeBridge({
       applicationShellVisible: Boolean(document.querySelector('[role="application"][aria-label="c8c"]')),
       desktopPlatform: desktopRuntime.platform,
       primaryModifierKey: desktopRuntime.primaryModifierKey,
-      flowStatusRailVisible: flowStatusRailLabels.length > 0,
-      flowStatusRailLabels,
       availableWorkflowNames,
       approvalDialogOpen: approvalRequests.length > 0 && Boolean(document.querySelector('[data-approval-dialog="true"]')),
       settingsPageVisible: mainView === "settings" && hasGlobalSettingsHeading(),
@@ -175,33 +196,21 @@ export function RendererSmokeBridge({
     harness.openWorkflow = openWorkflow
     harness.setMainView = setSmokeMainView
     harness.seedExecutionState = seedExecutionState
+  }
 
+  useLayoutEffect(() => {
+    if (!__TEST_MODE__) return
+
+    const harness = ensureRendererSmokeHarness()
     return () => {
       if (window.__C8C_RENDERER_SMOKE__ !== harness) return
-      delete harness.getUiState
-      delete harness.openWorkflow
-      delete harness.setMainView
-      delete harness.seedExecutionState
+      const nextHarness = harness as Partial<ElectronRendererSmokeHarness>
+      delete nextHarness.getUiState
+      delete nextHarness.openWorkflow
+      delete nextHarness.setMainView
+      delete nextHarness.seedExecutionState
     }
-  }, [
-    approvalRequests.length,
-    commandPaletteOpen,
-    currentWorkflow.name,
-    desktopRuntime.platform,
-    desktopRuntime.primaryModifierKey,
-    firstLaunch,
-    availableWorkflowNames,
-    flowStatusRailLabels,
-    mainView,
-    openWorkflow,
-    projects.length,
-    setSmokeMainView,
-    seedExecutionState,
-    selectedProject,
-    selectedWorkflowPath,
-    sidebarOpen,
-    viewMode,
-  ])
+  }, [])
 
   return null
 }

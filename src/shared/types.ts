@@ -296,6 +296,7 @@ export interface WorkflowDefaults {
   model?: string
   maxTurns?: number
   maxParallel?: number
+  detailBudget?: number
   timeout_minutes?: number
   allowedTools?: string[]
   disallowedTools?: string[]
@@ -313,7 +314,6 @@ export interface Workflow {
   defaults?: WorkflowDefaults
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
-  canvasLayout?: Record<string, NodePosition>
 }
 
 export interface WorkflowFile {
@@ -682,6 +682,7 @@ export interface CreateEntryRouteInput {
   modeId: ResultModeId
   projectPath: string
   fallbackTemplateId?: string
+  templateConstraintId?: string
   draftPrompt?: string
   requestedResult?: string
   helpModeHint?: CreateEntryHelpModeHint
@@ -690,19 +691,37 @@ export interface CreateEntryRouteInput {
   allowedOptions?: CreateEntryRouteOption[]
 }
 
-export interface CreateEntryRouteClarificationOption {
+export interface CreateEntryHelpModeClarificationOption {
   value: CreateEntryHelpModeHint
   label: string
   description?: string
   disabled?: boolean
 }
 
-export interface CreateEntryRouteClarification {
+export interface CreateEntryJobRouteClarificationOption {
+  value: string
+  label: string
+  description?: string
+  templateId: string
+}
+
+export interface CreateEntryHelpModeClarification {
   kind: "help_mode"
   title: string
   message: string
-  options: CreateEntryRouteClarificationOption[]
+  options: CreateEntryHelpModeClarificationOption[]
 }
+
+export interface CreateEntryJobRouteClarification {
+  kind: "job_route"
+  title: string
+  message: string
+  options: CreateEntryJobRouteClarificationOption[]
+}
+
+export type CreateEntryRouteClarification =
+  | CreateEntryHelpModeClarification
+  | CreateEntryJobRouteClarification
 
 export interface CreateEntryRouteResult {
   recommendedTemplateId: string
@@ -711,7 +730,7 @@ export interface CreateEntryRouteResult {
   projectInspection: ProjectInspectionSummary
   seed: CreateEntryRouteSeed
   confidence: number
-  source: "agent" | "heuristic"
+  source: "agent"
   clarification?: CreateEntryRouteClarification | null
 }
 
@@ -968,7 +987,6 @@ export type WorkflowEvent =
       runtimeMeta: WorkflowRuntimeMeta
       nodes: WorkflowNode[]
       edges: WorkflowEdge[]
-  canvasLayout?: Record<string, NodePosition>
     }
   | { type: "approval-requested"; runId: string; nodeId: string; content: string; message?: string; allowEdit: boolean }
   | { type: "human-task-created"; runId: string; nodeId: string; taskId: string; title: string }

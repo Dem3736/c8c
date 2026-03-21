@@ -12,7 +12,7 @@ interface WorkflowMutationOptions {
 /**
  * Returns a `setWorkflow` that automatically pushes an undo snapshot
  * before applying the mutation. Use this in components that mutate
- * the workflow (ChainBuilder, CanvasView, etc.).
+ * the workflow (ChainBuilder, create flows, settings edits, etc.).
  */
 export function useWorkflowWithUndo() {
   const [workflow, setWorkflowDirect] = useAtom(currentWorkflowAtom)

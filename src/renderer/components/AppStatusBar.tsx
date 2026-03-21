@@ -295,7 +295,6 @@ export function AppStatusBar() {
                 { keys: newProcessShortcutLabel, label: "Start a new flow" },
                 { keys: `${primaryShortcutLabel}⇧S`, label: "Attach a skill to the current flow" },
                 { keys: `A / ${primaryShortcutLabel}⇧A`, label: "Add a skill step in the active editor" },
-                { keys: `${primaryShortcutLabel}⇧L`, label: "Recenter the flow canvas" },
                 { keys: "↑ / ↓ / Home / End", label: "Move selection through steps in list view" },
                 { keys: "Alt+↑ / Alt+↓", label: "Move the selected step in list view" },
                 { keys: "Delete", label: "Remove the selected step or connection" },

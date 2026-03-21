@@ -10,7 +10,7 @@ North star: the user describes point B, c8c picks the best first step, then reve
 
 ## Product Vocabulary (R2-CANON)
 
-Canonical product decisions live in `docs/R2-CANON.md`. When writing or modifying user-facing strings, use these terms:
+Canonical product decisions live in `docs/conventions/R2-CANON.md`. When writing or modifying user-facing strings, use these terms:
 
 | User sees | Code uses | Never in UI |
 |-----------|-----------|-------------|
@@ -24,6 +24,42 @@ Canonical product decisions live in `docs/R2-CANON.md`. When writing or modifyin
 | typed result ("Review findings") | artifact | artifact |
 
 Internal code (variable names, types, file names) keeps existing vocabulary. Only user-facing strings (JSX text, placeholders, labels, tooltips, toasts, errors) must follow this table.
+
+## Decision Architecture: Agent-Only, No Heuristics
+
+Any logic that interprets user natural language (routing, intent classification, disambiguation) **must go through an LLM agent call**. No regex, no keyword matching, no `if prompt.includes(...)` patterns.
+
+The only non-agent logic allowed is reading structural project facts (empty dir vs has code, project kind, git state). These are **inputs to the agent**, not decision branches.
+
+See `AGENTS.md` and `docs/conventions/R2-CANON.md` Section 2.4 for full spec.
+
+## Visual Hierarchy Rules (Ship-Blockers)
+
+Five hard rules from `docs/DESIGN-PHILOSOPHY.md` §8. Every renderer change must pass:
+
+1. **One Figure Per State** — only the primary object gets card treatment (border+bg+elevation). Everything else is flat ground.
+2. **≤5 Visible Actions Per State** — excess goes to overflow. One `variant="default"` CTA per state. No dual primary buttons.
+3. **Show Only What Matters Now** — no empty tabs, no disabled-but-visible controls, no sections for future states.
+4. **One Status Signal Per Fact** — progress, blocked status, current step each appear in exactly one place.
+5. **No Cards Inside Cards** — a bordered container never nests another bordered container.
+
+One exception is allowed: a single contextual advanced path when the state would otherwise be a dead end. It must be low-emphasis, live inside the figure or its local context strip, and open secondary diagnostic depth rather than competing with the primary CTA.
+
+Workflow and project pages get one strong top-level header. Child surfaces below that header must use flat context strips, not repeated hero headers.
+
+Thresholds: ≤3 bordered containers, ≤5 clickable elements, 0 duplicate signals, 0 nested cards, 0 rendered-but-empty sections.
+
+**Surface weight:** Components are flat by default (Level 0). Card treatment (border+bg+elevation, Level 3) is only for the figure. See `docs/conventions/DESIGN-PHILOSOPHY.md` §8 Surface Weight Ladder for the full 4-level hierarchy.
+
+**Before rendering a component:** Does it have content? Does the user need it NOW? Does it duplicate something visible? Pass all three → render. Fail any → don't.
+
+**Composer-first guardrail:** On create/start surfaces, a dominant continuation may own the card weight, but it must not hide or replace the primary point-B input path. The composer stays directly visible and focusable.
+
+**Screen composition:** Before laying out any screen, define The One Question it answers, then follow the composition stack: Chrome → Context → Verdict (card) → Evidence Panel → Input → Depth. Three verdict variants: outcome (pass/fail), diagnostic (root cause/findings), document (conclusion + reading surface). Full guide: `docs/conventions/SCREEN-COMPOSITION-GUIDE.md`.
+
+**Before adding a new surface:** Run the bidirectional checklist in `docs/conventions/NEW-ENTITY-CHECKLIST.md` — top-down (job → question → verdict → layout) AND bottom-up (component → question → job). If any layer has no answer, don't ship it.
+
+**Auditing existing components:** Follow `docs/conventions/COMPONENT-AUDIT-PLAN.md` — per-component check against all 8 layers with numeric thresholds.
 
 ## Commands
 
@@ -74,13 +110,7 @@ Jotai atoms in `src/renderer/lib/store.ts`. Key patterns:
 
 `mainViewAtom` switches between: `"thread"` (flow editor), `"skills"`, `"templates"` (Library), `"settings"`.
 
-Two flow editing modes via `viewModeAtom`: `"list"` (linear chain builder) and `"canvas"` (React Flow graph).
-
-### Canvas System
-
-`@xyflow/react` with **Dagre** for automatic hierarchical layout (LR direction). Custom components:
-- `canvas/CanvasNode.tsx` — typed icons, status visualization (6 states), token/cost metrics
-- `canvas/WorkflowEdge.tsx` — smooth-step paths, pass (green) / fail (red dashed) visual indicators
+Flow editing surfaces via `viewModeAtom`: `"list"` (linear chain builder) and `"settings"` (flow defaults).
 
 ### IPC Pattern
 
@@ -156,7 +186,6 @@ Additional approved Tailwind typography tokens: `text-label-xs`, `text-title-sm`
 ## Key Dependencies
 
 - `@claude-tools/runner` — Claude CLI subprocess spawner (`file:` link to `../shared-claude-tools/packages/claude-runner`)
-- `@xyflow/react` + `@dagrejs/dagre` — Canvas graph editor and auto-layout
 - `gray-matter` — YAML frontmatter parsing from .md skill files
 - `yaml` — Workflow YAML serialization
 - `jotai` — Atomic state management

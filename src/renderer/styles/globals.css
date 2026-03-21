@@ -994,10 +994,13 @@
 
 .ui-icon-button {
   display: inline-flex;
-  height: var(--control-xs);
-  width: var(--control-xs);
+  min-height: var(--control-sm);
+  min-width: var(--control-sm);
+  height: var(--control-sm);
+  width: var(--control-sm);
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: transparent;
@@ -1021,8 +1024,8 @@
 .ui-icon-button:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 1px hsl(var(--ring) / 0.34),
-    0 0 0 4px hsl(var(--ring) / 0.12);
+    0 0 0 1px hsl(var(--ring) / 0.72),
+    0 0 0 4px hsl(var(--ring) / 0.22);
 }
 
 .ui-icon-button:disabled,
@@ -1413,34 +1416,6 @@
   transform: translateY(0) scale(1);
 }
 
-.workflow-edge-path {
-  transition:
-    opacity var(--motion-fast) var(--ease-standard),
-    stroke-width var(--motion-fast) var(--ease-standard),
-    stroke var(--motion-fast) var(--ease-standard),
-    filter var(--motion-fast) var(--ease-standard);
-}
-
-/* Idle opacity — hover brightens to full for discoverable interactivity */
-.workflow-edge-idle {
-  opacity: var(--edge-opacity-idle);
-}
-
-.react-flow__edge:hover .workflow-edge-idle {
-  opacity: 1;
-}
-
-.node-status-running {
-  border-color: hsl(var(--status-info) / 0.56);
-  box-shadow:
-    0 0 0 1px hsl(var(--status-info) / 0.25),
-    0 8px 20px hsl(var(--foreground) / 0.08);
-}
-
-.node-handle-dot {
-  box-shadow: 0 0 0 1px hsl(var(--hairline) / 0.24);
-}
-
 @keyframes ui-fade-slide-in {
   from {
     opacity: 0;
@@ -1583,236 +1558,6 @@
 
   .ui-pressable:active {
     transform: none;
-  }
-}
-
-/* React Flow dark theme overrides */
-.react-flow__node {
-  cursor: default !important;
-}
-
-.workflow-canvas {
-  background-image:
-    radial-gradient(820px 280px at 52% -150px, hsl(0 0% 100% / 0.54), transparent 72%),
-    linear-gradient(180deg, hsl(var(--surface-1)) 0%, hsl(var(--surface-2) / 0.9) 100%);
-}
-
-.dark .workflow-canvas {
-  background-image:
-    radial-gradient(860px 300px at 52% -165px, hsl(226 30% 16% / 0.42), transparent 72%),
-    linear-gradient(180deg, hsl(var(--surface-1)) 0%, hsl(var(--surface-2) / 0.94) 100%);
-}
-
-.workflow-canvas .react-flow__pane {
-  cursor: grab;
-}
-
-.workflow-canvas .react-flow__pane:active {
-  cursor: grabbing;
-}
-
-.workflow-canvas .react-flow__controls button {
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
-.canvas-minimap {
-  background: hsl(var(--surface-1) / 0.9) !important;
-  border: 1px solid hsl(var(--hairline)) !important;
-  border-radius: var(--radius-control) !important;
-  box-shadow: 0 0 0 1px hsl(var(--hairline) / 0.22) !important;
-}
-
-.canvas-controls {
-  background: hsl(var(--surface-1) / 0.9) !important;
-  border: 1px solid hsl(var(--hairline)) !important;
-  border-radius: var(--radius-container) !important;
-  box-shadow:
-    0 0 0 1px hsl(var(--hairline) / 0.3),
-    0 10px 20px hsl(var(--foreground) / 0.08) !important;
-}
-
-.canvas-controls > button {
-  background: hsl(var(--surface-1)) !important;
-  border-color: hsl(var(--border)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-.canvas-controls > button:hover {
-  background: hsl(var(--surface-3)) !important;
-}
-
-.workflow-canvas .react-flow__controls button:active {
-  transform: scale(0.992);
-}
-
-/* Drag lift — nodes feel physically picked up while dragging */
-.workflow-canvas .react-flow__node-dragging .ui-interactive-card {
-  transform: translateY(-4px) scale(1.018) !important;
-  box-shadow: var(--elevation-overlay), 0 18px 44px hsl(var(--foreground) / 0.13) !important;
-  border-color: hsl(var(--hairline)) !important;
-}
-
-/* Node entrance — nodes materialize with scale+fade on mount (initial load + add) */
-.workflow-canvas .react-flow__node {
-  animation: canvas-node-enter var(--motion-base) var(--ease-emphasis) both;
-}
-
-@keyframes canvas-node-enter {
-  from {
-    opacity: 0;
-    scale: 0.93;
-  }
-  to {
-    opacity: 1;
-    scale: 1;
-  }
-}
-
-/* Connection handle scale on hover — handles feel tactile and grabbable */
-.node-handle-dot {
-  transition:
-    transform var(--motion-fast) var(--ease-emphasis),
-    background-color var(--motion-fast) var(--ease-standard) !important;
-}
-
-.node-handle-dot:hover {
-  transform: scale(1.45) !important;
-}
-
-/* Node completion pulse — brief scale pop when execution finishes */
-.node-status-completed {
-  border-color: hsl(var(--status-success) / 0.6);
-  animation: node-complete-pulse var(--motion-slow) var(--ease-emphasis) both;
-}
-
-@keyframes node-complete-pulse {
-  0%   { scale: 1; }
-  38%  { scale: 1.024; }
-  100% { scale: 1; }
-}
-
-@keyframes workflow-edge-dash {
-  to {
-    stroke-dashoffset: -20;
-  }
-}
-
-@keyframes workflow-edge-flow {
-  to {
-    stroke-dashoffset: -30;
-  }
-}
-
-@keyframes edge-label-enter {
-  from {
-    opacity: 0;
-    scale: 0.94;
-  }
-  to {
-    opacity: 1;
-    scale: 1;
-  }
-}
-
-/* One-shot ignition flash — edge visibly activates when execution reaches it */
-@keyframes workflow-edge-ignite {
-  0%   { opacity: 0.15; }
-  40%  { opacity: 1; }
-  100% { opacity: 1; }
-}
-
-.workflow-edge-fail {
-  animation:
-    workflow-edge-dash 1.35s linear infinite,
-    workflow-edge-ignite 0.5s var(--ease-emphasis) both;
-}
-
-.workflow-edge-flow {
-  animation: workflow-edge-flow 1.5s linear infinite;
-}
-
-/* Photon overlay for active pass edges — bright segments stream along a solid green base */
-@keyframes workflow-edge-photon-flow {
-  to { stroke-dashoffset: -165; }
-}
-
-.workflow-edge-photon {
-  stroke-dasharray: 15 150;
-  animation: workflow-edge-photon-flow 2s linear infinite;
-}
-
-
-/* Fix #1: Handle discoverability — subtle breathing glow makes handles visible as interactive */
-@keyframes handle-breathe {
-  0%, 100% { box-shadow: 0 0 0 1px hsl(var(--hairline) / 0.24), 0 0 0 3px hsl(var(--primary) / 0); }
-  50% { box-shadow: 0 0 0 1px hsl(var(--hairline) / 0.24), 0 0 0 3px hsl(var(--primary) / 0.12); }
-}
-
-.workflow-canvas .node-handle-dot {
-  animation: handle-breathe 3s var(--ease-standard) infinite;
-}
-
-.workflow-canvas .node-handle-dot:hover {
-  animation: none;
-  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.35), 0 0 6px hsl(var(--primary) / 0.15) !important;
-}
-
-/* Fix #2: Valid drop target highlighting during connection drag */
-.react-flow__handle-valid.node-handle-dot {
-  transform: scale(1.7) !important;
-  background-color: hsl(var(--primary)) !important;
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.25), 0 0 10px hsl(var(--primary) / 0.2) !important;
-  animation: none !important;
-}
-
-/* Fix #4: Edge draw-in animation — edges materialize with a quick fade on creation */
-@keyframes workflow-edge-enter {
-  from {
-    opacity: 0;
-    stroke-width: 0;
-  }
-  to {
-    opacity: var(--edge-opacity-idle);
-    stroke-width: inherit;
-  }
-}
-
-.workflow-edge-path {
-  animation: workflow-edge-enter var(--motion-base) var(--ease-emphasis) both;
-}
-
-/* Fix #5: Selection halo on selected edges — unmistakable selection indicator */
-.workflow-edge-selected-halo {
-  pointer-events: none;
-  opacity: 0.18;
-  transition: opacity var(--motion-fast) var(--ease-standard);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workflow-edge-fail {
-    animation: none;
-  }
-  .workflow-edge-flow {
-    animation: none;
-  }
-  .workflow-edge-photon {
-    display: none;
-  }
-  .workflow-canvas .react-flow__node {
-    animation: none;
-  }
-  .node-status-completed {
-    animation: none;
-  }
-  .workflow-canvas .node-handle-dot {
-    animation: none;
-  }
-  .workflow-edge-path {
-    animation: none;
   }
 }
 

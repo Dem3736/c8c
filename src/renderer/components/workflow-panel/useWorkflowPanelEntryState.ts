@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { resolveWorkflowInput } from "@/lib/input-type"
+import type { ExecutionRunStatus } from "@/lib/workflow-execution"
 import {
   areTemplateContractsSatisfied,
   buildContinuationArtifactPool,
@@ -10,10 +11,9 @@ import {
   type WorkflowTemplateRunContext,
 } from "@/lib/workflow-entry"
 import { deriveExecutionPolicyFlowRules } from "@/lib/flow-rules"
-import { buildProcessSpine, selectProcessSpineFactory } from "@/lib/process-spine"
 import { deriveWorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import { contextRequiresStartApproval } from "@/lib/stage-run-policy"
-import type { ArtifactRecord, CaseStateRecord, InputAttachment, ProjectFactoryBlueprint, Workflow, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CaseStateRecord, InputAttachment, Workflow, WorkflowTemplate } from "@shared/types"
 import {
   deriveEntryNextStepLabel,
   formatInputAttachmentLabel,
@@ -31,10 +31,8 @@ interface UseWorkflowPanelEntryStateParams {
   projectCaseStates: CaseStateRecord[]
   selectedWorkflowTemplateContext: WorkflowTemplateRunContext | null
   packTemplates: WorkflowTemplate[]
-  factoryBlueprint: ProjectFactoryBlueprint | null
-  runStatus: string
-  runOutcome: string | null
-  viewMode: "list" | "canvas" | "settings"
+  runStatus: ExecutionRunStatus
+  viewMode: "list" | "settings"
   pendingCreateMessage: Record<string, string>
   chatStatus: string
   workflowPastRunsCount: number
@@ -42,6 +40,29 @@ interface UseWorkflowPanelEntryStateParams {
   projectArtifactsLoading: boolean
   projectArtifactsError: string | null
   selectedProject: string | null
+}
+
+export function resolveActiveWorkflowEntryState({
+  workflowEntryState,
+  selectedWorkflowPath,
+  workflowName,
+}: {
+  workflowEntryState: WorkflowEntryState | null
+  selectedWorkflowPath: string | null
+  workflowName: string
+}): WorkflowEntryState | null {
+  if (!workflowEntryState) return null
+  if (workflowEntryState.workflowPath) {
+    return workflowEntryState.workflowPath === selectedWorkflowPath
+      ? workflowEntryState
+      : null
+  }
+  if (selectedWorkflowPath !== null) {
+    return null
+  }
+  return workflowEntryState.workflowName === workflowName
+    ? workflowEntryState
+    : null
 }
 
 export function useWorkflowPanelEntryState({
@@ -55,9 +76,7 @@ export function useWorkflowPanelEntryState({
   projectCaseStates,
   selectedWorkflowTemplateContext,
   packTemplates,
-  factoryBlueprint,
   runStatus,
-  runOutcome,
   viewMode,
   pendingCreateMessage,
   chatStatus,
@@ -67,17 +86,14 @@ export function useWorkflowPanelEntryState({
   projectArtifactsError,
   selectedProject,
 }: UseWorkflowPanelEntryStateParams) {
-  const activeEntryState = useMemo(() => {
-    if (!workflowEntryState) return null
-    if (workflowEntryState.workflowPath) {
-      return workflowEntryState.workflowPath === selectedWorkflowPath
-        ? workflowEntryState
-        : null
-    }
-    return workflowEntryState.workflowName === workflow.name
-      ? workflowEntryState
-      : null
-  }, [selectedWorkflowPath, workflow.name, workflowEntryState])
+  const activeEntryState = useMemo(
+    () => resolveActiveWorkflowEntryState({
+      workflowEntryState,
+      selectedWorkflowPath,
+      workflowName: workflow.name,
+    }),
+    [selectedWorkflowPath, workflow.name, workflowEntryState],
+  )
 
   const inputNode = workflow.nodes.find((node) => node.type === "input")
   const inputValidation = resolveWorkflowInput(inputValue, {
@@ -226,30 +242,6 @@ export function useWorkflowPanelEntryState({
     && workflowPastRunsCount > 0
     && !prepareNewRun
   )
-  const processSpineFactory = useMemo(
-    () => selectProcessSpineFactory(factoryBlueprint, selectedWorkflowTemplateContext),
-    [factoryBlueprint, selectedWorkflowTemplateContext],
-  )
-  const processSpineStages = useMemo(
-    () => buildProcessSpine({
-      context: selectedWorkflowTemplateContext,
-      nextTemplate: nextStageTemplate,
-      templates: packTemplates,
-      factory: processSpineFactory,
-      runStatus,
-      runOutcome,
-      reviewingPastRun: showIdleReviewMode,
-    }),
-    [
-      nextStageTemplate,
-      packTemplates,
-      processSpineFactory,
-      runOutcome,
-      runStatus,
-      selectedWorkflowTemplateContext,
-      showIdleReviewMode,
-    ],
-  )
   const showIdleInputPanel = (
     viewMode === "list"
     && runStatus === "idle"
@@ -286,7 +278,6 @@ export function useWorkflowPanelEntryState({
     showCreateDraftSkeleton,
     showResumeHeader,
     showIdleReviewMode,
-    processSpineStages,
     showIdleInputPanel,
     showProjectArtifactsPanel,
   }

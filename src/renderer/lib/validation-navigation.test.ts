@@ -78,18 +78,18 @@ describe("validation navigation", () => {
     })
   })
 
-  it("routes merger strategy errors to the canvas merger inspector", () => {
+  it("routes merger strategy errors to the list merger editor", () => {
     const target = resolveValidationNavigationTarget(createWorkflow(), {
       nodeId: "merger-1",
       field: "config.strategy",
       message: "strategy invalid",
       severity: "error",
-    }, "canvas")
+    }, "list")
 
     expect(target).toEqual({
-      viewMode: "canvas",
+      viewMode: "list",
       nodeId: "merger-1",
-      fieldId: "insp-merger-strategy-merger-1",
+      fieldId: "merger-strategy-merger-1",
     })
   })
 
@@ -108,7 +108,7 @@ describe("validation navigation", () => {
     })
   })
 
-  it("falls back to canvas when list mode has no matching field target", () => {
+  it("routes permission mode errors to the list skill editor", () => {
     const target = resolveValidationNavigationTarget(createWorkflow(), {
       nodeId: "skill-1",
       field: "config.permissionMode",
@@ -117,9 +117,9 @@ describe("validation navigation", () => {
     }, "list")
 
     expect(target).toEqual({
-      viewMode: "canvas",
+      viewMode: "list",
       nodeId: "skill-1",
-      fieldId: "insp-perm-mode-skill-1",
+      fieldId: "skill-permission-mode-skill-1",
     })
   })
 })

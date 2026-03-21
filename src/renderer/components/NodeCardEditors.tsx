@@ -61,6 +61,40 @@ function ClampedNumberInput({
   )
 }
 
+function OptionalClampedNumberInput({
+  value, min, max, onChange, ...props
+}: {
+  value: number | undefined
+  min: number
+  max: number
+  onChange: (v: number | undefined) => void
+} & Omit<React.ComponentProps<typeof Input>, "value" | "onChange">) {
+  const [local, setLocal] = useState<string | null>(null)
+
+  return (
+    <Input
+      {...props}
+      type="number"
+      min={min}
+      max={max}
+      value={local ?? (value ?? "")}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        if (local === null) return
+        const trimmed = local.trim()
+        if (!trimmed) {
+          onChange(undefined)
+          setLocal(null)
+          return
+        }
+        const parsed = parseInt(trimmed, 10)
+        onChange(isNaN(parsed) ? value : clampNumber(parsed, min, max))
+        setLocal(null)
+      }}
+    />
+  )
+}
+
 export function ToolArrayEditor({
   nodeId,
   label,
@@ -106,7 +140,7 @@ export function ToolArrayEditor({
               <span className="font-mono">{tool}</span>
               <button
                 type="button"
-                className="ui-icon-button h-4 w-4 rounded-sm"
+                className="ui-icon-button shrink-0 rounded-sm"
                 onClick={() => removeValue(tool)}
                 aria-label={`Remove ${tool}`}
               >
@@ -233,13 +267,12 @@ export function RuntimePolicyEditor({
           <div className="surface-inset-card space-y-2 px-2 py-2">
             <div className="flex items-center gap-3">
               <Label htmlFor={`runtime-max-tries-${nodeId}`} className="ui-meta-text text-muted-foreground">Max tries</Label>
-              <Input
+              <ClampedNumberInput
                 id={`runtime-max-tries-${nodeId}`}
-                type="number"
                 min={1}
                 max={10}
                 value={retry.maxTries || 2}
-                onChange={(e) => updateRetry({ maxTries: Math.max(1, Number(e.target.value) || 1) })}
+                onChange={(v) => updateRetry({ maxTries: v })}
                 className="w-16 h-control-sm px-2 text-body-sm text-center"
               />
             </div>
@@ -434,7 +467,7 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <div className="space-y-1">
           <Label htmlFor={`skill-output-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Output</Label>
           <Select
@@ -456,21 +489,36 @@ export function SkillNodeEditor({ nodeId, config, onConfigChange }: {
 
         <div className="space-y-1">
           <Label htmlFor={`skill-max-turns-${nodeId}`} className="ui-meta-text text-muted-foreground">Turns</Label>
-          <Input
+          <OptionalClampedNumberInput
             id={`skill-max-turns-${nodeId}`}
-            type="number"
             min={1}
             max={200}
-            value={config.maxTurns ?? ""}
-            onChange={(e) => {
-              const value = e.target.value.trim()
-              onConfigChange({
-                ...config,
-                maxTurns: value ? Math.max(1, Number(value) || 1) : undefined,
-              })
-            }}
+            value={config.maxTurns}
+            onChange={(value) => onConfigChange({ ...config, maxTurns: value })}
             className="w-full h-control-md px-3 text-body-sm"
           />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor={`skill-permission-mode-${nodeId}`} className="ui-meta-text text-muted-foreground">Mode</Label>
+          <Select
+            value={config.permissionMode || "__inherit__"}
+            onValueChange={(value) =>
+              onConfigChange({
+                ...config,
+                permissionMode: value === "__inherit__" ? undefined : value as SkillNodeConfig["permissionMode"],
+              })
+            }
+          >
+            <SelectTrigger id={`skill-permission-mode-${nodeId}`} className="w-full h-control-md text-body-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__inherit__">Inherit</SelectItem>
+              <SelectItem value="plan">Plan</SelectItem>
+              <SelectItem value="edit">Edit</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -592,14 +640,13 @@ export function SplitterNodeEditor({ nodeId, config, onConfigChange }: {
       </p>
       <div className="flex items-center gap-3">
         <Label htmlFor={`max-branches-${nodeId}`} className="ui-meta-text text-muted-foreground">Max branches</Label>
-        <Input
+        <ClampedNumberInput
           id={`max-branches-${nodeId}`}
-          type="number"
-          value={config.maxBranches || 8}
-          onChange={(e) => onConfigChange({ ...config, maxBranches: parseInt(e.target.value) || 8 })}
-          className="w-20 h-control-md px-2 py-1 text-body-sm text-center"
           min={1}
           max={20}
+          value={config.maxBranches || 8}
+          onChange={(v) => onConfigChange({ ...config, maxBranches: v })}
+          className="w-20 h-control-md px-2 py-1 text-body-sm text-center"
         />
       </div>
 
@@ -715,15 +762,12 @@ export function ApprovalNodeEditor({ nodeId, config, onConfigChange }: {
           <Label htmlFor={`approval-timeout-${nodeId}`} className="ui-meta-text text-muted-foreground">
             Timeout (minutes)
           </Label>
-          <Input
+          <OptionalClampedNumberInput
             id={`approval-timeout-${nodeId}`}
-            type="number"
             min={1}
-            value={config.timeout_minutes ?? ""}
-            onChange={(e) => {
-              const v = e.target.value === "" ? undefined : parseInt(e.target.value, 10)
-              onConfigChange({ ...config, timeout_minutes: v && !isNaN(v) ? v : undefined })
-            }}
+            max={1440}
+            value={config.timeout_minutes}
+            onChange={(value) => onConfigChange({ ...config, timeout_minutes: value })}
             placeholder="None"
             className="w-20 h-control-sm text-body-sm text-right"
           />

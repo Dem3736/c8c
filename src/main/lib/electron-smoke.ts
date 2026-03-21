@@ -4,13 +4,12 @@ import {
   type Event as ElectronEvent,
   type WebContentsConsoleMessageEventParams,
 } from "electron"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { resolve, join } from "node:path"
+import { listWorkflowHilTasks } from "@c8c/workflow-runner"
 import {
   type ElectronSmokeArtifact,
   type ElectronSmokeAssertion,
-  type ElectronSmokeCanvasState,
-  type ElectronSmokeCanvasViewport,
   type ElectronSmokeConsoleEntry,
   type ElectronSmokeExecutionSeedInput,
   type ElectronSmokeMainViewInput,
@@ -21,6 +20,7 @@ import {
   type ElectronSmokeWorkflowOpenInput,
   isElectronSmokeScenario,
 } from "@shared/electron-smoke"
+import { listProjectCaseStates } from "./case-store"
 import { saveProjectsConfig } from "./projects-config"
 import { isTestMode } from "./runtime-paths"
 import { listProjectWorkflows } from "./yaml-io"
@@ -62,19 +62,6 @@ export function isAllowlistedElectronSmokeConsoleEntry(
     entry.level === "warning"
     && entry.sourceId === "node:electron/js2c/sandbox_bundle"
     && entry.message.includes("Electron Security Warning")
-  )
-}
-
-function viewportsMatch(
-  left: ElectronSmokeCanvasViewport | null | undefined,
-  right: ElectronSmokeCanvasViewport | null | undefined,
-  tolerance = 2,
-) {
-  if (!left || !right) return false
-  return (
-    Math.abs(left.x - right.x) <= tolerance
-    && Math.abs(left.y - right.y) <= tolerance
-    && Math.abs(left.zoom - right.zoom) <= 0.02
   )
 }
 
@@ -202,6 +189,39 @@ async function waitForUiState(
   throw new Error(`Timed out waiting for ${label}.${lastState ? ` Last ui state: ${JSON.stringify(lastState)}` : ""}`)
 }
 
+async function waitForMainCondition<T>(
+  label: string,
+  read: () => Promise<T | null>,
+  predicate: (value: T) => boolean,
+  timeoutMs = 15_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs
+  let lastValue: T | null = null
+
+  while (Date.now() < deadline) {
+    lastValue = await read()
+    if (lastValue && predicate(lastValue)) {
+      return lastValue
+    }
+    await sleep(120)
+  }
+
+  throw new Error(`Timed out waiting for ${label}.${lastValue ? ` Last value: ${JSON.stringify(lastValue)}` : ""}`)
+}
+
+async function readWorkspaceRunResult(workspace: string): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await readFile(join(workspace, "run-result.json"), "utf-8")
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+async function listProjectOpenHumanTasks(projectPath: string) {
+  return listWorkflowHilTasks([join(projectPath, ".c8c", "runs")])
+}
+
 async function readElementRect(
   window: BrowserWindow,
   selector: string,
@@ -225,7 +245,7 @@ async function readElementRect(
 
 async function waitForRendererSmokeMethod(
   window: BrowserWindow,
-  methodName: "openWorkflow" | "setMainView" | "seedExecutionState" | "getCanvasState" | "setCanvasViewport",
+  methodName: "openWorkflow" | "setMainView" | "seedExecutionState",
   timeoutMs = 15_000,
 ) {
   const deadline = Date.now() + timeoutMs
@@ -253,8 +273,8 @@ async function waitForRendererSmokeMethod(
 
 async function callRendererSmokeMethod<T>(
   window: BrowserWindow,
-  methodName: "openWorkflow" | "setMainView" | "seedExecutionState" | "getCanvasState" | "setCanvasViewport",
-  input?: ElectronSmokeWorkflowOpenInput | ElectronSmokeMainViewInput | ElectronSmokeExecutionSeedInput | ElectronSmokeCanvasViewport,
+  methodName: "openWorkflow" | "setMainView" | "seedExecutionState",
+  input?: ElectronSmokeWorkflowOpenInput | ElectronSmokeMainViewInput | ElectronSmokeExecutionSeedInput,
 ) {
   await waitForRendererSmokeMethod(window, methodName)
   const invocation = input === undefined
@@ -272,39 +292,6 @@ async function callRendererSmokeMethod<T>(
       return Promise.resolve(${invocation}).then((value) => ({ ok: true, value }));
     })()`,
   )
-}
-
-async function readCanvasState(window: BrowserWindow): Promise<ElectronSmokeCanvasState | null> {
-  const result = await callRendererSmokeMethod<ElectronSmokeCanvasState | null>(
-    window,
-    "getCanvasState",
-  )
-  if (!result.ok) return null
-  return result.value ?? null
-}
-
-async function waitForCanvasState(
-  window: BrowserWindow,
-  label: string,
-  predicate: (state: ElectronSmokeCanvasState) => boolean,
-  timeoutMs = 15_000,
-): Promise<ElectronSmokeCanvasState> {
-  const deadline = Date.now() + timeoutMs
-  let lastState: ElectronSmokeCanvasState | null = null
-
-  while (Date.now() < deadline) {
-    if (window.isDestroyed()) {
-      throw new Error(`Electron smoke window closed while waiting for ${label}.`)
-    }
-
-    lastState = await readCanvasState(window)
-    if (lastState && predicate(lastState)) {
-      return lastState
-    }
-    await sleep(120)
-  }
-
-  throw new Error(`Timed out waiting for ${label}.${lastState ? ` Last canvas state: ${JSON.stringify(lastState)}` : ""}`)
 }
 
 async function focusWindow(window: BrowserWindow) {
@@ -453,6 +440,33 @@ async function clickElementByText(
   )
 }
 
+async function maybeDismissOnboarding(window: BrowserWindow) {
+  const hasSkipSetup = await executeRendererScript<boolean>(
+    window,
+    `(() => Array.from(document.querySelectorAll("button")).some((candidate) => {
+      if (!(candidate instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(candidate);
+      const rect = candidate.getBoundingClientRect();
+      const text = (candidate.innerText || candidate.textContent || "").trim();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0
+        && text.includes("Skip setup");
+    }))()`,
+  )
+
+  if (!hasSkipSetup) return
+
+  await clickElementByText(window, "Skip setup", "button")
+  await waitForUiState(
+    window,
+    "application shell after onboarding",
+    (uiState) => uiState.applicationShellVisible && uiState.mainView !== "onboarding",
+    8_000,
+  )
+}
+
 async function openSeededWorkflow(window: BrowserWindow, input: ElectronSmokeWorkflowOpenInput) {
   const result = await callRendererSmokeMethod<boolean>(window, "openWorkflow", input)
   assertSmoke(result.ok && result.value !== false, `Failed to open smoke flow ${input.workflowPath}.`)
@@ -466,11 +480,6 @@ async function setSmokeMainView(window: BrowserWindow, input: ElectronSmokeMainV
 async function seedSmokeExecutionState(window: BrowserWindow, input: ElectronSmokeExecutionSeedInput) {
   const result = await callRendererSmokeMethod<boolean>(window, "seedExecutionState", input)
   assertSmoke(result.ok && result.value !== false, "Failed to seed smoke execution state.")
-}
-
-async function setSmokeCanvasViewport(window: BrowserWindow, viewport: ElectronSmokeCanvasViewport) {
-  const result = await callRendererSmokeMethod<boolean>(window, "setCanvasViewport", viewport)
-  assertSmoke(result.ok && result.value !== false, "Failed to set smoke canvas viewport.")
 }
 
 async function resolveSeededProjectWorkflows(
@@ -522,17 +531,23 @@ async function assertLaunchEmptyScenario(
   window: BrowserWindow,
   assertions: ElectronSmokeAssertion[],
 ): Promise<ScenarioExecutionResult> {
-  const state = await waitForUiState(
-    window,
-    "empty shell",
-    (state) =>
-      state.applicationShellVisible
-      && state.sidebarVisible
-      && state.mainView === "thread"
-      && state.firstLaunch === false
-      && state.projectCount === 0
-      && state.selectedProject === null,
-  )
+  const matchesEmptyShell = (state: ElectronSmokeUiState) =>
+    state.applicationShellVisible
+    && state.sidebarVisible
+    && state.mainView === "thread"
+    && state.firstLaunch === false
+    && state.projectCount === 0
+    && state.selectedProject === null
+
+  let state: ElectronSmokeUiState
+
+  try {
+    state = await waitForUiState(window, "empty shell", matchesEmptyShell)
+  } catch {
+    await maybeDismissOnboarding(window)
+    state = await waitForUiState(window, "empty shell after onboarding", matchesEmptyShell)
+  }
+
   recordAssertion(assertions, "Opened app shell in empty state", `mainView=${state.mainView}, projects=${state.projectCount}`)
   return {
     uiState: state,
@@ -631,31 +646,29 @@ async function assertSettingsNavigationScenario(
   }
 }
 
-async function assertQuickSwitchRailScenario(
+async function assertQuickSwitchShortcutsScenario(
   window: BrowserWindow,
   assertions: ElectronSmokeAssertion[],
 ): Promise<ScenarioExecutionResult> {
-  const { projectPath, workflows } = await resolveSeededProjectWorkflows("quick-switch-rail", 2)
+  const { projectPath, workflows } = await resolveSeededProjectWorkflows("quick-switch-shortcuts", 2)
   const alphaWorkflow = findWorkflowByName(workflows, "Alpha flow") || workflows[0]
   const betaWorkflow = findWorkflowByName(workflows, "Beta flow") || workflows[1]
 
-  await waitForSeededProjectReady(window, projectPath, [alphaWorkflow.name, betaWorkflow.name])
   await openSeededWorkflow(window, {
     projectPath,
     workflowPath: alphaWorkflow.path,
   })
   await waitForUiState(
     window,
-    "quick switch rail ready",
+    "quick switch shortcuts ready",
     (state) =>
       state.applicationShellVisible
       && state.currentWorkflowName === alphaWorkflow.name
       && state.selectedWorkflowPath === alphaWorkflow.path
-      && state.flowStatusRailVisible
-      && state.flowStatusRailLabels.includes(alphaWorkflow.name)
-      && state.flowStatusRailLabels.includes(betaWorkflow.name),
+      && state.availableWorkflowNames.includes(alphaWorkflow.name)
+      && state.availableWorkflowNames.includes(betaWorkflow.name),
   )
-  recordAssertion(assertions, "Rendered quick switch rail", `${alphaWorkflow.name}, ${betaWorkflow.name}`)
+  recordAssertion(assertions, "Prepared quick switch shortcuts", `${alphaWorkflow.name}, ${betaWorkflow.name}`)
 
   await focusWindow(window)
   await dispatchShortcut(window, { key: "2", primary: true })
@@ -664,126 +677,27 @@ async function assertQuickSwitchRailScenario(
     "quick switched flow",
     (state) =>
       state.currentWorkflowName === betaWorkflow.name
-      && state.selectedWorkflowPath === betaWorkflow.path
-      && state.flowStatusRailVisible,
+      && state.selectedWorkflowPath === betaWorkflow.path,
   )
   recordAssertion(assertions, "Switched flows with primary+2", `selected=${betaWorkflow.name}`)
 
-  await clickElementByAriaLabel(window, `Open ${alphaWorkflow.name}`)
+  await dispatchShortcut(window, { key: "1", primary: true })
   const finalState = await waitForUiState(
     window,
-    "quick switch rail click selection",
+    "quick switch return shortcut",
     (state) =>
       state.currentWorkflowName === alphaWorkflow.name
-      && state.selectedWorkflowPath === alphaWorkflow.path
-      && state.flowStatusRailVisible,
+      && state.selectedWorkflowPath === alphaWorkflow.path,
   )
-  recordAssertion(assertions, "Switched flows from rail click", `selected=${alphaWorkflow.name}`)
+  recordAssertion(assertions, "Switched flows with primary+1", `selected=${alphaWorkflow.name}`)
   return {
     uiState: finalState,
     invariants: {
-      kind: "quick-switch-rail",
+      kind: "quick-switch-shortcuts",
       workflowNames: [alphaWorkflow.name, betaWorkflow.name],
       selectedInitially: alphaWorkflow.name,
       selectedAfterShortcut: shortcutState.currentWorkflowName,
-      selectedAfterClick: finalState.currentWorkflowName,
-    },
-  }
-}
-
-async function assertCanvasAddRecenterDeleteScenario(
-  window: BrowserWindow,
-  assertions: ElectronSmokeAssertion[],
-): Promise<ScenarioExecutionResult> {
-  const { projectPath, workflows } = await resolveSeededProjectWorkflows("canvas-add-recenter-delete", 1)
-  const canvasWorkflow = findWorkflowByName(workflows, "Canvas flow") || workflows[0]
-
-  await waitForSeededProjectReady(window, projectPath, [canvasWorkflow.name])
-  await openSeededWorkflow(window, {
-    projectPath,
-    workflowPath: canvasWorkflow.path,
-    viewMode: "canvas",
-  })
-  await waitForUiState(
-    window,
-    "canvas flow open",
-    (state) =>
-      state.applicationShellVisible
-      && state.currentWorkflowName === canvasWorkflow.name
-      && state.viewMode === "canvas",
-  )
-
-  const baselineCanvasState = await waitForCanvasState(
-    window,
-    "baseline canvas state",
-    (state) => state.nodeCount >= 3 && Boolean(state.viewport),
-  )
-  assertSmoke(baselineCanvasState.viewport, "Canvas scenario requires an initial viewport.")
-  recordAssertion(assertions, "Opened seeded canvas flow", `nodes=${baselineCanvasState.nodeCount}`)
-
-  const offsetViewport: ElectronSmokeCanvasViewport = {
-    x: baselineCanvasState.viewport.x + 420,
-    y: baselineCanvasState.viewport.y + 320,
-    zoom: 0.45,
-  }
-  await setSmokeCanvasViewport(window, offsetViewport)
-  await waitForCanvasState(
-    window,
-    "offset canvas viewport",
-    (state) => viewportsMatch(state.viewport, offsetViewport),
-  )
-  recordAssertion(assertions, "Moved canvas viewport through smoke bridge", `x=${offsetViewport.x}, y=${offsetViewport.y}, zoom=${offsetViewport.zoom}`)
-
-  await focusWindow(window)
-  await dispatchShortcut(window, { key: "l", primary: true, shift: true })
-  const recenteredState = await waitForCanvasState(
-    window,
-    "recentered canvas",
-    (state) => Boolean(state.viewport) && !viewportsMatch(state.viewport, offsetViewport),
-  )
-  recordAssertion(assertions, "Recentered canvas with keyboard shortcut")
-
-  await clickElementByAriaLabel(window, "Open add step menu")
-  await clickElementByText(window, "Add Approval", "[role='menuitem']")
-  const addedState = await waitForCanvasState(
-    window,
-    "approval step added",
-    (state) =>
-      state.nodeCount === baselineCanvasState.nodeCount + 1
-      && state.selectedNodeLabel === "Review and approve this step before continuing.",
-  )
-  recordAssertion(assertions, "Added approval step from canvas menu")
-
-  await focusWindow(window)
-  await dispatchShortcut(window, { key: "Delete" })
-  const deletedState = await waitForCanvasState(
-    window,
-    "approval step deleted",
-    (state) =>
-      state.nodeCount === baselineCanvasState.nodeCount
-      && state.selectedNodeLabel !== "Review and approve this step before continuing.",
-  )
-  recordAssertion(assertions, "Deleted selected approval step with keyboard")
-
-  const finalState = await waitForUiState(
-    window,
-    "canvas scenario final ui state",
-    (state) =>
-      state.applicationShellVisible
-      && state.currentWorkflowName === canvasWorkflow.name
-      && state.viewMode === "canvas",
-  )
-  return {
-    uiState: finalState,
-    invariants: {
-      kind: "canvas-add-recenter-delete",
-      nodeCountBefore: baselineCanvasState.nodeCount,
-      nodeCountAfterAdd: addedState.nodeCount,
-      nodeCountAfterDelete: deletedState.nodeCount,
-      viewportChanged: recenteredState.viewport
-        ? !viewportsMatch(recenteredState.viewport, offsetViewport)
-        : true,
-      addedNodeLabel: addedState.selectedNodeLabel,
+      selectedAfterReturnShortcut: finalState.currentWorkflowName,
     },
   }
 }
@@ -886,7 +800,8 @@ async function assertCreateReadyContinuationScenario(
     '[aria-label="Continue saved work"]',
     (text) =>
       text.includes("Checkout polish")
-      && text.includes("Ready to continue to Research the Change."),
+      && text.includes("Research the Change")
+      && text.includes("Latest check: Project brief saved. Research can continue."),
   )
   assertSmoke(
     continuationText.includes("Latest check: Project brief saved. Research can continue."),
@@ -904,7 +819,7 @@ async function assertCreateReadyContinuationScenario(
     invariants: {
       kind: "create-ready-continuation",
       title: "Checkout polish",
-      readinessText: "Ready to continue to Research the Change.",
+      readinessText: "Project Brief from Shape / Map -> Research the Change",
       actionLabel: "Continue work",
       latestCheckText: "Project brief saved. Research can continue.",
     },
@@ -942,7 +857,7 @@ async function assertBlockedRelaunchScenario(
       && text.includes("Waiting on you"),
   )
   assertSmoke(
-    createContinuationText.includes("Latest check: Approval pending. Review block before verification continues."),
+    createContinuationText.includes("Approval pending. Review block before verification continues."),
     "Blocked continuation should show the durable approval check.",
   )
   recordAssertion(assertions, "Rendered blocked continuation on create page", "Checkout polish waiting on approval")
@@ -959,29 +874,19 @@ async function assertBlockedRelaunchScenario(
       && uiState.viewMode === "list",
   )
 
-  const headerText = await waitForElementText(
-    window,
-    "blocked resume header",
-    '[data-workflow-resume-header="true"]',
-    (text) =>
-      text.includes("Why paused")
-      && text.includes("Confirm whether the checkout polish is ready for verification."),
-  )
-  assertSmoke(
-    headerText.includes("Blocked: awaiting your approval"),
-    "Blocked resume header should explain the approval pause.",
-  )
-
   const taskPanelText = await waitForElementText(
     window,
     "blocked task panel",
     '[data-blocked-task-panel="true"]',
     (text) =>
-      text.includes("Approve and continue run")
+      text.includes("Step input")
+      && text.includes("On approve")
+      && text.includes("On reject")
+      && text.includes("Approve & Continue")
       && text.includes("Reject"),
   )
   recordAssertion(assertions, "Opened blocked work into the same flow shell", blockedWorkflow.name)
-  recordAssertion(assertions, "Rendered embedded blocked task panel", "Approve and continue run")
+  recordAssertion(assertions, "Rendered embedded blocked task panel", "Approve & Continue")
 
   return {
     uiState: state,
@@ -989,10 +894,304 @@ async function assertBlockedRelaunchScenario(
       kind: "blocked-relaunch",
       workflowName: blockedWorkflow.name,
       createActionLabel: "Open approval",
-      blockedHeaderVisible: headerText.includes("Why paused"),
-      blockedTaskVisible: taskPanelText.includes("Approve and continue run"),
-      statusText: "Blocked: awaiting your approval",
+      blockedHeaderVisible: false,
+      blockedTaskVisible: taskPanelText.includes("Approve & Continue"),
+      statusText: "Blocked",
       reasonText: "Confirm whether the checkout polish is ready for verification.",
+    },
+  }
+}
+
+async function assertFactoryThinBridgeScenario(
+  window: BrowserWindow,
+  assertions: ElectronSmokeAssertion[],
+): Promise<ScenarioExecutionResult> {
+  const seed = resolveElectronSmokeSeed()
+  assertSmoke(seed.selectedProject, "factory-thin-bridge requires a selected project.")
+
+  await waitForSeededProjectReady(window, seed.selectedProject)
+  await setSmokeMainView(window, {
+    mainView: "workflow_create",
+    projectPath: seed.selectedProject,
+  })
+  await waitForUiState(
+    window,
+    "ready create page visible",
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "workflow_create"
+      && uiState.selectedProject === seed.selectedProject,
+  )
+
+  const createContinuationText = await waitForElementText(
+    window,
+    "ready continuation card",
+    '[aria-label="Continue saved work"]',
+    (text) =>
+      text.includes("Checkout polish")
+      && text.includes("Research the Change")
+      && text.includes("Latest check: Project brief saved. Research can continue."),
+  )
+  recordAssertion(assertions, "Rendered the same saved work on create surface", "Checkout polish")
+
+  await setSmokeMainView(window, {
+    mainView: "factory",
+    projectPath: seed.selectedProject,
+  })
+  await waitForUiState(
+    window,
+    "factory page visible",
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "factory"
+      && uiState.selectedProject === seed.selectedProject,
+  )
+
+  const caseDetailText = await waitForElementText(
+    window,
+    "factory case detail",
+    '[data-factory-case-shell="true"]',
+    (text) =>
+      text.includes("Checkout polish")
+      && text.includes("Project Brief")
+      && text.includes("Project brief saved. Research can continue.")
+      && text.includes("Continue in runtime shell"),
+  )
+  assertSmoke(
+    createContinuationText.includes("Checkout polish")
+      && caseDetailText.includes("Checkout polish")
+      && createContinuationText.includes("Project brief saved. Research can continue.")
+      && caseDetailText.includes("Project brief saved. Research can continue."),
+    "Factory should preserve the same saved-work meaning as the create surface.",
+  )
+  recordAssertion(assertions, "Rendered saved work in factory as a real substrate view", "Checkout polish -> Project Brief")
+
+  await clickElementByText(window, "Continue in runtime shell", "button")
+  const state = await waitForUiState(
+    window,
+    "runtime shell open from factory",
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "thread"
+      && uiState.currentWorkflowName === "Delivery Lab: Research the Change"
+      && uiState.selectedProject === seed.selectedProject,
+  )
+
+  const resumeHeaderText = await waitForElementText(
+    window,
+    "runtime shell resume header",
+    '[data-workflow-resume-header="true"]',
+    (text) =>
+      text.includes("Project Brief")
+      && text.includes("Attached")
+      && text.includes("Status")
+      && text.includes("Continue"),
+  )
+  recordAssertion(assertions, "Continued from factory into runtime shell", "Delivery Lab: Research the Change")
+  await waitForElementText(
+    window,
+    "runtime shell results",
+    "body",
+    (text) =>
+      text.includes("Project Brief")
+      && text.includes("Attached"),
+  )
+  recordAssertion(assertions, "Rendered attached saved result in runtime shell", "Project Brief")
+
+  return {
+    uiState: state,
+    invariants: {
+      kind: "factory-thin-bridge",
+      workLabel: "Checkout polish",
+      latestResult: "Project Brief",
+      latestCheckText: "Project brief saved. Research can continue.",
+      actionLabel: "Continue in runtime shell",
+      runtimeWorkflowName: state.currentWorkflowName || "Delivery Lab: Research the Change",
+    },
+  }
+}
+
+async function openBlockedApprovalInThread(
+  window: BrowserWindow,
+  scenario: "blocked-approve-resolution" | "blocked-reject-resolution",
+  assertions: ElectronSmokeAssertion[],
+) {
+  const { projectPath, workflows } = await resolveSeededProjectWorkflows(scenario, 1)
+  const blockedWorkflow = findWorkflowByName(workflows, "Blocked approval flow") || workflows[0]
+
+  await waitForSeededProjectReady(window, projectPath, [blockedWorkflow.name])
+  await setSmokeMainView(window, {
+    mainView: "workflow_create",
+    projectPath,
+  })
+  await waitForUiState(
+    window,
+    `${scenario} create page visible`,
+    (uiState) =>
+      uiState.applicationShellVisible
+      && uiState.mainView === "workflow_create"
+      && uiState.selectedProject === projectPath,
+  )
+
+  await waitForElementText(
+    window,
+    `${scenario} continuation card`,
+    '[aria-label="Continue saved work"]',
+    (text) =>
+      text.includes("Checkout polish")
+      && text.includes("Open approval")
+      && text.includes("Waiting on you"),
+  )
+  await clickElementByText(window, "Open approval", "button")
+  const uiState = await waitForUiState(
+    window,
+    `${scenario} blocked flow shell open`,
+    (state) =>
+      state.applicationShellVisible
+      && state.mainView === "thread"
+      && state.currentWorkflowName === blockedWorkflow.name
+      && state.selectedWorkflowPath === blockedWorkflow.path
+      && state.viewMode === "list",
+  )
+
+  await waitForElementText(
+    window,
+    `${scenario} blocked task panel`,
+    '[data-blocked-task-panel="true"]',
+    (text) =>
+      text.includes("Step input")
+      && text.includes("On approve")
+      && text.includes("On reject")
+      && text.includes("Approve & Continue")
+      && text.includes("Reject"),
+  )
+  recordAssertion(assertions, "Opened blocked approval in runtime shell", blockedWorkflow.name)
+
+  return {
+    projectPath,
+    blockedWorkflow,
+    uiState,
+  }
+}
+
+async function assertBlockedApproveResolutionScenario(
+  window: BrowserWindow,
+  assertions: ElectronSmokeAssertion[],
+): Promise<ScenarioExecutionResult> {
+  const { projectPath, blockedWorkflow, uiState } = await openBlockedApprovalInThread(
+    window,
+    "blocked-approve-resolution",
+    assertions,
+  )
+  const caseStateBefore = (await listProjectCaseStates(projectPath))
+    .find((entry) => entry.workLabel === "Checkout polish") || null
+  assertSmoke(caseStateBefore?.workflowPath, "blocked-approve-resolution requires a case state workflow path.")
+  const workspace = join(projectPath, ".c8c", "runs", "run-blocked-approval")
+
+  await clickElementByText(window, "Approve & Continue", "button")
+
+  const completedRun = await waitForMainCondition(
+    "approval resume result",
+    () => readWorkspaceRunResult(workspace),
+    (result) => result.status === "completed",
+  )
+  const resolvedCaseState = await waitForMainCondition(
+    "approved case state",
+    async () => {
+      const states = await listProjectCaseStates(projectPath)
+      return states.find((entry) => entry.workLabel === "Checkout polish") || null
+    },
+    (state) => state.continuationStatus === "ready" && state.lastGate?.outcome === "passed",
+  )
+  const openTasks = await waitForMainCondition(
+    "closed approval tasks",
+    () => listProjectOpenHumanTasks(projectPath),
+    (tasks) => tasks.length === 0,
+  )
+  await waitForElementText(
+    window,
+    "post-approval runtime shell",
+    "body",
+    (text) =>
+      text.includes("Result is ready to review")
+      && !text.includes("Approve & Continue")
+      && !text.includes("On approve"),
+  )
+
+  recordAssertion(assertions, "Approved blocked work and finished the suspended run", blockedWorkflow.name)
+  recordAssertion(assertions, "Persisted approval pass into durable case state", resolvedCaseState.lastGate?.summaryText || "Approval recorded")
+
+  return {
+    uiState,
+    invariants: {
+      kind: "blocked-approve-resolution",
+      workflowName: blockedWorkflow.name,
+      finalRunStatus: String(completedRun.status || ""),
+      continuationStatus: resolvedCaseState.continuationStatus,
+      openTaskCount: openTasks.length,
+    },
+  }
+}
+
+async function assertBlockedRejectResolutionScenario(
+  window: BrowserWindow,
+  assertions: ElectronSmokeAssertion[],
+): Promise<ScenarioExecutionResult> {
+  const { projectPath, blockedWorkflow, uiState } = await openBlockedApprovalInThread(
+    window,
+    "blocked-reject-resolution",
+    assertions,
+  )
+
+  await clickElementByText(window, "Reject", "button")
+
+  const resolvedCaseState = await waitForMainCondition(
+    "rejected case state",
+    async () => {
+      const states = await listProjectCaseStates(projectPath)
+      return states.find((entry) => entry.workLabel === "Checkout polish") || null
+    },
+    (state) => state.continuationStatus === "blocked_by_check" && state.lastGate?.outcome === "rejected",
+  )
+  const openTasks = await waitForMainCondition(
+    "cleared rejected approval tasks",
+    () => listProjectOpenHumanTasks(projectPath),
+    (tasks) => tasks.length === 0,
+  )
+
+  await setSmokeMainView(window, {
+    mainView: "factory",
+    projectPath,
+  })
+  await waitForUiState(
+    window,
+    "factory visible after reject",
+    (state) =>
+      state.applicationShellVisible
+      && state.mainView === "factory"
+      && state.selectedProject === projectPath,
+  )
+  await waitForElementText(
+    window,
+    "rejected factory case detail",
+    '[data-factory-case-shell="true"]',
+    (text) =>
+      text.includes("Checkout polish")
+      && text.includes("rejected and is blocked")
+      && !text.includes("Continue in runtime shell"),
+  )
+
+  recordAssertion(assertions, "Rejected blocked work and cleared the open approval task", blockedWorkflow.name)
+  recordAssertion(assertions, "Persisted rejection into durable blocked state", resolvedCaseState.lastGate?.summaryText || "Rejected")
+
+  return {
+    uiState,
+    invariants: {
+      kind: "blocked-reject-resolution",
+      workflowName: blockedWorkflow.name,
+      continuationStatus: resolvedCaseState.continuationStatus,
+      lastGateOutcome: resolvedCaseState.lastGate?.outcome || "",
+      openTaskCount: openTasks.length,
     },
   }
 }
@@ -1002,6 +1201,9 @@ async function executeScenario(
   window: BrowserWindow,
   assertions: ElectronSmokeAssertion[],
 ): Promise<ScenarioExecutionResult> {
+  if (scenario !== "launch-empty") {
+    await maybeDismissOnboarding(window)
+  }
   if (scenario === "launch-empty") {
     return assertLaunchEmptyScenario(window, assertions)
   }
@@ -1014,11 +1216,8 @@ async function executeScenario(
   if (scenario === "settings-navigation") {
     return assertSettingsNavigationScenario(window, assertions)
   }
-  if (scenario === "quick-switch-rail") {
-    return assertQuickSwitchRailScenario(window, assertions)
-  }
-  if (scenario === "canvas-add-recenter-delete") {
-    return assertCanvasAddRecenterDeleteScenario(window, assertions)
+  if (scenario === "quick-switch-shortcuts") {
+    return assertQuickSwitchShortcutsScenario(window, assertions)
   }
   if (scenario === "approval-dialog") {
     return assertApprovalDialogScenario(window, assertions)
@@ -1026,7 +1225,16 @@ async function executeScenario(
   if (scenario === "create-ready-continuation") {
     return assertCreateReadyContinuationScenario(window, assertions)
   }
-  return assertBlockedRelaunchScenario(window, assertions)
+  if (scenario === "blocked-relaunch") {
+    return assertBlockedRelaunchScenario(window, assertions)
+  }
+  if (scenario === "factory-thin-bridge") {
+    return assertFactoryThinBridgeScenario(window, assertions)
+  }
+  if (scenario === "blocked-approve-resolution") {
+    return assertBlockedApproveResolutionScenario(window, assertions)
+  }
+  return assertBlockedRejectResolutionScenario(window, assertions)
 }
 
 export async function prepareElectronSmokeLaunchState(
@@ -1071,10 +1279,8 @@ function focusSelectorsForScenario(scenario: ElectronSmokeScenario) {
       return [{ label: "command-palette", selector: '[aria-label="Command palette"]' }]
     case "settings-navigation":
       return [{ label: "settings-page", selector: 'h1' }]
-    case "quick-switch-rail":
-      return [{ label: "quick-switch-rail", selector: '[aria-label="Quick switch rail"]' }]
-    case "canvas-add-recenter-delete":
-      return [{ label: "workflow-canvas", selector: ".workflow-canvas" }]
+    case "quick-switch-shortcuts":
+      return [{ label: "application-shell", selector: '[role="application"][aria-label="c8c"]' }]
     case "approval-dialog":
       return [{ label: "approval-dialog", selector: '[role="dialog"]' }]
     case "create-ready-continuation":
@@ -1083,6 +1289,20 @@ function focusSelectorsForScenario(scenario: ElectronSmokeScenario) {
       return [
         { label: "blocked-resume-header", selector: '[data-workflow-resume-header="true"]' },
         { label: "blocked-task-panel", selector: '[data-blocked-task-panel="true"]' },
+      ]
+    case "factory-thin-bridge":
+      return [
+        { label: "factory-case-detail", selector: '[data-factory-case-shell="true"]' },
+        { label: "runtime-resume-header", selector: '[data-workflow-resume-header="true"]' },
+      ]
+    case "blocked-approve-resolution":
+      return [
+        { label: "blocked-task-panel", selector: '[data-blocked-task-panel="true"]' },
+        { label: "workflow-runtime", selector: '[role="application"][aria-label="c8c"]' },
+      ]
+    case "blocked-reject-resolution":
+      return [
+        { label: "factory-case-detail", selector: '[data-factory-case-shell="true"]' },
       ]
     default:
       return [{ label: "application-shell", selector: '[role="application"][aria-label="c8c"]' }]
@@ -1205,7 +1425,9 @@ export function runElectronSmokeScenarioIfRequested(window: BrowserWindow) {
       await writeFile(reportPath, JSON.stringify(report, null, 2))
       app.exit(1)
     } finally {
-      window.webContents.off("console-message", onConsoleMessage)
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.off("console-message", onConsoleMessage)
+      }
     }
   })()
 }

@@ -2,68 +2,21 @@ import type { ComponentProps, ReactNode, RefObject } from "react"
 import { TabsContent } from "@/components/ui/tabs"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
-import { CanvasView } from "@/components/CanvasView"
-import { NodeInspector } from "@/components/canvas/NodeInspector"
-import { InputPanel } from "@/components/InputPanel"
 import { OutputPanel } from "@/components/OutputPanel"
 import { WorkflowSettingsPanel } from "@/components/WorkflowSettingsPanel"
 import { ChainBuilder } from "@/components/ChainBuilder"
 import {
   StageInputSection,
   WorkflowDraftSkeleton,
+  WorkflowIdleStageContract,
   WorkflowResumeHeader,
 } from "@/components/workflow-panel/WorkflowPanelInlineSections"
 import { cn } from "@/lib/cn"
 import type { WorkflowBlockedResumeSummary } from "@/lib/workflow-blocked-resume"
-import type { FlowRulePreview } from "@/lib/flow-rules"
 import type { WorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import type { ArtifactContract, ArtifactRecord, PersistedRunSnapshot } from "@shared/types"
 import type { WorkflowEntryState } from "@/lib/workflow-entry"
 import type { ExecutionRunStatus, ExecutionSurfaceNotice } from "@/lib/workflow-execution"
-
-interface WorkflowCanvasTabProps {
-  surfaceNotice: ExecutionSurfaceNotice | null
-  onSurfaceNoticeAction: () => void
-  onDismissSurfaceNotice: () => void
-  outputPanelProps: ComponentProps<typeof OutputPanel>
-}
-
-export function WorkflowCanvasTab({
-  surfaceNotice,
-  onSurfaceNoticeAction,
-  onDismissSurfaceNotice,
-  outputPanelProps,
-}: WorkflowCanvasTabProps) {
-  return (
-    <TabsContent value="canvas" className="mt-0 flex-1 min-h-0 flex flex-col overflow-hidden ui-fade-slide-in">
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          <SectionErrorBoundary sectionName="canvas view">
-            <CanvasView
-              surfaceBanner={surfaceNotice ? (
-                <ExecutionSurfaceNoticeBanner
-                  notice={surfaceNotice}
-                  onAction={onSurfaceNoticeAction}
-                  onDismiss={onDismissSurfaceNotice}
-                  className="pointer-events-auto max-w-[560px] shadow-sm backdrop-blur"
-                />
-              ) : null}
-            />
-          </SectionErrorBoundary>
-        </div>
-        <NodeInspector />
-      </div>
-      <div className="ui-scroll-region border-t border-hairline overflow-y-auto h-[clamp(120px,30vh,320px)]">
-        <div className="ui-content-shell py-6 space-y-6">
-          <InputPanel />
-          <SectionErrorBoundary sectionName="output panel">
-            <OutputPanel {...outputPanelProps} />
-          </SectionErrorBoundary>
-        </div>
-      </div>
-    </TabsContent>
-  )
-}
 
 interface WorkflowSettingsTabProps {
   surfaceNotice: ExecutionSurfaceNotice | null
@@ -104,17 +57,9 @@ interface WorkflowListTabProps {
   entryStageLabel: string | null
   resumeEntrySummary: WorkflowResumeEntrySummary | null
   blockedResumeSummary: WorkflowBlockedResumeSummary | null
-  entryFlowRules: FlowRulePreview[]
   entryNextStepLabel: string
   stageStartInputLabels: string[]
   onPrimaryEntryAction: () => void
-  onOpenResumeArtifact: (() => void) | null
-  onRefine: () => void
-  onToggleEntryEditor: () => void
-  onAttachCapability: () => void
-  showEntryEditor: boolean
-  canShowAgentPanel: boolean
-  onDismissEntry: () => void
   inputPanelRef: RefObject<HTMLDivElement | null>
   showProjectArtifactsPanel: boolean
   combinedArtifactRecords: ArtifactRecord[]
@@ -122,11 +67,20 @@ interface WorkflowListTabProps {
   projectArtifactsError: string | null
   requiredContracts?: ArtifactContract[]
   onOpenArtifact: (artifact: ArtifactRecord) => void
+  showIdleStageContract: boolean
+  idleStageContract: {
+    title: string
+    resultLabel: string
+    summary: string
+    inputLabels: string[]
+  } | null
   showIdleInputPanel: boolean
+  showFlowEditor: boolean
   chainBuilderMode: ComponentProps<typeof ChainBuilder>["mode"]
   onFocusStageDetails: ComponentProps<typeof ChainBuilder>["onStageSelect"]
   reviewSnapshot: PersistedRunSnapshot | null
   showReviewOutputMode: boolean
+  showReviewOutputPanel?: boolean
   blockedTaskPanel?: ReactNode
   runStatus: ExecutionRunStatus
   outputPanelRef: RefObject<HTMLDivElement | null>
@@ -145,17 +99,9 @@ export function WorkflowListTab({
   entryStageLabel,
   resumeEntrySummary,
   blockedResumeSummary,
-  entryFlowRules,
   entryNextStepLabel,
   stageStartInputLabels,
   onPrimaryEntryAction,
-  onOpenResumeArtifact,
-  onRefine,
-  onToggleEntryEditor,
-  onAttachCapability,
-  showEntryEditor,
-  canShowAgentPanel,
-  onDismissEntry,
   inputPanelRef,
   showProjectArtifactsPanel,
   combinedArtifactRecords,
@@ -163,11 +109,15 @@ export function WorkflowListTab({
   projectArtifactsError,
   requiredContracts,
   onOpenArtifact,
+  showIdleStageContract,
+  idleStageContract,
   showIdleInputPanel,
+  showFlowEditor,
   chainBuilderMode,
   onFocusStageDetails,
   reviewSnapshot,
   showReviewOutputMode,
+  showReviewOutputPanel = true,
   blockedTaskPanel = null,
   runStatus,
   outputPanelRef,
@@ -184,7 +134,7 @@ export function WorkflowListTab({
           <WorkflowDraftSkeleton />
         ) : (
           <>
-            {showResumeHeader && activeEntryState && (
+            {showResumeHeader && activeEntryState && !blockedResumeSummary && (
               <>
                 <WorkflowResumeHeader
                   entry={activeEntryState}
@@ -194,18 +144,10 @@ export function WorkflowListTab({
                   stageLabel={entryStageLabel}
                   resumeSummary={resumeEntrySummary}
                   blockedResumeSummary={blockedResumeSummary}
-                  flowRules={entryFlowRules}
                   nextStepLabel={entryNextStepLabel}
                   inputLabels={stageStartInputLabels}
                   onPrimaryAction={onPrimaryEntryAction}
                   primaryActionLabel={blockedResumeSummary?.primaryActionLabel || (readyToRun ? (resumeEntrySummary?.continueLabel || "Run") : "Add input")}
-                  onOpenResumeArtifact={onOpenResumeArtifact}
-                  onRefine={onRefine}
-                  onToggleEditor={onToggleEntryEditor}
-                  onAttachCapability={onAttachCapability}
-                  showEditor={showEntryEditor}
-                  canRefine={canShowAgentPanel}
-                  onDismiss={onDismissEntry}
                 />
                 {!blockedResumeSummary && (
                   <StageInputSection
@@ -219,12 +161,21 @@ export function WorkflowListTab({
                     onOpenArtifact={onOpenArtifact}
                   />
                 )}
-                {blockedTaskPanel}
               </>
+            )}
+            {blockedTaskPanel}
+            {showIdleStageContract && idleStageContract && (
+              <WorkflowIdleStageContract
+                title={idleStageContract.title}
+                resultLabel={idleStageContract.resultLabel}
+                summary={idleStageContract.summary}
+                inputLabels={idleStageContract.inputLabels}
+              />
             )}
             {showIdleInputPanel && (
               <StageInputSection
                 inputPanelRef={inputPanelRef}
+                showTemplateContext={false}
                 showProjectArtifactsPanel={showProjectArtifactsPanel}
                 artifacts={combinedArtifactRecords}
                 loading={projectArtifactsLoading}
@@ -233,7 +184,7 @@ export function WorkflowListTab({
                 onOpenArtifact={onOpenArtifact}
               />
             )}
-            {(!showResumeHeader || showEntryEditor) && (
+            {showFlowEditor && (
               <SectionErrorBoundary sectionName="flow editor">
                 <ChainBuilder
                   compact
@@ -243,7 +194,7 @@ export function WorkflowListTab({
                 />
               </SectionErrorBoundary>
             )}
-            {showReviewOutputMode && (
+            {showReviewOutputMode && showReviewOutputPanel && (
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"
@@ -254,7 +205,7 @@ export function WorkflowListTab({
                 </SectionErrorBoundary>
               </div>
             )}
-            {(!showResumeHeader || runStatus !== "idle") && !showReviewOutputMode && (
+            {runStatus !== "idle" && !showReviewOutputMode && (
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"

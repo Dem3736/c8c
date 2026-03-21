@@ -110,7 +110,7 @@ export function useBlankWorkflowCreation({
       })
 
       toast.success("Blank flow ready", {
-        description: "Start by adding a skill or opening Graph.",
+        description: "Start by adding a skill in Edit flow.",
       })
       return filePath
     } catch (error) {

@@ -1,20 +1,24 @@
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { createWorkflowRunner } from "@c8c/workflow-runner"
 
 const SCENARIOS = [
   "launch-empty",
   "seeded-project-sidebar",
   "command-palette-toggle",
   "settings-navigation",
-  "quick-switch-rail",
-  "canvas-add-recenter-delete",
+  "quick-switch-shortcuts",
   "approval-dialog",
   "create-ready-continuation",
   "blocked-relaunch",
+  "factory-thin-bridge",
+  "blocked-approve-resolution",
+  "blocked-reject-resolution",
 ]
 
 const require = createRequire(import.meta.url)
@@ -22,6 +26,7 @@ const electronBinary = require("electron")
 const scriptDir = fileURLToPath(new URL(".", import.meta.url))
 const repoRoot = resolve(scriptDir, "..")
 const artifactRoot = resolve(repoRoot, "output", "ui-smoke")
+let ensuredTestBuild = null
 
 function printHelp() {
   process.stdout.write(`Usage: node scripts/run-electron-smoke.mjs [all|<scenario>] [options]
@@ -135,11 +140,6 @@ function buildLinearWorkflow(name, skillRef) {
       { id: "e-input-skill-main", source: "input", target: "skill-main", type: "default" },
       { id: "e-skill-main-output", source: "skill-main", target: "output", type: "default" },
     ],
-    canvasLayout: {
-      input: { x: 0, y: 120 },
-      "skill-main": { x: 280, y: 120 },
-      output: { x: 560, y: 120 },
-    },
   }
 }
 
@@ -172,13 +172,60 @@ function buildApprovalWorkflow(name) {
       { id: "e-skill-plan-approval", source: "skill-plan", target: "approval", type: "default" },
       { id: "e-approval-output", source: "approval", target: "output", type: "default" },
     ],
-    canvasLayout: {
-      input: { x: 0, y: 120 },
-      "skill-plan": { x: 260, y: 120 },
-      approval: { x: 520, y: 120 },
-      output: { x: 780, y: 120 },
-    },
   }
+}
+
+function buildSuspendedApprovalWorkflow(name, message) {
+  return {
+    version: 1,
+    name,
+    description: `${name} smoke fixture`,
+    nodes: [
+      buildWorkflowNode("input", "input", 0, 120, {
+        inputType: "text",
+        required: true,
+      }),
+      buildWorkflowNode("approval", "approval", 300, 120, {
+        message,
+        show_content: true,
+        allow_edit: false,
+      }),
+      buildWorkflowNode("output", "output", 600, 120, {
+        title: `${name} output`,
+        format: "markdown",
+      }),
+    ],
+    edges: [
+      { id: "e-input-approval", source: "input", target: "approval", type: "default" },
+      { id: "e-approval-output", source: "approval", target: "output", type: "default" },
+    ],
+  }
+}
+
+async function collectRun(handle) {
+  const events = []
+  const eventsPromise = (async () => {
+    for await (const event of handle.events) {
+      events.push(event)
+    }
+  })()
+
+  const summary = await handle.result
+  await eventsPromise
+  return { summary, events }
+}
+
+function createSuspendedApprovalRunner(workspace) {
+  return createWorkflowRunner({
+    startProviderTask() {
+      throw new Error("Provider execution should not be called for approval-only smoke fixtures")
+    },
+    workspaceStore: {
+      async createRunWorkspace() {
+        return workspace
+      },
+    },
+  })
 }
 
 async function writeWorkflowFixture(projectPath, fileName, workflow, updatedAtMs) {
@@ -297,8 +344,17 @@ async function writeArtifactFixture(projectPath, {
 }
 
 async function writeCaseStateFixture(projectPath, fileName, record, updatedAtMs) {
+  const caseFileName = typeof record.caseId === "string" && record.caseId.trim()
+    ? `${record.caseId
+      .replace(/^case:/i, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "case"}-${createHash("sha1").update(record.caseId).digest("hex").slice(0, 12)}`
+    : fileName
   await writeJsonFixture(
-    join(projectPath, ".c8c", "case-state", `${fileName}.json`),
+    join(projectPath, ".c8c", "case-state", `${caseFileName}.json`),
     {
       version: 1,
       ...record,
@@ -504,6 +560,82 @@ async function seedBlockedRelaunchProject(projectPath, updatedAtMs) {
   })
 }
 
+async function seedBlockedDecisionProject(projectPath, updatedAtMs) {
+  const workflowName = "Blocked approval flow"
+  const workflow = buildSuspendedApprovalWorkflow(
+    workflowName,
+    "Approve the checkout polish before verification continues.",
+  )
+  const workflowPath = await writeWorkflowFixture(
+    projectPath,
+    "blocked-approval-flow",
+    workflow,
+    updatedAtMs - 500,
+  )
+  const runId = "run-blocked-approval"
+  const workspace = join(projectPath, ".c8c", "runs", runId)
+  const runner = createSuspendedApprovalRunner(workspace)
+  const firstHandle = await runner.startRun({
+    runId,
+    workflow,
+    input: {
+      type: "text",
+      value: "Verification Report\n\nConfirm whether the checkout polish is ready for verification.",
+    },
+    projectPath,
+    workflowPath,
+    approvalBehavior: "suspend",
+  })
+  const firstRun = await collectRun(firstHandle)
+  if (firstRun.summary.status !== "paused") {
+    throw new Error(`Expected suspended approval smoke fixture to pause, received ${firstRun.summary.status}`)
+  }
+
+  const caseId = "case:delivery-foundation:checkout-polish"
+  const artifact = await writeArtifactFixture(projectPath, {
+    baseName: "run-blocked-approval-verification-report",
+    id: "run-blocked-approval:verification_report",
+    kind: "verification_report",
+    title: "Verification Report",
+    description: "Verification findings for checkout polish.",
+    workspace,
+    runId,
+    templateId: "delivery-verify-phase",
+    templateName: "Delivery Lab: Verify the Change",
+    workflowPath,
+    workflowName,
+    caseId,
+    caseLabel: "Checkout polish",
+    factoryId: "factory:delivery-foundation",
+    factoryLabel: "Delivery Lab",
+    updatedAtMs,
+    content: "# Verification Report\n\nCheckout polish is ready for approval.\n",
+  })
+
+  await writeCaseStateFixture(projectPath, "checkout-polish-blocked", {
+    caseId,
+    projectPath,
+    workLabel: "Checkout polish",
+    caseLabel: "Checkout polish",
+    factoryId: "factory:delivery-foundation",
+    factoryLabel: "Delivery Lab",
+    workflowPath,
+    workflowName,
+    continuationStatus: "awaiting_approval",
+    artifactIds: [artifact.id],
+    lastGate: {
+      family: "approval",
+      outcome: "awaiting_human",
+      summaryText: "Approval pending. Review block before verification continues.",
+      reasonText: "Waiting for an approval decision before the flow can continue.",
+      stepLabel: "Verify the Change",
+      happenedAt: updatedAtMs,
+    },
+    createdAt: updatedAtMs - 2_000,
+    updatedAt: updatedAtMs,
+  }, updatedAtMs)
+}
+
 async function seedScenarioProjects(workspaceDir, scenario) {
   if (scenario === "launch-empty" || scenario === "command-palette-toggle" || scenario === "settings-navigation") {
     return []
@@ -517,14 +649,9 @@ async function seedScenarioProjects(workspaceDir, scenario) {
   }
 
   const baseTime = Date.now() - 60_000
-  if (scenario === "quick-switch-rail") {
+  if (scenario === "quick-switch-shortcuts") {
     await writeWorkflowFixture(projectAlpha, "beta-flow", buildLinearWorkflow("Beta flow", "research/beta"), baseTime + 1_000)
     await writeWorkflowFixture(projectAlpha, "alpha-flow", buildLinearWorkflow("Alpha flow", "research/alpha"), baseTime + 2_000)
-    return [projectAlpha]
-  }
-
-  if (scenario === "canvas-add-recenter-delete") {
-    await writeWorkflowFixture(projectAlpha, "canvas-flow", buildLinearWorkflow("Canvas flow", "research/canvas"), baseTime + 1_000)
     return [projectAlpha]
   }
 
@@ -533,8 +660,18 @@ async function seedScenarioProjects(workspaceDir, scenario) {
     return [projectAlpha]
   }
 
+  if (scenario === "factory-thin-bridge") {
+    await seedCreateReadyContinuationProject(projectAlpha, baseTime + 3_500)
+    return [projectAlpha]
+  }
+
   if (scenario === "blocked-relaunch") {
     await seedBlockedRelaunchProject(projectAlpha, baseTime + 4_000)
+    return [projectAlpha]
+  }
+
+  if (scenario === "blocked-approve-resolution" || scenario === "blocked-reject-resolution") {
+    await seedBlockedDecisionProject(projectAlpha, baseTime + 4_500)
     return [projectAlpha]
   }
 
@@ -601,6 +738,49 @@ function runElectronScenario({
   })
 }
 
+function runCommand(command, args, env) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, args, {
+      cwd: repoRoot,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+
+    let combinedOutput = ""
+
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString()
+      combinedOutput += text
+      process.stdout.write(text)
+    })
+    child.stderr.on("data", (chunk) => {
+      const text = chunk.toString()
+      combinedOutput += text
+      process.stderr.write(text)
+    })
+
+    child.on("error", rejectPromise)
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolvePromise()
+        return
+      }
+      rejectPromise(new Error(`${command} ${args.join(" ")} exited with code ${code}\n${combinedOutput}`))
+    })
+  })
+}
+
+async function ensureTestModeBuild() {
+  if (ensuredTestBuild) return ensuredTestBuild
+
+  ensuredTestBuild = runCommand("npm", ["run", "build"], {
+    ...process.env,
+    C8C_TEST_MODE: "1",
+  })
+
+  return ensuredTestBuild
+}
+
 async function loadScenarioReport(outputDir) {
   try {
     return JSON.parse(await readFile(join(outputDir, "report.json"), "utf8"))
@@ -611,6 +791,7 @@ async function loadScenarioReport(outputDir) {
 
 async function main() {
   const options = parseCliOptions(process.argv)
+  await ensureTestModeBuild()
   const scenarios = options.scenarios
   const runRoot = await mkdtemp(join(tmpdir(), "c8c-electron-smoke-"))
   await mkdir(artifactRoot, { recursive: true })

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import type { InputNodeConfig, PermissionMode } from "@shared/types"
+import { createDefaultDesktopMenuState } from "@shared/desktop-commands"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { runIdAtom, runStatusAtom } from "@/features/execution"
+import { workflowHistoryRunsAtom } from "@/features/execution"
 import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import {
   WorkflowPrimaryActions,
@@ -40,10 +45,16 @@ import {
   mainViewAtom,
   projectSidebarOpenAtom,
   workflowReviewModeAtom,
+  workflowRunBlockReasonAtom,
+  selectedInboxTaskKeyAtom,
   selectedNodeIdAtom,
   validationNavigationTargetAtom,
   viewModeAtom,
+  flowSurfaceModeAtom,
+  desktopMenuStateAtom,
+  outputSurfaceCommandStateAtom,
 } from "@/lib/store"
+import { selectedPastRunAtom } from "@/features/execution"
 import {
   canUndoAtom,
   canRedoAtom,
@@ -56,14 +67,23 @@ import { resolveValidationNavigationTarget } from "@/lib/validation-navigation"
 import { validateWorkflow } from "@/lib/validate-workflow"
 import { getWorkflowNodeLabel } from "@/lib/workflow-labels"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import { resolveWorkflowRunAvailability } from "@/components/toolbar/run-availability"
+import type { WorkflowPanelShellState } from "@/components/workflow-panel/WorkflowPanelChrome"
+import { subscribeDesktopCommands } from "@/lib/desktop-command-bus"
 
 export function Toolbar({
   onRun,
   onCancel,
+  shellState,
+  entryTitle,
+  shellDetail,
   agentToggleRef,
 }: {
   onRun: (mode?: PermissionMode) => Promise<void> | void
   onCancel: () => Promise<void> | void
+  shellState: WorkflowPanelShellState
+  entryTitle?: string | null
+  shellDetail?: string | null
   agentToggleRef?: Ref<HTMLButtonElement>
 }) {
   const [workflow] = useAtom(currentWorkflowAtom)
@@ -81,12 +101,19 @@ export function Toolbar({
   const [chatOpen, setChatOpen] = useAtom(chatPanelOpenAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
+  const [flowSurfaceMode, setFlowSurfaceMode] = useAtom(flowSurfaceModeAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const [desktopRuntime] = useAtom(desktopRuntimeAtom)
   const [sidebarOpen] = useAtom(projectSidebarOpenAtom)
   const [workflowReviewMode] = useAtom(workflowReviewModeAtom)
+  const [workflowRunBlockReason] = useAtom(workflowRunBlockReasonAtom)
+  const [workflowPastRuns] = useAtom(workflowHistoryRunsAtom)
   const setSelectedNodeId = useSetAtom(selectedNodeIdAtom)
   const setValidationNavigationTarget = useSetAtom(validationNavigationTargetAtom)
   const setBatchOpen = useSetAtom(batchDialogOpenAtom)
+  const setDesktopMenuState = useSetAtom(desktopMenuStateAtom)
+  const outputSurfaceCommandState = useAtomValue(outputSurfaceCommandStateAtom)
   const [undoStack, setUndoStack] = useAtom(undoStackAtom)
   const [redoStack, setRedoStack] = useAtom(redoStackAtom)
   const canUndo = useAtomValue(canUndoAtom)
@@ -215,14 +242,20 @@ export function Toolbar({
       issues: group.issues,
     }))
   }, [workflow, workflowValidation])
-  const canRun = hasSkillNodes && inputValidation.valid && !hasBlockingErrors
-  const runDisabledReason = !hasSkillNodes
-    ? "Add at least one skill step to run."
-    : !inputValidation.valid
-      ? (inputValidation.message || "Input is required")
-      : hasBlockingErrors
-        ? `${blockingValidationCount} validation error(s) — fix before running.`
-        : null
+  const {
+    canRun,
+    runDisabledReason,
+    canBatchRun,
+    batchDisabledReason,
+    hasRunMenuActions,
+  } = resolveWorkflowRunAvailability({
+    hasSkillNodes,
+    inputValid: inputValidation.valid,
+    inputValidationMessage: inputValidation.message || null,
+    hasBlockingErrors,
+    blockingValidationCount,
+    workflowRunBlockReason,
+  })
   const saveDisabledReason = isRunning
     ? "Cannot save while a run is in progress."
     : isSaving
@@ -230,8 +263,6 @@ export function Toolbar({
       : !workflowDirty
         ? "No unsaved changes."
         : null
-  const batchDisabledReason = hasSkillNodes ? null : "Add at least one skill step to enable batch runs."
-  const hasRunMenuActions = canRun || hasSkillNodes
 
   const handleRunWithValidation = useCallback(async (mode: PermissionMode = "edit") => {
     const warnings = workflowValidation.filter((issue) => issue.severity === "warning")
@@ -271,9 +302,37 @@ export function Toolbar({
 
   const deleteLabel = workflowPath ? (workflow.name || "").trim() || deriveTitleFromPath(workflowPath) : "this flow"
   const controlGroupClass = "control-cluster flex items-center gap-1 rounded-lg p-1"
+  const showRunControls = shellState === "idle" || shellState === "running" || shellState === "paused"
+  const runShortcutEnabled = shellState === "idle" || shellState === "ready"
   const macToolbarLeadingInset = desktopRuntime.platform === "macos" && desktopRuntime.titlebarHeight > 0 && !sidebarOpen
     ? 108
     : 0
+  const shellBadgeLabel = shellState === "blocked"
+    ? "Blocked"
+    : shellState === "running"
+      ? runStatus === "starting"
+        ? "Starting..."
+        : runStatus === "cancelling"
+          ? "Cancelling..."
+          : "Running"
+      : shellState === "paused"
+        ? "Paused"
+        : shellState === "completed"
+          ? "Completed"
+          : shellState === "failed"
+            ? "Failed"
+            : shellState === "cancelled"
+              ? "Cancelled"
+              : null
+  const shellBadgeVariant = shellState === "blocked"
+    ? "warning"
+    : shellState === "running" || shellState === "paused"
+      ? "info"
+      : shellState === "completed"
+        ? "success"
+        : shellState === "failed"
+          ? "destructive"
+          : "outline"
 
   const flashToolbarStatus = useCallback((status: "saved" | "imported" | "exported") => {
     setSaveFlash(status)
@@ -317,6 +376,11 @@ export function Toolbar({
       setCurrentWorkflow(restored)
     }
   }, [redoStack, setCurrentWorkflow, setRedoStack, setUndoStack, workflow])
+
+  const openFlowDefaults = useCallback(() => {
+    if (runStatus !== "idle" || workflowReviewMode) return
+    setViewMode("settings")
+  }, [runStatus, setViewMode, workflowReviewMode])
 
   const toggleChatPanel = useCallback(() => {
     setChatOpen((open) => !open)
@@ -405,6 +469,8 @@ export function Toolbar({
             setSelectedWorkflowPath(newPath)
             setCurrentWorkflow(loadedWorkflow)
             setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+            setSelectedInboxTaskKey(null)
+            setSelectedPastRun(null)
             await refreshProjectData()
             toast.success("Flow duplicated")
           } catch (err) {
@@ -429,6 +495,74 @@ export function Toolbar({
     }
   }
 
+  const desktopMenuState = useMemo(() => {
+    const canEditStructure = runStatus === "idle" && !workflowReviewMode
+    return {
+      file: {
+        save: { enabled: !isRunning && !isSaving && workflowDirty },
+        saveAs: { enabled: !isRunning },
+        export: { enabled: !isRunning },
+        import: { enabled: !isRunning },
+      },
+      edit: {
+        undo: { enabled: canEditStructure && canUndo },
+        redo: { enabled: canEditStructure && canRedo },
+      },
+      view: {
+        defaults: {
+          enabled: canEditStructure,
+          checked: canEditStructure && viewMode === "settings",
+        },
+        editFlow: {
+          enabled: canEditStructure,
+          checked: canEditStructure && viewMode === "list" && flowSurfaceMode === "edit",
+        },
+        toggleAgentPanel: {
+          enabled: true,
+          checked: chatOpen,
+        },
+      },
+      flow: {
+        run: {
+          enabled: runShortcutEnabled && canRun,
+          visible: runShortcutEnabled,
+        },
+        runAgain: {
+          enabled: runStatus === "idle" && workflowPastRuns.length > 0,
+        },
+        rerunFromStep: {
+          enabled: runStatus === "idle" && outputSurfaceCommandState.rerunFromStep,
+        },
+        cancel: {
+          enabled: isRunning,
+          visible: isRunning,
+        },
+        batchRun: {
+          enabled: runShortcutEnabled && canBatchRun,
+        },
+        history: {
+          enabled: runStatus === "idle" && workflowPastRuns.length > 0,
+        },
+      },
+    }
+  }, [
+    canBatchRun,
+    canRedo,
+    canRun,
+    canUndo,
+    chatOpen,
+    flowSurfaceMode,
+    isRunning,
+    isSaving,
+    outputSurfaceCommandState.rerunFromStep,
+    runShortcutEnabled,
+    runStatus,
+    viewMode,
+    workflowDirty,
+    workflowPastRuns.length,
+    workflowReviewMode,
+  ])
+
   useEffect(() => {
     return () => {
       if (flashTimerRef.current) {
@@ -436,6 +570,90 @@ export function Toolbar({
       }
     }
   }, [])
+
+  useEffect(() => {
+    setDesktopMenuState(desktopMenuState)
+  }, [desktopMenuState, setDesktopMenuState])
+
+  useEffect(() => {
+    return () => {
+      setDesktopMenuState(createDefaultDesktopMenuState())
+    }
+  }, [setDesktopMenuState])
+
+  useEffect(() => {
+    return subscribeDesktopCommands((commandId) => {
+      if (commandId === "file.save") {
+        if (workflowDirty) {
+          void handlePrimarySave()
+        }
+        return
+      }
+      if (commandId === "file.save_as") {
+        void saveAs()
+        return
+      }
+      if (commandId === "file.export") {
+        void exportCopy()
+        return
+      }
+      if (commandId === "file.import") {
+        void handleActionMenu("import")
+        return
+      }
+      if (commandId === "edit.undo") {
+        handleUndo()
+        return
+      }
+      if (commandId === "edit.redo") {
+        handleRedo()
+        return
+      }
+      if (commandId === "view.defaults") {
+        openFlowDefaults()
+        return
+      }
+      if (commandId === "view.toggle_agent_panel") {
+        toggleChatPanel()
+        return
+      }
+      if (commandId === "flow.run") {
+        if (canRun) {
+          void handleRunWithValidation("edit")
+        } else if (runShortcutEnabled) {
+          revealRunBlocker()
+        }
+        return
+      }
+      if (commandId === "flow.cancel") {
+        void onCancel()
+        return
+      }
+      if (commandId === "flow.batch_run") {
+        if (runShortcutEnabled && canBatchRun) {
+          setBatchOpen(true)
+        }
+        return
+      }
+    })
+  }, [
+    canBatchRun,
+    canRun,
+    exportCopy,
+    handleActionMenu,
+    handlePrimarySave,
+    handleRedo,
+    handleRunWithValidation,
+    handleUndo,
+    onCancel,
+    openFlowDefaults,
+    revealRunBlocker,
+    runShortcutEnabled,
+    saveAs,
+    setBatchOpen,
+    toggleChatPanel,
+    workflowDirty,
+  ])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -468,10 +686,10 @@ export function Toolbar({
       if (isRunning) {
         consumeShortcut(event)
         void onCancel()
-      } else if (canRun) {
+      } else if (runShortcutEnabled && canRun) {
         consumeShortcut(event)
         void handleRunWithValidation("edit")
-      } else {
+      } else if (runShortcutEnabled) {
         consumeShortcut(event)
         revealRunBlocker()
       }
@@ -489,6 +707,7 @@ export function Toolbar({
     isRunning,
     onCancel,
     revealRunBlocker,
+    runShortcutEnabled,
     setMainView,
     toggleChatPanel,
     workflowDirty,
@@ -503,58 +722,106 @@ export function Toolbar({
             ? { paddingLeft: `calc(var(--content-gutter) + ${macToolbarLeadingInset}px)` }
             : undefined}
         >
-          <WorkflowPrimaryActions
-            controlGroupClass={controlGroupClass}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            isRunning={isRunning}
-            isSaving={isSaving}
-            saveDisabledReason={saveDisabledReason}
-            saveFlash={saveFlash}
-            primaryShortcutLabel={primaryShortcutLabel}
-            redoShortcutLabel={redoShortcutLabel}
-            chatOpen={chatOpen}
-            chatShortcutLabel={chatShortcutLabel}
-            creatingBlankWorkflow={creatingBlankWorkflow}
-            hasSelectedProject={Boolean(selectedProject)}
-            hasWorkflowPath={Boolean(workflowPath)}
-            agentToggleRef={agentToggleRef}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onSave={() => void handlePrimarySave()}
-            onActionMenuSelect={(value) => void handleActionMenu(value)}
-            onToggleChat={toggleChatPanel}
-          />
+          <div className="min-w-[220px] flex-1 px-1">
+            {shellState === "idle" ? (
+              <>
+                <Label htmlFor="toolbar-workflow-name" className="sr-only">Flow name</Label>
+                <Input
+                  id="toolbar-workflow-name"
+                  type="text"
+                  value={workflow.name || ""}
+                  onChange={(event) => setCurrentWorkflow((prev) => ({ ...prev, name: event.target.value }), { coalesceKey: "workflow-name" })}
+                  placeholder="Flow name"
+                  className="h-auto min-w-0 border-none bg-transparent px-0 py-0 text-title-md font-semibold shadow-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+                />
+              </>
+            ) : (
+              <div className="truncate text-title-md font-semibold text-foreground">
+                {workflow.name || entryTitle || "Untitled flow"}
+              </div>
+            )}
+          </div>
 
-          <WorkflowRunControls
-            controlGroupClass={controlGroupClass}
-            isRunning={isRunning}
-            isPaused={isPaused}
-            isCancelling={isCancelling}
-            isStarting={isStarting}
-            runControlPending={runControlPending}
-            runShortcutLabel={runShortcutLabel}
-            workflowValidation={workflowValidation}
-            hasBlockingErrors={hasBlockingErrors}
-            blockingValidationCount={blockingValidationCount}
-            warningValidationCount={warningValidationCount}
-            groupedValidationIssues={groupedValidationIssues}
-            canRun={canRun}
-            runDisabledReason={runDisabledReason}
-            hasRunMenuActions={hasRunMenuActions}
-            batchDisabledReason={batchDisabledReason}
-            hasSkillNodes={hasSkillNodes}
-            onPause={() => void handlePauseRun()}
-            onResume={() => void handleResumeRun()}
-            onCancel={() => void onCancel()}
-            onRun={(mode) => void handleRunWithValidation(mode)}
-            onNavigateToValidationIssue={navigateToValidationIssue}
-            onOpenBatch={() => setBatchOpen(true)}
-          />
+          {workflowDirty && (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-status-warning"
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+            />
+          )}
+
+          {(shellBadgeLabel || shellDetail) && (
+            <div className="flex shrink-0 items-center gap-2">
+              {shellBadgeLabel && (
+                <Badge variant={shellBadgeVariant} className="ui-meta-text px-2.5 py-1">
+                  {shellBadgeLabel}
+                </Badge>
+              )}
+              {shellDetail ? (
+                <span className="ui-meta-text tabular-nums whitespace-nowrap text-muted-foreground">
+                  {shellDetail}
+                </span>
+              ) : null}
+            </div>
+          )}
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {showRunControls && (
+              <WorkflowRunControls
+                controlGroupClass={controlGroupClass}
+                isRunning={isRunning}
+                isPaused={isPaused}
+                isCancelling={isCancelling}
+                isStarting={isStarting}
+                runControlPending={runControlPending}
+                runShortcutLabel={runShortcutLabel}
+                workflowValidation={workflowValidation}
+                hasBlockingErrors={hasBlockingErrors}
+                blockingValidationCount={blockingValidationCount}
+                warningValidationCount={warningValidationCount}
+                groupedValidationIssues={groupedValidationIssues}
+                canRun={canRun}
+                runDisabledReason={runDisabledReason}
+                hasRunMenuActions={hasRunMenuActions}
+                canBatchRun={canBatchRun}
+                batchDisabledReason={batchDisabledReason}
+                onPause={() => void handlePauseRun()}
+                onResume={() => void handleResumeRun()}
+                onCancel={() => void onCancel()}
+                onRun={(mode) => void handleRunWithValidation(mode)}
+                onNavigateToValidationIssue={navigateToValidationIssue}
+                onOpenBatch={() => setBatchOpen(true)}
+              />
+            )}
+
+            <WorkflowPrimaryActions
+              controlGroupClass={controlGroupClass}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              isRunning={isRunning}
+              isSaving={isSaving}
+              saveDisabledReason={saveDisabledReason}
+              saveFlash={saveFlash}
+              primaryShortcutLabel={primaryShortcutLabel}
+              redoShortcutLabel={redoShortcutLabel}
+              chatOpen={chatOpen}
+              chatShortcutLabel={chatShortcutLabel}
+              creatingBlankWorkflow={creatingBlankWorkflow}
+              hasSelectedProject={Boolean(selectedProject)}
+              hasWorkflowPath={Boolean(workflowPath)}
+              agentToggleRef={agentToggleRef}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              onSave={() => void handlePrimarySave()}
+              onActionMenuSelect={(value) => void handleActionMenu(value)}
+              onToggleChat={toggleChatPanel}
+            />
+          </div>
         </div>
       </div>
 
       <WorkflowRunBlocker
+        suppressed={shellState !== "idle"}
         isRunning={isRunning}
         workflowReviewMode={workflowReviewMode}
         runDisabledReason={runDisabledReason}
