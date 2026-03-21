@@ -1,5 +1,20 @@
+import { delimiter } from 'node:path';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { cleanEnv } from '../env.js';
+
+function expectedExtendedPath(home: string, existingPath: string): string {
+  const extras = [
+    `${home}/.local/bin`,
+    `${home}/.claude/local`,
+    `${home}/.claude/local/node_modules/.bin`,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+  ];
+  const parts = [...extras, ...existingPath.split(delimiter)];
+  return [...new Set(parts)].join(delimiter);
+}
 
 describe('cleanEnv', () => {
   const originalEnv = { ...process.env };
@@ -47,7 +62,7 @@ describe('cleanEnv', () => {
   it('keeps safe vars', () => {
     const env = cleanEnv();
     expect(env.HOME).toBe('/home/test');
-    expect(env.PATH).toBe('/usr/bin');
+    expect(env.PATH).toBe(expectedExtendedPath('/home/test', '/usr/bin'));
   });
 
   it('merges extra env vars', () => {
@@ -109,6 +124,6 @@ describe('cleanEnv', () => {
     expect(dangerousKeys).toEqual([]);
     // Safe vars remain
     expect(env.HOME).toBe('/home/test');
-    expect(env.PATH).toBe('/usr/bin');
+    expect(env.PATH).toBe(expectedExtendedPath('/home/test', '/usr/bin'));
   });
 });
