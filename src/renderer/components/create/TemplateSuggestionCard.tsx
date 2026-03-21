@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { WorkflowTemplate } from "@shared/types"
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
@@ -25,25 +24,18 @@ export function TemplateSuggestionCard({
       variant="ghost"
       size="bare"
       onClick={() => onSelect(template)}
-      className="ui-interactive-card-subtle h-auto w-full !items-start gap-2.5 rounded-[1rem] border border-hairline/80 bg-surface-1/78 px-3 py-3 text-left !whitespace-normal"
+      className="h-auto w-full !items-start gap-3 rounded-xl px-2 py-2 text-left !whitespace-normal ui-transition-colors ui-motion-fast hover:bg-surface-2/45"
     >
-      <div className="surface-inset-card flex h-9 w-9 shrink-0 items-center justify-center p-0 text-[15px]">
-        <span aria-hidden>{template.emoji}</span>
-      </div>
+      <span className="mt-0.5 text-base leading-none" aria-hidden>{template.emoji}</span>
       <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {eyebrow ? (
-            <Badge variant="outline" size="compact">
-              {eyebrow}
-            </Badge>
-          ) : null}
-          {recommended ? (
-            <Badge variant="secondary" size="compact">
-              Suggested
-            </Badge>
-          ) : null}
-        </div>
-        <p className="truncate text-body-sm font-medium text-foreground">
+        {eyebrow || recommended ? (
+          <div className="flex flex-wrap items-center gap-1.5 text-body-xs text-muted-foreground">
+            {eyebrow ? <span>{eyebrow}</span> : null}
+            {eyebrow && recommended ? <span aria-hidden>•</span> : null}
+            {recommended ? <span>Suggested</span> : null}
+          </div>
+        ) : null}
+        <p className="text-body-sm font-medium text-foreground">
           {title || getWorkflowTemplateDisplayName(template)}
         </p>
         <p className="line-clamp-2 text-[13px] leading-5 text-muted-foreground">
@@ -64,7 +56,7 @@ export function PendingTemplateDetails({
   if (!intentLabel && !executionSummary) return null
 
   return (
-    <div className="rounded-lg surface-inset-card px-3 py-3">
+    <div className="space-y-3 border-t border-hairline/70 pt-4">
       <div className="flex flex-wrap gap-3">
         {intentLabel ? (
           <div className="space-y-1">

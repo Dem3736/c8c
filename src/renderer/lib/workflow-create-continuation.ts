@@ -40,6 +40,101 @@ export interface WorkflowCreateContinuationCandidate {
   action: WorkflowCreateContinuationAction
 }
 
+export type WorkflowCreateContinuationPresentation = "none" | "supporting" | "dominant"
+
+export interface WorkflowCreateContinuationPresentationState {
+  primaryContinuation: WorkflowCreateContinuationCandidate | null
+  secondaryContinuations: WorkflowCreateContinuationCandidate[]
+  presentation: WorkflowCreateContinuationPresentation
+  reason?: string
+}
+
+function hasDominantContinuationContract(candidate: WorkflowCreateContinuationCandidate) {
+  return Boolean(
+    candidate.title
+    && candidate.status
+    && candidate.updatedAt > 0
+    && (candidate.latestResultLabel || candidate.readinessText)
+    && (candidate.nextStepLabel || candidate.action.kind === "open_blocked_work"),
+  )
+}
+
+export function resolveWorkflowCreateContinuationPresentation({
+  candidates,
+  hasStartedNewRequest,
+  routingInProgress,
+  clarificationInProgress,
+}: {
+  candidates: WorkflowCreateContinuationCandidate[]
+  hasStartedNewRequest: boolean
+  routingInProgress: boolean
+  clarificationInProgress: boolean
+}): WorkflowCreateContinuationPresentationState {
+  const primaryContinuation = candidates[0] ?? null
+  const secondaryContinuations = candidates.slice(1)
+
+  if (!primaryContinuation) {
+    return {
+      primaryContinuation: null,
+      secondaryContinuations: [],
+      presentation: "none",
+      reason: "no_candidates",
+    }
+  }
+
+  if (hasStartedNewRequest) {
+    return {
+      primaryContinuation,
+      secondaryContinuations,
+      presentation: "supporting",
+      reason: "new_request_started",
+    }
+  }
+
+  if (routingInProgress) {
+    return {
+      primaryContinuation,
+      secondaryContinuations,
+      presentation: "supporting",
+      reason: "routing_in_progress",
+    }
+  }
+
+  if (clarificationInProgress) {
+    return {
+      primaryContinuation,
+      secondaryContinuations,
+      presentation: "supporting",
+      reason: "clarification_in_progress",
+    }
+  }
+
+  if (candidates.length !== 1) {
+    return {
+      primaryContinuation,
+      secondaryContinuations,
+      presentation: "supporting",
+      reason: "multiple_candidates",
+    }
+  }
+
+  if (!hasDominantContinuationContract(primaryContinuation)) {
+    return {
+      primaryContinuation,
+      secondaryContinuations,
+      presentation: "supporting",
+      reason: "candidate_incomplete",
+    }
+  }
+
+  return {
+    primaryContinuation,
+    secondaryContinuations: [],
+    presentation: "dominant",
+    reason: "single_clear_candidate",
+  }
+}
+
 interface ContinuationEntry {
   id: string
   label: string

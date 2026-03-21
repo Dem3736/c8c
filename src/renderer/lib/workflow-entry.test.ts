@@ -64,6 +64,7 @@ describe("workflow-entry factory helpers", () => {
     expect(context.contractOut?.[0]?.kind).toBe("phase_plan")
     expect(context.factoryId).toBeUndefined()
     expect(context.caseId).toBeUndefined()
+    expect(context.sourceArtifactIds).toEqual([])
   })
 
   it("checks required contracts and selects matching artifacts", () => {

@@ -1,16 +1,17 @@
-import { Loader2, MoreHorizontal, Sparkles } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { ChevronDown, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { CreateEntryHelpModeHint } from "@shared/types"
-import type { WorkflowResultMode } from "@/lib/result-modes"
+import type { CreateEntryHelpModeHint, ResultModeId } from "@shared/types"
+import { RESULT_MODES, type WorkflowResultMode } from "@/lib/result-modes"
 
-const DEVELOPMENT_HELP_MODE_OPTIONS: Array<{ value: CreateEntryHelpModeHint, label: string }> = [
+const DEVELOPMENT_HELP_MODE_OPTIONS: Array<{ value: CreateEntryHelpModeHint | null, label: string }> = [
+  { value: null, label: "Auto" },
   { value: "do", label: "Do it" },
   { value: "plan", label: "Plan it" },
   { value: "review", label: "Review it" },
@@ -19,100 +20,109 @@ const DEVELOPMENT_HELP_MODE_OPTIONS: Array<{ value: CreateEntryHelpModeHint, lab
 export function WorkflowCreateComposerFooter({
   selectedResultMode,
   developmentHelpModeHint,
+  showSupportControls,
+  onSelectMode,
   onToggleHelpMode,
   promptHelperOpen,
   onTogglePromptHelper,
   optionalDetailCount,
-  onBrowseStartingPoints,
-  onCreateBlankFlow,
-  creatingBlankWorkflow,
-  hasProjectTarget,
+  detailBudget,
+  onDetailBudgetChange,
+  shortcutHint,
 }: {
   selectedResultMode: WorkflowResultMode
   developmentHelpModeHint: CreateEntryHelpModeHint | null
-  onToggleHelpMode: (helpMode: CreateEntryHelpModeHint) => void
+  showSupportControls: boolean
+  onSelectMode: (modeId: ResultModeId) => void
+  onToggleHelpMode: (helpMode: CreateEntryHelpModeHint | null) => void
   promptHelperOpen: boolean
   onTogglePromptHelper: () => void
   optionalDetailCount: number
-  onBrowseStartingPoints: () => void
-  onCreateBlankFlow: () => void
-  creatingBlankWorkflow: boolean
-  hasProjectTarget: boolean
+  detailBudget: number
+  onDetailBudgetChange: (value: number) => void
+  shortcutHint: string
 }) {
+  const selectedHelpModeLabel = DEVELOPMENT_HELP_MODE_OPTIONS.find((option) => option.value === developmentHelpModeHint)?.label || "Auto"
+
   return (
     <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {selectedResultMode.id === "development" ? (
-          <div
-            className="control-cluster control-cluster-compact flex flex-wrap items-center gap-1 rounded-xl surface-inset-card p-1"
-            aria-label="Development help mode"
-          >
-            {DEVELOPMENT_HELP_MODE_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                variant={developmentHelpModeHint === option.value ? "secondary" : "ghost"}
-                size="xs"
-                aria-pressed={developmentHelpModeHint === option.value}
-                onClick={() => onToggleHelpMode(option.value)}
-                className="px-2.5 text-muted-foreground"
-              >
-                {option.label}
+        {showSupportControls ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="xs" className="gap-1.5 text-muted-foreground">
+                <span aria-hidden>{selectedResultMode.emoji}</span>
+                {selectedResultMode.label}
+                <ChevronDown size={13} />
               </Button>
-            ))}
-          </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {RESULT_MODES.map((mode) => (
+                <DropdownMenuItem key={mode.id} onSelect={() => onSelectMode(mode.id)}>
+                  <span className="mr-2" aria-hidden>{mode.emoji}</span>
+                  {mode.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          type="button"
-          variant={promptHelperOpen ? "secondary" : "ghost"}
-          size="xs"
-          aria-pressed={promptHelperOpen}
-          className="text-muted-foreground"
-          onClick={onTogglePromptHelper}
-        >
-          <Sparkles size={13} />
-          {promptHelperOpen ? "Hide details" : "Details"}
-        </Button>
-        {optionalDetailCount > 0 ? (
-          <Badge variant="secondary" size="compact">
-            {optionalDetailCount}
-          </Badge>
-        ) : null}
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={onBrowseStartingPoints}
-          className="text-muted-foreground"
-        >
-          Library
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        {showSupportControls ? (
+          <>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="ui-meta-text">Depth</span>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={detailBudget}
+                onChange={(event) => {
+                  const nextValue = parseInt(event.target.value, 10)
+                  if (!Number.isNaN(nextValue) && nextValue >= 1) {
+                    onDetailBudgetChange(nextValue)
+                  }
+                }}
+                className="h-7 w-16 px-2 text-center text-body-sm"
+                aria-label="Detail budget"
+              />
+            </div>
+            {selectedResultMode.id === "development" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="xs" className="gap-1.5 text-muted-foreground">
+                    {selectedHelpModeLabel}
+                    <ChevronDown size={13} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {DEVELOPMENT_HELP_MODE_OPTIONS.map((option) => (
+                    <DropdownMenuItem key={option.label} onSelect={() => onToggleHelpMode(option.value)}>
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             <Button
               type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label="More create actions"
+              variant={promptHelperOpen ? "secondary" : "ghost"}
+              size="xs"
+              aria-pressed={promptHelperOpen}
               className="text-muted-foreground"
+              onClick={onTogglePromptHelper}
             >
-              <MoreHorizontal size={14} />
+              <Sparkles size={13} />
+              {promptHelperOpen ? "Hide details" : "Details"}
+              {optionalDetailCount > 0 ? ` (${optionalDetailCount})` : ""}
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 rounded-lg p-1.5">
-            <DropdownMenuItem
-              onSelect={onCreateBlankFlow}
-              disabled={creatingBlankWorkflow || !hasProjectTarget}
-              className="h-auto items-center gap-2 rounded-md px-3 py-2 text-body-sm"
-            >
-              {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : null}
-              Blank flow
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </>
+        ) : null}
       </div>
+      <p className="ui-meta-text text-muted-foreground lg:ml-auto">
+        {shortcutHint}
+      </p>
     </div>
   )
 }

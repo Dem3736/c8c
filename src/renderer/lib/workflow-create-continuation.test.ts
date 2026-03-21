@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import type { ArtifactRecord, CaseStateRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
-import { deriveWorkflowCreateContinuations } from "./workflow-create-continuation"
+import {
+  deriveWorkflowCreateContinuations,
+  resolveWorkflowCreateContinuationPresentation,
+} from "./workflow-create-continuation"
 
 function createTemplate(overrides: Partial<WorkflowTemplate> = {}): WorkflowTemplate {
   return {
@@ -256,5 +259,104 @@ describe("workflow-create-continuation", () => {
       readinessText: "Blocked: awaiting your approval before the flow can continue.",
       supportText: "Approval is blocking the next step.",
     })
+  })
+
+  it("marks continuation as dominant only for one clear candidate with no competing new request", () => {
+    const shapeTemplate = createTemplate()
+    const planTemplate = createTemplate({
+      id: "delivery-plan-phase",
+      name: "Delivery Factory: Plan Phase",
+      pack: {
+        id: "delivery-pack",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+        recommendedNext: ["delivery-implement-phase"],
+      },
+      contractIn: [{ kind: "requirements_spec", title: "Feature Spec" }],
+      contractOut: [{ kind: "phase_plan", title: "Implementation Plan" }],
+      workflow: {
+        version: 1,
+        name: "Delivery Factory: Plan Phase",
+        nodes: [],
+        edges: [],
+      },
+    })
+
+    const candidates = deriveWorkflowCreateContinuations({
+      artifacts: [createArtifact()],
+      caseStates: [createCaseState()],
+      humanTasks: [],
+      templates: [shapeTemplate, planTemplate],
+    })
+
+    const presentation = resolveWorkflowCreateContinuationPresentation({
+      candidates,
+      hasStartedNewRequest: false,
+      routingInProgress: false,
+      clarificationInProgress: false,
+    })
+
+    expect(presentation.presentation).toBe("dominant")
+    expect(presentation.reason).toBe("single_clear_candidate")
+    expect(presentation.primaryContinuation?.title).toBe("Seller photo upload")
+    expect(presentation.secondaryContinuations).toEqual([])
+  })
+
+  it("keeps continuation supporting when the user started a new request or there are multiple candidates", () => {
+    const shapeTemplate = createTemplate()
+    const planTemplate = createTemplate({
+      id: "delivery-plan-phase",
+      name: "Delivery Factory: Plan Phase",
+      pack: {
+        id: "delivery-pack",
+        label: "Delivery Factory",
+        journeyStage: "plan",
+        recommendedNext: [],
+      },
+      contractIn: [{ kind: "requirements_spec", title: "Feature Spec" }],
+      contractOut: [{ kind: "phase_plan", title: "Implementation Plan" }],
+      workflow: {
+        version: 1,
+        name: "Delivery Factory: Plan Phase",
+        nodes: [],
+        edges: [],
+      },
+    })
+
+    const candidates = deriveWorkflowCreateContinuations({
+      artifacts: [
+        createArtifact(),
+        createArtifact({
+          id: "artifact-2",
+          caseId: "case:checkout",
+          caseLabel: "Checkout polish",
+          workflowPath: "/tmp/project/checkout-shape.flow.yaml",
+          workflowName: "Shape checkout polish",
+          runId: "run-2",
+          updatedAt: 30,
+        }),
+      ],
+      humanTasks: [],
+      templates: [shapeTemplate, planTemplate],
+    })
+
+    const withDraft = resolveWorkflowCreateContinuationPresentation({
+      candidates: candidates.slice(0, 1),
+      hasStartedNewRequest: true,
+      routingInProgress: false,
+      clarificationInProgress: false,
+    })
+    const withMultiple = resolveWorkflowCreateContinuationPresentation({
+      candidates,
+      hasStartedNewRequest: false,
+      routingInProgress: false,
+      clarificationInProgress: false,
+    })
+
+    expect(withDraft.presentation).toBe("supporting")
+    expect(withDraft.reason).toBe("new_request_started")
+    expect(withMultiple.presentation).toBe("supporting")
+    expect(withMultiple.reason).toBe("multiple_candidates")
+    expect(withMultiple.secondaryContinuations).toHaveLength(1)
   })
 })

@@ -3,7 +3,6 @@ import { useAtom, useSetAtom } from "jotai"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import {
   Dialog,
   CanvasDialogBody,
@@ -31,11 +30,14 @@ import {
   selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
+  selectedWorkflowTemplateContextAtom,
   setWorkflowTemplateContextForKeyAtom,
   templateLibraryContextAtom,
   workflowCreateDraftPromptAtom,
   workflowCreateModeConfigsAtom,
   workflowCreatePromptScaffoldAtom,
+  workflowCreateSourceArtifactsAtom,
+  workflowCreateSourceAttachmentsAtom,
   workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   webSearchBackendAtom,
@@ -71,6 +73,7 @@ import {
   deriveTemplateCardCopy,
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateUseWhen,
+  mergeInputAttachments,
 } from "@/lib/workflow-entry"
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
 import {
@@ -106,8 +109,10 @@ function TemplateCard({
       variant="ghost"
       size="bare"
       onClick={() => onSelect(template)}
-      className={`ui-interactive-card w-full !items-start !justify-start gap-3 rounded-lg surface-panel p-4 text-left !whitespace-normal ui-transition-colors ui-motion-fast ${
-        isSelected ? "ring-2 ring-foreground/20 bg-surface-3" : ""
+      className={`w-full !items-start !justify-start gap-3 rounded-lg border border-hairline/70 bg-transparent p-4 text-left !whitespace-normal ui-transition-colors ui-motion-fast ${
+        isSelected
+          ? "border-transparent bg-surface-2/70 text-foreground"
+          : "text-foreground hover:border-hairline hover:bg-surface-2/45"
       }`}
     >
       <span className="text-xl flex-shrink-0 mt-0.5" aria-hidden>{template.emoji}</span>
@@ -138,41 +143,6 @@ function normalizeTemplateForWorkflowUse(template: WorkflowTemplate): WorkflowTe
   const name = getWorkflowTemplateDisplayName(template)
   if (name === template.name) return template
   return { ...template, name }
-}
-
-function TemplateCategoryCard({
-  label,
-  summary,
-  count,
-  selected,
-  onSelect,
-}: {
-  label: string
-  summary: string
-  count: number
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="bare"
-      onClick={onSelect}
-      className={`ui-interactive-card-subtle h-full w-full !flex-col !items-start !justify-start rounded-xl px-4 py-4 text-left !whitespace-normal ${
-        selected ? "surface-inset-card ring-2 ring-foreground/15 shadow-inset-highlight" : "surface-panel"
-      }`}
-      aria-pressed={selected}
-    >
-      <div className="flex w-full items-start justify-between gap-3">
-        <div>
-          <h3 className="text-body-md font-semibold text-foreground">{label}</h3>
-          <p className="mt-1 ui-meta-text text-muted-foreground">{count} shown</p>
-        </div>
-      </div>
-      <p className="mt-3 text-body-sm text-muted-foreground">{summary}</p>
-    </Button>
-  )
 }
 
 const TEMPLATE_CATEGORY_ORDER: TemplateCategoryKey[] = [
@@ -239,7 +209,7 @@ function TemplateDetailPanel({
     <aside className="w-full lg:w-[22rem] lg:max-h-[calc(100vh-var(--titlebar-height)-6rem)] lg:self-start lg:sticky lg:top-0 flex-shrink-0 overflow-hidden rounded-xl surface-panel flex flex-col">
       <header className="border-b border-border px-4 py-4">
         <div className="flex items-start gap-3">
-          <div className="surface-inset-card flex h-control-lg w-control-lg shrink-0 items-center justify-center p-0 text-lg">
+          <div className="flex h-control-lg w-control-lg shrink-0 items-center justify-center rounded-lg bg-surface-2/70 p-0 text-lg">
             <span aria-hidden>{template.emoji}</span>
           </div>
 
@@ -299,21 +269,23 @@ function TemplateDetailPanel({
           )}
 
           {template.how ? (
-            <DisclosurePanel summary="Why this start works">
-              <p className="mt-3 text-body-sm text-muted-foreground">{template.how}</p>
-            </DisclosurePanel>
+            <div className="border-t border-hairline/70 pt-4">
+              <span className="ui-meta-label text-muted-foreground">Why this start works</span>
+              <p className="mt-2 text-body-sm text-muted-foreground">{template.how}</p>
+            </div>
           ) : null}
 
-          <DisclosurePanel summary="Inside this flow">
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
+          <div className="border-t border-hairline/70 pt-4">
+            <span className="ui-meta-label text-muted-foreground">Inside this flow</span>
+            <ol className="mt-2 list-decimal space-y-2 pl-5 text-body-sm text-muted-foreground">
               {template.steps.map((step, i) => (
                 <li key={i}>{step}</li>
               ))}
             </ol>
-          </DisclosurePanel>
+          </div>
 
           {(sourceKind === "plugin" || sourceKind === "user" || sourceKind === "hub") && (
-            <div>
+            <div className="border-t border-hairline/70 pt-4">
               <span className="ui-meta-label text-muted-foreground">Source</span>
               <p className="mt-1 text-body-sm">
                 {sourceLabel}
@@ -326,7 +298,7 @@ function TemplateDetailPanel({
 
       <div className="border-t border-border px-4 py-3">
         <Button size="sm" onClick={() => onUse(template)} disabled={disabled} className="w-full">
-          Start with this
+          Start this flow
         </Button>
       </div>
     </aside>
@@ -340,24 +312,28 @@ export function WorkflowsTemplatesPage() {
   const [activeCategory, setActiveCategory] = useState<TemplateCategoryKey>("all")
   const [activeFilter, setActiveFilter] = useState<TemplateLibraryFilterKey>("all")
   const [selectedResultModeId] = useAtom(selectedResultModeIdAtom)
-  const [draftPrompt] = useAtom(workflowCreateDraftPromptAtom)
+  const [draftPrompt, setDraftPrompt] = useAtom(workflowCreateDraftPromptAtom)
   const [modeConfigs] = useAtom(workflowCreateModeConfigsAtom)
   const [promptScaffold] = useAtom(workflowCreatePromptScaffoldAtom)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [pendingTemplate, setPendingTemplate] = useState<WorkflowTemplate | null>(null)
+  const [pendingTemplateDecision, setPendingTemplateDecision] = useState<"create" | "replace">("create")
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
-  const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
-  const [, setInputValue] = useAtom(inputValueAtom)
+  const [inputAttachments, setInputAttachments] = useAtom(inputAttachmentsAtom)
+  const [inputValue, setInputValue] = useAtom(inputValueAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [projects] = useAtom(projectsAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
-  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [selectedInboxTaskKey, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [selectedWorkflowTemplateContext] = useAtom(selectedWorkflowTemplateContextAtom)
   const [templateLibraryContext, setTemplateLibraryContext] = useAtom(templateLibraryContextAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
-  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
-  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
+  const [workflowEntryState, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const [sourceArtifacts] = useAtom(workflowCreateSourceArtifactsAtom)
+  const [sourceAttachments] = useAtom(workflowCreateSourceAttachmentsAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [runStatus] = useAtom(runStatusAtom)
@@ -438,15 +414,6 @@ export function WorkflowsTemplatesPage() {
     [filteredTemplates, selectedTemplateId],
   )
 
-  const categoryCounts = useMemo(() => (
-    Object.fromEntries(
-      TEMPLATE_CATEGORY_ORDER.map((category) => [
-        category,
-        searchFilteredTemplates.filter((template) => templateMatchesCategory(template, category)).length,
-      ]),
-    ) as Record<TemplateCategoryKey, number>
-  ), [searchFilteredTemplates])
-
   const selectedCategoryMeta = TEMPLATE_CATEGORY_META[activeCategory]
   const createModeId = useMemo(
     () => deriveCreateModeId(activeCategory, selectedResultModeId, selectedTemplate),
@@ -483,6 +450,27 @@ export function WorkflowsTemplatesPage() {
     selectedResultMode,
     templateLibraryContext,
   ])
+  const sourceAttachmentSummary = useMemo(() => {
+    if (sourceArtifacts.length > 0) {
+      const titles = sourceArtifacts.slice(0, 2).map((artifact) => artifact.title)
+      if (sourceArtifacts.length > 2) {
+        titles.push(`+${sourceArtifacts.length - 2} more`)
+      }
+      return titles.join(" · ")
+    }
+    if (sourceAttachments.length > 0) {
+      const labels = sourceAttachments.slice(0, 2).map((attachment) => {
+        if (attachment.kind === "file") return attachment.name
+        if (attachment.kind === "run") return attachment.workflowName
+        return attachment.label
+      })
+      if (sourceAttachments.length > 2) {
+        labels.push(`+${sourceAttachments.length - 2} more`)
+      }
+      return labels.join(" · ")
+    }
+    return null
+  }, [sourceArtifacts, sourceAttachments])
   const hasActiveFilters = activeCategory !== "all" || activeFilter !== "all" || query.trim().length > 0
 
   useEffect(() => {
@@ -497,11 +485,21 @@ export function WorkflowsTemplatesPage() {
     setActiveFilter("all")
   }, [activeFilter, availableStageFilters])
 
+  useEffect(() => {
+    if (!pendingTemplate) return
+    setPendingTemplateDecision(preferredProjectPath ? "create" : "replace")
+  }, [pendingTemplate, preferredProjectPath])
+
   const clearFilters = () => {
     setQuery("")
     setActiveCategory("all")
     setActiveFilter("all")
   }
+
+  const replaceOptionAvailable = !replaceCurrentBlockedReason
+  const canContinuePendingTemplate = pendingTemplateDecision === "create"
+    ? Boolean(targetProjectPath)
+    : replaceOptionAvailable
 
   const confirmApplyTemplate = (template: WorkflowTemplate) => {
     if (createInProjectOnly) {
@@ -532,6 +530,14 @@ export function WorkflowsTemplatesPage() {
 
     const resolved = await resolveHubTemplate(template)
     const previousWorkflow = structuredClone(workflow)
+    const previousState = {
+      inputValue,
+      inputAttachments,
+      workflowEntryState,
+      templateContext: selectedWorkflowTemplateContext,
+      selectedInboxTaskKey,
+      selectedPastRun,
+    }
     const templateForWorkflowUse = normalizeTemplateForWorkflowUse(resolved)
     const nextWorkflow = resolveTemplateWorkflow(templateForWorkflowUse, webSearchBackend)
     const templateStartState = buildTemplateStartState({
@@ -542,11 +548,14 @@ export function WorkflowsTemplatesPage() {
       workflowPath: selectedWorkflowPath,
       projectPath: preferredProjectPath,
       requestedResult,
+      sourceArtifacts,
     })
     const workflowKey = toWorkflowExecutionKey(selectedWorkflowPath)
     setWorkflow(nextWorkflow)
     setInputValue(templateStartState.initialInputValue)
-    setInputAttachments(templateStartState.initialAttachments)
+    setInputAttachments(mergeInputAttachments(sourceAttachments, templateStartState.initialAttachments))
+    setSelectedInboxTaskKey(null)
+    setSelectedPastRun(null)
     setWorkflowEntryState(templateStartState.entryState)
     setWorkflowTemplateContextForKey({
       key: workflowKey,
@@ -559,8 +568,12 @@ export function WorkflowsTemplatesPage() {
         label: "Undo",
         onClick: () => {
           setWorkflow(previousWorkflow)
-          setWorkflowEntryState(null)
-          setWorkflowTemplateContextForKey({ key: workflowKey, context: null })
+          setInputValue(previousState.inputValue)
+          setInputAttachments(previousState.inputAttachments)
+          setSelectedInboxTaskKey(previousState.selectedInboxTaskKey)
+          setSelectedPastRun(previousState.selectedPastRun)
+          setWorkflowEntryState(previousState.workflowEntryState)
+          setWorkflowTemplateContextForKey({ key: workflowKey, context: previousState.templateContext })
         },
       },
     })
@@ -581,6 +594,7 @@ export function WorkflowsTemplatesPage() {
         workflowPath: filePath,
         projectPath,
         requestedResult,
+        sourceArtifacts,
       })
       const refreshed = await window.api.listProjectWorkflows(projectPath)
       await window.api.recordProjectTemplateUsage(projectPath, template.id).catch(() => undefined)
@@ -590,7 +604,7 @@ export function WorkflowsTemplatesPage() {
       setSelectedInboxTaskKey(null)
       setWorkflow(loadedWorkflow)
       setInputValue(templateStartState.initialInputValue)
-      setInputAttachments(templateStartState.initialAttachments)
+      setInputAttachments(mergeInputAttachments(sourceAttachments, templateStartState.initialAttachments))
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
       setSelectedPastRun(null)
       setWorkflowEntryState(templateStartState.entryState)
@@ -620,30 +634,33 @@ export function WorkflowsTemplatesPage() {
   )
 
   const headerActions = (
-    <>
+    <div className="flex items-center gap-2">
       <Button
         size="sm"
         variant="outline"
+        onClick={() => openWorkflowCreate({
+          modeId: createModeId,
+          projectPath: preferredProjectPath,
+          locked: createInProjectOnly,
+          prompt: templateLibraryContext ? draftPrompt : "",
+          sourceArtifacts,
+          initialAttachments: sourceAttachments,
+        })}
+      >
+        <Sparkles size={14} />
+        {templateLibraryContext ? "Back to create" : "Create with agent"}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => void createBlankWorkflow({ projectPath: preferredProjectPath })}
         disabled={creatingBlankWorkflow}
       >
         {creatingBlankWorkflow ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
         Blank flow
       </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => openWorkflowCreate({
-          modeId: templateLibraryContext ? selectedResultModeId : createModeId,
-          projectPath: preferredProjectPath,
-          locked: createInProjectOnly,
-          prompt: templateLibraryContext ? draftPrompt : "",
-        })}
-      >
-        <Sparkles size={14} />
-        Create with agent
-      </Button>
-    </>
+    </div>
   )
 
   return (
@@ -654,45 +671,28 @@ export function WorkflowsTemplatesPage() {
         actions={headerActions}
       />
 
-      <section aria-label="Library categories" className="overflow-hidden rounded-xl surface-elevated">
-        <div className="border-b border-hairline/70 px-4 py-4 sm:px-5">
-          <p className="section-kicker">Library</p>
-          <h2 className="mt-1 ui-title-text text-foreground">Browse the library</h2>
-          <p className="mt-2 text-body-sm text-muted-foreground">
-            Start broad, then narrow the list only if it helps.
+      <section aria-label="Library intro" className="space-y-2 px-1">
+        <p className="section-kicker">Library</p>
+        <h2 className="ui-title-text text-foreground">Browse the library</h2>
+        <p className="text-body-sm text-muted-foreground">
+          Start broad, then narrow the list only if that helps.
+        </p>
+        <p className="text-body-sm text-foreground">
+          {selectedCategoryMeta.summary}
+        </p>
+        {templateLibraryContext && requestedResult ? (
+          <p className="text-body-sm text-muted-foreground">
+            Current goal: {requestedResult}
           </p>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {TEMPLATE_CATEGORY_ORDER.map((category) => {
-              const meta = TEMPLATE_CATEGORY_META[category]
-              return (
-                <TemplateCategoryCard
-                  key={category}
-                  label={meta.label}
-                  summary={meta.summary}
-                  count={categoryCounts[category]}
-                  selected={activeCategory === category}
-                  onSelect={() => setActiveCategory(category)}
-                />
-              )
-            })}
+        ) : null}
+        {sourceAttachmentSummary ? (
+          <div className="border-b border-hairline/70 pb-3">
+            <div className="ui-meta-label text-muted-foreground">Using result</div>
+            <p className="mt-1 text-body-sm text-foreground">
+              {sourceAttachmentSummary}
+            </p>
           </div>
-        </div>
-        <div className="px-4 py-4 sm:px-5">
-          <div className="surface-inset-card flex flex-col gap-3 px-3 py-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1">
-              <p className="ui-meta-label text-muted-foreground">{selectedCategoryMeta.label}</p>
-              <p className="text-body-sm text-foreground">{selectedCategoryMeta.summary}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {availableStageFilters.map((entry) => (
-                <Badge key={entry.stage} variant="outline" size="compact">
-                  {STAGE_META[entry.stage].label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
+        ) : null}
       </section>
 
       <CollectionToolbar
@@ -701,33 +701,35 @@ export function WorkflowsTemplatesPage() {
         onQueryChange={setQuery}
         searchPlaceholder="Search templates"
         searchAriaLabel="Search templates"
+        surface="flat"
         summary={`${filteredTemplates.length} flow${filteredTemplates.length === 1 ? "" : "s"}`}
         filters={(
           <>
-            <span className="ui-meta-text hidden text-muted-foreground lg:inline-flex">
-              {activeCategory === "all"
-                ? "Narrow by work type"
-                : `Narrow ${selectedCategoryMeta.label.toLowerCase()} flows`}
-            </span>
-            <Button
-              variant={activeFilter === "all" ? "secondary" : "outline"}
-              size="xs"
-              onClick={() => setActiveFilter("all")}
-              aria-pressed={activeFilter === "all"}
-            >
-              All kinds
-            </Button>
-            {availableStageFilters.map(({ stage }) => (
-              <Button
-                key={stage}
-                variant={activeFilter === stage ? "secondary" : "outline"}
-                size="xs"
-                onClick={() => setActiveFilter(stage)}
-                aria-pressed={activeFilter === stage}
-              >
-                {STAGE_META[stage].label}
-              </Button>
-            ))}
+            <Select value={activeCategory} onValueChange={(value) => setActiveCategory(value as TemplateCategoryKey)}>
+              <SelectTrigger className="h-control-sm min-w-[11rem]">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                {TEMPLATE_CATEGORY_ORDER.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {TEMPLATE_CATEGORY_META[category].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as TemplateLibraryFilterKey)}>
+              <SelectTrigger className="h-control-sm min-w-[12rem]">
+                <SelectValue placeholder="Stage" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All stages</SelectItem>
+                {availableStageFilters.map(({ stage }) => (
+                  <SelectItem key={stage} value={stage}>
+                    {STAGE_META[stage].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {hasActiveFilters && (
               <Button variant="ghost" size="xs" onClick={clearFilters}>
                 <X size={12} />
@@ -745,7 +747,7 @@ export function WorkflowsTemplatesPage() {
             {loading ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, idx) => (
-                  <div key={`skeleton-${idx}`} className="rounded-lg surface-panel p-4 flex items-start gap-3" aria-hidden="true">
+                  <div key={`skeleton-${idx}`} className="rounded-lg border border-hairline/70 p-4 flex items-start gap-3" aria-hidden="true">
                     <Skeleton className="h-6 w-6 flex-shrink-0" />
                     <div className="min-w-0 flex-1 space-y-2">
                       <Skeleton className="h-4 w-2/3" />
@@ -755,10 +757,15 @@ export function WorkflowsTemplatesPage() {
                 ))}
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <div className="rounded-lg surface-panel ui-empty-state px-4 text-body-sm text-muted-foreground">
-                {activeCategory === "all"
-                  ? "No library flows match these filters."
-                  : `No ${selectedCategoryMeta.label.toLowerCase()} flows match these filters.`}
+              <div className="ui-empty-state px-4 text-body-sm text-muted-foreground">
+                <p>
+                  {activeCategory === "all"
+                    ? "No library flows match these filters."
+                    : `No ${selectedCategoryMeta.label.toLowerCase()} flows match these filters.`}
+                </p>
+                <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
               </div>
             ) : (
               renderTemplateGrid(filteredTemplates)
@@ -770,7 +777,7 @@ export function WorkflowsTemplatesPage() {
             <TemplateDetailPanel
               template={selectedTemplate}
               onUse={confirmApplyTemplate}
-              disabled={projects.length === 0}
+              disabled={createInProjectOnly && !preferredProjectPath}
               onClose={() => setSelectedTemplateId(null)}
             />
           )}
@@ -780,12 +787,12 @@ export function WorkflowsTemplatesPage() {
       <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && setPendingTemplate(null)}>
         <CanvasDialogContent showCloseButton={false} size="lg">
           <CanvasDialogHeader>
-            <DialogTitle>Start with this</DialogTitle>
+            <DialogTitle>Start this flow</DialogTitle>
             <DialogDescription>
-              &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready. Pick whether to create it in the selected project or replace the current draft.
+              &ldquo;{pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : ""}&rdquo; is ready. Choose how to apply it, then continue.
             </DialogDescription>
           </CanvasDialogHeader>
-          <CanvasDialogBody className="space-y-2">
+          <CanvasDialogBody className="space-y-4">
             {projects.length > 0 ? (
               <div className="space-y-1">
                 <p className="ui-meta-text text-muted-foreground">Selected project</p>
@@ -813,6 +820,48 @@ export function WorkflowsTemplatesPage() {
                 Add a project in the sidebar to create this flow there.
               </p>
             )}
+            <div role="radiogroup" aria-label="Start mode" className="space-y-2">
+              {projects.length > 0 ? (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={pendingTemplateDecision === "create"}
+                  onClick={() => setPendingTemplateDecision("create")}
+                  className={`w-full rounded-lg border px-3 py-3 text-left ui-transition-colors ui-motion-fast ${
+                    pendingTemplateDecision === "create"
+                      ? "border-transparent bg-surface-2/75"
+                      : "border-hairline/70 hover:bg-surface-2/45"
+                  }`}
+                >
+                  <p className="text-body-sm font-medium text-foreground">Create in selected project</p>
+                  <p className="mt-1 text-body-sm text-muted-foreground">
+                    Make a new flow in {targetProjectPath ? (targetProjectPath.split(/[\\/]/).pop() || "the selected project") : "the selected project"}.
+                  </p>
+                </button>
+              ) : null}
+              {replaceOptionAvailable ? (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={pendingTemplateDecision === "replace"}
+                  onClick={() => setPendingTemplateDecision("replace")}
+                  className={`w-full rounded-lg border px-3 py-3 text-left ui-transition-colors ui-motion-fast ${
+                    pendingTemplateDecision === "replace"
+                      ? "border-transparent bg-surface-2/75"
+                      : "border-hairline/70 hover:bg-surface-2/45"
+                  }`}
+                >
+                  <p className="text-body-sm font-medium text-foreground">Replace current draft</p>
+                  <p className="mt-1 text-body-sm text-muted-foreground">
+                    Swap the current draft for this starting flow.
+                  </p>
+                </button>
+              ) : (
+                <p className="text-body-sm text-muted-foreground">
+                  Current draft cannot be replaced while a run is active.
+                </p>
+              )}
+            </div>
           </CanvasDialogBody>
           <CanvasDialogFooter>
             <DialogClose asChild>
@@ -820,19 +869,18 @@ export function WorkflowsTemplatesPage() {
             </DialogClose>
             <Button
               size="sm"
-              disabled={!targetProjectPath}
-              onClick={() => pendingTemplate && targetProjectPath && void doCreateFromTemplate(pendingTemplate, targetProjectPath)}
+              disabled={!pendingTemplate || !canContinuePendingTemplate}
+              onClick={() => {
+                if (!pendingTemplate) return
+                if (pendingTemplateDecision === "replace") {
+                  void doApplyTemplate(pendingTemplate)
+                  return
+                }
+                if (!targetProjectPath) return
+                void doCreateFromTemplate(pendingTemplate, targetProjectPath)
+              }}
             >
-              Create in selected project
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={Boolean(replaceCurrentBlockedReason)}
-              title={replaceCurrentBlockedReason || undefined}
-              onClick={() => pendingTemplate && doApplyTemplate(pendingTemplate)}
-            >
-              Replace current draft
+              Continue
             </Button>
           </CanvasDialogFooter>
         </CanvasDialogContent>

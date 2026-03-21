@@ -1,7 +1,9 @@
-import type { CreateEntryRouteResult, InputAttachment, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CreateEntryRouteResult, InputAttachment, WorkflowTemplate } from "@shared/types"
 import {
+  buildArtifactInputAttachments,
   buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
+  mergeInputAttachments,
   type WorkflowEntrySource,
 } from "./workflow-entry"
 
@@ -39,6 +41,7 @@ export function buildTemplateStartState({
   projectPath,
   requestedResult,
   source = "template",
+  sourceArtifacts,
   seedOverride,
 }: {
   template: WorkflowTemplate
@@ -46,9 +49,12 @@ export function buildTemplateStartState({
   projectPath: string | null
   requestedResult?: string
   source?: Extract<WorkflowEntrySource, "template" | "template_customize">
+  sourceArtifacts?: ArtifactRecord[]
   seedOverride?: { initialInputValue: string; initialAttachments: InputAttachment[] } | null
 }) {
   const cleanRequestedResult = normalizeRequestedResult(requestedResult || "")
+  const seed = seedOverride || buildGuidedStartSeed(template, projectPath, cleanRequestedResult)
+  const artifactAttachments = buildArtifactInputAttachments(sourceArtifacts || [])
   const baseEntryState = buildTemplateWorkflowEntryState({
     template,
     workflowPath,
@@ -67,8 +73,13 @@ export function buildTemplateStartState({
       template,
       workflowPath,
       source,
+      sourceArtifacts,
     }),
-    ...(seedOverride || buildGuidedStartSeed(template, projectPath, cleanRequestedResult)),
+    initialInputValue: seed.initialInputValue,
+    initialAttachments: mergeInputAttachments(
+      artifactAttachments,
+      seed.initialAttachments,
+    ),
   }
 }
 
@@ -79,6 +90,7 @@ export function buildTemplateStartStateFromRoute({
   requestedResult,
   routeResult,
   source = "template",
+  sourceArtifacts,
 }: {
   template: WorkflowTemplate
   workflowPath: string | null
@@ -86,6 +98,7 @@ export function buildTemplateStartStateFromRoute({
   requestedResult?: string
   routeResult: CreateEntryRouteResult
   source?: Extract<WorkflowEntrySource, "template" | "template_customize">
+  sourceArtifacts?: ArtifactRecord[]
 }) {
   const templateStartState = buildTemplateStartState({
     template,
@@ -93,6 +106,7 @@ export function buildTemplateStartStateFromRoute({
     projectPath,
     requestedResult,
     source,
+    sourceArtifacts,
     seedOverride: {
       initialInputValue: routeResult.seed.primaryInputValue,
       initialAttachments: routeResult.seed.attachments,

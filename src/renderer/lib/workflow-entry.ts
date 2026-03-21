@@ -29,7 +29,7 @@ export interface WorkflowEntryState {
   outputText: string
   readinessText: string
   routing?: {
-    source: "agent" | "heuristic"
+    source: "agent"
     reason?: string
     confidence?: number
   }
@@ -580,7 +580,7 @@ export function buildTemplateRunContext({
     factoryLabel,
     caseId,
     caseLabel,
-    sourceArtifactIds: sourceArtifacts.map((artifact) => artifact.id),
+    sourceArtifactIds: (sourceArtifacts || []).map((artifact) => artifact.id),
     pack: template.pack,
     contractIn: template.contractIn,
     contractOut: template.contractOut,
@@ -673,4 +673,34 @@ export function buildArtifactAttachmentSeedInput(artifactAttachments: InputAttac
   }
 
   return "Use the attached results as the primary context for this step. Add any extra scope or constraints here before running."
+}
+
+export function buildArtifactInputAttachments(artifacts: ArtifactRecord[]): InputAttachment[] {
+  return artifacts.map((artifact) => ({
+    kind: "file" as const,
+    path: artifact.relativePath,
+    name: artifact.title,
+  }))
+}
+
+function inputAttachmentKey(attachment: InputAttachment) {
+  if (attachment.kind === "file") return `file:${attachment.path}:${attachment.name}`
+  if (attachment.kind === "run") return `run:${attachment.runId}:${attachment.workspace}`
+  return `text:${attachment.label}:${attachment.content}`
+}
+
+export function mergeInputAttachments(...groups: InputAttachment[][]): InputAttachment[] {
+  const seen = new Set<string>()
+  const merged: InputAttachment[] = []
+
+  for (const group of groups) {
+    for (const attachment of group) {
+      const key = inputAttachmentKey(attachment)
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(attachment)
+    }
+  }
+
+  return merged
 }

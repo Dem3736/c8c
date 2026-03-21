@@ -3,45 +3,103 @@ import { useAtom, useSetAtom } from "jotai"
 import {
   mainViewAtom,
   selectedProjectAtom,
+  selectedInboxTaskKeyAtom,
   selectedResultModeIdAtom,
   workflowCreateContextAtom,
   workflowCreateDraftPromptAtom,
+  workflowCreateSourceArtifactsAtom,
+  workflowCreateSourceAttachmentsAtom,
 } from "@/lib/store"
-import type { ResultModeId } from "@shared/types"
+import { selectedPastRunAtom } from "@/features/execution"
+import type { ArtifactRecord, InputAttachment, ResultModeId } from "@shared/types"
 
 interface OpenWorkflowCreateOptions {
   projectPath?: string | null
   locked?: boolean
   prompt?: string
   modeId?: ResultModeId
+  sourceArtifacts?: ArtifactRecord[]
+  initialAttachments?: InputAttachment[]
+}
+
+interface ApplyWorkflowCreateNavigationParams {
+  options?: OpenWorkflowCreateOptions
+  selectedProject: string | null
+  setMainView: (next: "workflow_create") => void
+  setSelectedResultModeId: (next: ResultModeId) => void
+  setWorkflowCreateContext: (next: { projectPath: string | null; locked: boolean }) => void
+  setWorkflowCreateDraftPrompt: (next: string) => void
+  setWorkflowCreateSourceArtifacts: (next: ArtifactRecord[]) => void
+  setWorkflowCreateSourceAttachments: (next: InputAttachment[]) => void
+  clearReviewState: () => void
+}
+
+export function applyWorkflowCreateNavigationState({
+  options = {},
+  selectedProject,
+  setMainView,
+  setSelectedResultModeId,
+  setWorkflowCreateContext,
+  setWorkflowCreateDraftPrompt,
+  setWorkflowCreateSourceArtifacts,
+  setWorkflowCreateSourceAttachments,
+  clearReviewState,
+}: ApplyWorkflowCreateNavigationParams): void {
+  const projectPath = Object.prototype.hasOwnProperty.call(options, "projectPath")
+    ? (options.projectPath ?? null)
+    : (selectedProject ?? null)
+
+  if (options.modeId) {
+    setSelectedResultModeId(options.modeId)
+  }
+
+  setWorkflowCreateContext({
+    projectPath,
+    locked: Boolean(options.locked && projectPath),
+  })
+  setWorkflowCreateDraftPrompt(options.prompt ?? "")
+  setWorkflowCreateSourceArtifacts(options.sourceArtifacts ?? [])
+  setWorkflowCreateSourceAttachments(options.initialAttachments ?? [])
+  clearReviewState()
+  setMainView("workflow_create")
 }
 
 export function useWorkflowCreateNavigation() {
   const [selectedProject] = useAtom(selectedProjectAtom)
   const setMainView = useSetAtom(mainViewAtom)
+  const setSelectedInboxTaskKey = useSetAtom(selectedInboxTaskKeyAtom)
   const setSelectedResultModeId = useSetAtom(selectedResultModeIdAtom)
+  const setSelectedPastRun = useSetAtom(selectedPastRunAtom)
   const setWorkflowCreateContext = useSetAtom(workflowCreateContextAtom)
   const setWorkflowCreateDraftPrompt = useSetAtom(workflowCreateDraftPromptAtom)
+  const setWorkflowCreateSourceArtifacts = useSetAtom(workflowCreateSourceArtifactsAtom)
+  const setWorkflowCreateSourceAttachments = useSetAtom(workflowCreateSourceAttachmentsAtom)
 
   const openWorkflowCreate = useCallback((options: OpenWorkflowCreateOptions = {}) => {
-    const projectPath = Object.prototype.hasOwnProperty.call(options, "projectPath")
-      ? (options.projectPath ?? null)
-      : (selectedProject ?? null)
-    if (options.modeId) {
-      setSelectedResultModeId(options.modeId)
-    }
-    setWorkflowCreateContext({
-      projectPath,
-      locked: Boolean(options.locked && projectPath),
+    applyWorkflowCreateNavigationState({
+      options,
+      selectedProject,
+      setMainView,
+      setSelectedResultModeId,
+      setWorkflowCreateContext,
+      setWorkflowCreateDraftPrompt,
+      setWorkflowCreateSourceArtifacts,
+      setWorkflowCreateSourceAttachments,
+      clearReviewState: () => {
+        setSelectedInboxTaskKey(null)
+        setSelectedPastRun(null)
+      },
     })
-    setWorkflowCreateDraftPrompt(options.prompt ?? "")
-    setMainView("workflow_create")
   }, [
     selectedProject,
     setMainView,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
     setSelectedResultModeId,
     setWorkflowCreateContext,
     setWorkflowCreateDraftPrompt,
+    setWorkflowCreateSourceArtifacts,
+    setWorkflowCreateSourceAttachments,
   ])
 
   return { openWorkflowCreate }

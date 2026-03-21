@@ -26,7 +26,7 @@ export function WorkflowCreateSuggestionsSection({
   if (!loading && suggestions.length === 0) return null
 
   return (
-    <section aria-label={title} className="w-full space-y-2.5">
+    <section aria-label={title} className="w-full space-y-2">
       <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-body-sm font-medium text-muted-foreground">{title}</p>
         <Button
@@ -40,16 +40,16 @@ export function WorkflowCreateSuggestionsSection({
       </div>
 
       {loading ? (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
+        <div className="space-y-1">
+          {Array.from({ length: 2 }).map((_, index) => (
             <div
               key={`template-skeleton-${index}`}
-              className="h-24 animate-pulse rounded-xl surface-panel"
+              className="h-16 animate-pulse rounded-xl bg-surface-2/55"
             />
           ))}
         </div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-1">
           {suggestions.map((suggestion) => (
             <TemplateSuggestionCard
               key={suggestion.template.id}

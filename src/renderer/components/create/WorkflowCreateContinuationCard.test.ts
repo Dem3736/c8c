@@ -122,8 +122,8 @@ describe("WorkflowCreateContinuationCard helpers", () => {
     ]
 
     expect(deriveSecondaryContinuationVisibility(continuations, false)).toMatchObject({
-      visibleContinuations: continuations.slice(0, 3),
-      hiddenCount: 2,
+      visibleContinuations: continuations.slice(0, 2),
+      hiddenCount: 3,
       canToggle: true,
     })
 

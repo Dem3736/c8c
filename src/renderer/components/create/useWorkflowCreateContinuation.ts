@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { ArtifactRecord, CaseStateRecord, HumanTaskSummary, WorkflowTemplate } from "@shared/types"
 import {
   deriveWorkflowCreateContinuations,
+  resolveWorkflowCreateContinuationPresentation,
   type WorkflowCreateContinuationCandidate,
 } from "@/lib/workflow-create-continuation"
 
@@ -54,10 +55,16 @@ export function useWorkflowCreateContinuation({
   projectPath,
   templates,
   templatesLoading,
+  hasStartedNewRequest,
+  routingInProgress,
+  clarificationInProgress,
 }: {
   projectPath: string | null
   templates: WorkflowTemplate[]
   templatesLoading: boolean
+  hasStartedNewRequest: boolean
+  routingInProgress: boolean
+  clarificationInProgress: boolean
 }) {
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
   const [caseStates, setCaseStates] = useState<CaseStateRecord[]>([])
@@ -99,10 +106,21 @@ export function useWorkflowCreateContinuation({
     () => deriveWorkflowCreateContinuations({ artifacts, caseStates, humanTasks, templates }),
     [artifacts, caseStates, humanTasks, templates],
   )
+  const presentationState = useMemo(
+    () => resolveWorkflowCreateContinuationPresentation({
+      candidates: continuations,
+      hasStartedNewRequest,
+      routingInProgress,
+      clarificationInProgress,
+    }),
+    [clarificationInProgress, continuations, hasStartedNewRequest, routingInProgress],
+  )
 
   return {
     loading: Boolean(projectPath) && (resourcesLoading || templatesLoading),
-    primaryContinuation: (continuations[0] ?? null) as WorkflowCreateContinuationCandidate | null,
-    secondaryContinuations: continuations.slice(1),
+    primaryContinuation: presentationState.primaryContinuation as WorkflowCreateContinuationCandidate | null,
+    secondaryContinuations: presentationState.secondaryContinuations,
+    presentation: presentationState.presentation,
+    reason: presentationState.reason,
   }
 }

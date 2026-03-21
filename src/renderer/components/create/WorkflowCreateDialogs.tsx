@@ -18,6 +18,10 @@ import type {
 import { getWorkflowTemplateDisplayName } from "@/lib/template-display"
 import { PendingTemplateDetails } from "@/components/create/TemplateSuggestionCard"
 
+export type RouteClarificationSelection =
+  | { kind: "help_mode"; helpMode: CreateEntryHelpModeHint }
+  | { kind: "job_route"; templateId: string }
+
 export function RouteClarificationDialog({
   clarification,
   onClose,
@@ -25,7 +29,7 @@ export function RouteClarificationDialog({
 }: {
   clarification: CreateEntryRouteClarification | null
   onClose: () => void
-  onSelect: (helpMode: CreateEntryHelpModeHint) => void
+  onSelect: (selection: RouteClarificationSelection) => void
 }) {
   return (
     <Dialog open={clarification !== null} onOpenChange={(open) => !open && onClose()}>
@@ -37,24 +41,42 @@ export function RouteClarificationDialog({
           </DialogDescription>
         </CanvasDialogHeader>
         <CanvasDialogBody className="space-y-2">
-          {clarification?.options.map((option) => (
-            <Button
-              key={option.value}
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={option.disabled}
-              onClick={() => onSelect(option.value)}
-              className="h-auto w-full justify-start rounded-lg px-3 py-3 text-left"
-            >
-              <span className="min-w-0">
-                <span className="block text-body-sm font-medium text-foreground">{option.label}</span>
-                {option.description ? (
-                  <span className="mt-0.5 block text-sidebar-meta text-muted-foreground">{option.description}</span>
-                ) : null}
-              </span>
-            </Button>
-          ))}
+          {clarification?.kind === "job_route"
+            ? clarification.options.map((option) => (
+              <Button
+                key={option.templateId}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onSelect({ kind: "job_route", templateId: option.templateId })}
+                className="h-auto w-full justify-start rounded-lg px-3 py-3 text-left"
+              >
+                <span className="min-w-0">
+                  <span className="block text-body-sm font-medium text-foreground">{option.label}</span>
+                  {option.description ? (
+                    <span className="mt-0.5 block text-sidebar-meta text-muted-foreground">{option.description}</span>
+                  ) : null}
+                </span>
+              </Button>
+            ))
+            : clarification?.options.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={option.disabled}
+                onClick={() => onSelect({ kind: "help_mode", helpMode: option.value })}
+                className="h-auto w-full justify-start rounded-lg px-3 py-3 text-left"
+              >
+                <span className="min-w-0">
+                  <span className="block text-body-sm font-medium text-foreground">{option.label}</span>
+                  {option.description ? (
+                    <span className="mt-0.5 block text-sidebar-meta text-muted-foreground">{option.description}</span>
+                  ) : null}
+                </span>
+              </Button>
+            ))}
         </CanvasDialogBody>
         <CanvasDialogFooter>
           <DialogClose asChild>
@@ -99,19 +121,19 @@ export function PendingTemplateDialog({
     <Dialog open={pendingTemplate !== null} onOpenChange={(open) => !open && onClose()}>
       <CanvasDialogContent showCloseButton={false} size="lg">
         <CanvasDialogHeader>
-          <DialogTitle>{pendingQuickStartLabel ? `Start ${pendingQuickStartLabel}` : "Start with this"}</DialogTitle>
+          <DialogTitle>{pendingQuickStartLabel ? `Start ${pendingQuickStartLabel}` : "Start this flow"}</DialogTitle>
           <DialogDescription>
             &ldquo;{pendingQuickStartLabel || (pendingTemplate ? getWorkflowTemplateDisplayName(pendingTemplate) : "")}&rdquo; is ready.
           </DialogDescription>
         </CanvasDialogHeader>
-        <CanvasDialogBody className="space-y-3">
+        <CanvasDialogBody className="space-y-4">
           {targetProjectPath ? (
-            <div className="rounded-lg surface-inset-card px-3 py-3">
+            <div className="space-y-1">
               <p className="ui-meta-text text-muted-foreground">Selected project</p>
               <p className="mt-1 ui-body-text-medium text-foreground">{targetProjectName}</p>
             </div>
           ) : (
-            <div className="rounded-lg surface-inset-card px-3 py-3 text-body-sm text-muted-foreground">
+            <div className="text-body-sm text-muted-foreground">
               Select or add a project first so this flow has somewhere to start.
             </div>
           )}

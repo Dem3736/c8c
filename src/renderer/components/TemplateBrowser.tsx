@@ -5,15 +5,17 @@ import {
   currentWorkflowAtom,
   inputAttachmentsAtom,
   inputValueAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   selectedResultModeIdAtom,
+  selectedWorkflowTemplateContextAtom,
   setWorkflowTemplateContextForKeyAtom,
   workflowEntryStateAtom,
   webSearchBackendAtom,
   type WorkflowTemplate,
 } from "@/lib/store"
-import { runStatusAtom } from "@/features/execution"
+import { runStatusAtom, selectedPastRunAtom } from "@/features/execution"
 import {
   CanvasDialogBody,
   CanvasDialogContent,
@@ -51,12 +53,15 @@ interface TemplateBrowserProps {
 export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserProps = {}) {
   const [open, setOpen] = useAtom(templateBrowserOpenAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
-  const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
-  const [, setInputValue] = useAtom(inputValueAtom)
+  const [inputAttachments, setInputAttachments] = useAtom(inputAttachmentsAtom)
+  const [inputValue, setInputValue] = useAtom(inputValueAtom)
+  const [selectedInboxTaskKey, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [selectedResultModeId] = useAtom(selectedResultModeIdAtom)
-  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
+  const [workflowEntryState, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const [selectedWorkflowTemplateContext] = useAtom(selectedWorkflowTemplateContextAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [runStatus] = useAtom(runStatusAtom)
@@ -149,11 +154,21 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
       ...templateToApply,
       workflow: nextWorkflow,
     }
+    const previousState = {
+      inputValue,
+      inputAttachments,
+      workflowEntryState,
+      templateContext: selectedWorkflowTemplateContext,
+      selectedInboxTaskKey,
+      selectedPastRun,
+    }
     if (onApply) {
       onApply(resolvedTemplate, previousWorkflow)
     } else {
       setWorkflow(nextWorkflow)
     }
+    setSelectedInboxTaskKey(null)
+    setSelectedPastRun(null)
     const templateStartState = buildTemplateStartState({
       template: resolvedTemplate,
       workflowPath: selectedWorkflowPath,
@@ -175,8 +190,12 @@ export function TemplateBrowser({ onApply, initialTemplates }: TemplateBrowserPr
         label: "Undo",
         onClick: () => {
           setWorkflow(previousWorkflow as typeof workflow)
-          setWorkflowEntryState(null)
-          setWorkflowTemplateContextForKey({ key: workflowKey, context: null })
+          setInputValue(previousState.inputValue)
+          setInputAttachments(previousState.inputAttachments)
+          setSelectedInboxTaskKey(previousState.selectedInboxTaskKey)
+          setSelectedPastRun(previousState.selectedPastRun)
+          setWorkflowEntryState(previousState.workflowEntryState)
+          setWorkflowTemplateContextForKey({ key: workflowKey, context: previousState.templateContext })
         },
       },
     })

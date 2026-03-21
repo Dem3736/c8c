@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { CreateEntryRouteResult, WorkflowTemplate } from "@shared/types"
+import type { ArtifactRecord, CreateEntryRouteResult, WorkflowTemplate } from "@shared/types"
 import { buildTemplateStartState, buildTemplateStartStateFromRoute } from "./template-start"
 
 function createTemplate(inputType: "text" | "directory"): WorkflowTemplate {
@@ -26,7 +26,6 @@ function createTemplate(inputType: "text" | "directory"): WorkflowTemplate {
           position: { x: 0, y: 0 },
           config: {
             inputType,
-            label: "Input",
             placeholder: "",
             required: true,
           },
@@ -36,7 +35,6 @@ function createTemplate(inputType: "text" | "directory"): WorkflowTemplate {
           type: "output",
           position: { x: 200, y: 0 },
           config: {
-            label: "Output",
             title: "Result",
           },
         },
@@ -76,6 +74,40 @@ describe("buildTemplateStartState", () => {
         kind: "text",
         label: "Requested result",
         content: "Audit the codebase",
+      },
+    ])
+  })
+
+  it("merges source artifacts into template context and initial attachments", () => {
+    const sourceArtifacts: ArtifactRecord[] = [
+      {
+        id: "artifact-1",
+        kind: "audit_report",
+        title: "UI Audit Report",
+        projectPath: "/tmp/project",
+        workspace: "/tmp/workspace",
+        runId: "run-1",
+        relativePath: ".c8c/artifacts/run-1-ui-audit.md",
+        contentPath: "/tmp/project/.c8c/artifacts/run-1-ui-audit.md",
+        metadataPath: "/tmp/project/.c8c/artifacts/run-1-ui-audit.json",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+
+    const state = buildTemplateStartState({
+      template: createTemplate("text"),
+      workflowPath: "/tmp/example.chain",
+      projectPath: "/tmp/project",
+      sourceArtifacts,
+    })
+
+    expect(state.templateContext.sourceArtifactIds).toEqual(["artifact-1"])
+    expect(state.initialAttachments).toEqual([
+      {
+        kind: "file",
+        path: ".c8c/artifacts/run-1-ui-audit.md",
+        name: "UI Audit Report",
       },
     ])
   })

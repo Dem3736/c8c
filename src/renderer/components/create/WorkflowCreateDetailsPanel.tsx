@@ -40,8 +40,8 @@ export function WorkflowCreateDetailsPanel({
     <div data-open={open ? "true" : "false"} className="ui-collapsible">
       <div className="ui-collapsible-inner">
         <div className="px-2 pt-1">
-          <div ref={helperRef} className="surface-inset-card overflow-hidden">
-            <div className="flex flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-4">
+          <div ref={helperRef} className="overflow-hidden border-t border-hairline/70">
+            <div className="flex flex-wrap items-start justify-between gap-3 px-2 pb-0 pt-3">
               <div>
                 <p className="section-kicker">Details</p>
               </div>
@@ -60,7 +60,7 @@ export function WorkflowCreateDetailsPanel({
 
             <div
               ref={scrollRef}
-              className="ui-scroll-region max-h-[min(56vh,36rem)] overflow-y-auto border-t border-hairline/70 px-4 py-4"
+              className="ui-scroll-region max-h-[min(56vh,36rem)] overflow-y-auto border-t border-hairline/70 px-2 py-4"
             >
               <div className="space-y-5">
                 <div className="space-y-3">
