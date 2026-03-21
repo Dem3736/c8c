@@ -51,6 +51,10 @@ interface UseExecutionCommandsArgs {
   onPreflightWarnings?: (warnings: PreflightWarning[]) => Promise<boolean>
 }
 
+export function canStartManualContinuation(runStatus: ExecutionRunStatus) {
+  return runStatus !== "starting" && runStatus !== "running" && runStatus !== "cancelling"
+}
+
 export function useExecutionCommands({
   controller,
   runStatus,
@@ -361,7 +365,7 @@ export function useExecutionCommands({
     workflowForRun: Workflow,
     workflowPathForRun: string | null,
   ) => {
-    if (isRunInFlight(runStatus)) return false
+    if (!canStartManualContinuation(runStatus)) return false
     if (!runToContinue.workspace) {
       toastError("Could not continue run", {
         description: "Run workspace is missing.",
@@ -450,7 +454,7 @@ export function useExecutionCommands({
   ])
 
   const continueRun = useCallback(async (runToContinue: RunResult) => {
-    if (isRunInFlight(runStatus)) return
+    if (!canStartManualContinuation(runStatus)) return
     if (!runToContinue.workspace) {
       toastError("Could not continue run", {
         description: "Run workspace is missing.",

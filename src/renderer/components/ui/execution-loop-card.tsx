@@ -46,11 +46,13 @@ export function ExecutionLoopCard({
   className,
   detailSummary = "Loop details",
   compact = false,
+  surface = "card",
 }: {
   summary: ExecutionLoopSummary | null
   className?: string
   detailSummary?: string
   compact?: boolean
+  surface?: "card" | "flat"
 }) {
   if (!summary) return null
 
@@ -59,9 +61,18 @@ export function ExecutionLoopCard({
   const scoreGap = Math.max(summary.threshold - summary.score, 0)
   const criteriaCount = summary.criteriaBreakdown?.length || 0
   const compactDetail = summary.fixInstructions || summary.reason
+  const flatSurface = surface === "flat"
 
   return (
-    <div className={cn("rounded-lg border border-hairline bg-surface-2/55 px-3 py-2.5", compact && "px-2.5 py-2", className)}>
+    <div
+      className={cn(
+        flatSurface
+          ? "px-0.5 py-1.5"
+          : "rounded-lg border border-hairline bg-surface-2/55 px-3 py-2.5",
+        compact && !flatSurface && "px-2.5 py-2",
+        className,
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -114,8 +125,9 @@ export function ExecutionLoopCard({
       {(summary.reason || summary.fixInstructions || criteriaCount > 0) && (
         <DisclosurePanel
           summary={detailSummary}
-          className="mt-2 border border-hairline bg-surface-1/75"
-          summaryClassName="py-1.5"
+          surface={flatSurface ? "flat" : "plain"}
+          className={cn("mt-2", !flatSurface && "border-0 bg-transparent")}
+          summaryClassName={cn("py-1.5", !flatSurface && "px-0")}
           contentClassName="space-y-2.5"
         >
           {summary.reason && (
@@ -137,7 +149,10 @@ export function ExecutionLoopCard({
                 {summary.criteriaBreakdown.map((criterion) => (
                   <div
                     key={`${criterion.id}-${criterion.score}`}
-                    className="flex items-center justify-between gap-3 rounded-md border border-hairline bg-surface-2/45 px-2.5 py-1.5 text-body-sm"
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-md border border-hairline px-2.5 py-1.5 text-body-sm",
+                      flatSurface ? "bg-transparent" : "bg-surface-2/45",
+                    )}
                   >
                     <span className="min-w-0 truncate text-foreground">{criterion.id}</span>
                     <Badge

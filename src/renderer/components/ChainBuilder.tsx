@@ -490,7 +490,9 @@ export function ChainBuilder({
         }}
         className={cn(
           "rounded-lg ui-transition-colors ui-motion-fast",
-          flowCardMode
+          runtimeMode
+            ? "w-full"
+            : flowCardMode
             ? "w-[14.5rem] shrink-0 snap-start md:w-[15rem] xl:w-[15.5rem]"
             : "w-full",
           dragOverNodeId === node.id && "ring-2 ring-primary/50 ring-offset-2 ring-offset-surface-1",
@@ -534,6 +536,7 @@ export function ChainBuilder({
           resolveNodeLabel={getNodeDisplayLabel}
           compact={compact}
           runtimeMode={flowCardMode}
+          runtimePresentationMode={runtimeMode ? "monitor" : "outline"}
           runtimeFocusKind={monitorCurrentStage?.node.id === node.id ? "current" : monitorNextStage?.node.id === node.id ? "next" : null}
           runtimeBranchSummary={runtimeBranchSummary}
         />
@@ -545,12 +548,14 @@ export function ChainBuilder({
     <section
       aria-label={flowCardMode ? "Flow preview" : "Flow builder"}
       className={cn(
-        "ui-fade-slide-in surface-panel",
-        flowCardMode
-          ? "rounded-xl p-3.5 space-y-3 md:p-4"
-          : compact
-            ? "rounded-lg p-2.5 space-y-2"
-            : "rounded-lg p-4 space-y-3",
+        "ui-fade-slide-in",
+        runtimeMode
+          ? "space-y-2"
+          : flowCardMode
+            ? "surface-panel rounded-xl p-3.5 space-y-3 md:p-4"
+            : compact
+              ? "surface-panel rounded-lg p-2.5 space-y-2"
+              : "surface-panel rounded-lg p-4 space-y-3",
       )}
     >
       {flowCardMode ? (
@@ -575,9 +580,17 @@ export function ChainBuilder({
 
       <div className="space-y-0">
         {!flowCardMode && !workflow.nodes.some((n) => n.type !== "input" && n.type !== "output") && (
-          <ChainBuilderStartHint compact={compact} />
+          <ChainBuilderStartHint compact={compact} onAddFirstStep={() => setPickerOpen(true)} />
         )}
-        {flowCardMode ? (
+        {runtimeMode ? (
+          <div className="space-y-0 border-t border-hairline/70">
+            {orderedNodes.map((node, i) => (
+              <div key={node.id} className={cn(i > 0 && "border-t border-hairline/70")}>
+                {renderNodeStep(node, i)}
+              </div>
+            ))}
+          </div>
+        ) : flowCardMode ? (
           <div className="overflow-x-auto pb-2 ui-scrollbar-hidden">
             <div className="flex min-w-max snap-x snap-mandatory items-stretch gap-2 pr-4">
               {orderedNodes.map((node, i) => (

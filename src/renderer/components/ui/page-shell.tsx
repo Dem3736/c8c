@@ -84,7 +84,7 @@ export function SectionHeading({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <h2 className="ui-title-text text-foreground">
+      <h2 className="text-title-md font-semibold text-foreground">
         {title}
       </h2>
       {meta}

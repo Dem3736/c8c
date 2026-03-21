@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { Workflow } from "@shared/types"
-import { buildPendingApprovalNotifications } from "./useExecutionController"
+import { buildPendingApprovalNotifications, subscribeWorkflowEventBridge } from "./useExecutionController"
 import { createEmptyWorkflowExecutionState } from "@/lib/workflow-execution"
 
 function createApprovalWorkflow(): Workflow {
@@ -135,5 +135,25 @@ describe("buildPendingApprovalNotifications", () => {
     }
 
     expect(buildPendingApprovalNotifications({ completed: pausedState })).toEqual([])
+  })
+})
+
+describe("subscribeWorkflowEventBridge", () => {
+  it("forwards subscribed workflow events to the execution controller", () => {
+    const processWorkflowEvent = vi.fn()
+    const unsubscribe = vi.fn()
+    const subscribe = vi.fn((callback: (event: { runId: string; type: string }) => void) => {
+      callback({ runId: "run-1", type: "run-done" })
+      return unsubscribe
+    })
+
+    const returnedUnsubscribe = subscribeWorkflowEventBridge(
+      subscribe,
+      { processWorkflowEvent } as { processWorkflowEvent: typeof processWorkflowEvent },
+    )
+
+    expect(subscribe).toHaveBeenCalledTimes(1)
+    expect(processWorkflowEvent).toHaveBeenCalledWith({ runId: "run-1", type: "run-done" })
+    expect(returnedUnsubscribe).toBe(unsubscribe)
   })
 })

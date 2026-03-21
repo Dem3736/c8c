@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { ArtifactRecord, HumanTaskSnapshot } from "@shared/types"
 import {
   buildInitialHumanTaskAnswers,
+  buildSubmitHumanTaskAnswers,
   deriveTaskCardContext,
   hasMissingRequiredTaskAnswers,
   sortHumanTasksByActivity,
@@ -90,6 +91,31 @@ describe("task-ui", () => {
       },
     }))).toEqual({
       decision: "reject",
+    })
+  })
+
+  it("marks approval submissions as approved for runtime continue flows", () => {
+    expect(buildSubmitHumanTaskAnswers(
+      createTask(),
+      { comment: "looks good" },
+    )).toEqual({
+      comment: "looks good",
+      approved: true,
+    })
+
+    expect(buildSubmitHumanTaskAnswers(
+      createTask({
+        kind: "form",
+        request: {
+          version: 1,
+          kind: "form",
+          title: "Provide missing input",
+          fields: [],
+        },
+      }),
+      { answer: "42" },
+    )).toEqual({
+      answer: "42",
     })
   })
 

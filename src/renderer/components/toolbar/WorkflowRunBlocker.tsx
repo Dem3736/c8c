@@ -2,6 +2,7 @@ import { cn } from "@/lib/cn"
 import type { ValidationError } from "@/lib/validate-workflow"
 
 interface WorkflowRunBlockerProps {
+  suppressed?: boolean
   isRunning: boolean
   workflowReviewMode: boolean
   runDisabledReason: string | null
@@ -11,6 +12,7 @@ interface WorkflowRunBlockerProps {
 }
 
 export function WorkflowRunBlocker({
+  suppressed = false,
   isRunning,
   workflowReviewMode,
   runDisabledReason,
@@ -20,23 +22,25 @@ export function WorkflowRunBlocker({
 }: WorkflowRunBlockerProps) {
   return (
     <div
-      data-open={!isRunning && !workflowReviewMode && Boolean(runDisabledReason) ? "true" : "false"}
+      data-open={!suppressed && !isRunning && !workflowReviewMode && Boolean(runDisabledReason) ? "true" : "false"}
       className={cn(
         "ui-collapsible",
-        !isRunning && !workflowReviewMode && runDisabledReason && "border-b border-hairline",
+        !suppressed && !isRunning && !workflowReviewMode && runDisabledReason && "border-b border-hairline",
       )}
     >
       <div className="ui-collapsible-inner">
-        <div className="px-3 py-1 ui-meta-text text-muted-foreground bg-surface-1/70">
-          {runDisabledReason || ""}
+        <div role="alert" className="mx-3 my-2 ui-alert-danger text-status-danger">
+          <p className="text-body-sm font-medium">
+            {runDisabledReason || ""}
+          </p>
           {hasBlockingErrors && (
-            <ul className="mt-1 space-y-1">
+            <ul className="mt-2 space-y-1.5">
               {workflowValidation.filter((issue) => issue.severity === "error").map((issue) => (
                 <li key={`${issue.nodeId}-${issue.field}`}>
                   <button
                     type="button"
                     onClick={() => onNavigateToValidationIssue(issue)}
-                    className="text-left text-status-danger underline-offset-2 hover:underline"
+                    className="text-left text-body-sm text-status-danger/90 underline-offset-2 hover:underline"
                   >
                     {issue.message}
                   </button>

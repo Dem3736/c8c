@@ -31,6 +31,23 @@ function createWorkflow(provider?: "claude" | "codex"): Workflow {
   }
 }
 
+function createProviderWorkflow(provider?: "claude" | "codex"): Workflow {
+  return {
+    version: 1,
+    name: "Provider workflow",
+    defaults: provider ? { provider } : undefined,
+    nodes: [
+      makeNode("input-1", "input"),
+      makeNode("skill-1", "skill"),
+      makeNode("output-1", "output"),
+    ],
+    edges: [
+      makeEdge("input-1", "skill-1"),
+      makeEdge("skill-1", "output-1"),
+    ],
+  }
+}
+
 function createDiagnostics(overrides?: Partial<ProviderDiagnostics>): ProviderDiagnostics {
   return {
     settings: {
@@ -94,7 +111,7 @@ describe("execution preflight", () => {
   })
 
   it("blocks start when Claude CLI is unavailable", () => {
-    const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+    const result = evaluateExecutionStartPreflight(createProviderWorkflow("claude"), {
       diagnostics: createDiagnostics({
         health: {
           claude: {
@@ -125,7 +142,7 @@ describe("execution preflight", () => {
   })
 
   it("blocks start when Codex auth is required", () => {
-    const result = evaluateExecutionStartPreflight(createWorkflow("codex"), {
+    const result = evaluateExecutionStartPreflight(createProviderWorkflow("codex"), {
       diagnostics: createDiagnostics({
         auth: {
           claude: {
@@ -152,7 +169,7 @@ describe("execution preflight", () => {
   })
 
   it("allows codex when auth state is unknown but CLI is available", () => {
-    const result = evaluateExecutionStartPreflight(createWorkflow("codex"), {
+    const result = evaluateExecutionStartPreflight(createProviderWorkflow("codex"), {
       diagnostics: createDiagnostics({
         auth: {
           claude: {
@@ -176,9 +193,55 @@ describe("execution preflight", () => {
     })
   })
 
+  it("allows providerless workflows without requiring provider auth", () => {
+    const result = evaluateExecutionStartPreflight(createWorkflow("codex"), {
+      diagnostics: createDiagnostics({
+        auth: {
+          claude: {
+            provider: "claude",
+            state: "unauthenticated",
+            authenticated: false,
+            error: "Claude CLI is not authenticated.",
+          },
+          codex: {
+            provider: "codex",
+            state: "unauthenticated",
+            authenticated: false,
+            error: "Codex CLI is not authenticated.",
+          },
+        },
+      }),
+      cliStatus: null,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      effectiveProvider: "codex",
+    })
+  })
+
   it("loads Claude CLI status only when the effective provider is Claude", async () => {
     const getProviderDiagnostics = vi.fn().mockResolvedValue(createDiagnostics())
     const getClaudeCodeSubscriptionStatus = vi.fn().mockResolvedValue(createCliStatus())
+
+    const result = await loadExecutionStartPreflight(
+      {
+        getProviderDiagnostics,
+        getClaudeCodeSubscriptionStatus,
+      },
+      createProviderWorkflow("claude"),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      effectiveProvider: "claude",
+    })
+    expect(getClaudeCodeSubscriptionStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it("skips CLI auth probes for providerless workflows", async () => {
+    const getProviderDiagnostics = vi.fn().mockResolvedValue(createDiagnostics())
+    const getClaudeCodeSubscriptionStatus = vi.fn()
 
     const result = await loadExecutionStartPreflight(
       {
@@ -192,7 +255,7 @@ describe("execution preflight", () => {
       ok: true,
       effectiveProvider: "claude",
     })
-    expect(getClaudeCodeSubscriptionStatus).toHaveBeenCalledTimes(1)
+    expect(getClaudeCodeSubscriptionStatus).not.toHaveBeenCalled()
   })
 
   it("skips Claude CLI status when the effective provider is Codex", async () => {
@@ -212,7 +275,7 @@ describe("execution preflight", () => {
         getProviderDiagnostics,
         getClaudeCodeSubscriptionStatus,
       },
-      createWorkflow("codex"),
+      createProviderWorkflow("codex"),
     )
 
     expect(result).toMatchObject({
@@ -230,7 +293,7 @@ describe("execution preflight", () => {
 
   describe("CLI version checking", () => {
     it("blocks start when Claude CLI version is below minimum", () => {
-      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+      const result = evaluateExecutionStartPreflight(createProviderWorkflow("claude"), {
         diagnostics: createDiagnostics({
           health: {
             claude: {
@@ -259,7 +322,7 @@ describe("execution preflight", () => {
     })
 
     it("allows execution when Claude CLI version meets minimum", () => {
-      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+      const result = evaluateExecutionStartPreflight(createProviderWorkflow("claude"), {
         diagnostics: createDiagnostics({
           health: {
             claude: {
@@ -282,7 +345,7 @@ describe("execution preflight", () => {
     })
 
     it("allows execution when Claude CLI version cannot be parsed (backwards compat)", () => {
-      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+      const result = evaluateExecutionStartPreflight(createProviderWorkflow("claude"), {
         diagnostics: createDiagnostics({
           health: {
             claude: {
@@ -305,7 +368,7 @@ describe("execution preflight", () => {
     })
 
     it("allows execution when version field is absent (backwards compat)", () => {
-      const result = evaluateExecutionStartPreflight(createWorkflow("claude"), {
+      const result = evaluateExecutionStartPreflight(createProviderWorkflow("claude"), {
         diagnostics: createDiagnostics(),
         cliStatus: createCliStatus(),
       })
@@ -314,7 +377,7 @@ describe("execution preflight", () => {
     })
 
     it("does not version-check Codex provider", () => {
-      const result = evaluateExecutionStartPreflight(createWorkflow("codex"), {
+      const result = evaluateExecutionStartPreflight(createProviderWorkflow("codex"), {
         diagnostics: createDiagnostics({
           health: {
             claude: {

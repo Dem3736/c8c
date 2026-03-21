@@ -70,7 +70,7 @@ export function ArtifactInspectPanel({
   })
 
   return (
-    <section className="rounded-xl surface-panel p-4 space-y-4 ui-fade-slide-in">
+    <section data-artifact-inspect-panel="true" className="rounded-xl surface-panel p-4 space-y-4 ui-fade-slide-in">
       <ScopeBanner
         tone="muted"
         eyebrow={(

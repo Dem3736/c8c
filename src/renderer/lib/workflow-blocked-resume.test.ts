@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { ArtifactRecord, HumanTaskSnapshot, Workflow } from "@shared/types"
+import type { ArtifactRecord, EvaluationResult, HumanTaskSnapshot, NodeState, Workflow } from "@shared/types"
 import { deriveWorkflowBlockedResumeSummary } from "./workflow-blocked-resume"
 
 function createWorkflow(): Workflow {
@@ -77,6 +77,36 @@ function createArtifact(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord
   }
 }
 
+function createEvaluatorWorkflow(): Workflow {
+  return {
+    version: 1,
+    name: "Ship review",
+    description: "",
+    defaults: { model: "sonnet", maxTurns: 40, timeout_minutes: 30, maxParallel: 4 },
+    nodes: [
+      { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: { inputType: "text", required: true } },
+      { id: "review-1", type: "skill", position: { x: 120, y: 0 }, config: { prompt: "Review changes" } },
+      {
+        id: "eval-1",
+        type: "evaluator",
+        position: { x: 240, y: 0 },
+        config: { criteria: "Security, regressions, clarity", threshold: 8, maxRetries: 1 },
+      },
+      {
+        id: "approval-1",
+        type: "approval",
+        position: { x: 360, y: 0 },
+        config: { message: "Ship", show_content: true, allow_edit: false },
+      },
+    ],
+    edges: [
+      { id: "edge-1", source: "input-1", target: "review-1", type: "default" },
+      { id: "edge-2", source: "review-1", target: "eval-1", type: "default" },
+      { id: "edge-3", source: "eval-1", target: "approval-1", type: "default" },
+    ],
+  }
+}
+
 describe("workflow-blocked-resume", () => {
   it("builds a blocked approval summary with durable context", () => {
     const summary = deriveWorkflowBlockedResumeSummary({
@@ -140,5 +170,55 @@ describe("workflow-blocked-resume", () => {
     expect(summary.primaryArtifact?.id).toBe("artifact-newer")
     expect(summary.latestResultText).toBe("Latest result: Newest verification.")
     expect(summary.attachText).toBe("Newest verification and Older verification")
+  })
+
+  it("derives top findings from evaluator criteria when blocked data exists", () => {
+    const nodeStates: Record<string, NodeState> = {
+      "eval-1": {
+        status: "completed",
+        attempts: 1,
+        log: [],
+      },
+      "approval-1": {
+        status: "waiting_approval",
+        attempts: 0,
+        log: [],
+      },
+    }
+    const evalResults: Record<string, EvaluationResult[]> = {
+      "eval-1": [{
+        attempt: 1,
+        score: 6.5,
+        reason: "Two issues need decision before ship.",
+        passed: false,
+        criteria: [
+          { id: "Security", score: 5 },
+          { id: "Regressions", score: 6 },
+          { id: "Clarity", score: 9 },
+        ],
+      }],
+    }
+
+    const summary = deriveWorkflowBlockedResumeSummary({
+      workflow: createEvaluatorWorkflow(),
+      task: createTask({
+        request: {
+          version: 1,
+          kind: "approval",
+          title: "Ship approval",
+          summary: "Approve the release step.",
+          fields: [],
+          metadata: { generatedByNodeId: "eval-1" },
+        },
+      }),
+      sourceArtifacts: [createArtifact()],
+      nodeStates,
+      evalResults,
+    })
+
+    expect(summary.findings).toEqual([
+      "Security (5/8)",
+      "Regressions (6/8)",
+    ])
   })
 })

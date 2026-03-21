@@ -35,12 +35,14 @@ interface InputPanelProps {
   label?: string
   compact?: boolean
   showTemplateContext?: boolean
+  surface?: "card" | "flat"
 }
 
 export function InputPanel({
   label = "Input",
   compact = false,
   showTemplateContext = true,
+  surface = "card",
 }: InputPanelProps = {}) {
   const [inputValue, setInputValue] = useAtom(inputValueAtom)
   const [workflow] = useAtom(currentWorkflowAtom)
@@ -152,8 +154,14 @@ export function InputPanel({
   return (
     <section
       className={cn(
-        "rounded-lg surface-panel ui-fade-slide-in",
-        compact ? "p-2.5 space-y-2" : "p-4 space-y-3",
+        "ui-fade-slide-in",
+        surface === "card"
+          ? "rounded-lg surface-panel"
+          : "bg-transparent",
+        compact ? "space-y-2" : "space-y-3",
+        surface === "card"
+          ? (compact ? "p-2.5" : "p-4")
+          : "p-0",
       )}
     >
       <label htmlFor="workflow-input" className="section-kicker">
@@ -162,8 +170,8 @@ export function InputPanel({
 
       {showTemplateContext && (selectedWorkflowTemplateContext?.useWhen || selectedWorkflowTemplateContext?.inputText || templateContracts.length > 0) && (
         <div className={cn(
-          "rounded-lg surface-inset-card ui-fade-slide-in",
-          compact ? "space-y-2 px-3 py-2.5" : "space-y-3 px-3 py-3",
+          "ui-fade-slide-in border-t border-hairline/70",
+          compact ? "space-y-2 pt-2.5" : "space-y-3 pt-3",
         )}
         >
           <div className={cn("grid gap-3", compact ? "md:grid-cols-1" : "md:grid-cols-2")}>
@@ -182,26 +190,23 @@ export function InputPanel({
           </div>
 
           {templateContracts.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-2 border-t border-hairline/70 pt-3">
               <p className="ui-meta-label text-muted-foreground">Reusable inputs</p>
-              <div className="flex flex-wrap gap-1.5">
-                {templateContracts.map((contract) => (
-                  <Badge key={contract.key} variant="outline" className="ui-meta-text px-2 py-0">
-                    {contract.label}{contract.optional ? " (optional)" : ""}
-                  </Badge>
+              <div className="space-y-2">
+                {templateContracts.map((contract, index) => (
+                  <div
+                    key={contract.key}
+                    className={cn("space-y-1", index > 0 && "border-t border-hairline/70 pt-2")}
+                  >
+                    <p className="text-body-sm text-foreground">
+                      {contract.label}{contract.optional ? " (optional)" : ""}
+                    </p>
+                    {contract.description ? (
+                      <p className="ui-meta-text text-muted-foreground">{contract.description}</p>
+                    ) : null}
+                  </div>
                 ))}
               </div>
-              {templateContracts.some((contract) => contract.description) && (
-                <div className="space-y-1">
-                  {templateContracts.map((contract) => (
-                    contract.description ? (
-                      <p key={`${contract.key}-description`} className="ui-meta-text text-muted-foreground">
-                        {contract.label}: {contract.description}
-                      </p>
-                    ) : null
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -258,7 +263,7 @@ export function InputPanel({
             <button
               type="button"
               onClick={() => removeAttachment(i)}
-              className="ui-icon-button ml-0.5 h-4 w-4 rounded-sm"
+              className="ui-icon-button ml-0.5 shrink-0 rounded-sm"
               aria-label={`Remove ${att.kind === "file" ? att.name : att.kind === "run" ? att.workflowName : att.label}`}
             >
               <X size={10} aria-hidden="true" />

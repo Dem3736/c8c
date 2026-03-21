@@ -11,6 +11,7 @@ interface CollectionToolbarProps {
   summary?: ReactNode
   action?: ReactNode
   filters?: ReactNode
+  surface?: "card" | "flat"
 }
 
 export function CollectionToolbar({
@@ -22,9 +23,13 @@ export function CollectionToolbar({
   summary,
   action,
   filters,
+  surface = "card",
 }: CollectionToolbarProps) {
   return (
-    <section className="rounded-xl surface-soft p-3 space-y-3" aria-label={ariaLabel}>
+    <section
+      className={surface === "card" ? "rounded-xl surface-soft p-3 space-y-3" : "space-y-2 px-1"}
+      aria-label={ariaLabel}
+    >
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1">
           <div className="relative min-w-0 flex-1 sm:max-w-md">

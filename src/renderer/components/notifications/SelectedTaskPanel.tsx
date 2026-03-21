@@ -1,18 +1,48 @@
 import { ArrowUpRight, Check, Loader2 } from "lucide-react"
 import type { HumanTaskField, HumanTaskSnapshot } from "@shared/types"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  compactTaskText,
+  deriveTaskCardContext,
   normalizeHumanFieldValue,
   primaryTaskFieldLabel,
   taskActionCopy,
-  taskKindLabel,
   type TaskStageMeta,
 } from "./task-ui"
+
+function normalizePanelLine(value: string) {
+  return value
+    .replace(/^[\s>*-]+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function collectFindingLines(...values: Array<string | null | undefined>) {
+  const seen = new Set<string>()
+
+  return values
+    .flatMap((value) => (value || "").split(/\r?\n/))
+    .map(normalizePanelLine)
+    .filter(Boolean)
+    .filter((line) => {
+      const key = line.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function compactBlockedStatus(kind: HumanTaskSnapshot["kind"]) {
+  return kind === "approval" ? "Awaiting approval" : "Waiting for input"
+}
+
+function compactSavedContext(value: string | null | undefined) {
+  if (!value) return null
+  return value.replace(/^Latest result:\s*/i, "").replace(/\.$/, "").trim() || null
+}
 
 interface SelectedTaskPanelProps {
   selectedTask: HumanTaskSnapshot | null
@@ -20,13 +50,24 @@ interface SelectedTaskPanelProps {
   taskSubmitting: boolean
   taskAnswers: Record<string, unknown>
   selectedTaskStageMeta: TaskStageMeta | null
+  blockedSummary?: {
+    statusText?: string | null
+    reasonText?: string | null
+    inputText?: string | null
+    latestResultText?: string | null
+    findings?: string[] | null
+    approveText?: string | null
+    rejectText?: string | null
+  } | null
   showOpenWorkflowButton?: boolean
+  inspectLabel?: string | null
   className?: string
   onOpenWorkflow: () => void
   onFieldChange: (field: HumanTaskField, value: unknown) => void
   onSubmit: () => void
   onSubmitAndContinue: () => void
   onReject: () => void
+  onInspect?: (() => void) | null
 }
 
 export function SelectedTaskPanel({
@@ -35,18 +76,57 @@ export function SelectedTaskPanel({
   taskSubmitting,
   taskAnswers,
   selectedTaskStageMeta,
+  blockedSummary = null,
   showOpenWorkflowButton = true,
+  inspectLabel = null,
   className,
   onOpenWorkflow,
   onFieldChange,
   onSubmit,
   onSubmitAndContinue,
   onReject,
+  onInspect = null,
 }: SelectedTaskPanelProps) {
   const selectedTaskPrimaryField = primaryTaskFieldLabel(selectedTask)
+  const taskContext = selectedTask
+    ? deriveTaskCardContext(selectedTask, { stageLabel: selectedTaskStageMeta?.title || null })
+    : null
+  const currentStepLabel = selectedTaskStageMeta?.title || selectedTask?.title || "Current step"
+  const panelStatusText = selectedTask
+    ? blockedSummary
+      ? compactBlockedStatus(selectedTask.kind)
+      : taskContext?.statusText || taskActionCopy(selectedTask)
+    : ""
+  const panelReasonText = selectedTask
+    ? blockedSummary?.reasonText || selectedTask.summary || selectedTask.instructions || "This flow is waiting for your decision."
+    : ""
+  const findingLines = selectedTask
+    ? (blockedSummary?.findings && blockedSummary.findings.length > 0
+        ? blockedSummary.findings
+        : collectFindingLines(
+          selectedTask.summary,
+          selectedTask.instructions,
+          selectedTask.request.summary,
+          selectedTask.request.instructions,
+        ).filter((line) => normalizePanelLine(line) !== normalizePanelLine(panelReasonText)).slice(0, 3))
+    : []
+  const primaryActionLabel = selectedTask
+    ? selectedTask.workflowPath
+      ? selectedTask.kind === "approval"
+        ? "Approve & Continue"
+        : "Submit & Continue"
+      : selectedTask.kind === "approval"
+        ? "Approve"
+        : "Submit response"
+    : "Continue"
+  const savedContextText = compactSavedContext(blockedSummary?.latestResultText)
+  const showSavedContext = Boolean(
+    savedContextText
+    && savedContextText.toLowerCase() !== (blockedSummary?.inputText || "").trim().toLowerCase(),
+  )
 
   return (
-    <article className={className || "rounded-lg surface-soft px-5 py-4"}>
+    <article className={className || "rounded-lg border border-hairline bg-surface-1 px-4 py-4"}>
       {taskLoading ? (
         <div className="flex min-h-[260px] items-center justify-center text-muted-foreground">
           <Loader2 size={18} className="mr-2 animate-spin" />
@@ -57,68 +137,116 @@ export function SelectedTaskPanel({
           Select a task to inspect it.
         </div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-title-sm font-semibold text-foreground">{selectedTask.title}</h2>
-                <Badge variant={selectedTask.kind === "approval" ? "warning" : "info"} size="pill">
-                  {taskKindLabel(selectedTask)}
-                </Badge>
-                {selectedTaskStageMeta && (
-                  <Badge variant="outline" size="pill" className="text-muted-foreground">
-                    {selectedTaskStageMeta.title}
-                  </Badge>
-                )}
-                {selectedTaskPrimaryField && (
-                  <Badge variant="outline" size="pill" className="text-muted-foreground">
-                    {selectedTaskPrimaryField}
-                  </Badge>
-                )}
+        <div className="space-y-2.5">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="ui-meta-label text-muted-foreground">Flow</p>
+                <p className="text-body-sm font-medium text-foreground">{selectedTask.workflowName}</p>
               </div>
-              <p className="mt-1 text-body-sm text-muted-foreground">
-                Flow: {selectedTask.workflowName}
-                {selectedTaskStageMeta ? ` · ${selectedTaskStageMeta.group}` : ""}
-              </p>
-              <div className="mt-3 rounded-lg surface-info-soft px-3 py-2">
-                <p className="text-body-sm text-foreground">{taskActionCopy(selectedTask)}</p>
-                <p className="mt-1 ui-meta-text text-muted-foreground">
-                  If the run is live it will continue immediately. If it was reopened from history, you can resume it after submitting here.
-                </p>
-              </div>
-              {selectedTask.instructions && compactTaskText(selectedTask.instructions, 999) !== compactTaskText(selectedTask.summary, 999) && (
-                <p className="mt-2 text-body-sm text-muted-foreground whitespace-pre-wrap">{selectedTask.instructions}</p>
+              {showOpenWorkflowButton && selectedTask.workflowPath && (
+                <Button type="button" variant="ghost" size="sm" onClick={onOpenWorkflow}>
+                  <ArrowUpRight size={14} />
+                  Open flow
+                </Button>
               )}
             </div>
-            {showOpenWorkflowButton && selectedTask.workflowPath && (
-              <Button type="button" variant="outline" size="sm" onClick={onOpenWorkflow}>
-                <ArrowUpRight size={14} />
-                Open flow
-              </Button>
+
+            <div className="grid gap-3 border-t border-hairline pt-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <p className="ui-meta-label text-muted-foreground">Step</p>
+                <p className="text-body-sm text-foreground">{currentStepLabel}</p>
+                {selectedTask.title && selectedTask.title !== currentStepLabel && (
+                  <p className="ui-meta-text text-muted-foreground">{selectedTask.title}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <p className="ui-meta-label text-muted-foreground">Status</p>
+                <p className="text-body-sm text-foreground">{panelStatusText}</p>
+                {selectedTaskStageMeta?.group && (
+                  <p className="ui-meta-text text-muted-foreground">{selectedTaskStageMeta.group}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1 border-t border-hairline pt-2">
+              <p className="ui-meta-label text-muted-foreground">Reason</p>
+              <p className="text-body-sm text-foreground whitespace-pre-wrap">{panelReasonText}</p>
+            </div>
+
+            {findingLines.length > 0 && (
+              <div className="space-y-1 border-t border-hairline pt-2">
+                <p className="ui-meta-label text-muted-foreground">Top findings</p>
+                <div className="space-y-1">
+                  {findingLines.map((finding) => (
+                    <p key={finding} className="text-body-sm text-foreground">
+                      · {finding}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(blockedSummary?.inputText || blockedSummary?.latestResultText) && (
+              <div className="space-y-2 border-t border-hairline pt-2">
+                <div className="space-y-1">
+                  <p className="ui-meta-label text-muted-foreground">Step input</p>
+                  <p className="text-body-sm text-foreground">
+                    {blockedSummary?.inputText || "Saved work context is already tied to this step."}
+                  </p>
+                </div>
+                {showSavedContext && (
+                  <div className="space-y-1">
+                    <p className="ui-meta-label text-muted-foreground">Saved context</p>
+                    <p className="text-body-sm text-muted-foreground">{savedContextText}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid gap-3 border-t border-hairline pt-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <p className="ui-meta-label text-muted-foreground">On approve</p>
+                <p className="text-body-sm text-foreground">
+                  {blockedSummary?.approveText || "Continue this flow from the blocked step."}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="ui-meta-label text-muted-foreground">On reject</p>
+                <p className="text-body-sm text-foreground">
+                  {blockedSummary?.rejectText || "Stop the flow and keep the current results."}
+                </p>
+              </div>
+            </div>
+
+            {selectedTaskPrimaryField && (
+              <p className="ui-meta-text text-muted-foreground">
+                Required field: {selectedTaskPrimaryField}
+              </p>
             )}
           </div>
 
-          {selectedTask.summary && (
-            <div className="rounded-lg surface-soft px-3 py-2 text-body-sm text-muted-foreground whitespace-pre-wrap">
-              {selectedTask.summary}
-            </div>
-          )}
-
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {selectedTask.request.fields.map((field) => {
               const value = normalizeHumanFieldValue(field, taskAnswers[field.id])
+              const fieldControlId = `selected-task-field-${field.id}`
+              const fieldDescriptionId = field.description ? `${fieldControlId}-description` : undefined
 
               if (field.type === "boolean") {
                 return (
-                  <div key={field.id} className="surface-inset-card flex items-start justify-between gap-4 p-3">
+                  <div key={field.id} className="flex items-start justify-between gap-4 border-t border-hairline pt-2">
                     <div className="min-w-0">
-                      <p className="text-body-sm font-medium text-foreground">{field.label}</p>
+                      <label htmlFor={fieldControlId} className="text-body-sm font-medium text-foreground">
+                        {field.label}
+                      </label>
                       {field.description && (
-                        <p className="mt-1 text-body-sm text-muted-foreground">{field.description}</p>
+                        <p id={fieldDescriptionId} className="mt-1 text-body-sm text-muted-foreground">{field.description}</p>
                       )}
                     </div>
                     <Checkbox
+                      id={fieldControlId}
                       checked={Boolean(value)}
+                      aria-describedby={fieldDescriptionId}
                       onChange={(e) => onFieldChange(field, e.target.checked)}
                     />
                   </div>
@@ -128,10 +256,15 @@ export function SelectedTaskPanel({
               if (field.type === "select") {
                 return (
                   <div key={field.id} className="space-y-2">
-                    <label className="ui-meta-text text-muted-foreground">{field.label}</label>
+                    <label htmlFor={fieldControlId} className="ui-meta-text text-muted-foreground">{field.label}</label>
+                    {field.description && (
+                      <p id={fieldDescriptionId} className="text-body-sm text-muted-foreground">{field.description}</p>
+                    )}
                     <select
+                      id={fieldControlId}
                       className="ui-input w-full"
                       value={String(value)}
+                      aria-describedby={fieldDescriptionId}
                       onChange={(event) => onFieldChange(field, event.target.value)}
                     >
                       <option value="">Select...</option>
@@ -146,15 +279,21 @@ export function SelectedTaskPanel({
               if (field.type === "multiselect") {
                 const selectedValues = Array.isArray(value) ? value : []
                 return (
-                  <div key={field.id} className="space-y-2">
-                    <label className="ui-meta-text text-muted-foreground">{field.label}</label>
-                    <div className="surface-inset-card space-y-2 p-3">
+                  <fieldset key={field.id} className="space-y-2 border-t border-hairline pt-2">
+                    <legend className="ui-meta-text text-muted-foreground">{field.label}</legend>
+                    {field.description && (
+                      <p id={fieldDescriptionId} className="text-body-sm text-muted-foreground">{field.description}</p>
+                    )}
+                    <div className="space-y-2">
                       {(field.options || []).map((option) => {
                         const checked = selectedValues.includes(option.value)
+                        const optionId = `${fieldControlId}-${String(option.value).replace(/[^a-zA-Z0-9_-]/g, "-")}`
                         return (
-                          <label key={option.value} className="flex items-center gap-2 text-body-sm text-foreground">
+                          <label key={option.value} htmlFor={optionId} className="flex items-center gap-2 text-body-sm text-foreground">
                             <Checkbox
+                              id={optionId}
                               checked={checked}
+                              aria-describedby={fieldDescriptionId}
                               onChange={(e) => {
                                 const nextValues = e.target.checked
                                   ? [...selectedValues, option.value]
@@ -167,18 +306,23 @@ export function SelectedTaskPanel({
                         )
                       })}
                     </div>
-                  </div>
+                  </fieldset>
                 )
               }
 
               if (field.type === "textarea" || field.type === "json") {
                 return (
                   <div key={field.id} className="space-y-2">
-                    <label className="ui-meta-text text-muted-foreground">{field.label}</label>
+                    <label htmlFor={fieldControlId} className="ui-meta-text text-muted-foreground">{field.label}</label>
+                    {field.description && (
+                      <p id={fieldDescriptionId} className="text-body-sm text-muted-foreground">{field.description}</p>
+                    )}
                     <Textarea
+                      id={fieldControlId}
                       value={String(value)}
                       placeholder={field.placeholder}
                       className="min-h-[120px]"
+                      aria-describedby={fieldDescriptionId}
                       onChange={(event) => onFieldChange(field, event.target.value)}
                     />
                   </div>
@@ -187,11 +331,16 @@ export function SelectedTaskPanel({
 
               return (
                 <div key={field.id} className="space-y-2">
-                  <label className="ui-meta-text text-muted-foreground">{field.label}</label>
+                  <label htmlFor={fieldControlId} className="ui-meta-text text-muted-foreground">{field.label}</label>
+                  {field.description && (
+                    <p id={fieldDescriptionId} className="text-body-sm text-muted-foreground">{field.description}</p>
+                  )}
                   <Input
+                    id={fieldControlId}
                     type={field.type === "number" ? "number" : "text"}
                     value={String(value)}
                     placeholder={field.placeholder}
+                    aria-describedby={fieldDescriptionId}
                     onChange={(event) => onFieldChange(
                       field,
                       field.type === "number" ? Number(event.target.value) : event.target.value,
@@ -202,35 +351,39 @@ export function SelectedTaskPanel({
             })}
           </div>
 
-          <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
-            <Button
-              type="button"
-              onClick={onSubmit}
-              disabled={taskSubmitting}
-              isLoading={taskSubmitting}
-            >
-              {!taskSubmitting && <Check size={14} />}
-              {selectedTask.kind === "approval" ? "Approve" : "Submit response"}
-            </Button>
-            {selectedTask.workflowPath && (
+          <div className="border-t border-hairline pt-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={onSubmitAndContinue}
+                onClick={onReject}
                 disabled={taskSubmitting}
               >
-                <ArrowUpRight size={14} />
-                {selectedTask.kind === "approval" ? "Approve and continue run" : "Submit and continue run"}
+                {selectedTask.kind === "approval" ? "Reject" : "Reject task"}
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onReject}
-              disabled={taskSubmitting}
-            >
-              {selectedTask.kind === "approval" ? "Reject" : "Reject task"}
-            </Button>
+              <Button
+                type="button"
+                onClick={selectedTask.workflowPath ? onSubmitAndContinue : onSubmit}
+                disabled={taskSubmitting}
+                isLoading={taskSubmitting}
+              >
+                {!taskSubmitting && (selectedTask.workflowPath ? <ArrowUpRight size={14} /> : <Check size={14} />)}
+                {primaryActionLabel}
+              </Button>
+            </div>
+            {onInspect && inspectLabel ? (
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+                  onClick={onInspect}
+                >
+                  {inspectLabel}
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

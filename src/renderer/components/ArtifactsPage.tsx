@@ -28,6 +28,7 @@ import {
   inputValueAtom,
   mainViewAtom,
   selectedFactoryIdAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedFactoryCaseIdAtom,
   selectedWorkflowPathAtom,
@@ -47,6 +48,7 @@ import {
 } from "@/lib/workflow-entry"
 import { prepareTemplateStageLaunch } from "@/lib/factory-launch"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
+import { selectedPastRunAtom } from "@/features/execution"
 import type { ArtifactRecord, CaseStateRecord, WorkflowTemplate } from "@shared/types"
 
 function buildArtifactSearchText(
@@ -73,6 +75,7 @@ export function ArtifactsPage() {
   const [, setMainView] = useAtom(mainViewAtom)
   const [selectedFactoryId] = useAtom(selectedFactoryIdAtom)
   const [selectedCaseId, setSelectedCaseId] = useAtom(selectedFactoryCaseIdAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
   const [, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setWorkflow] = useAtom(currentWorkflowAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
@@ -81,6 +84,7 @@ export function ArtifactsPage() {
   const [webSearchBackend] = useAtom(webSearchBackendAtom)
   const [, setInputValue] = useAtom(inputValueAtom)
   const [, setInputAttachments] = useAtom(inputAttachmentsAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
   const [caseStates, setCaseStates] = useState<CaseStateRecord[]>([])
@@ -400,6 +404,8 @@ export function ArtifactsPage() {
         key: toWorkflowExecutionKey(launch.filePath),
         context: launch.templateContext,
       })
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
       setMainView("thread")
 
       window.requestAnimationFrame(() => {

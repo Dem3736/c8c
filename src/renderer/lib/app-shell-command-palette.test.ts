@@ -75,6 +75,7 @@ describe("app-shell-command-palette", () => {
     const sections = buildAppShellCommandSections({
       query: "ux ui polish",
       actions,
+      desktopCommands: [],
       projectEntries: buildAppShellProjectEntries({
         projects,
         selectedProject: "/tmp/vibecon",
@@ -99,6 +100,7 @@ describe("app-shell-command-palette", () => {
     const sections = buildAppShellCommandSections({
       query: "settings",
       actions: buildAppShellActionEntries(),
+      desktopCommands: [],
       projectEntries: buildAppShellProjectEntries({
         projects: ["/tmp/vibecon"],
         selectedProject: "/tmp/vibecon",
@@ -116,6 +118,7 @@ describe("app-shell-command-palette", () => {
     const sections = buildAppShellCommandSections({
       query: "attach",
       actions: buildAppShellActionEntries(),
+      desktopCommands: [],
       projectEntries: buildAppShellProjectEntries({
         projects: ["/tmp/vibecon"],
         selectedProject: "/tmp/vibecon",
@@ -129,11 +132,30 @@ describe("app-shell-command-palette", () => {
     expect(sections[0]?.entries.map((entry) => entry.label)).toEqual(["Attach skill"])
   })
 
+  it("surfaces runs dashboard as a shell action", () => {
+    const sections = buildAppShellCommandSections({
+      query: "runs",
+      actions: buildAppShellActionEntries(),
+      desktopCommands: [],
+      projectEntries: buildAppShellProjectEntries({
+        projects: ["/tmp/vibecon"],
+        selectedProject: "/tmp/vibecon",
+      }),
+      workflows: [],
+      selectedProject: "/tmp/vibecon",
+      projects: ["/tmp/vibecon"],
+    })
+
+    expect(sections.map((section) => section.label)).toEqual(["Actions"])
+    expect(sections[0]?.entries.map((entry) => entry.label)).toEqual(["Runs dashboard"])
+  })
+
   it("surfaces project matches as switch targets", () => {
     const projects = ["/tmp/vibecon", "/tmp/content-os"]
     const sections = buildAppShellCommandSections({
       query: "content",
       actions: buildAppShellActionEntries(),
+      desktopCommands: [],
       projectEntries: buildAppShellProjectEntries({
         projects,
         selectedProject: "/tmp/vibecon",

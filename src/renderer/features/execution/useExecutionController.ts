@@ -15,7 +15,7 @@ import type {
   WorkflowNode,
 } from "@/lib/workflow-execution"
 import { inboxNotificationsAtom, workflowTemplateContextsAtom, type CreateInboxNotification } from "@/lib/store"
-import type { ActiveExecutionSnapshot, RunResult } from "@shared/types"
+import type { ActiveExecutionSnapshot, RunResult, WorkflowEvent } from "@shared/types"
 import { useInboxNotifications } from "@/hooks/useInboxNotifications"
 
 type UpdateValue<T> = T | ((prev: T) => T)
@@ -128,6 +128,15 @@ export function buildPendingApprovalNotifications(
   }
 
   return notifications
+}
+
+export function subscribeWorkflowEventBridge(
+  subscribe: (callback: (event: WorkflowEvent) => void) => () => void,
+  controller: Pick<WorkflowExecutionController, "processWorkflowEvent">,
+): () => void {
+  return subscribe((event) => {
+    controller.processWorkflowEvent(event)
+  })
 }
 
 export function useExecutionController({
@@ -276,11 +285,7 @@ export function useExecutionController({
   }, [controller, selectedProject, workflowExecutionStates])
 
   useEffect(() => {
-    const unsubscribe = window.api.onWorkflowEvent((event) => {
-      controller.processWorkflowEvent(event)
-    })
-
-    return unsubscribe
+    return subscribeWorkflowEventBridge(window.api.onWorkflowEvent, controller)
   }, [controller])
 
   useEffect(() => {

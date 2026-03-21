@@ -11,7 +11,6 @@ import {
   Clock,
   ChevronRight,
   Wrench,
-  RotateCcw,
   Search,
   X,
   FileCode2,
@@ -21,6 +20,12 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { DisclosurePanel } from "@/components/ui/disclosure-panel"
+import { CursorMenu } from "@/components/ui/cursor-menu"
+import {
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 
 const PREVIEW_MAX_W = "max-w-52" as const
 
@@ -53,12 +58,12 @@ const LOG_ENTRY_TYPES = ["thinking", "text", "tool_use", "tool_result", "error",
 type LogEntryType = (typeof LOG_ENTRY_TYPES)[number]
 
 const LOG_TYPE_LABELS: Record<LogEntryType, string> = {
-  thinking: "Thinking",
+  thinking: "Thoughts",
   text: "Text",
-  tool_use: "Tool Use",
-  tool_result: "Tool Result",
-  error: "Error",
-  diff: "Diff",
+  tool_use: "Tools",
+  tool_result: "Results",
+  error: "Errors",
+  diff: "Diffs",
 }
 
 function getEntrySearchText(entry: LogEntry): string {
@@ -94,6 +99,30 @@ function getLogEntryKey(selectedNodeId: string, entry: LogEntry): string {
 function mcpServerLabel(qualifiedName: string): string {
   const match = qualifiedName.match(/^mcp__([^_]+)__/)
   return match ? `MCP: ${match[1]}` : "MCP"
+}
+
+function PermissionHintNotice({
+  toolName,
+  domain,
+}: {
+  toolName: string
+  domain?: string | null
+}) {
+  return (
+    <div className="mt-1 border-l-2 border-status-warning/35 pl-3 py-0.5">
+      <p className="ui-meta-text text-status-warning">
+        Permission hint: add <span className="font-mono">{toolName}</span> to this skill step&apos;s Allowed Tools,
+        then rerun this step.
+      </p>
+      {domain ? (
+        <p className="ui-meta-text text-muted-foreground mt-1">
+          If domain allowlist blocks access, add{" "}
+          <span className="font-mono">WebFetch(domain:{domain})</span>{" "}
+          to <span className="font-mono">.claude/settings.local.json</span>.
+        </p>
+      ) : null}
+    </div>
+  )
 }
 
 function LogEntryCard({ entry }: { entry: LogEntry }) {
@@ -210,21 +239,12 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
           </span>
           {isMcp && <Badge variant="info" className="ui-meta-text px-1.5 py-0">{mcpServerLabel(entry.tool)}</Badge>}
         </button>
-        {permissionHint && (
-          <div className="mt-1 rounded-md surface-warning-soft px-2 py-1.5">
-            <p className="ui-meta-text text-status-warning">
-              Permission hint: add <span className="font-mono">{permissionHint.toolName}</span> to this skill step&apos;s
-              {" "}Allowed Tools, then rerun this step.
-            </p>
-            {permissionHint.domain && (
-              <p className="ui-meta-text text-muted-foreground mt-1">
-                If domain allowlist blocks access, add{" "}
-                <span className="font-mono">WebFetch(domain:{permissionHint.domain})</span>{" "}
-                to <span className="font-mono">.claude/settings.local.json</span>.
-              </p>
-            )}
-          </div>
-        )}
+        {permissionHint ? (
+          <PermissionHintNotice
+            toolName={permissionHint.toolName}
+            domain={permissionHint.domain}
+          />
+        ) : null}
         {!collapsed && (
           <pre
             className={cn(
@@ -245,21 +265,12 @@ function LogEntryCard({ entry }: { entry: LogEntry }) {
         <pre className="ui-meta-text text-status-danger whitespace-pre-wrap font-mono">
           {entry.content}
         </pre>
-        {permissionHint && (
-          <div className="mt-1 rounded-md surface-warning-soft px-2 py-1.5">
-            <p className="ui-meta-text text-status-warning">
-              Permission hint: add <span className="font-mono">{permissionHint.toolName}</span> to this skill step&apos;s
-              {" "}Allowed Tools, then rerun this step.
-            </p>
-            {permissionHint.domain && (
-              <p className="ui-meta-text text-muted-foreground mt-1">
-                If domain allowlist blocks access, add{" "}
-                <span className="font-mono">WebFetch(domain:{permissionHint.domain})</span>{" "}
-                to <span className="font-mono">.claude/settings.local.json</span>.
-              </p>
-            )}
-          </div>
-        )}
+        {permissionHint ? (
+          <PermissionHintNotice
+            toolName={permissionHint.toolName}
+            domain={permissionHint.domain}
+          />
+        ) : null}
       </div>
     )
   }
@@ -462,14 +473,16 @@ function DebugDetailsPanel({
           Debug details
         </span>
       }
-      className="mt-3 bg-surface-1/50"
-      contentClassName="space-y-3 px-2 py-2"
+      surface="flat"
+      className="mt-3"
+      summaryClassName="px-1 py-2"
+      contentClassName="space-y-3 px-1 py-3"
     >
       {/* Section 1: Execution summary */}
       {hasExecutionSummary && (
         <div className="space-y-1">
           <div className="ui-meta-label text-muted-foreground">Execution summary</div>
-          <div className="surface-inset-card rounded px-2.5 py-2 space-y-1">
+          <div className="space-y-1 border-l-2 border-hairline/70 pl-3">
             {durationMs != null && (
               <div className="flex justify-between ui-meta-text">
                 <span className="text-muted-foreground">Duration</span>
@@ -551,7 +564,7 @@ function DebugDetailsPanel({
         <div className="space-y-1">
           <div className="ui-meta-label text-muted-foreground">Tool calls</div>
           <div className="ui-meta-text text-muted-foreground mb-1">{toolCallCountLabel}</div>
-          <div className="surface-inset-card rounded px-2.5 py-1.5 space-y-1 max-h-48 overflow-y-auto ui-scroll-region">
+          <div className="space-y-1 border-l-2 border-hairline/70 pl-3 max-h-48 overflow-y-auto ui-scroll-region">
             {toolCallSummaries.map((tc, i) => {
               const displayName = tc.tool.startsWith("mcp__")
                 ? tc.tool.replace(/^mcp__/, "").replace(/__/, " / ")
@@ -587,7 +600,7 @@ function DebugDetailsPanel({
       {hasEvalDetails && (
         <div className="space-y-1">
           <div className="ui-meta-label text-muted-foreground">Check details</div>
-          <div className="surface-inset-card rounded px-2.5 py-2 space-y-1">
+          <div className="space-y-1 border-l-2 border-hairline/70 pl-3">
             {evalThreshold != null && (
               <div className="flex justify-between ui-meta-text">
                 <span className="text-muted-foreground">Threshold</span>
@@ -665,7 +678,7 @@ function DebugDetailsPanel({
             Raw log ({rawLog.length} entries)
           </button>
           {rawLogOpen && (
-            <pre className="surface-inset-card rounded px-2.5 py-2 ui-meta-text text-muted-foreground whitespace-pre-wrap font-mono max-h-80 overflow-y-auto ui-scroll-region">
+            <pre className="rounded-md border border-hairline/70 bg-surface-2/35 px-3 py-2 ui-meta-text text-muted-foreground whitespace-pre-wrap font-mono max-h-80 overflow-y-auto ui-scroll-region">
               {rawLogText}
             </pre>
           )}
@@ -683,6 +696,7 @@ export function NodesTab({
   canRerun,
   onSelectNode,
   onRerunFrom,
+  surface = "card",
 }: {
   nodes: { id: string; label: string; type: string; indent?: boolean }[]
   nodeStates: Record<string, NodeState>
@@ -691,120 +705,157 @@ export function NodesTab({
   canRerun: boolean
   onSelectNode: (nodeId: string) => void
   onRerunFrom?: (nodeId: string) => void
+  surface?: "card" | "flat"
 }) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
+
   return (
-    <div className="rounded-lg surface-soft overflow-hidden">
-      {nodes.length === 0 && (
-        <div className="px-3 py-4 text-body-md text-muted-foreground text-center">
-          No skill steps in this flow
-        </div>
-      )}
-      {nodes.map((node) => {
-        const state = nodeStates[node.id]
-        const status = state?.status || "pending"
-        const Icon = STATUS_ICONS[status] || Clock
-        const statusLabel = STATUS_LABELS[status] || status
-        const isActive = node.id === activeNodeId
-        const splitterTotalSubtasks = state?.output?.metadata?.splitter_total_subtasks
-        const splitterUsedSubtasks = state?.output?.metadata?.splitter_used_subtasks
-        const splitterTruncated = Boolean(state?.output?.metadata?.splitter_truncated)
-
-        let durationMs: number | undefined
-        if (state?.startedAt && state?.completedAt) {
-          durationMs = state.completedAt - state.startedAt
-        }
-
-        const metaBits: string[] = []
-        if (state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0)) {
-          metaBits.push(`${formatTokens(state.metrics.tokens_in + state.metrics.tokens_out)}t`)
-        }
-        if (state?.metrics && state.metrics.cost_usd > 0) {
-          metaBits.push(formatCost(state.metrics.cost_usd))
-        }
-        if (durationMs != null) {
-          metaBits.push(`${(durationMs / 1000).toFixed(1)}s`)
-        }
-        if (splitterTruncated) {
-          metaBits.push(`truncated ${splitterUsedSubtasks || "?"}/${splitterTotalSubtasks || "?"}`)
-        }
-        if ((state?.retriesUsed || 0) > 0) {
-          metaBits.push(`retry x${state?.retriesUsed}`)
-        }
-        if (state?.policyApplied) {
-          metaBits.push(state.policyApplied)
-        }
-        if (evalResults[node.id]?.length > 0) {
-          const latestEval = evalResults[node.id][evalResults[node.id].length - 1]
-          metaBits.push(`eval ${latestEval.score}/10`)
-        }
-
-        const metaSummary = metaBits.join(" · ")
-
-        return (
-          <div key={node.id} className="border-b border-hairline last:border-b-0">
-            <button
-              type="button"
-              className={cn(
-                "flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-3/80 ui-pressable focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
-                isActive && "bg-surface-3/80",
-                node.indent && "pl-7",
-              )}
-              onClick={() => onSelectNode(node.id)}
-              aria-label={`Select node ${node.label}`}
-            >
-              <Icon
-                size={14}
-                className={cn(
-                  status === "completed" && "text-status-success",
-                  status === "failed" && "text-status-danger",
-                  status === "running" && "text-status-info animate-spin",
-                  (status === "pending" || status === "queued" || status === "skipped") &&
-                    "text-muted-foreground",
-                )}
-              />
-              <span className="sr-only">Status: {statusLabel}</span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-body-md font-medium">{node.label}</div>
-                {state?.error ? (
-                  <div className={cn("ui-meta-text text-status-danger truncate", PREVIEW_MAX_W)} title={state.error}>
-                    {state?.errorKind ? `[${ERROR_KIND_LABELS[state.errorKind] || state.errorKind}] ` : ""}
-                    {state.error.slice(0, 80)}{state.error.length > 80 ? "..." : ""}
-                  </div>
-                ) : metaSummary ? (
-                  <div className="ui-meta-text truncate text-muted-foreground" title={metaSummary}>
-                    {metaSummary}
-                  </div>
-                ) : null}
-              </div>
-              <span
-                className={cn(
-                  "ui-meta-text ui-status-badge",
-                  status === "completed" && "ui-status-badge-success",
-                  status === "failed" && "ui-status-badge-danger",
-                  status !== "completed" && status !== "failed" && "border-hairline bg-surface-2 text-muted-foreground",
-                )}
-              >
-                {statusLabel}
-              </span>
-              {canRerun && (status === "completed" || status === "failed") && onRerunFrom && (
-                <button
-                  type="button"
-                  className="ml-1 ui-icon-button border border-hairline bg-surface-1/80"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRerunFrom(node.id)
-                  }}
-                  aria-label={`Rerun from ${node.label}`}
-                  title="Rerun from here"
-                >
-                  <RotateCcw size={12} />
-                </button>
-              )}
-            </button>
+    <>
+      <div className={cn(surface === "card" ? "rounded-lg surface-soft overflow-hidden" : "overflow-hidden")}>
+        {nodes.length === 0 && (
+          <div className="px-3 py-4 text-body-md text-muted-foreground text-center">
+            No skill steps in this flow
           </div>
-        )
-      })}
-    </div>
+        )}
+        {nodes.map((node) => {
+          const state = nodeStates[node.id]
+          const status = state?.status || "pending"
+          const Icon = STATUS_ICONS[status] || Clock
+          const statusLabel = STATUS_LABELS[status] || status
+          const isActive = node.id === activeNodeId
+          const splitterTotalSubtasks = state?.output?.metadata?.splitter_total_subtasks
+          const splitterUsedSubtasks = state?.output?.metadata?.splitter_used_subtasks
+          const splitterTruncated = Boolean(state?.output?.metadata?.splitter_truncated)
+          const canRerunNode = canRerun && (status === "completed" || status === "failed") && Boolean(onRerunFrom)
+
+          let durationMs: number | undefined
+          if (state?.startedAt && state?.completedAt) {
+            durationMs = state.completedAt - state.startedAt
+          }
+
+          const metaBits: string[] = []
+          if (state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0)) {
+            metaBits.push(`${formatTokens(state.metrics.tokens_in + state.metrics.tokens_out)}t`)
+          }
+          if (state?.metrics && state.metrics.cost_usd > 0) {
+            metaBits.push(formatCost(state.metrics.cost_usd))
+          }
+          if (durationMs != null) {
+            metaBits.push(`${(durationMs / 1000).toFixed(1)}s`)
+          }
+          if (splitterTruncated) {
+            metaBits.push(`truncated ${splitterUsedSubtasks || "?"}/${splitterTotalSubtasks || "?"}`)
+          }
+          if ((state?.retriesUsed || 0) > 0) {
+            metaBits.push(`retry x${state?.retriesUsed}`)
+          }
+          if (state?.policyApplied) {
+            metaBits.push(state.policyApplied)
+          }
+          if (evalResults[node.id]?.length > 0) {
+            const latestEval = evalResults[node.id][evalResults[node.id].length - 1]
+            metaBits.push(`eval ${latestEval.score}/10`)
+          }
+
+          const metaSummary = metaBits.join(" · ")
+
+          return (
+            <div key={node.id} className="border-b border-hairline last:border-b-0">
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-3/80 ui-pressable focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                  isActive && "bg-surface-3/80",
+                  node.indent && "pl-7",
+                )}
+                onClick={() => onSelectNode(node.id)}
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  setContextMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    nodeId: node.id,
+                  })
+                }}
+                aria-label={`Select node ${node.label}`}
+              >
+                <Icon
+                  size={14}
+                  className={cn(
+                    status === "completed" && "text-status-success",
+                    status === "failed" && "text-status-danger",
+                    status === "running" && "text-status-info animate-spin",
+                    (status === "pending" || status === "queued" || status === "skipped") &&
+                      "text-muted-foreground",
+                  )}
+                />
+                <span className="sr-only">Status: {statusLabel}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-body-md font-medium">{node.label}</div>
+                  {state?.error ? (
+                    <div className={cn("ui-meta-text text-status-danger truncate", PREVIEW_MAX_W)} title={state.error}>
+                      {state?.errorKind ? `[${ERROR_KIND_LABELS[state.errorKind] || state.errorKind}] ` : ""}
+                      {state.error.slice(0, 80)}{state.error.length > 80 ? "..." : ""}
+                    </div>
+                  ) : metaSummary ? (
+                    <div className="ui-meta-text truncate text-muted-foreground" title={metaSummary}>
+                      {metaSummary}
+                    </div>
+                  ) : null}
+                </div>
+                <span
+                  className={cn(
+                    "ui-meta-text ui-status-badge",
+                    status === "completed" && "ui-status-badge-success",
+                    status === "failed" && "ui-status-badge-danger",
+                    status !== "completed" && status !== "failed" && "border-hairline bg-surface-2 text-muted-foreground",
+                  )}
+                >
+                  {statusLabel}
+                </span>
+                {canRerunNode && (
+                  <span className="sr-only">Right-click for rerun actions</span>
+                )}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      <CursorMenu
+        open={contextMenu !== null}
+        x={contextMenu?.x || 0}
+        y={contextMenu?.y || 0}
+        onOpenChange={(open) => {
+          if (!open) setContextMenu(null)
+        }}
+      >
+        {contextMenu && (
+          <>
+            <DropdownMenuLabel>{nodes.find((node) => node.id === contextMenu.nodeId)?.label || "Step"}</DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={() => {
+                onSelectNode(contextMenu.nodeId)
+                setContextMenu(null)
+              }}
+            >
+              View step details
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!canRerun || !onRerunFrom || !["completed", "failed"].includes(nodeStates[contextMenu.nodeId]?.status || "pending")}
+              onSelect={() => {
+                if (!onRerunFrom) return
+                onRerunFrom(contextMenu.nodeId)
+                setContextMenu(null)
+              }}
+            >
+              Rerun from this step
+            </DropdownMenuItem>
+          </>
+        )}
+      </CursorMenu>
+    </>
   )
 }
 
@@ -840,16 +891,16 @@ function EvalResultsSection({
         <div key={er.attempt} className="space-y-1.5">
           <div
             className={cn(
-              "ui-meta-text font-mono rounded px-2 py-1",
+              "border-l-2 pl-3 py-0.5 ui-meta-text font-mono",
               er.passed
-                ? "surface-inset-card text-status-success"
-                : "surface-danger-soft text-status-warning",
+                ? "border-status-success/40 text-status-success"
+                : "border-status-warning/40 text-status-warning",
             )}
           >
             Attempt {er.attempt}: {er.score}/10 {er.passed ? "PASS" : "FAIL"} — {er.reason}
           </div>
           {er.criteria && er.criteria.length > 0 && (
-            <div className="px-2 space-y-1">
+            <div className="pl-3 space-y-1">
               {er.criteria.map((c: EvalCriterion) => (
                 <div key={c.id} className="flex items-center gap-2 ui-meta-text">
                   <span className="w-20 truncate text-muted-foreground">{c.id}</span>
@@ -868,7 +919,7 @@ function EvalResultsSection({
             </div>
           )}
           {er.fix_instructions && (
-            <div className="surface-inset-card px-2 py-1.5 ui-meta-text">
+            <div className="pl-3 ui-meta-text">
               <span className="font-medium text-foreground-subtle">Fix: </span>
               <span className="text-muted-foreground">{er.fix_instructions}</span>
             </div>
@@ -876,7 +927,7 @@ function EvalResultsSection({
         </div>
       ))}
       {isWaitingForOverride && !overridden && (
-        <div className="surface-warning-soft rounded px-3 py-2.5 space-y-2">
+        <div className="border-l-2 border-status-warning/35 pl-3 py-0.5 space-y-2">
           <div className="ui-meta-text text-status-warning">
             Check failed after all retries. The flow is paused waiting for your decision.
           </div>
@@ -885,7 +936,7 @@ function EvalResultsSection({
             disabled={overriding}
             onClick={handleOverride}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border border-status-warning/40 bg-surface-1 px-3 py-1.5",
+              "inline-flex items-center gap-1.5 rounded-md border border-status-warning/35 bg-transparent px-3 py-1.5",
               "text-body-sm font-medium text-status-warning",
               "hover:bg-status-warning/10 ui-pressable",
               "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -897,7 +948,7 @@ function EvalResultsSection({
         </div>
       )}
       {overridden && (
-        <div className="surface-warning-soft rounded px-3 py-2 ui-meta-text text-status-warning flex items-center gap-1.5">
+        <div className="border-l-2 border-status-warning/35 pl-3 py-0.5 ui-meta-text text-status-warning flex items-center gap-1.5">
           <ShieldCheck size={14} />
           Overridden by user
         </div>
@@ -983,7 +1034,7 @@ export function LogTab({
 
   if (!selectedNodeId) {
     return (
-      <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
+      <div className="px-1 py-3 text-body-sm text-muted-foreground">
         Click a step to view its log
       </div>
     )
@@ -991,7 +1042,7 @@ export function LogTab({
 
   if (log.length === 0 && !state?.error) {
     return (
-      <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
+      <div className="px-1 py-3 text-body-sm text-muted-foreground">
         {state?.status === "pending" || state?.status === "queued"
           ? "Waiting to execute..."
           : state?.status === "running"
@@ -1006,10 +1057,10 @@ export function LogTab({
   }
 
   return (
-    <div className="rounded-lg surface-soft p-3 space-y-2">
+    <section className="space-y-3">
       {/* Search and filter controls */}
       {log.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2 border-b border-hairline px-1 pb-3">
           {/* Search input */}
           <div className="relative">
             <Search
@@ -1020,8 +1071,8 @@ export function LogTab({
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search log entries..."
-              aria-label="Search log entries"
+              placeholder="Search this step log..."
+              aria-label="Search this step log"
               className="h-control-sm bg-surface-2/60 pl-8 pr-8 shadow-none"
             />
             {searchQuery && (
@@ -1046,13 +1097,13 @@ export function LogTab({
                   type="button"
                   onClick={() => toggleTypeFilter(type)}
                   className={cn(
-                    "px-2 py-0.5 rounded-md ui-meta-text border ui-pressable",
+                    "rounded-full px-2.5 py-0.5 ui-meta-text border ui-pressable",
                     isActive
                       ? cn(
-                          "bg-surface-3 border-hairline",
+                          "bg-surface-2/70 border-hairline",
                           type === "error" ? "text-status-danger" : "text-foreground",
                         )
-                      : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2",
+                      : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2/45",
                   )}
                   aria-pressed={isActive}
                   aria-label={`${isActive ? "Hide" : "Show"} ${LOG_TYPE_LABELS[type]} entries`}
@@ -1072,9 +1123,9 @@ export function LogTab({
       )}
 
       {/* Scrollable log content */}
-      <div className="max-h-[min(24rem,calc(100vh-18rem))] overflow-y-auto ui-scroll-region space-y-1">
+      <div className="max-h-[min(24rem,calc(100vh-18rem))] overflow-y-auto ui-scroll-region space-y-1 px-1 py-1">
         {state?.metrics && (state.metrics.tokens_in > 0 || state.metrics.tokens_out > 0) && (
-          <div className="surface-inset-card mb-1 flex items-center gap-3 p-2 ui-meta-text font-mono text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-3 border-b border-hairline/70 pb-2 ui-meta-text font-mono text-muted-foreground">
             <span title="Input tokens">In: {formatTokens(state.metrics.tokens_in)}</span>
             <span title="Output tokens">Out: {formatTokens(state.metrics.tokens_out)}</span>
             {state.metrics.cost_usd > 0 && <span title="Estimated cost">{formatCost(state.metrics.cost_usd)}</span>}
@@ -1085,7 +1136,7 @@ export function LogTab({
           </div>
         )}
         {state?.error && (
-          <div className="ui-meta-text surface-danger-soft mb-1 rounded px-2 py-1 text-status-danger">
+          <div className="mb-2 border-l-2 border-status-danger/35 pl-3 ui-meta-text text-status-danger">
             <span className="font-medium">{state.errorKind ? ERROR_KIND_LABELS[state.errorKind] || state.errorKind : "Error"}:</span> {state.error}
             {(state.retriesUsed || 0) > 0 && (
               <span className="ml-2 text-status-warning">retry x{state.retriesUsed}</span>
@@ -1121,6 +1172,6 @@ export function LogTab({
         )}
         <div ref={scrollRef} />
       </div>
-    </div>
+    </section>
   )
 }

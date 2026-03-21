@@ -302,7 +302,18 @@ export function Toolbar({
 
   const deleteLabel = workflowPath ? (workflow.name || "").trim() || deriveTitleFromPath(workflowPath) : "this flow"
   const controlGroupClass = "control-cluster flex items-center gap-1 rounded-lg p-1"
-  const showRunControls = shellState === "idle" || shellState === "running" || shellState === "paused"
+  const terminalResultOwnsPrimaryAction = outputSurfaceCommandState.useInNewFlow
+    || (outputSurfaceCommandState.result && (
+      shellState === "completed"
+      || shellState === "failed"
+      || shellState === "cancelled"
+      || workflowReviewMode
+    ))
+  const showRunControls = (
+    shellState === "idle"
+    || shellState === "running"
+    || shellState === "paused"
+  ) && !terminalResultOwnsPrimaryAction
   const runShortcutEnabled = shellState === "idle" || shellState === "ready"
   const macToolbarLeadingInset = desktopRuntime.platform === "macos" && desktopRuntime.titlebarHeight > 0 && !sidebarOpen
     ? 108

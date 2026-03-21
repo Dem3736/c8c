@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { FilePlus2, Folder, Inbox, LayoutTemplate, Loader2, Search, Settings2, Zap } from "lucide-react"
+import { Activity, FilePlus2, Folder, Inbox, LayoutTemplate, Loader2, Search, Settings2, Zap } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -16,6 +16,7 @@ import {
   type AppShellActionEntry,
   type AppShellCommandAction,
   type AppShellCommandEntry,
+  type AppShellDesktopCommandEntry,
   type AppShellProjectEntry,
   type AppShellWorkflowEntry,
 } from "@/lib/app-shell-command-palette"
@@ -24,12 +25,14 @@ function entryIcon(entry: AppShellCommandEntry) {
   if (entry.kind === "start") return FilePlus2
   if (entry.kind === "project") return Folder
   if (entry.kind === "workflow") return null
+  if (entry.kind === "desktop_command") return null
   return actionIcon(entry.action)
 }
 
 function actionIcon(action: AppShellCommandAction) {
   if (action === "new_process") return FilePlus2
   if (action === "add_project") return Folder
+  if (action === "runs_dashboard") return Activity
   if (action === "process_library") return LayoutTemplate
   if (action === "attach_skill") return Zap
   if (action === "inbox") return Inbox
@@ -46,6 +49,10 @@ function isWorkflowEntry(entry: AppShellCommandEntry): entry is AppShellWorkflow
 
 function isProjectEntry(entry: AppShellCommandEntry): entry is AppShellProjectEntry {
   return entry.kind === "project"
+}
+
+function isDesktopCommandEntry(entry: AppShellCommandEntry): entry is AppShellDesktopCommandEntry {
+  return entry.kind === "desktop_command"
 }
 
 interface AppCommandPaletteProps {
@@ -78,6 +85,7 @@ export function AppCommandPalette({
     () => buildAppShellCommandSections({
       query,
       actions: entries.filter(isActionEntry),
+      desktopCommands: entries.filter(isDesktopCommandEntry),
       projectEntries: entries.filter(isProjectEntry),
       workflows: entries.filter(isWorkflowEntry),
       selectedProject,

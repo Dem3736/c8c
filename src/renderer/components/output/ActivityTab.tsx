@@ -1,9 +1,8 @@
 import type { ReactNode } from "react"
 
-import { SelectedStepSummaryPanel } from "@/components/output/SelectedStepSummaryPanel"
 import { NodesTab } from "@/components/output/OutputSections"
+import { SelectedStepSummaryPanel } from "@/components/output/SelectedStepSummaryPanel"
 import { cn } from "@/lib/cn"
-import type { ExecutionLoopSummary } from "@/lib/execution-loops"
 import type { RuntimeStagePresentation } from "@/lib/runtime-flow-labels"
 import type { EvaluationResult } from "@/lib/store"
 import type { NodeState } from "@shared/types"
@@ -24,13 +23,7 @@ export function ActivityTab({
   selectedStageBranchLabel,
   selectedStageBranchDetail,
   selectedStageStatusLabel,
-  selectedStageHasOutput,
-  canRerunSelectedStage,
-  selectedStageId,
   onRerunFrom,
-  showLoopStateIndicator,
-  executionLoopSummary,
-  approvalLoopSummary,
   activitySummaryItems,
   budgetWarning,
   budgetWarningClassName,
@@ -40,6 +33,7 @@ export function ActivityTab({
   evalResults,
   canRerun,
   onSelectNode,
+  onViewStepLog,
   runAttentionNotice,
 }: {
   showIdleState: boolean
@@ -50,13 +44,7 @@ export function ActivityTab({
   selectedStageBranchLabel?: string | null
   selectedStageBranchDetail?: string | null
   selectedStageStatusLabel: string
-  selectedStageHasOutput: boolean
-  canRerunSelectedStage: boolean
-  selectedStageId: string | null
   onRerunFrom?: (nodeId: string) => void
-  showLoopStateIndicator: boolean
-  executionLoopSummary: ExecutionLoopSummary | null
-  approvalLoopSummary: ExecutionLoopSummary | null
   activitySummaryItems: string[]
   budgetWarning?: string | null
   budgetWarningClassName: string
@@ -66,24 +54,23 @@ export function ActivityTab({
   evalResults: Record<string, EvaluationResult[]>
   canRerun: boolean
   onSelectNode: (nodeId: string) => void
+  onViewStepLog?: (() => void) | null
   runAttentionNotice?: ReactNode
 }) {
   if (showIdleState) {
     return (
-      <div className="rounded-lg surface-soft p-4">
+      <div className="space-y-2 px-1 py-1">
         <div className="space-y-2">
           {selectedStagePresentation && (
-            <div className={cn("rounded-lg border px-3 py-2.5", selectedStageContextToneClass)}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className={cn("ui-meta-label", selectedStageContextLabelClass)}>{selectedStageContextLabel}</div>
-                  <div className="text-body-sm font-medium text-foreground">
-                    {selectedStagePresentation.title}
-                  </div>
+            <div className="border-l-2 border-hairline pl-3 py-0.5">
+              <div className="min-w-0">
+                <div className={cn("ui-meta-label", selectedStageContextLabelClass)}>{selectedStageContextLabel}</div>
+                <div className="text-body-sm font-medium text-foreground">
+                  {selectedStagePresentation.title}
                 </div>
-                <span className="ui-status-badge ui-meta-text border-hairline bg-surface-2 text-muted-foreground">
+                <div className="mt-1 ui-meta-text text-muted-foreground">
                   {selectedStagePresentation.artifactLabel}
-                </span>
+                </div>
               </div>
               <p className="mt-1 ui-meta-text text-muted-foreground">
                 {selectedStagePresentation.outcomeText}
@@ -98,26 +85,41 @@ export function ActivityTab({
 
   return (
     <div className="space-y-2">
-      <SelectedStepSummaryPanel
-        selectedStagePresentation={selectedStagePresentation}
-        selectedStageContextToneClass={selectedStageContextToneClass}
-        selectedStageContextLabelClass={selectedStageContextLabelClass}
-        selectedStageContextLabel={selectedStageContextLabel}
-        selectedStageBranchLabel={selectedStageBranchLabel}
-        selectedStageBranchDetail={selectedStageBranchDetail}
-        selectedStageStatusLabel={selectedStageStatusLabel}
-        selectedStageHasOutput={selectedStageHasOutput}
-        canRerunSelectedStage={canRerunSelectedStage}
-        selectedStageId={selectedStageId}
-        onRerunFrom={onRerunFrom}
-        showLoopStateIndicator={showLoopStateIndicator}
-        executionLoopSummary={executionLoopSummary}
-        approvalLoopSummary={approvalLoopSummary}
-        activitySummaryItems={activitySummaryItems}
-        budgetWarning={budgetWarning}
-        budgetWarningClassName={budgetWarningClassName}
-        showActivitySummary
-      />
+      {selectedStagePresentation && (
+        <SelectedStepSummaryPanel
+          selectedStagePresentation={selectedStagePresentation}
+          selectedStageContextLabelClass={selectedStageContextLabelClass}
+          selectedStageContextLabel={selectedStageContextLabel}
+          selectedStageBranchLabel={selectedStageBranchLabel}
+          selectedStageBranchDetail={selectedStageBranchDetail}
+          selectedStageStatusLabel={selectedStageStatusLabel}
+        />
+      )}
+      {(activitySummaryItems.length > 0 || budgetWarning) && (
+        <div className="border-b border-hairline px-1 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ui-meta-text text-foreground-subtle">
+              {activitySummaryItems.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+              {budgetWarning && (
+                <span className={budgetWarningClassName}>
+                  {budgetWarning}
+                </span>
+              )}
+            </div>
+            {onViewStepLog ? (
+              <button
+                type="button"
+                className="ui-meta-text text-muted-foreground hover:text-foreground ui-pressable"
+                onClick={onViewStepLog}
+              >
+                View step log
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
       <NodesTab
         nodes={nodes}
         nodeStates={nodeStates}
@@ -126,6 +128,7 @@ export function ActivityTab({
         canRerun={canRerun}
         onRerunFrom={onRerunFrom}
         onSelectNode={onSelectNode}
+        surface="flat"
       />
       {runAttentionNotice}
     </div>

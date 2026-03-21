@@ -126,6 +126,7 @@ function NodeCardInlineInput({ nodeId, inputConfig }: { nodeId: string; inputCon
         onBlur={() => setInputTouched(true)}
         rows={2}
         placeholder={inlineInputPlaceholder}
+        aria-label="Flow input"
         aria-invalid={showInlineInputError || undefined}
         aria-describedby={showInlineInputError ? `run-input-error-${nodeId}` : undefined}
         className="min-h-[3rem] max-h-[10rem] resize-y bg-surface-2/90 text-body-sm"
@@ -252,6 +253,7 @@ interface NodeCardProps {
   onSelect: () => void
   resolveNodeLabel?: (nodeId: string) => string
   runtimeMode?: boolean
+  runtimePresentationMode?: "outline" | "monitor"
   runtimeFocusKind?: "current" | "next" | null
   runtimeBranchSummary?: RuntimeBranchSummary | null
 }
@@ -273,6 +275,7 @@ export function NodeCard({
   onSelect,
   resolveNodeLabel,
   runtimeMode = false,
+  runtimePresentationMode = "outline",
   runtimeFocusKind = null,
   runtimeBranchSummary = null,
 }: NodeCardProps) {
@@ -413,6 +416,7 @@ export function NodeCard({
         isSelected={isSelected}
         onSelect={onSelect}
         runtimeFocusKind={runtimeFocusKind}
+        presentationMode={runtimePresentationMode}
         runtimeBranchSummary={runtimeBranchSummary}
         retryLabel={retryLabel}
       />
@@ -422,7 +426,7 @@ export function NodeCard({
   return (
     <div
       className={cn(
-        "border border-border bg-surface-1 overflow-hidden transition-[border-color,box-shadow] ui-motion-fast ui-elevation-base",
+        "ui-fade-slide-in border border-border bg-surface-1 overflow-hidden transition-[border-color,box-shadow] ui-motion-fast ui-elevation-base",
         compact ? "rounded-md" : "rounded-lg",
         isActive && "ring-2 ring-primary/20",
         hasValidationErrors && !isActive && "ring-2 ring-status-danger/40",

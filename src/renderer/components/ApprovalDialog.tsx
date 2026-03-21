@@ -273,7 +273,7 @@ export function ApprovalDialog() {
 
         {request.content && (
           request.allowEdit ? (
-            <section className="space-y-2 rounded-lg surface-inset-card p-3">
+            <section className="space-y-2 rounded-lg bg-surface-2/45 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="ui-meta-label text-muted-foreground">Edit input before continue</p>
                 <Badge variant="outline" size="compact">Editable</Badge>
@@ -282,16 +282,15 @@ export function ApprovalDialog() {
                 value={editedContent}
                 onChange={(e) => setEditedContent(e.target.value)}
                 rows={12}
+                aria-label="Edit step output before continuing"
                 className="font-mono text-body-sm"
               />
               <p className="ui-meta-text text-muted-foreground">Your edits will be used as the step output when approved.</p>
             </section>
           ) : (
-            <DisclosurePanel summary="Show full input">
-              <div className="rounded-lg surface-inset-card p-3">
-                <div className="max-h-64 overflow-y-auto ui-scroll-region">
-                  <pre className="text-body-sm text-foreground-subtle whitespace-pre-wrap">{request.content}</pre>
-                </div>
+            <DisclosurePanel summary="Show full input" surface="plain" className="mt-1" summaryClassName="px-0 py-1.5">
+              <div className="max-h-64 overflow-y-auto rounded-lg bg-surface-2/45 px-3 py-3 ui-scroll-region">
+                <pre className="text-body-sm text-foreground-subtle whitespace-pre-wrap">{request.content}</pre>
               </div>
             </DisclosurePanel>
           )

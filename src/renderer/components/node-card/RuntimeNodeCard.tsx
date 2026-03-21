@@ -24,6 +24,7 @@ interface RuntimeNodeCardProps {
   isSelected: boolean
   onSelect: () => void
   runtimeFocusKind: "current" | "next" | null
+  presentationMode: "outline" | "monitor"
   runtimeBranchSummary?: RuntimeBranchSummary | null
   retryLabel: string | null
 }
@@ -36,6 +37,7 @@ export function RuntimeNodeCard({
   isSelected,
   onSelect,
   runtimeFocusKind,
+  presentationMode,
   runtimeBranchSummary = null,
   retryLabel,
 }: RuntimeNodeCardProps) {
@@ -99,6 +101,67 @@ export function RuntimeNodeCard({
     ...runtimeCardCopy.metricChips,
   ])).slice(0, 4)
   const footerLabel = runtimeCardCopy.detail || `${runtimePresentation.outcomeLabel}: ${runtimePresentation.artifactLabel}`
+
+  if (presentationMode === "monitor") {
+    const statusMarker = runtimeStatus === "completed" || runtimeStatus === "skipped"
+      ? "✓"
+      : runtimeStatus === "running"
+        ? "▸"
+        : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human" || runtimeStatus === "failed"
+          ? "!"
+          : "○"
+    const inlineBits = runtimeStatus === "running"
+      ? [runtimeStatusLabel, ...runtimeCardCopy.metricChips.slice(0, 2)]
+      : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human" || runtimeStatus === "failed"
+        ? [runtimeStatusLabel]
+        : runtimeFocusKind === "next"
+          ? ["Next"]
+          : []
+
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left ui-transition-colors ui-motion-fast",
+          runtimeStatus === "running"
+            ? "bg-status-info/8 text-foreground"
+            : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human"
+              ? "bg-status-warning/8 text-foreground"
+              : runtimeStatus === "failed"
+                ? "bg-status-danger/8 text-foreground"
+                : isSelected
+                  ? "bg-surface-2/65 text-foreground"
+                  : "text-foreground hover:bg-surface-2/45",
+        )}
+        aria-label={`Focus step ${runtimePresentation.title}`}
+      >
+        <span
+          className={cn(
+            "shrink-0 font-medium",
+            runtimeStatus === "completed" || runtimeStatus === "skipped"
+              ? "text-status-success"
+              : runtimeStatus === "running"
+                ? "text-status-info"
+                : runtimeStatus === "waiting_approval" || runtimeStatus === "waiting_human"
+                  ? "text-status-warning"
+                  : runtimeStatus === "failed"
+                    ? "text-status-danger"
+                    : "text-muted-foreground",
+          )}
+          aria-hidden="true"
+        >
+          {statusMarker}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-body-sm">
+          <span className="font-medium text-foreground">{runtimePresentation.title}</span>
+          {inlineBits.length > 0 ? (
+            <span className="text-muted-foreground">{` · ${inlineBits.join(" · ")}`}</span>
+          ) : null}
+        </span>
+      </button>
+    )
+  }
 
   return (
     <div

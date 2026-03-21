@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatArtifactContractLabel } from "@/lib/workflow-entry"
 import type { ArtifactContract, ArtifactRecord } from "@shared/types"
@@ -32,34 +31,30 @@ export function ProjectResultsPanel({
   }
 
   return (
-    <section className="rounded-lg border border-hairline bg-surface-1/70 px-4 py-3 ui-fade-slide-in">
+    <section className="rounded-lg border border-hairline px-4 py-3 ui-fade-slide-in">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="section-kicker">Results</div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="ui-meta-text px-2 py-0">
-            {artifacts.length} saved
-          </Badge>
-          {requiredLabels.length > 0 && (
-            <Badge variant="outline" className="ui-meta-text px-2 py-0">
-              {requiredLabels.length} reusable
-            </Badge>
-          )}
+        <div className="ui-meta-text text-muted-foreground">
+          {artifacts.length} saved
+          {requiredLabels.length > 0 ? ` · ${requiredLabels.length} reusable` : ""}
         </div>
       </div>
 
       {requiredLabels.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {requiredLabels.map((item) => (
-            <Badge
-              key={`${item.label}-${item.optional ? "optional" : "required"}`}
-              variant={item.satisfied ? "success" : "outline"}
-              className="ui-meta-text px-2 py-0"
-            >
-              {item.label}{item.optional ? " (optional)" : ""}
-            </Badge>
-          ))}
+        <div className="mt-3 space-y-2 border-t border-hairline/70 pt-3">
+          <p className="ui-meta-label text-muted-foreground">Reusable inputs</p>
+          <div className="space-y-1.5">
+            {requiredLabels.map((item) => (
+              <div
+                key={`${item.label}-${item.optional ? "optional" : "required"}`}
+                className={item.satisfied ? "text-body-sm text-foreground" : "text-body-sm text-muted-foreground"}
+              >
+                {item.label}{item.optional ? " (optional)" : ""}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -71,11 +66,11 @@ export function ProjectResultsPanel({
         ) : latestArtifacts.length === 0 ? (
           <div className="ui-meta-text text-muted-foreground">No saved results yet.</div>
         ) : (
-          <div className="space-y-1.5">
-            {latestArtifacts.map((artifact) => (
+          <div className="space-y-0 border-t border-hairline/70">
+            {latestArtifacts.map((artifact, index) => (
               <div
                 key={artifact.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-2/60 px-3 py-2"
+                className={index === 0 ? "flex flex-wrap items-center justify-between gap-2 py-3" : "flex flex-wrap items-center justify-between gap-2 border-t border-hairline/70 py-3"}
               >
                 <div className="min-w-0">
                   <div className="text-body-sm font-medium text-foreground">{artifact.title}</div>
@@ -87,7 +82,7 @@ export function ProjectResultsPanel({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2"
+                  className="h-7 px-1.5 text-foreground"
                   onClick={() => onOpenArtifact(artifact)}
                 >
                   Open

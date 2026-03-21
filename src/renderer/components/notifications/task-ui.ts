@@ -103,6 +103,17 @@ export function buildInitialHumanTaskAnswers(task: Pick<HumanTaskSnapshot, "late
   return task.request.defaults || {}
 }
 
+export function buildSubmitHumanTaskAnswers(
+  task: Pick<HumanTaskSnapshot, "kind">,
+  answers: Record<string, unknown>,
+): Record<string, unknown> {
+  if (task.kind !== "approval") return answers
+  return {
+    ...answers,
+    approved: true,
+  }
+}
+
 export function hasMissingRequiredTaskAnswers(
   task: Pick<HumanTaskSnapshot, "request">,
   answers: Record<string, unknown>,

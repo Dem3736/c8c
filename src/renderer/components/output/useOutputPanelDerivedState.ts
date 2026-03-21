@@ -19,6 +19,7 @@ import type {
   EvaluationResult,
   LoadedRunResult,
   NodeState,
+  RunStatus,
   RunResult,
   Workflow,
   WorkflowRuntimeMeta,
@@ -95,7 +96,7 @@ function derivePrimaryModel(nodeStates: Record<string, NodeState>): string | nul
 
 type UseOutputPanelDerivedStateParams = {
   runStatus: string
-  runOutcome: string | null
+  runOutcome: RunStatus | null
   runStartedAt: number | null
   completedAt: number | null
   executionWorkflowName: string
@@ -358,6 +359,18 @@ export function useOutputPanelDerivedState({
     ? getRuntimeBranchDetail(selectedStageMeta)
     : null
   const selectedStageStatus = selectedStageId ? (displayNodeStates[selectedStageId]?.status || "pending") : null
+  const selectedStageIndex = selectedStageId
+    ? (() => {
+        const index = allDisplayNodes.findIndex((node) => node.id === selectedStageId)
+        return index >= 0 ? index + 1 : null
+      })()
+    : null
+  const workflowStepCount = allDisplayNodes.length
+  const completedStageCount = allDisplayNodes.filter((node) => {
+    const status = displayNodeStates[node.id]?.status
+    return status === "completed" || status === "skipped"
+  }).length
+  const failedStageCount = allDisplayNodes.filter((node) => displayNodeStates[node.id]?.status === "failed").length
   const selectedStageHasOutput = selectedStageId
     ? typeof displayNodeStates[selectedStageId]?.output?.content === "string"
       && (displayNodeStates[selectedStageId]?.output?.content || "").trim().length > 0
@@ -385,7 +398,7 @@ export function useOutputPanelDerivedState({
           ? "Completed step"
           : "Selected step"
     : "Selected step"
-  const selectedStageContextToneClass = "border-hairline bg-surface-2/60"
+  const selectedStageContextToneClass = "bg-surface-2/60"
   const selectedStageContextLabelClass = selectedStageId === displayActiveNodeId && selectedStageStatus === "running"
     ? "text-status-info"
     : selectedStageId === displayActiveNodeId && (selectedStageStatus === "waiting_approval" || selectedStageStatus === "waiting_human")
@@ -406,6 +419,9 @@ export function useOutputPanelDerivedState({
   const selectedRunLabel = selectedReviewRun
     ? `${selectedReviewRun.workflowName || workflow.name || "Flow"} · ${formatRunCompletedAt(selectedReviewRun)}`
     : null
+  const effectiveRunOutcome = reviewingRunHistory
+    ? (selectedReviewRun?.status || null)
+    : (runStatus === "error" && !runOutcome ? "failed" : runOutcome)
   const canInspectSavedRun = reviewingRunHistory && !!reviewSnapshot
   const showBlockedReviewStrip = reviewingRunHistory && selectedReviewRun?.status === "blocked"
   const canContinueBlockedReview = showBlockedReviewStrip
@@ -422,12 +438,16 @@ export function useOutputPanelDerivedState({
     && canRerunStages
     && (selectedStageStatus === "completed" || selectedStageStatus === "failed"),
   )
-  const showArtifactContinuation = !reviewingRunHistory && runOutcome === "completed" && (
+  const showArtifactContinuation = !reviewingRunHistory && effectiveRunOutcome === "completed" && (
     artifactPersistenceStatus !== "idle"
     || artifactRecords.length > 0
     || Boolean(artifactPersistenceError)
     || Boolean(nextStageTemplate)
   )
+  const showResultSurface = hasResult || (!reviewingRunHistory && (
+    runStatus === "error"
+    || (runStatus === "done" && effectiveRunOutcome !== "blocked")
+  ))
   const failedNodeErrors = Object.entries(displayNodeStates)
     .filter(([, state]) => state.status === "failed" && state.error)
   const artifactContinuationToneClass = artifactPersistenceStatus === "error"
@@ -452,7 +472,7 @@ export function useOutputPanelDerivedState({
     workflow,
     nodeStates: displayNodeStates,
     evalResults: displayEvalResults,
-    runOutcome: reviewingRunHistory ? (selectedReviewRun?.status || null) : runOutcome,
+    runOutcome: effectiveRunOutcome,
   })
   const approvalLoopSummary = executionLoopSummary?.outcome === "human decision"
     ? executionLoopSummary
@@ -562,7 +582,11 @@ export function useOutputPanelDerivedState({
     selectedStageBranchLabel,
     selectedStageBranchDetail,
     selectedStageStatus,
+    selectedStageIndex,
     selectedStageStatusLabel,
+    workflowStepCount,
+    completedStageCount,
+    failedStageCount,
     selectedStageHasOutput,
     selectedStageContextLabel,
     selectedStageContextToneClass,
@@ -575,6 +599,7 @@ export function useOutputPanelDerivedState({
     canStartFreshRun,
     canRerunStages,
     canRerunSelectedStage,
+    showResultSurface,
     showArtifactContinuation,
     failedNodeErrors,
     artifactContinuationToneClass,
@@ -589,5 +614,6 @@ export function useOutputPanelDerivedState({
     executionLoopSummary,
     approvalLoopSummary,
     showLoopStateIndicator,
+    effectiveRunOutcome,
   }
 }

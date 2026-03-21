@@ -1,53 +1,14 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { cn } from "@/lib/cn"
-import { FileText } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { CursorMenu } from "@/components/ui/cursor-menu"
-import { RunCompare, RunTrends } from "@/components/RunTrends"
-import { formatCost } from "@/components/output/OutputSections"
 import type { RunResult } from "@shared/types"
-import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
-import remarkGfm from "remark-gfm"
-import rehypeHighlight from "rehype-highlight"
 import { toastErrorFromCatch } from "@/lib/toast-error"
-
-const PREVIEW_MAX_W = "max-w-52" as const
-const MARKDOWN_PROSE_CLASS = "prose-c8c"
-const MARKDOWN_COMPONENTS: MarkdownComponents = {
-  a: ({ href, children, ...props }) => {
-    const safeHref = typeof href === "string" ? href : ""
-    return (
-      <a
-        {...props}
-        href={safeHref}
-        target="_blank"
-        rel="noreferrer noopener"
-        onClick={(event) => {
-          if (!safeHref) {
-            event.preventDefault()
-          }
-        }}
-      >
-        {children}
-      </a>
-    )
-  },
-}
-
-// ── Formatting helpers ──────────────────────────────────────
 
 function formatDurationMs(durationMs: number): string {
   if (durationMs < 1_000) return `${durationMs}ms`
@@ -58,7 +19,7 @@ function formatDurationMs(durationMs: number): string {
   return `${minutes}m ${remainSeconds}s`
 }
 
-function formatRunDuration(run: RunResult): string {
+function formatRunDuration(run: RunResult): string | null {
   if (typeof run.durationMs === "number" && run.durationMs >= 0) {
     return formatDurationMs(run.durationMs)
   }
@@ -66,32 +27,67 @@ function formatRunDuration(run: RunResult): string {
     const delta = run.completedAt - run.startedAt
     if (delta > 0) return formatDurationMs(delta)
   }
-  return "n/a"
+  return null
 }
 
-function formatRunCost(run: RunResult): string {
+function formatRunCost(run: RunResult): string | null {
   if (typeof run.totalCost === "number") {
-    return formatCost(run.totalCost)
+    return `$${run.totalCost.toFixed(2)}`
   }
-  return "n/a"
+  return null
 }
 
-function formatRunCompletedAt(run: RunResult, includeTime: boolean): string {
-  if (!Number.isFinite(run.completedAt) || run.completedAt <= 0) {
-    return "n/a"
-  }
-  const completedDate = new Date(run.completedAt)
-  if (Number.isNaN(completedDate.getTime())) {
-    return "n/a"
-  }
-  return includeTime ? completedDate.toLocaleString() : completedDate.toLocaleDateString()
+function formatRunCompletedAt(run: RunResult): string | null {
+  const timestamp = run.completedAt > 0 ? run.completedAt : run.startedAt
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString()
+}
+
+function formatRunRelativeTime(run: RunResult): string {
+  const timestamp = run.completedAt > 0 ? run.completedAt : run.startedAt
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "Unknown time"
+  const deltaMs = Date.now() - timestamp
+  if (deltaMs < 60_000) return "Now"
+  const minutes = Math.floor(deltaMs / 60_000)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString()
+}
+
+function statusToneClass(status: RunResult["status"]): string {
+  if (status === "completed") return "ui-status-badge-success"
+  if (status === "failed") return "ui-status-badge-danger"
+  if (status === "blocked" || status === "interrupted") return "ui-status-badge-warning"
+  if (status === "cancelled") return "border border-hairline bg-surface-2/80 text-muted-foreground"
+  return "ui-status-badge-info"
+}
+
+function statusLabel(status: RunResult["status"]): string {
+  if (status === "completed") return "Completed"
+  if (status === "failed") return "Failed"
+  if (status === "blocked") return "Blocked"
+  if (status === "interrupted") return "Interrupted"
+  if (status === "cancelled") return "Cancelled"
+  if (status === "paused") return "Paused"
+  return "Running"
 }
 
 function isRunContinuable(run: RunResult): boolean {
   return run.status !== "completed" && run.status !== "failed" && run.status !== "cancelled"
 }
 
-// ── HistoryTab ──────────────────────────────────────────────
+function joinMeta(parts: Array<string | null | undefined>) {
+  return parts.filter((value): value is string => Boolean(value)).join(" · ")
+}
+
+function formatRunIdShort(runId: string): string {
+  return runId.length > 10 ? `${runId.slice(0, 8)}…` : runId
+}
 
 export interface HistoryTabProps {
   pastRuns: RunResult[]
@@ -111,18 +107,15 @@ export function HistoryTab({
   onSelectRun,
 }: HistoryTabProps) {
   const [selectedHistoryRunId, setSelectedHistoryRunId] = useState<string | null>(null)
-  const [selectedRunDetails, setSelectedRunDetails] = useState<(RunResult & { reportContent: string }) | null>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
-  const [compareRunAId, setCompareRunAId] = useState<string | null>(null)
-  const [compareRunBId, setCompareRunBId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; runId: string } | null>(null)
 
-  const completedRuns = pastRuns.filter((run) => run.status === "completed")
-  const selectedHistoryRun = pastRuns.find((run) => run.runId === selectedHistoryRunId) || null
-  const compareRunA = completedRuns.find((run) => run.runId === compareRunAId) || null
-  const compareRunB = completedRuns.find((run) => run.runId === compareRunBId) || null
-  const contextHistoryRun = contextMenu ? pastRuns.find((run) => run.runId === contextMenu.runId) || null : null
+  const selectedHistoryRun = useMemo(
+    () => pastRuns.find((run) => run.runId === selectedHistoryRunId) || null,
+    [pastRuns, selectedHistoryRunId],
+  )
+  const contextHistoryRun = contextMenu
+    ? pastRuns.find((run) => run.runId === contextMenu.runId) || null
+    : null
 
   const handleOpenReport = useCallback(async (path: string) => {
     try {
@@ -142,7 +135,6 @@ export function HistoryTab({
     }
   }, [])
 
-  // Keep selection in sync with available runs
   useEffect(() => {
     if (selectedRunId && pastRuns.some((run) => run.runId === selectedRunId)) {
       setSelectedHistoryRunId(selectedRunId)
@@ -158,282 +150,175 @@ export function HistoryTab({
     }
   }, [pastRuns, selectedHistoryRunId, selectedRunId])
 
-  // Keep compare run IDs in sync
-  useEffect(() => {
-    if (completedRuns.length < 2) {
-      setCompareRunAId(null)
-      setCompareRunBId(null)
-      return
-    }
-    const runIds = completedRuns.map((run) => run.runId)
-    const nextA = compareRunAId && runIds.includes(compareRunAId) ? compareRunAId : runIds[0]
-    const nextB = compareRunBId && runIds.includes(compareRunBId) && compareRunBId !== nextA
-      ? compareRunBId
-      : runIds.find((id) => id !== nextA) || null
-    if (nextA !== compareRunAId) setCompareRunAId(nextA)
-    if (nextB !== compareRunBId) setCompareRunBId(nextB)
-  }, [compareRunAId, compareRunBId, completedRuns])
-
-  // Load run details when selection changes
-  useEffect(() => {
-    if (!selectedHistoryRun?.workspace) {
-      setSelectedRunDetails(null)
-      setHistoryError(null)
-      return
-    }
-    let cancelled = false
-    setSelectedRunDetails(null)
-    setHistoryLoading(true)
-    setHistoryError(null)
-    window.api.loadRunResult(selectedHistoryRun.workspace)
-      .then((result) => {
-        if (cancelled) return
-        if (!result) {
-          setSelectedRunDetails(null)
-          setHistoryError("Run details are unavailable for this entry.")
-          return
-        }
-        setSelectedRunDetails(result)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setSelectedRunDetails(null)
-        setHistoryError("Failed to load run details.")
-      })
-      .finally(() => {
-        if (!cancelled) setHistoryLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [selectedHistoryRun?.runId, selectedHistoryRun?.workspace])
-
   if (pastRuns.length === 0) {
     return (
-      <div className="rounded-lg surface-soft p-6 ui-empty-state text-body-md text-muted-foreground">
-        No past runs yet. Complete a flow run to build history you can review and compare.
+      <div className="px-1 py-2 text-body-sm text-muted-foreground">
+        No run history yet. Each new run will appear here so you can reopen, continue, or inspect it later.
       </div>
     )
+  }
+
+  const selectedRunCanContinue = Boolean(
+    selectedHistoryRun
+    && onContinueRun
+    && selectedHistoryRun.workspace
+    && isRunContinuable(selectedHistoryRun)
+    && runStatus !== "running",
+  )
+  const selectedRunCanOpenFile = Boolean(selectedHistoryRun?.reportPath)
+  const selectedRunPrimaryActionLabel = selectedRunCanContinue ? "Continue" : "View result"
+  const handleSelectedRunPrimaryAction = () => {
+    if (!selectedHistoryRun) return
+    if (selectedRunCanContinue && onContinueRun) {
+      void onContinueRun(selectedHistoryRun)
+      return
+    }
+    onSelectRun?.(selectedHistoryRun)
   }
 
   return (
     <>
       <div className="space-y-3">
-        <RunTrends runs={pastRuns} />
-
-        {compareRunA && compareRunB && (
-          <div className="rounded-lg surface-soft p-3 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="ui-meta-label text-foreground-subtle">Compare runs</span>
-              <Select
-                value={compareRunA.runId}
-                onValueChange={(nextRunId) => {
-                  setCompareRunAId(nextRunId)
-                  if (nextRunId === compareRunB?.runId) {
-                    const fallback = completedRuns.find((run) => run.runId !== nextRunId)
-                    setCompareRunBId(fallback ? fallback.runId : null)
-                  }
-                }}
-              >
-                <SelectTrigger className="h-control-sm w-[220px] text-body-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {completedRuns.map((run) => (
-                    <SelectItem key={`compare-a-${run.runId}`} value={run.runId}>
-                      {(run.workflowName || run.runId)} · {formatRunCompletedAt(run, false)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={compareRunB.runId}
-                onValueChange={(nextRunId) => {
-                  setCompareRunBId(nextRunId)
-                  if (nextRunId === compareRunA?.runId) {
-                    const fallback = completedRuns.find((run) => run.runId !== nextRunId)
-                    setCompareRunAId(fallback ? fallback.runId : null)
-                  }
-                }}
-              >
-                <SelectTrigger className="h-control-sm w-[220px] text-body-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {completedRuns.map((run) => (
-                    <SelectItem key={`compare-b-${run.runId}`} value={run.runId}>
-                      {(run.workflowName || run.runId)} · {formatRunCompletedAt(run, false)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {selectedHistoryRun && (
+          <div className="border-b border-hairline px-1 pb-3">
+            <div className="min-w-0">
+              <div className="ui-meta-label text-muted-foreground">Selected run</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <div className="text-body-sm font-medium text-foreground">
+                  {formatRunRelativeTime(selectedHistoryRun)}
+                </div>
+                <span className={cn("ui-status-badge shrink-0 ui-meta-text", statusToneClass(selectedHistoryRun.status))}>
+                  {statusLabel(selectedHistoryRun.status)}
+                </span>
+              </div>
+              <div className="mt-1 ui-meta-text text-muted-foreground">
+                {joinMeta([
+                  formatRunCompletedAt(selectedHistoryRun),
+                  formatRunDuration(selectedHistoryRun),
+                  formatRunCost(selectedHistoryRun),
+                ]) || "Run details unavailable"}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 ui-meta-text text-muted-foreground">
+                <span>{pastRuns.length === 1 ? "1 run recorded" : `${pastRuns.length} runs recorded`}</span>
+                <span className="font-mono" title={selectedHistoryRun.runId}>
+                  {formatRunIdShort(selectedHistoryRun.runId)}
+                </span>
+              </div>
             </div>
-            <RunCompare runA={compareRunA} runB={compareRunB} />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSelectedRunPrimaryAction}
+                disabled={!selectedRunCanContinue && !onSelectRun}
+              >
+                {selectedRunPrimaryActionLabel}
+              </Button>
+              {selectedRunCanOpenFile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!selectedHistoryRun.reportPath) return
+                    void handleOpenReport(selectedHistoryRun.reportPath)
+                  }}
+                >
+                  Open file
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
-        <div className="rounded-lg surface-soft overflow-hidden" role="list" aria-label="Past runs">
+        <div className="border-b border-hairline px-1 pb-2">
+          <div className="ui-meta-text text-muted-foreground">
+            Double-click a run to open its result. Right-click for file and ID actions.
+          </div>
+        </div>
+
+        <div
+          role="list"
+          aria-label="Run history"
+          className="max-h-[min(24rem,calc(100vh-18rem))] overflow-y-auto ui-scroll-region"
+        >
           {pastRuns.map((run) => {
             const isSelected = selectedHistoryRun?.runId === run.runId
-            const canOpenReport = Boolean(run.reportPath)
-            const canContinue = Boolean(
-              onContinueRun
-              && run.workspace
-              && isRunContinuable(run)
-              && runStatus !== "running",
-            )
+            const rowMeta = joinMeta([
+              formatRunCompletedAt(run),
+              formatRunDuration(run),
+              formatRunCost(run),
+            ])
+
             return (
-              <div
+              <button
                 key={run.runId}
+                type="button"
                 role="listitem"
-                className="flex items-center gap-2 border-b border-hairline px-2 py-2 last:border-b-0"
+                onClick={() => setSelectedHistoryRunId(run.runId)}
+                onDoubleClick={() => onSelectRun?.(run)}
                 onContextMenu={(event) => {
                   event.preventDefault()
                   setSelectedHistoryRunId(run.runId)
                   setContextMenu({ x: event.clientX, y: event.clientY, runId: run.runId })
                 }}
+                className={cn(
+                  "ui-pressable flex w-full items-center gap-3 border-b border-hairline/70 px-1 py-2.5 text-left ui-transition-colors ui-motion-fast last:border-b-0",
+                  isSelected
+                    ? "bg-surface-2/70"
+                    : "hover:bg-surface-2/40",
+                )}
               >
-                <button
-                  type="button"
+                <span
                   className={cn(
-                    "ui-interactive-card flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left",
-                    isSelected && "bg-surface-3/80",
+                    "inline-flex h-2 w-2 shrink-0 rounded-full",
+                    run.status === "completed"
+                      ? "bg-status-success"
+                      : run.status === "failed"
+                        ? "bg-status-danger"
+                        : run.status === "blocked" || run.status === "interrupted"
+                          ? "bg-status-warning"
+                          : "bg-muted-foreground",
                   )}
-                  onClick={() => {
-                    setSelectedHistoryRunId(run.runId)
-                    onSelectRun?.(run)
-                  }}
-                >
-                  <FileText size={14} className="text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-body-md font-medium truncate">{run.workflowName || run.runId}</div>
-                    <div className="ui-meta-text text-muted-foreground">
-                      {formatRunCompletedAt(run, true)} · {formatRunDuration(run)} · {formatRunCost(run)}
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "ui-status-badge ui-meta-text shrink-0",
-                      run.status === "completed" && "ui-status-badge-success",
-                      (run.status === "interrupted" || run.status === "blocked") && "ui-status-badge-warning",
-                      run.status === "failed" && "ui-status-badge-danger",
-                    )}
-                  >
-                    {run.status}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="truncate text-body-sm font-medium text-foreground">
+                    {formatRunRelativeTime(run)}
                   </span>
-                </button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-control-sm"
-                  disabled={!canOpenReport}
-                  title={canOpenReport ? "Open the saved report file" : "This run does not have a saved report file."}
-                  onClick={() => {
-                    if (!run.reportPath) return
-                    void handleOpenReport(run.reportPath)
-                  }}
-                >
-                  Open file
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-control-sm"
-                  disabled={!canContinue}
-                  title={canContinue ? "Continue this run from its saved workspace" : "Continue is only available for blocked, paused, or interrupted runs."}
-                  onClick={() => {
-                    if (!canContinue || !onContinueRun) return
-                    void onContinueRun(run)
-                  }}
-                >
-                  Continue
-                </Button>
-              </div>
+                  <span className="mt-0.5 block truncate ui-meta-text text-muted-foreground">
+                    {rowMeta || run.runId}
+                  </span>
+                </span>
+                <span className={cn("ui-status-badge shrink-0 ui-meta-text", statusToneClass(run.status))}>
+                  {statusLabel(run.status)}
+                </span>
+              </button>
             )
           })}
         </div>
-
-        {selectedHistoryRun && (
-          <div className="rounded-lg surface-soft p-3 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-body-md font-medium">Run details</span>
-              <span className="ui-meta-text text-muted-foreground">
-                {formatRunCompletedAt(selectedHistoryRun, true)}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 ui-meta-text">
-              <div className="surface-inset-card px-2 py-1.5">
-                <div className="text-muted-foreground">Status</div>
-                <div className="font-medium text-foreground">{selectedHistoryRun.status}</div>
-              </div>
-              <div className="surface-inset-card px-2 py-1.5">
-                <div className="text-muted-foreground">Duration</div>
-                <div className="font-medium text-foreground">{formatRunDuration(selectedHistoryRun)}</div>
-              </div>
-              <div className="surface-inset-card px-2 py-1.5">
-                <div className="text-muted-foreground">Total cost</div>
-                <div className="font-medium text-foreground">{formatRunCost(selectedHistoryRun)}</div>
-              </div>
-              <div className="surface-inset-card px-2 py-1.5">
-                <div className="text-muted-foreground">Run ID</div>
-                <div className={cn("font-mono text-foreground truncate", PREVIEW_MAX_W)} title={selectedHistoryRun.runId}>
-                  {selectedHistoryRun.runId}
-                </div>
-              </div>
-            </div>
-
-            {historyLoading && (
-              <div className="ui-meta-text text-muted-foreground">Loading run details...</div>
-            )}
-            {!historyLoading && historyError && (
-              <div role="alert" className="ui-meta-text text-status-danger">{historyError}</div>
-            )}
-            {!historyLoading && !historyError && selectedRunDetails?.reportContent && (
-              <div className="rounded-md surface-soft p-2">
-                <div className="ui-meta-text text-muted-foreground mb-1">Report preview</div>
-                <div className="max-h-80 overflow-y-auto ui-scroll-region">
-                  <div className={MARKDOWN_PROSE_CLASS}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MARKDOWN_COMPONENTS}>
-                      {selectedRunDetails.reportContent}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            )}
-            {!historyLoading && !historyError && !selectedRunDetails?.reportContent && (
-              <div className="ui-meta-text text-muted-foreground">
-                No report content is available for this run.
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       <CursorMenu
         open={contextMenu !== null}
         x={contextMenu?.x || 0}
         y={contextMenu?.y || 0}
-        onOpenChange={(open) => { if (!open) setContextMenu(null) }}
+        onOpenChange={(open) => {
+          if (!open) setContextMenu(null)
+        }}
       >
         {contextHistoryRun && (
           <>
-            <DropdownMenuLabel>{contextHistoryRun.workflowName || "Run"}</DropdownMenuLabel>
+            <DropdownMenuLabel>{formatRunRelativeTime(contextHistoryRun)}</DropdownMenuLabel>
             <DropdownMenuItem
+              disabled={!onSelectRun}
               onSelect={() => {
-                setSelectedHistoryRunId(contextHistoryRun.runId)
+                if (!onSelectRun) return
                 onSelectRun?.(contextHistoryRun)
                 setContextMenu(null)
               }}
             >
-              Open run details
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                void handleCopyRunId(contextHistoryRun.runId)
-                setContextMenu(null)
-              }}
-            >
-              Copy run ID
+              View result
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!onContinueRun || !contextHistoryRun.workspace || !isRunContinuable(contextHistoryRun) || runStatus === "running"}
@@ -446,6 +331,14 @@ export function HistoryTab({
               Continue run
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                void handleCopyRunId(contextHistoryRun.runId)
+                setContextMenu(null)
+              }}
+            >
+              Copy run ID
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!contextHistoryRun.reportPath}
               onSelect={() => {

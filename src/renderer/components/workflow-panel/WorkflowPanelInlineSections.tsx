@@ -2,27 +2,15 @@ import { useEffect, type ReactNode, type RefObject } from "react"
 import { useAtomValue } from "jotai"
 import {
   ArrowRight,
-  FileStack,
   FolderOpen,
   LayoutTemplate,
   Loader2,
-  MessageSquare,
-  MoreHorizontal,
-  PencilLine,
   Play,
-  Plus,
   Sparkles,
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -31,7 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ScopeBanner } from "@/components/ui/scope-banner"
 import { FlowRulesPreview } from "@/components/ui/flow-rules-preview"
 import { ExecutionApprovalSummary } from "@/components/ui/execution-approval-summary"
 import { DisclosurePanel } from "@/components/ui/disclosure-panel"
@@ -68,8 +55,8 @@ export function EmptyState({
 }) {
   return (
     <div className="flex-1 flex items-center justify-center text-muted-foreground pt-[var(--titlebar-height)]">
-      <div className="ui-empty-state rounded-lg surface-soft px-8">
-        <div className="mx-auto mb-3 h-control-lg w-control-lg rounded-md border border-hairline bg-surface-2/90 flex items-center justify-center ui-elevation-inset">
+      <div className="ui-empty-state px-8 text-center">
+        <div className="mx-auto mb-3 flex h-control-lg w-control-lg items-center justify-center text-muted-foreground/70">
           <Icon size={20} className="opacity-70" aria-hidden="true" />
         </div>
         <p className="mb-1 text-title-md text-foreground">{title}</p>
@@ -179,9 +166,9 @@ export function EmptyWorkspaceState({ onOpenProject }: { onOpenProject: () => vo
 
 export function WorkflowDraftSkeleton() {
   return (
-    <div className="rounded-lg surface-panel p-5 ui-fade-slide-in">
+    <div className="rounded-lg border border-hairline bg-surface-1 p-5 ui-fade-slide-in">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-foreground shadow-inset-highlight">
+        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center text-muted-foreground">
           <Sparkles size={18} aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
@@ -194,11 +181,11 @@ export function WorkflowDraftSkeleton() {
           </p>
         </div>
       </div>
-      <div className="mt-5 space-y-3" aria-hidden="true">
+      <div className="mt-5 divide-y divide-hairline" aria-hidden="true">
         {Array.from({ length: 3 }).map((_, index) => (
           <div
             key={`workflow-draft-skeleton-${index}`}
-            className="animate-pulse rounded-xl border border-hairline bg-surface-2/70 px-4 py-4"
+            className="animate-pulse px-1 py-4"
           >
             <div className="h-4 w-40 rounded bg-surface-3" />
             <div className="mt-3 h-3 w-full rounded bg-surface-3" />
@@ -207,6 +194,35 @@ export function WorkflowDraftSkeleton() {
         ))}
       </div>
     </div>
+  )
+}
+
+export function WorkflowIdleStageContract({
+  title,
+  resultLabel,
+  summary,
+  inputLabels,
+}: {
+  title: string
+  resultLabel: string
+  summary: string
+  inputLabels: string[]
+}) {
+  const needsText = inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : "Input from this page"
+
+  return (
+    <section className="rounded-lg border border-hairline bg-surface-1 px-4 py-4 ui-fade-slide-in">
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <p className="section-kicker">Stage contract</p>
+          <h2 className="text-title-lg text-foreground">{title}</h2>
+          <p className="text-body-sm text-muted-foreground">{summary}</p>
+        </div>
+        <p className="text-body-sm text-muted-foreground">
+          Produces: {resultLabel} · Needs: {needsText}
+        </p>
+      </div>
+    </section>
   )
 }
 
@@ -251,18 +267,10 @@ export function WorkflowResumeHeader({
   stageLabel,
   resumeSummary,
   blockedResumeSummary,
-  flowRules,
   nextStepLabel,
   inputLabels,
   onPrimaryAction,
   primaryActionLabel,
-  onOpenResumeArtifact,
-  onRefine,
-  onToggleEditor,
-  onAttachCapability,
-  showEditor,
-  canRefine,
-  onDismiss,
 }: {
   entry: WorkflowEntryState
   displayTitle: string
@@ -271,156 +279,78 @@ export function WorkflowResumeHeader({
   stageLabel?: string | null
   resumeSummary?: WorkflowResumeEntrySummary | null
   blockedResumeSummary?: WorkflowBlockedResumeSummary | null
-  flowRules: FlowRulePreview[]
   nextStepLabel: string
   inputLabels: string[]
   onPrimaryAction: () => void
   primaryActionLabel: string
-  onOpenResumeArtifact?: (() => void) | null
-  onRefine: () => void
-  onToggleEditor: () => void
-  onAttachCapability: () => void
-  showEditor: boolean
-  canRefine: boolean
-  onDismiss: () => void
 }) {
-  const compactItems = blockedResumeSummary
+  const headline = blockedResumeSummary
+    ? blockedResumeSummary.statusText
+    : resumeSummary
+      ? readyToRun
+        ? nextStepLabel
+        : (resumeSummary.readyBecauseText || "Add the remaining input to continue.")
+      : startApprovalRequired
+        ? "Approval is still required before this step can continue."
+        : nextStepLabel
+  const detailLines = blockedResumeSummary
     ? [
-      {
-        label: "Status",
-        value: blockedResumeSummary.statusText,
-      },
-      {
-        label: "Why paused",
-        value: blockedResumeSummary.reasonText,
-      },
-      {
-        label: "Results to attach",
-        value: blockedResumeSummary.attachText,
-      },
+      blockedResumeSummary.latestResultText ? `Previous: ${blockedResumeSummary.latestResultText}` : null,
+      `Step input: ${blockedResumeSummary.attachText}`,
+      `Status: ${blockedResumeSummary.reasonText}`,
     ]
     : resumeSummary
-    ? [
-      {
-        label: "Ready because",
-        value: resumeSummary.readyBecauseText,
-      },
-      {
-        label: "Checks",
-        value: resumeSummary.checksText,
-      },
-      {
-        label: "Results to attach",
-        value: resumeSummary.attachText,
-      },
-    ]
-    : [
-      {
-        label: "Expects",
-        value: inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : entry.inputText,
-      },
-      {
-        label: "Produces",
-        value: entry.outputText,
-      },
-      {
-        label: "Next",
-        value: startApprovalRequired ? "Approval before continue." : nextStepLabel,
-      },
-    ]
+      ? [
+        resumeSummary.latestResultText ? `Previous: ${resumeSummary.latestResultText}` : null,
+        `Attached: ${resumeSummary.attachText} -> used by this step`,
+        `Status: ${readyToRun ? resumeSummary.checksText : resumeSummary.readyBecauseText}`,
+      ]
+      : [
+        `Expects: ${inputLabels.length > 0 ? inputLabels.slice(0, 3).join(" · ") : entry.inputText}`,
+        `Produces: ${entry.outputText}`,
+        `Next: ${startApprovalRequired ? "Approval before continue." : nextStepLabel}`,
+      ]
+  const routingReason = entry.routing?.reason
+    ? takeLeadingSentence(
+      entry.routing.reason,
+      entry.routing.source === "agent" ? "Picked by the agent." : "Picked for this start.",
+    )
+    : null
 
   return (
-    <section data-workflow-resume-header="true" className="space-y-2.5 ui-fade-slide-in">
-      <ScopeBanner
-        tone="muted"
-        eyebrow={(
-          <div className="flex flex-wrap items-center gap-1.5">
-            {resumeSummary && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                Saved work
-              </Badge>
-            )}
-            {stageLabel && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                {stageLabel}
-              </Badge>
-            )}
-            {blockedResumeSummary ? (
-              <Badge variant="warning" className="ui-meta-text px-2 py-0">
-                Blocked
-              </Badge>
-            ) : (
-              <Badge variant={readyToRun ? "success" : "secondary"} className="ui-meta-text px-2 py-0">
-                {readyToRun ? "Ready" : "Needs input"}
-              </Badge>
-            )}
-            {startApprovalRequired && !blockedResumeSummary && (
-              <Badge variant="warning" className="ui-meta-text px-2 py-0">
-                Approval before continue
-              </Badge>
+    <section data-workflow-resume-header="true" className="ui-fade-slide-in">
+      <div className="rounded-lg border border-hairline bg-surface-1 px-4 py-4">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <p className="section-kicker">
+              {resumeSummary ? "Saved work" : "Resume"}
+              {stageLabel ? ` · ${stageLabel}` : ""}
+            </p>
+            <h2 className="text-title-lg text-foreground">{displayTitle}</h2>
+            <p className="text-body-sm text-muted-foreground">{headline}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            {detailLines.filter(Boolean).map((line) => (
+              <p key={line} className="text-body-sm text-muted-foreground">
+                {line}
+              </p>
+            ))}
+            {routingReason && (
+              <p className="ui-meta-text text-muted-foreground">
+                {entry.routing?.source === "agent" ? "Agent picked this start" : "Why this start"}: {routingReason}
+              </p>
             )}
           </div>
-        )}
-        title={displayTitle}
-        description={blockedResumeSummary?.latestResultText || resumeSummary?.latestResultText || undefined}
-        actions={(
+
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={onPrimaryAction}>
               <Play size={14} />
               {primaryActionLabel}
             </Button>
-            {(blockedResumeSummary?.primaryArtifact || resumeSummary?.primaryArtifact) && onOpenResumeArtifact ? (
-              <Button variant="outline" size="sm" onClick={onOpenResumeArtifact}>
-                <FileStack size={14} />
-                Open result
-              </Button>
-            ) : null}
-            {canRefine ? (
-              <Button variant="outline" size="sm" onClick={onRefine}>
-                <MessageSquare size={14} />
-                Refine
-              </Button>
-            ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" aria-label="More actions">
-                  <MoreHorizontal size={14} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={8} className="w-56">
-                <DropdownMenuItem onSelect={onAttachCapability}>
-                  <Plus size={14} />
-                  Attach skill
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={onToggleEditor}>
-                  <PencilLine size={14} />
-                  {showEditor ? "Hide editor" : "Edit flow"}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onDismiss}>
-                  Dismiss
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
-        )}
-      >
-        <div className="grid gap-2 sm:grid-cols-3">
-          {compactItems.map((item) => (
-            <div key={item.label} className="rounded-lg border border-hairline/80 bg-surface-1/70 px-3 py-2">
-              <p className="ui-meta-label text-muted-foreground">{item.label}</p>
-              <p className="mt-1 line-clamp-2 text-body-sm text-foreground">{item.value}</p>
-            </div>
-          ))}
         </div>
-        {flowRules.length > 0 && (
-          <FlowRulesPreview
-            rules={flowRules}
-            collapsible
-            className="mt-2"
-          />
-        )}
-      </ScopeBanner>
+      </div>
     </section>
   )
 }
@@ -481,7 +411,7 @@ export function StageStartApprovalDialog({
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel() }}>
       <DialogContent className="max-w-xl" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Approve and run</DialogTitle>
+          <DialogTitle>Approve and continue</DialogTitle>
           <DialogDescription>
             Confirm what will run, which input it will use, and what happens next.
           </DialogDescription>
@@ -525,7 +455,7 @@ export function StageStartApprovalDialog({
           </Button>
           <Button size="sm" onClick={() => { void Promise.resolve(onApprove()) }}>
             <Play size={14} />
-            Approve and run
+            Approve and continue
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -555,7 +485,7 @@ export function StageInputSection({
   return (
     <>
       <div ref={inputPanelRef}>
-        <InputPanel label="Step input" compact showTemplateContext={showTemplateContext} />
+        <InputPanel label="Step input" compact showTemplateContext={showTemplateContext} surface="flat" />
       </div>
       {showProjectArtifactsPanel && (
         <ProjectResultsPanel

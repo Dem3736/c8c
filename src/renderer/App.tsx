@@ -10,7 +10,6 @@ import { AppCommandPalette } from "@/components/app/AppCommandPalette"
 import { DeepLinkTemplateDialog } from "@/components/app/DeepLinkTemplateDialog"
 import { AppMainView } from "@/components/app/AppMainView"
 import { RendererSmokeBridge } from "@/components/app/RendererSmokeBridge"
-import { FlowStatusRail } from "@/components/FlowStatusRail"
 import { SidebarVisibilityToggle } from "@/components/app/SidebarVisibilityToggle"
 import { SectionErrorBoundary } from "@/components/ui/error-boundary"
 import { CliBanner } from "@/components/CliBanner"
@@ -31,6 +30,7 @@ import {
   projectsAtom,
   projectWorkflowsCacheAtom,
   selectedProjectAtom,
+  selectedWorkflowTemplateContextAtom,
   setWorkflowTemplateContextForKeyAtom,
   templateLibraryContextAtom,
   workflowsAtom,
@@ -43,8 +43,12 @@ import {
   providerAuthStatusAtom,
   projectSidebarOpenAtom,
   projectSidebarWidthAtom,
+  selectedInboxTaskKeyAtom,
   skillPickerOpenAtom,
   workflowCreateContextAtom,
+  desktopMenuStateAtom,
+  outputSurfaceCommandStateAtom,
+  multiRunDashboardOpenAtom,
 } from "@/lib/store"
 import { cn } from "@/lib/cn"
 import { toast } from "sonner"
@@ -53,14 +57,22 @@ import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import { buildTemplateRunContext } from "@/lib/workflow-entry"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
-import { workflowExecutionStatesAtom } from "@/features/execution"
-import { buildAppShellActionEntries, buildAppShellProjectEntries, buildAppShellWorkflowEntries, type AppShellCommandEntry } from "@/lib/app-shell-command-palette"
+import { selectedPastRunAtom, workflowExecutionStatesAtom } from "@/features/execution"
+import {
+  buildAppShellActionEntries,
+  buildAppShellProjectEntries,
+  buildAppShellWorkflowEntries,
+  buildDesktopCommandEntries,
+  buildOutputSurfaceActionEntries,
+  type AppShellCommandEntry,
+} from "@/lib/app-shell-command-palette"
 import { resolveAppShellShortcutIntent } from "@/lib/app-shell-shortcuts"
-import { buildFlowStatusRailEntries } from "@/lib/flow-status-rail"
 import { isEditableKeyboardTarget } from "@/lib/keyboard-shortcuts"
 import { applyLoadedWorkflow } from "@/components/sidebar/useWorkflowCrud"
 import { useUnsavedChangesDialog } from "@/hooks/useUnsavedChangesDialog"
 import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
+import { dispatchDesktopCommand } from "@/lib/desktop-command-bus"
+import { dispatchOutputSurfaceCommand } from "@/lib/output-surface-command-bus"
 
 const AppShell = memo(function AppShell() {
   const [mainView, setMainView] = useAtom(mainViewAtom)
@@ -80,17 +92,23 @@ const AppShell = memo(function AppShell() {
   const [workflowCreateContext, setWorkflowCreateContext] = useAtom(workflowCreateContextAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedWorkflowTemplateContext] = useAtom(selectedWorkflowTemplateContextAtom)
   const setSelectedFactoryId = useSetAtom(selectedFactoryIdAtom)
   const setSelectedFactoryCaseId = useSetAtom(selectedFactoryCaseIdAtom)
+  const [selectedInboxTaskKey, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const setTemplateLibraryContext = useSetAtom(templateLibraryContextAtom)
   const [, setProviderSettings] = useAtom(providerSettingsAtom)
   const [, setProviderAvailability] = useAtom(providerAvailabilityAtom)
   const [, setProviderAuthStatus] = useAtom(providerAuthStatusAtom)
   const [, setSkillPickerOpen] = useAtom(skillPickerOpenAtom)
+  const setMultiRunDashboardOpen = useSetAtom(multiRunDashboardOpenAtom)
   const [sidebarOpen, setSidebarOpen] = useAtom(projectSidebarOpenAtom)
   const [sidebarWidth] = useAtom(projectSidebarWidthAtom)
   const [workflowExecutionStates] = useAtom(workflowExecutionStatesAtom)
+  const desktopMenuState = useAtomValue(desktopMenuStateAtom)
+  const outputSurfaceCommandState = useAtomValue(outputSurfaceCommandStateAtom)
   const [deepLinkTargetProject, setDeepLinkTargetProject] = useState<string | null>(selectedProject)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const sidebarShellRef = useRef<HTMLDivElement | null>(null)
@@ -98,6 +116,10 @@ const AppShell = memo(function AppShell() {
   const showDragRegion = desktopRuntime.titlebarHeight > 0 && !desktopRuntime.isFullscreen
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
   const { openWorkflowCreate } = useWorkflowCreateNavigation()
+  const clearReviewState = useCallback(() => {
+    setSelectedInboxTaskKey(null)
+    setSelectedPastRun(null)
+  }, [setSelectedInboxTaskKey, setSelectedPastRun])
 
   const paletteWorkflowCache = useMemo(() => (
     selectedProject
@@ -112,6 +134,8 @@ const AppShell = memo(function AppShell() {
 
   const commandPaletteEntries = useMemo(() => ([
     ...buildAppShellActionEntries(),
+    ...buildOutputSurfaceActionEntries(outputSurfaceCommandState),
+    ...buildDesktopCommandEntries(desktopMenuState),
     ...buildAppShellProjectEntries({
       projects,
       selectedProject: commandPaletteProjectPath,
@@ -122,7 +146,7 @@ const AppShell = memo(function AppShell() {
       projectWorkflowsCache: paletteWorkflowCache,
       workflowExecutionStates,
     }),
-  ]), [commandPaletteProjectPath, paletteWorkflowCache, projects, workflowExecutionStates])
+  ]), [commandPaletteProjectPath, desktopMenuState, outputSurfaceCommandState, paletteWorkflowCache, projects, workflowExecutionStates])
   const workflowCommandEntries = useMemo(
     () => commandPaletteEntries.filter((entry): entry is Extract<AppShellCommandEntry, { kind: "workflow" }> => entry.kind === "workflow"),
     [commandPaletteEntries],
@@ -135,11 +159,6 @@ const AppShell = memo(function AppShell() {
         projectPath: entry.projectPath,
       }))
   }, [workflowCommandEntries])
-  const flowStatusRailEntries = useMemo(() => buildFlowStatusRailEntries({
-    workflowEntries: workflowCommandEntries,
-    executionStates: workflowExecutionStates,
-    selectedWorkflowPath,
-  }), [selectedWorkflowPath, workflowCommandEntries, workflowExecutionStates])
   const toggleSidebar = useCallback((nextOpen = !sidebarOpen) => {
     if (!nextOpen) {
       const activeElement = document.activeElement as HTMLElement | null
@@ -180,11 +199,13 @@ const AppShell = memo(function AppShell() {
         setSelectedWorkflowPath,
         setWorkflow,
         setWorkflowSavedSnapshot,
+        clearReviewState,
       )
     } catch (error) {
       toastErrorFromCatch("Could not open flow", error)
     }
   }, [
+    clearReviewState,
     confirmDiscard,
     paletteWorkflowCache,
     selectedProject,
@@ -263,14 +284,46 @@ const AppShell = memo(function AppShell() {
       })
       return
     }
+    if (entry.kind === "desktop_command") {
+      dispatchDesktopCommand(entry.commandId)
+      return
+    }
 
     const action = entry.action
+    if (action === "output_view_result") {
+      dispatchOutputSurfaceCommand("output.view_result")
+      return
+    }
+    if (action === "output_view_activity") {
+      dispatchOutputSurfaceCommand("output.view_activity")
+      return
+    }
+    if (action === "output_view_log") {
+      dispatchOutputSurfaceCommand("output.view_log")
+      return
+    }
+    if (action === "output_view_history") {
+      dispatchOutputSurfaceCommand("output.view_history")
+      return
+    }
+    if (action === "output_rerun_from_step") {
+      dispatchOutputSurfaceCommand("output.rerun_from_step")
+      return
+    }
+    if (action === "output_use_in_new_flow") {
+      dispatchOutputSurfaceCommand("output.use_in_new_flow")
+      return
+    }
     if (action === "new_process") {
       openWorkflowCreate()
       return
     }
     if (action === "add_project") {
       void addProjectFromPalette()
+      return
+    }
+    if (action === "runs_dashboard") {
+      setMultiRunDashboardOpen(true)
       return
     }
     if (action === "process_library") {
@@ -301,6 +354,7 @@ const AppShell = memo(function AppShell() {
     openWorkflowFromPalette,
     paletteWorkflowCache,
     setMainView,
+    setMultiRunDashboardOpen,
     setSelectedProject,
     setTemplateLibraryContext,
     setWorkflowCreateContext,
@@ -311,10 +365,11 @@ const AppShell = memo(function AppShell() {
 
   // Redirect to onboarding on first launch
   useEffect(() => {
+    if (__TEST_MODE__) return
     if (firstLaunch) {
       setMainView("onboarding")
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [firstLaunch, setMainView])
 
   useEffect(() => {
     if (factoryBetaEnabled) return
@@ -369,6 +424,16 @@ const AppShell = memo(function AppShell() {
       unsubscribeRuntime()
     }
   }, [setDesktopRuntime])
+
+  useEffect(() => {
+    void window.api.updateDesktopMenuState(desktopMenuState).catch(() => {})
+  }, [desktopMenuState])
+
+  useEffect(() => {
+    return window.api.onDesktopCommand((commandId) => {
+      dispatchDesktopCommand(commandId)
+    })
+  }, [])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -479,9 +544,16 @@ const AppShell = memo(function AppShell() {
   const applyDeepLinkTemplate = () => {
     if (!deepLinkTemplate) return
     const previousWorkflow = structuredClone(workflow)
+    const previousWorkflowPath = selectedWorkflowPath
+    const previousReviewState = {
+      selectedInboxTaskKey,
+      selectedPastRun,
+    }
+    const previousTemplateContext = selectedWorkflowTemplateContext
     const nextWorkflow = resolveTemplateWorkflow(deepLinkTemplate, webSearchBackend)
     setWorkflow(nextWorkflow)
     setSelectedWorkflowPath(null)
+    clearReviewState()
     setWorkflowTemplateContextForKey({
       key: toWorkflowExecutionKey(null),
       context: buildTemplateRunContext({
@@ -499,9 +571,16 @@ const AppShell = memo(function AppShell() {
         label: "Undo",
         onClick: () => {
           setWorkflow(previousWorkflow)
+          setSelectedWorkflowPath(previousWorkflowPath)
+          setSelectedInboxTaskKey(previousReviewState.selectedInboxTaskKey)
+          setSelectedPastRun(previousReviewState.selectedPastRun)
           setWorkflowTemplateContextForKey({
             key: toWorkflowExecutionKey(null),
-            context: null,
+            context: previousWorkflowPath === null ? previousTemplateContext : null,
+          })
+          setWorkflowTemplateContextForKey({
+            key: toWorkflowExecutionKey(previousWorkflowPath),
+            context: previousTemplateContext,
           })
         },
       },
@@ -520,6 +599,7 @@ const AppShell = memo(function AppShell() {
       setSelectedWorkflowPath(filePath)
       setWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      clearReviewState()
       setWorkflowTemplateContextForKey({
         key: toWorkflowExecutionKey(filePath),
         context: buildTemplateRunContext({
@@ -561,7 +641,6 @@ const AppShell = memo(function AppShell() {
         <RendererSmokeBridge
           commandPaletteOpen={commandPaletteOpen}
           sidebarOpen={sidebarOpen}
-          flowStatusRailLabels={flowStatusRailEntries.map((entry) => entry.label)}
           availableWorkflowNames={workflowCommandEntries.map((entry) => entry.label)}
         />
       )}
@@ -600,16 +679,6 @@ const AppShell = memo(function AppShell() {
 
       <div id="main-content" className="min-w-0 min-h-0 flex-1 flex flex-col">
         <CliBanner />
-        <FlowStatusRail
-          entries={flowStatusRailEntries}
-          primaryModifierLabel={desktopRuntime.primaryModifierLabel}
-          onSelect={(entry) => {
-            void openWorkflowFromPalette({
-              workflowPath: entry.workflowPath,
-              projectPath: entry.projectPath,
-            })
-          }}
-        />
         {/* Main area — workflow editor */}
         <SectionErrorBoundary sectionName="flow view">
           <AppMainView />

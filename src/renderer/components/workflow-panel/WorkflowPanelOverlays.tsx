@@ -1,6 +1,7 @@
 import { ApprovalDialog } from "@/components/ApprovalDialog"
 import { SkillPicker } from "@/components/SkillPicker"
 import { StageStartApprovalDialog } from "@/components/workflow-panel/WorkflowPanelInlineSections"
+import type { FlowRulePreview } from "@/lib/flow-rules"
 import type { DiscoveredSkill } from "@shared/types"
 
 export function WorkflowPanelOverlays({
@@ -32,13 +33,13 @@ export function WorkflowPanelOverlays({
   stageStartTitle: string
   stageLabel: string | null
   stageStartDescription: string | null
-  entryFlowRules: string[]
+  entryFlowRules: FlowRulePreview[]
   expectedArtifact: string
   inputPreview: string
   inputLabels: string[]
   notes: string[]
   shortcutLabel: string
-  primaryModifierKey: string
+  primaryModifierKey: "meta" | "ctrl"
   onApproveStageStart: () => void | Promise<void>
   onCancelStageStart: () => void
 }) {
@@ -58,7 +59,7 @@ export function WorkflowPanelOverlays({
       )}
       <StageStartApprovalDialog
         open={stageStartGateOpen}
-        flowName={stageStartFlowName}
+        flowName={stageStartFlowName || "This flow"}
         title={stageStartTitle}
         stageLabel={stageLabel}
         stepDescription={stageStartDescription}

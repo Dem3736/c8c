@@ -1,5 +1,5 @@
 import type { C8cApi } from "@shared/c8c-api"
-import { PROVIDER_LABELS, resolveWorkflowProvider } from "@shared/provider-metadata"
+import { PROVIDER_LABELS, resolveWorkflowProvider, workflowRequiresProvider } from "@shared/provider-metadata"
 import type {
   ClaudeCodeSubscriptionStatus,
   EvaluatorNodeConfig,
@@ -131,6 +131,17 @@ export function evaluateExecutionStartPreflight(
   snapshot: ExecutionPreflightSnapshot,
 ): ExecutionPreflightResult {
   const effectiveProvider = resolveEffectiveExecutionProvider(workflow, snapshot.diagnostics.settings)
+
+  if (!workflowRequiresProvider(workflow)) {
+    const warnings = collectPreflightWarnings(workflow, snapshot.diagnostics.settings)
+    return {
+      ok: true,
+      effectiveProvider,
+      snapshot,
+      warnings,
+    }
+  }
+
   const providerHealth = snapshot.diagnostics.health[effectiveProvider]
   const providerAuth = snapshot.diagnostics.auth[effectiveProvider]
 
@@ -207,6 +218,13 @@ export async function loadExecutionStartPreflight(
   workflow: Workflow,
 ): Promise<ExecutionPreflightResult> {
   const diagnostics = await api.getProviderDiagnostics()
+  if (!workflowRequiresProvider(workflow)) {
+    return evaluateExecutionStartPreflight(workflow, {
+      diagnostics,
+      cliStatus: null,
+    })
+  }
+
   const effectiveProvider = resolveEffectiveExecutionProvider(workflow, diagnostics.settings)
   const cliStatus = effectiveProvider === "claude"
     ? await api.getClaudeCodeSubscriptionStatus()
