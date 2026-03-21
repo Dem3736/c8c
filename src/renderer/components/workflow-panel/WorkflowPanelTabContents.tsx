@@ -16,7 +16,7 @@ import type { WorkflowBlockedResumeSummary } from "@/lib/workflow-blocked-resume
 import type { WorkflowResumeEntrySummary } from "@/lib/workflow-resume-entry"
 import type { ArtifactContract, ArtifactRecord, PersistedRunSnapshot } from "@shared/types"
 import type { WorkflowEntryState } from "@/lib/workflow-entry"
-import type { ExecutionRunStatus, ExecutionSurfaceNotice } from "@/lib/workflow-execution"
+import type { ExecutionSurfaceNotice } from "@/lib/workflow-execution"
 
 interface WorkflowSettingsTabProps {
   surfaceNotice: ExecutionSurfaceNotice | null
@@ -81,8 +81,9 @@ interface WorkflowListTabProps {
   reviewSnapshot: PersistedRunSnapshot | null
   showReviewOutputMode: boolean
   showReviewOutputPanel?: boolean
+  showLiveOutputPanel?: boolean
+  terminalResultOwnsLayout?: boolean
   blockedTaskPanel?: ReactNode
-  runStatus: ExecutionRunStatus
   outputPanelRef: RefObject<HTMLDivElement | null>
   outputPanelProps: ComponentProps<typeof OutputPanel>
 }
@@ -118,8 +119,9 @@ export function WorkflowListTab({
   reviewSnapshot,
   showReviewOutputMode,
   showReviewOutputPanel = true,
+  showLiveOutputPanel = false,
+  terminalResultOwnsLayout = false,
   blockedTaskPanel = null,
-  runStatus,
   outputPanelRef,
   outputPanelProps,
 }: WorkflowListTabProps) {
@@ -164,7 +166,7 @@ export function WorkflowListTab({
               </>
             )}
             {blockedTaskPanel}
-            {showIdleStageContract && idleStageContract && (
+            {showIdleStageContract && !terminalResultOwnsLayout && idleStageContract && (
               <WorkflowIdleStageContract
                 title={idleStageContract.title}
                 resultLabel={idleStageContract.resultLabel}
@@ -172,7 +174,7 @@ export function WorkflowListTab({
                 inputLabels={idleStageContract.inputLabels}
               />
             )}
-            {showIdleInputPanel && (
+            {showIdleInputPanel && !terminalResultOwnsLayout && (
               <StageInputSection
                 inputPanelRef={inputPanelRef}
                 showTemplateContext={false}
@@ -184,7 +186,7 @@ export function WorkflowListTab({
                 onOpenArtifact={onOpenArtifact}
               />
             )}
-            {showFlowEditor && (
+            {showFlowEditor && !terminalResultOwnsLayout && (
               <SectionErrorBoundary sectionName="flow editor">
                 <ChainBuilder
                   compact
@@ -205,7 +207,7 @@ export function WorkflowListTab({
                 </SectionErrorBoundary>
               </div>
             )}
-            {runStatus !== "idle" && !showReviewOutputMode && (
+            {showLiveOutputPanel && !showReviewOutputMode && (
               <div
                 ref={outputPanelRef}
                 id="run-output-panel"

@@ -43,7 +43,7 @@ Five hard rules from `docs/DESIGN-PHILOSOPHY.md` §8. Every renderer change must
 4. **One Status Signal Per Fact** — progress, blocked status, current step each appear in exactly one place.
 5. **No Cards Inside Cards** — a bordered container never nests another bordered container.
 
-One exception is allowed: a single contextual advanced path when the state would otherwise be a dead end. It must be low-emphasis, live inside the figure or its local context strip, and open secondary diagnostic depth rather than competing with the primary CTA.
+One exception is allowed: contextual depth when the state would otherwise be a dead end. It must live inside the figure or its local context strip and may be either a single low-emphasis advanced link or a compact content-aware tab strip (`Result`, `Activity`, `Step log`, `History`). Never render empty tabs, and never promote these tabs into page chrome for idle/create states.
 
 Workflow and project pages get one strong top-level header. Child surfaces below that header must use flat context strips, not repeated hero headers.
 

@@ -200,6 +200,7 @@ export function WorkflowPanel() {
   const [useInNewFlowTemplates, setUseInNewFlowTemplates] = useState<WorkflowTemplate[]>([])
   const [selectedUseInNewFlowTemplateId, setSelectedUseInNewFlowTemplateId] = useState<string | null>(null)
   const [useInNewFlowIntent, setUseInNewFlowIntent] = useState("")
+  const [showSavedRunReview, setShowSavedRunReview] = useState(false)
 
   const LONG_RUNNING_THRESHOLD_MS = 2 * 60 * 1000
 
@@ -394,7 +395,7 @@ export function WorkflowPanel() {
     showResumeReviewMode,
     showStandaloneIdleReviewMode,
   } = resolveWorkflowReviewModes({
-    showIdleReviewMode,
+    showIdleReviewMode: showIdleReviewMode && showSavedRunReview,
     showBlockedResumeHeader,
     selectedPastRunStatus: selectedPastRun?.status,
   })
@@ -516,6 +517,7 @@ export function WorkflowPanel() {
   useEffect(() => {
     setShowEntryEditor(false)
     setPrepareNewRun(false)
+    setShowSavedRunReview(true)
     setOutputTabRequest(null)
     pendingListAutoScrollRef.current = false
     idleReviewAutoScrollKeyRef.current = null
@@ -592,8 +594,41 @@ export function WorkflowPanel() {
       inputLabels: stageStartInputLabels,
     }
   }, [firstRunnableNode, selectedWorkflowTemplateContext?.outputText, stageStartDescription, stageStartInputLabels])
-  const showOutputPanel = showAnyReviewMode || runStatus !== "idle"
   const canShowTerminalResultSurface = hasResult || runStatus === "error" || (runStatus === "done" && runOutcome !== "blocked")
+  const liveTerminalResultOwnsLayout = (
+    viewMode === "list"
+    && runStatus === "idle"
+    && canShowTerminalResultSurface
+    && !showAnyReviewMode
+    && !prepareNewRun
+  )
+  const showOutputPanel = showAnyReviewMode || runStatus !== "idle" || liveTerminalResultOwnsLayout
+  const resultSourceText = useMemo(() => {
+    const trimmedFinalContent = finalContent.trim()
+    if (trimmedFinalContent) {
+      return trimmedFinalContent
+    }
+
+    const orderedNodeIds = [
+      ...workflow.nodes
+        .filter((node) => node.type === "output")
+        .map((node) => node.id),
+      ...workflow.nodes.map((node) => node.id),
+      ...Object.keys(nodeStates),
+    ]
+
+    const seen = new Set<string>()
+    for (const nodeId of orderedNodeIds) {
+      if (!nodeId || seen.has(nodeId)) continue
+      seen.add(nodeId)
+      const content = nodeStates[nodeId]?.output?.content
+      if (typeof content === "string" && content.trim()) {
+        return content
+      }
+    }
+
+    return ""
+  }, [finalContent, nodeStates, workflow.nodes])
   const resultSourceAttachments = useMemo(() => {
     if (artifactRecords.length > 0) {
       return buildArtifactInputAttachments(artifactRecords)
@@ -606,18 +641,17 @@ export function WorkflowPanel() {
         workflowName: workflow.name || "Current flow",
       }]
     }
-    const trimmedResult = finalContent.trim()
-    if (trimmedResult) {
+    if (resultSourceText) {
       return [{
         kind: "text" as const,
         label: workflow.name
           ? `${workflow.name} result`
           : "Current result",
-        content: trimmedResult,
+        content: resultSourceText,
       }]
     }
     return []
-  }, [artifactRecords, finalContent, runId, workflow.name, workspace])
+  }, [artifactRecords, resultSourceText, runId, workflow.name, workspace])
   const resultSourceLabel = useMemo(() => {
     if (artifactRecords.length > 0) {
       const visibleTitles = artifactRecords.slice(0, 2).map((artifact) => artifact.title)
@@ -918,10 +952,18 @@ export function WorkflowPanel() {
       toastError("Open a project and finish a result before starting a new flow from it.")
       return
     }
+    if (artifactRecords.length === 0) {
+      openWorkflowCreate({
+        projectPath: selectedProject,
+        sourceArtifacts: [],
+        initialAttachments: resultSourceAttachments,
+      })
+      return
+    }
     setUseInNewFlowIntent("")
     setSelectedUseInNewFlowTemplateId(null)
     setUseInNewFlowOpen(true)
-  }, [canUseInNewFlow, selectedProject])
+  }, [artifactRecords.length, canUseInNewFlow, openWorkflowCreate, resultSourceAttachments, selectedProject])
 
   const handleConfirmUseInNewFlow = useCallback(async () => {
     if (!selectedProject || useInNewFlowPending) return
@@ -1050,11 +1092,12 @@ export function WorkflowPanel() {
       completionSurfaceRef.current = null
       return
     }
+    setShowSavedRunReview(false)
     const completionKey = `${selectedWorkflowPath ?? "__draft__"}:${runId || runOutcome || runStatus}`
     if (completionSurfaceRef.current === completionKey) return
     completionSurfaceRef.current = completionKey
     openResult()
-  }, [canShowTerminalResultSurface, openResult, runId, runOutcome, runStatus, selectedWorkflowPath, viewMode])
+  }, [canShowTerminalResultSurface, openResult, runId, runOutcome, runStatus, selectedWorkflowPath, setShowSavedRunReview, viewMode])
 
   const handleStartNewRun = () => {
     // Preserve the previous input so the user can edit rather than retype
@@ -1067,6 +1110,7 @@ export function WorkflowPanel() {
     if (!inputValue && previousInput) {
       setInputValue(previousInput)
     }
+    setShowSavedRunReview(false)
     setPrepareNewRun(true)
     setViewMode("list")
     window.requestAnimationFrame(() => {
@@ -1077,12 +1121,13 @@ export function WorkflowPanel() {
   const openRunHistory = useCallback(() => {
     if (runStatus !== "idle" || workflowPastRuns.length === 0) return
     setPrepareNewRun(false)
+    setShowSavedRunReview(true)
     if (!selectedPastRun) {
       setSelectedPastRun(workflowPastRuns[0] || null)
     }
     setViewMode("list")
     setOutputTabRequest({ tab: "history", nonce: Date.now() })
-  }, [runStatus, selectedPastRun, setSelectedPastRun, setViewMode, workflowPastRuns])
+  }, [runStatus, selectedPastRun, setSelectedPastRun, setShowSavedRunReview, setViewMode, workflowPastRuns])
 
   const sharedOutputPanelProps = useMemo(() => ({
     onRerunFrom: rerunFrom,
@@ -1142,9 +1187,24 @@ export function WorkflowPanel() {
       setSelectedPastRun(preferredBlockedRun)
       return
     }
+    if (!showSavedRunReview) {
+      if (selectedPastRun) {
+        setSelectedPastRun(null)
+      }
+      return
+    }
     if (selectedPastRun && workflowPastRuns.some((run) => run.runId === selectedPastRun.runId)) return
     setSelectedPastRun(workflowPastRuns[0])
-  }, [prepareNewRun, runStatus, selectedPastRun, selectedResumeTask, setSelectedPastRun, workflowPastRuns])
+  }, [
+    prepareNewRun,
+    runStatus,
+    selectedPastRun,
+    selectedResumeTask,
+    setSelectedPastRun,
+    setShowSavedRunReview,
+    showSavedRunReview,
+    workflowPastRuns,
+  ])
 
   useEffect(() => {
     if (showAnyReviewMode) {
@@ -1401,14 +1461,15 @@ export function WorkflowPanel() {
                 showFlowEditor={showFlowEditor}
                 chainBuilderMode={chainBuilderMode}
                 onFocusStageDetails={focusStageDetails}
-                reviewSnapshot={showAnyReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
-                showReviewOutputMode={showAnyReviewMode}
-                showReviewOutputPanel={!showBlockedResumeHeader || blockedInspectionVisible}
-                blockedTaskPanel={blockedTaskPanel}
-                runStatus={runStatus}
-                outputPanelRef={outputPanelRef}
-                outputPanelProps={sharedOutputPanelProps}
-              />
+              reviewSnapshot={showAnyReviewMode ? reviewedRunDetails?.snapshot ?? null : null}
+              showReviewOutputMode={showAnyReviewMode}
+              showReviewOutputPanel={!showBlockedResumeHeader || blockedInspectionVisible}
+              showLiveOutputPanel={showOutputPanel}
+              terminalResultOwnsLayout={liveTerminalResultOwnsLayout}
+              blockedTaskPanel={blockedTaskPanel}
+              outputPanelRef={outputPanelRef}
+              outputPanelProps={sharedOutputPanelProps}
+            />
             </Tabs>
           </>
         )}

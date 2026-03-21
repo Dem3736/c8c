@@ -1,124 +1,72 @@
-import { History } from "lucide-react"
-
-import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { RunResult } from "@shared/types"
-import { cn } from "@/lib/cn"
 
-function formatRunCompletedAt(run: RunResult): string {
-  if (!Number.isFinite(run.completedAt) || run.completedAt <= 0) {
-    return "n/a"
-  }
-  const completedDate = new Date(run.completedAt)
-  if (Number.isNaN(completedDate.getTime())) {
-    return "n/a"
-  }
-  return completedDate.toLocaleString()
+export interface OutputPanelTabOption {
+  value: string
+  label: string
 }
 
 export function OutputPanelHeader({
   activeTab,
   hasResult,
-  pastRuns,
-  runStatus,
-  selectedReviewRunId,
-  onSelectReviewRun,
-  canStartFreshRun,
-  onStartNewRun,
   resultReadyPulse,
-  resultLabel,
-  executionProgress,
+  reviewingRunHistory = false,
+  selectedRunLabel = null,
+  selectedReviewStatus = null,
+  tabOptions,
 }: {
   activeTab: string
   hasResult: boolean
-  pastRuns: RunResult[]
-  runStatus: string
-  selectedReviewRunId: string | null
-  onSelectReviewRun: (runId: string) => void
-  canStartFreshRun: boolean
-  onStartNewRun?: () => void
   resultReadyPulse: boolean
-  resultLabel?: string | null
-  executionProgress?: { completed: number; total: number } | null
+  reviewingRunHistory?: boolean
+  selectedRunLabel?: string | null
+  selectedReviewStatus?: string | null
+  tabOptions: OutputPanelTabOption[]
 }) {
+  const showResultPulse = resultReadyPulse && activeTab !== "result" && hasResult
+  const showReviewContext = reviewingRunHistory && Boolean(selectedRunLabel)
+  const showTabs = tabOptions.length > 1
+
+  if (!showTabs && !showResultPulse && !showReviewContext) {
+    return null
+  }
+
   return (
-    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0">
-        {executionProgress && (
-          <div className="flex items-center gap-2.5">
-            <div className="ui-progress-track h-1 w-20 rounded-full">
-              <div
-                className="ui-progress-bar h-full rounded-full bg-status-info ui-motion-standard"
-                style={{ width: `${Math.round((executionProgress.completed / executionProgress.total) * 100)}%` }}
-              />
-            </div>
-            <span className="ui-meta-text text-muted-foreground tabular-nums whitespace-nowrap">
-              {executionProgress.completed} / {executionProgress.total} steps
-            </span>
-          </div>
+    <div className="border-b border-hairline px-1 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        {showTabs ? (
+          <TabsList className="h-auto w-fit flex-wrap gap-1 rounded-none border-0 bg-transparent p-0 shadow-none">
+            {tabOptions.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="min-h-0 rounded-md border-0 px-2.5 py-1 text-body-sm shadow-none data-[state=active]:border-0 data-[state=active]:bg-surface-2/70 data-[state=active]:shadow-none"
+              >
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        ) : (
+          <span />
         )}
-      </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {pastRuns.length > 0 && runStatus === "idle" && (
-          <div className="flex items-center gap-2 rounded-lg border border-hairline bg-surface-1/80 px-2 py-1 ui-elevation-inset">
-            <span className="ui-meta-label text-muted-foreground">Saved run</span>
-            <Select
-              value={selectedReviewRunId || undefined}
-              onValueChange={onSelectReviewRun}
-            >
-              <SelectTrigger className="h-control-sm min-w-[240px] border-none bg-transparent px-2 text-body-sm shadow-none">
-                <SelectValue placeholder="Select a run" />
-              </SelectTrigger>
-              <SelectContent>
-                {pastRuns.map((run, index) => (
-                  <SelectItem key={`review-run-${run.runId}`} value={run.runId}>
-                    {index === 0 ? "Latest run" : `Run ${index + 1}`} · {formatRunCompletedAt(run)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {canStartFreshRun && onStartNewRun && (
-          <Button variant="outline" size="sm" className="h-control-sm" onClick={onStartNewRun}>
-            New run
-          </Button>
-        )}
-        <TabsList className="h-control-md">
-          <TabsTrigger value="nodes" className="px-3 py-1 text-body-sm">
-            Activity
-          </TabsTrigger>
-          <TabsTrigger value="log" className="px-3 py-1 text-body-sm">
-            Log
-          </TabsTrigger>
-          <TabsTrigger
-            value="result"
-            className={cn(
-              "px-3 py-1 text-body-sm",
-              resultReadyPulse && activeTab !== "result" && "border-status-success/40 text-status-success",
-            )}
-            disabled={!hasResult}
-          >
-            {resultReadyPulse && activeTab !== "result" && (
-              <span className="ui-status-beacon mr-1.5" aria-hidden="true">
-                <span className="ui-status-beacon-ring bg-status-success/35" />
-                <span className="ui-status-beacon-core bg-status-success" />
+
+        {(showReviewContext || showResultPulse) ? (
+          <div className="min-w-0 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 ui-meta-text text-muted-foreground">
+            {showReviewContext ? (
+              <>
+                <span className="ui-meta-label text-muted-foreground">Saved run</span>
+                <div className="min-w-0 truncate text-body-sm font-medium text-foreground">
+                  {selectedRunLabel}
+                </div>
+                {selectedReviewStatus ? <span>{selectedReviewStatus}</span> : null}
+              </>
+            ) : null}
+            {showResultPulse ? (
+              <span className="ui-meta-label text-status-success" role="status" aria-live="polite" aria-atomic="true">
+                Result ready
               </span>
-            )}
-            {resultLabel || "Result"}
-          </TabsTrigger>
-          <TabsTrigger value="history" className="px-3 py-1 text-body-sm" disabled={pastRuns.length === 0}>
-            <History size={12} className="mr-1" />
-            History{pastRuns.length > 0 && ` (${pastRuns.length})`}
-          </TabsTrigger>
-        </TabsList>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   )

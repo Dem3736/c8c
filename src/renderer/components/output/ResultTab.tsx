@@ -1,15 +1,12 @@
 import type { ReactNode } from "react"
-import { ArrowRight, Download, FileText, FolderTree } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import ReactMarkdown, { type Components as MarkdownComponents } from "react-markdown"
 import rehypeHighlight from "rehype-highlight"
 import remarkGfm from "remark-gfm"
 
-import { CopyButton } from "@/components/ui/copy-button"
-import { DisclosurePanel } from "@/components/ui/disclosure-panel"
-import { ScopeBanner } from "@/components/ui/scope-banner"
-import { SummaryRail } from "@/components/ui/summary-rail"
-import { Badge } from "@/components/ui/badge"
+import { useVerdictData } from "@/components/output/useVerdictData"
 import { Button } from "@/components/ui/button"
+import { DisclosurePanel } from "@/components/ui/disclosure-panel"
 import {
   Select,
   SelectContent,
@@ -20,9 +17,7 @@ import {
 import { cn } from "@/lib/cn"
 import type { ExecutionLoopSummary } from "@/lib/execution-loops"
 import type { RuntimeStagePresentation } from "@/lib/runtime-flow-labels"
-import { ExecutionCheckRecord } from "@/components/ui/execution-check-record"
-import { ExecutionLoopCard } from "@/components/ui/execution-loop-card"
-import type { ArtifactRecord, RunResult } from "@shared/types"
+import type { ArtifactRecord, EvaluationResult, NodeState, RunResult } from "@shared/types"
 
 const MARKDOWN_PROSE_CLASS = "prose-c8c"
 const MARKDOWN_COMPONENTS: MarkdownComponents = {
@@ -46,28 +41,12 @@ const MARKDOWN_COMPONENTS: MarkdownComponents = {
   },
 }
 
-function formatDurationMs(durationMs: number): string {
-  if (durationMs < 1_000) return `${durationMs}ms`
-  const seconds = durationMs / 1_000
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainSeconds = Math.round(seconds % 60)
-  return `${minutes}m ${remainSeconds}s`
+function stripLeadingMarkdownHeading(value: string) {
+  return value.replace(/^\s*# .*(?:\r?\n)+(?:\r?\n)*/u, "")
 }
 
-function formatRunDuration(run: RunResult): string {
-  if (typeof run.durationMs === "number" && run.durationMs >= 0) {
-    return formatDurationMs(run.durationMs)
-  }
-  if (run.completedAt > 0 && run.startedAt > 0) {
-    const delta = run.completedAt - run.startedAt
-    if (delta > 0) return formatDurationMs(delta)
-  }
-  return "n/a"
-}
-
-function formatResultCountLabel(count: number) {
-  return `${count} result${count === 1 ? "" : "s"}`
+function compactLine(items: Array<string | null | undefined>) {
+  return items.filter((item): item is string => Boolean(item && item.trim())).join(" · ")
 }
 
 interface ResultNodeOption {
@@ -77,14 +56,21 @@ interface ResultNodeOption {
 }
 
 export function ResultTab({
+  nodeStates,
+  evalResults,
+  runStatus,
+  runOutcome,
   reviewingRunHistory,
   selectedReviewRun,
   selectedResultPresentation,
   selectedResultBranchLabel,
-  selectedResultMetricsLabel,
+  selectedStagePresentation,
+  selectedStageIndex,
+  workflowStepCount,
+  completedStageCount,
+  failedStageCount,
   isDisplayedResultEmpty,
   executionLoopSummary,
-  approvalLoopSummary,
   savedRunLoadingNotice,
   savedRunErrorNotice,
   hasMultipleResultOptions,
@@ -103,31 +89,40 @@ export function ResultTab({
   nextStageOutput,
   nextStagePending,
   onRunNextStage,
-  onOpenArtifacts,
   visibleArtifactContinuation,
   hiddenArtifactContinuationCount,
   visibleNextStageArtifacts,
   hiddenNextStageArtifactCount,
   primaryModifierLabel,
-  reportPath,
-  onOpenReport,
   displayedResultContent,
-  resultCopyTextWithHeader,
-  canCopyResult,
-  onCopyError,
-  onExportResult,
   canStartFreshRun,
   onStartNewRun,
+  canRerunSelectedStage,
+  onRerunSelectedStage,
+  onViewActivity,
+  onEditFlow,
+  failedNodeErrors,
+  canUseInNewFlow,
+  onUseInNewFlow,
+  onOpenArtifact,
+  onArtifactContextMenu,
   onContextMenu,
 }: {
+  nodeStates: Record<string, NodeState>
+  evalResults: Record<string, EvaluationResult[]>
+  runStatus: string
+  runOutcome: string | null
   reviewingRunHistory: boolean
   selectedReviewRun: RunResult | null
   selectedResultPresentation: RuntimeStagePresentation | null
   selectedResultBranchLabel: string | null
-  selectedResultMetricsLabel: string
+  selectedStagePresentation: RuntimeStagePresentation | null
+  selectedStageIndex: number | null
+  workflowStepCount: number
+  completedStageCount: number
+  failedStageCount: number
   isDisplayedResultEmpty: boolean
   executionLoopSummary: ExecutionLoopSummary | null
-  approvalLoopSummary: ExecutionLoopSummary | null
   savedRunLoadingNotice: ReactNode
   savedRunErrorNotice: ReactNode
   hasMultipleResultOptions: boolean
@@ -146,80 +141,302 @@ export function ResultTab({
   nextStageOutput?: string | null
   nextStagePending: boolean
   onRunNextStage?: (() => Promise<void> | void) | null
-  onOpenArtifacts?: (() => void) | null
   visibleArtifactContinuation: ArtifactRecord[]
   hiddenArtifactContinuationCount: number
   visibleNextStageArtifacts: ArtifactRecord[]
   hiddenNextStageArtifactCount: number
   primaryModifierLabel: string
-  reportPath: string | null
-  onOpenReport: (path: string) => void | Promise<void>
   displayedResultContent: string
-  resultCopyTextWithHeader: string
-  canCopyResult: boolean
-  onCopyError: (error: unknown) => void
-  onExportResult: () => void
   canStartFreshRun: boolean
   onStartNewRun?: () => void
+  canRerunSelectedStage: boolean
+  onRerunSelectedStage?: (() => void) | null
+  onViewActivity?: (() => void) | null
+  onEditFlow?: (() => void) | null
+  failedNodeErrors: [string, { error?: string }][]
+  canUseInNewFlow: boolean
+  onUseInNewFlow?: (() => Promise<void> | void) | null
+  onOpenArtifact?: ((artifact: ArtifactRecord) => Promise<void> | void) | null
+  onArtifactContextMenu?: ((event: React.MouseEvent<HTMLButtonElement>, artifact: ArtifactRecord) => void) | null
   onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => void
 }) {
+  const verdictData = useVerdictData({
+    nodeStates,
+    evalResults,
+    selectedResultNodeId,
+    selectedResultPresentation,
+    selectedResultBranchLabel,
+    selectedStagePresentation,
+    selectedStageIndex,
+    workflowStepCount,
+    completedStageCount,
+    failedStageCount,
+    reviewingRunHistory,
+    selectedReviewRun,
+    executionLoopSummary,
+    runStatus,
+    runOutcome,
+    hasPrimaryContinuation: showArtifactContinuation,
+    isDisplayedResultEmpty,
+    failedNodeErrors,
+  })
+  const terminalVariant = verdictData.terminalVariant
+  const isDocumentSurface = verdictData.surfaceMode === "document"
+  const savedArtifactsLabel = artifactRecords.length > 0
+    ? compactLine([
+        visibleArtifactContinuation.map((artifact) => artifact.title).join(" · "),
+        hiddenArtifactContinuationCount > 0 ? `+${hiddenArtifactContinuationCount} more` : null,
+      ])
+    : (selectedResultPresentation?.artifactLabel || "Result")
+  const continuationReferenceLine = compactLine([
+    `Saved: ${savedArtifactsLabel}`,
+    nextStageRequiresApproval ? "approval before continue" : null,
+    artifactPersistenceError,
+    nextStageLabel ? `feeds into ${nextStageLabel}` : null,
+  ])
+  const hasUseInNewFlowAction = Boolean(canUseInNewFlow && onUseInNewFlow && !reviewingRunHistory)
+  const actionItems: ReactNode[] = []
+
+  if (showArtifactContinuation && nextStageLabel && onRunNextStage) {
+    actionItems.push(
+      <Button
+        key="continue"
+        type="button"
+        size="sm"
+        title={`${primaryModifierLabel}↵`}
+        onClick={() => {
+          void Promise.resolve(onRunNextStage())
+        }}
+        disabled={artifactPersistenceStatus === "saving" || nextStagePending}
+      >
+        <ArrowRight size={12} />
+        {nextStagePending ? "Opening..." : `Continue to ${nextStageLabel}`}
+      </Button>,
+    )
+
+    if (hasUseInNewFlowAction && onUseInNewFlow) {
+      actionItems.push(
+        <Button
+          key="use-in-new-flow"
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            void Promise.resolve(onUseInNewFlow())
+          }}
+        >
+          Continue with Agent
+        </Button>,
+      )
+    }
+  } else if (terminalVariant === "completed" || terminalVariant === "saved") {
+    if (hasUseInNewFlowAction && onUseInNewFlow) {
+      actionItems.push(
+        <Button
+          key="use-in-new-flow"
+          type="button"
+          size="sm"
+          onClick={() => {
+            void Promise.resolve(onUseInNewFlow())
+          }}
+        >
+          <ArrowRight size={12} />
+          Continue with Agent
+        </Button>,
+      )
+    }
+
+    if (onViewActivity) {
+      actionItems.push(
+        <Button
+          key="view-activity"
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+          onClick={onViewActivity}
+        >
+          View activity
+        </Button>,
+      )
+    }
+
+    if (canStartFreshRun && onStartNewRun) {
+      actionItems.push(
+        <Button
+          key="start-fresh"
+          type="button"
+          variant={hasUseInNewFlowAction ? "ghost" : "default"}
+          size="sm"
+          className={hasUseInNewFlowAction ? "h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground" : undefined}
+          onClick={onStartNewRun}
+        >
+          {hasUseInNewFlowAction ? "Start fresh run" : "Run again"}
+        </Button>,
+      )
+    }
+  } else if (terminalVariant === "failed") {
+    if (canRerunSelectedStage && onRerunSelectedStage) {
+      actionItems.push(
+        <Button key="retry-step" type="button" size="sm" onClick={onRerunSelectedStage}>
+          <ArrowRight size={12} />
+          Retry from this step
+        </Button>,
+      )
+    } else if (canStartFreshRun && onStartNewRun) {
+      actionItems.push(
+        <Button key="start-fresh" type="button" size="sm" onClick={onStartNewRun}>
+          <ArrowRight size={12} />
+          Start fresh run
+        </Button>,
+      )
+    }
+
+    if (onEditFlow) {
+      actionItems.push(
+        <Button
+          key="edit-flow"
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+          onClick={onEditFlow}
+        >
+          Edit flow
+        </Button>,
+      )
+    }
+  }
+  const verdictToneClass = verdictData.tone === "danger"
+    ? "surface-danger-soft"
+    : verdictData.tone === "warning"
+      ? "surface-warning-soft"
+      : "bg-surface-1"
+  const renderedResultContent = stripLeadingMarkdownHeading(displayedResultContent)
+  const visibleProvenanceLabel = showArtifactContinuation ? null : verdictData.provenanceLabel
+  const evidenceLine = verdictData.evidenceItems.join(" · ")
+  const visibleSavedArtifacts = visibleArtifactContinuation.slice(0, 2)
+  const hiddenSavedArtifactCount = Math.max(0, artifactRecords.length - visibleSavedArtifacts.length)
+  const documentMetaLine = compactLine([visibleProvenanceLabel, evidenceLine])
+  const artifactLinkStrip = showArtifactContinuation && visibleSavedArtifacts.length > 0 ? (
+    <div className="border-t border-hairline pt-3">
+      <div className="ui-meta-label text-muted-foreground">Saved files</div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        {visibleSavedArtifacts.map((artifact) => (
+          <button
+            key={artifact.id}
+            type="button"
+            className="ui-meta-text text-foreground-subtle hover:text-foreground ui-pressable"
+            onClick={() => {
+              if (!onOpenArtifact) return
+              void Promise.resolve(onOpenArtifact(artifact))
+            }}
+            onContextMenu={(event) => {
+              if (!onArtifactContextMenu) return
+              event.preventDefault()
+              onArtifactContextMenu(event, artifact)
+            }}
+          >
+            {artifact.title}
+          </button>
+        ))}
+        {hiddenSavedArtifactCount > 0 ? (
+          <span className="ui-meta-text text-muted-foreground">
+            +{hiddenSavedArtifactCount} more
+          </span>
+        ) : null}
+      </div>
+    </div>
+  ) : null
+
   return (
     <div className="space-y-2" onContextMenu={onContextMenu}>
-      <div className="rounded-lg border border-hairline bg-surface-2/60 px-3 py-2.5">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 space-y-1">
-            <div className="ui-meta-label text-foreground-subtle">
-              {reviewingRunHistory ? "Saved result" : "Primary result"}
-            </div>
-            <div className="text-body-sm font-medium text-foreground">
-              {reviewingRunHistory
-                ? (selectedResultPresentation?.artifactLabel || "Saved result")
-                : (selectedResultPresentation?.artifactLabel || "Final result")}
-            </div>
-            <div className="ui-meta-text text-muted-foreground">
-              {reviewingRunHistory
-                ? "Saved run"
-                : (selectedResultPresentation?.title || "Latest result")}
-            </div>
-          </div>
-          <div className="ui-badge-row">
-            {reviewingRunHistory ? (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                {selectedReviewRun?.status || "completed"}
-              </Badge>
-            ) : selectedResultPresentation && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                {selectedResultPresentation.artifactLabel}
-              </Badge>
-            )}
-            <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-              {reviewingRunHistory
-                ? (selectedReviewRun ? formatRunDuration(selectedReviewRun) : "Saved run")
-                : (selectedResultBranchLabel || (isDisplayedResultEmpty ? "No content" : "Result"))}
-            </Badge>
-            {!reviewingRunHistory && selectedResultPresentation?.outcomeLabel && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-                {selectedResultPresentation.outcomeLabel}
-              </Badge>
-            )}
-            {!reviewingRunHistory && selectedResultMetricsLabel && (
-              <Badge variant="outline" className="ui-meta-text px-2 py-0 text-muted-foreground">
-                {selectedResultMetricsLabel}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <ExecutionCheckRecord summary={executionLoopSummary} compact />
-      <ExecutionLoopCard summary={approvalLoopSummary} compact detailSummary="Why / checks" />
       {savedRunLoadingNotice}
       {savedRunErrorNotice}
+
+      {isDocumentSurface ? (
+        <section className="space-y-3">
+          <div className="border-b border-hairline px-1 pb-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-title-sm font-semibold text-foreground">{verdictData.headline}</h2>
+              {documentMetaLine ? (
+                <p className="mt-1 ui-meta-text text-muted-foreground">{documentMetaLine}</p>
+              ) : null}
+            </div>
+            {actionItems.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {actionItems}
+              </div>
+            ) : null}
+            {artifactLinkStrip}
+          </div>
+
+          <section className="overflow-hidden rounded-lg border border-hairline bg-surface-1">
+            <div className="px-4 py-4">
+              {isDisplayedResultEmpty ? (
+                <div className="ui-meta-text text-muted-foreground">
+                  {reviewingRunHistory
+                    ? "No saved result for this run."
+                    : selectedResultNodeId
+                      ? "This step finished without a primary result."
+                      : "No result yet. Results appear here when the flow completes."}
+                </div>
+              ) : (
+                <div className={MARKDOWN_PROSE_CLASS}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MARKDOWN_COMPONENTS}>
+                    {renderedResultContent}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
+          </section>
+        </section>
+      ) : (
+        <section
+          className={cn(
+            "rounded-lg border border-hairline px-4 py-4",
+            verdictToneClass,
+            showArtifactContinuation && artifactContinuationToneClass,
+          )}
+        >
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <h2 className="text-title-lg text-foreground">{verdictData.headline}</h2>
+              {visibleProvenanceLabel && (
+                <p className="ui-meta-text text-muted-foreground">{visibleProvenanceLabel}</p>
+              )}
+            </div>
+
+            {verdictData.evidenceItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline pt-3 text-body-sm text-muted-foreground">
+                {verdictData.evidenceItems.map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
+            )}
+
+            {actionItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3">
+                {actionItems}
+              </div>
+            )}
+
+            {((showArtifactContinuation && continuationReferenceLine) || verdictData.preservedText) && (
+              <p className="border-t border-hairline pt-3 text-body-sm text-muted-foreground">
+                {showArtifactContinuation ? continuationReferenceLine : verdictData.preservedText}
+              </p>
+            )}
+            {artifactLinkStrip}
+          </div>
+        </section>
+      )}
 
       {!reviewingRunHistory && hasMultipleResultOptions && (
         <DisclosurePanel
           summary={`Other results (${resultNodeOptions.length})`}
-          className="border border-hairline bg-surface-1/70"
+          surface="flat"
+          className="border border-hairline bg-transparent"
           contentClassName="space-y-2"
         >
           <div className="space-y-1">
@@ -242,175 +459,23 @@ export function ResultTab({
         </DisclosurePanel>
       )}
 
-      {showArtifactContinuation && (
-        <div className={cn("space-y-3 rounded-lg px-3 py-3", artifactContinuationToneClass)}>
-          <ScopeBanner
-            tone="muted"
-            eyebrow={(
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge
-                  variant={
-                    artifactPersistenceStatus === "error"
-                      ? "destructive"
-                      : artifactPersistenceStatus === "saved"
-                        ? "success"
-                        : "outline"
-                  }
-                  className="ui-meta-text px-2 py-0"
-                >
-                  {artifactPersistenceStatus === "saving"
-                    ? "Preparing results"
-                    : artifactPersistenceStatus === "error"
-                      ? "Needs attention"
-                      : artifactRecords.length > 0
-                        ? `${formatResultCountLabel(artifactRecords.length)} ready`
-                        : "No results"}
-                </Badge>
-                {nextStageRequiresApproval ? (
-                  <Badge variant="warning" className="ui-meta-text px-2 py-0">
-                    Approval before continue
-                  </Badge>
-                ) : null}
-                {nextStageAutoRuns ? (
-                  <Badge variant="success" className="ui-meta-text px-2 py-0">
-                    Runs on continue
-                  </Badge>
-                ) : null}
-              </div>
-            )}
-            title={nextStageLabel ? `Continue to ${nextStageLabel}` : "Continue to the next step"}
-            description={
-              artifactPersistenceStatus === "saving"
-                ? "Preparing results."
-                : artifactPersistenceError
-                  ? artifactPersistenceError
-                  : nextStageLabel
-                    ? (nextStageDescription || "Next step ready.")
-                    : artifactPersistenceStatus === "saved"
-                      ? "Results saved."
-                      : "No reusable results."
-            }
-            actions={(
-              <>
-                {nextStageLabel && onRunNextStage ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    title={`${primaryModifierLabel}↵`}
-                    onClick={() => {
-                      void Promise.resolve(onRunNextStage())
-                    }}
-                    disabled={artifactPersistenceStatus === "saving" || nextStagePending}
-                  >
-                    <ArrowRight size={12} />
-                    {nextStagePending
-                      ? "Opening..."
-                      : nextStageLabel
-                        ? `Continue to ${nextStageLabel}`
-                        : "Continue"}
-                  </Button>
-                ) : null}
-                {onOpenArtifacts && artifactPersistenceStatus === "saved" ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={onOpenArtifacts}
-                  >
-                    <FolderTree size={12} />
-                    Results
-                  </Button>
-                ) : null}
-              </>
-            )}
-          />
-          <SummaryRail
-            compact
-            className={cn(nextStageOutput ? "md:grid-cols-3" : "md:grid-cols-2")}
-            items={[
-              {
-                label: "Ready now",
-                value: artifactRecords.length > 0
-                  ? visibleArtifactContinuation.map((artifact) => artifact.title).join(" · ")
-                  : "No reusable results",
-                hint: hiddenArtifactContinuationCount > 0 ? `+${hiddenArtifactContinuationCount} more` : undefined,
-              },
-              {
-                label: "Used next",
-                value: visibleNextStageArtifacts.length > 0
-                  ? visibleNextStageArtifacts.map((artifact) => artifact.title).join(" · ")
-                  : "Resolved after continue",
-                hint: hiddenNextStageArtifactCount > 0 ? `+${hiddenNextStageArtifactCount} more` : undefined,
-              },
-              ...(nextStageOutput ? [{
-                label: "Next result",
-                value: nextStageOutput,
-              }] : []),
-            ]}
-          />
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        {reportPath && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void Promise.resolve(onOpenReport(reportPath))
-            }}
-          >
-            <FileText size={12} />
-            Open Report
-            <span
-              className="max-w-52 truncate text-muted-foreground"
-              title={reportPath}
-            >
-              {reportPath.split("/").pop()}
-            </span>
-          </Button>
-        )}
-        <CopyButton
-          text={resultCopyTextWithHeader}
-          idleLabel="Copy Result"
-          copiedLabel="Copied"
-          idleAriaLabel="Copy result with flow context"
-          disabled={!canCopyResult}
-          onCopyError={onCopyError}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onExportResult}
-          disabled={!canCopyResult}
-        >
-          <Download size={12} />
-          Export
-        </Button>
-        {canStartFreshRun && onStartNewRun && (
-          <Button type="button" variant="outline" size="sm" onClick={onStartNewRun}>
-            New run
-          </Button>
-        )}
-      </div>
-
-      <div className="rounded-lg surface-soft p-3">
-        {isDisplayedResultEmpty ? (
-          <div className="ui-meta-text text-muted-foreground">
-            {reviewingRunHistory
-              ? "No saved result for this run."
-              : selectedResultNodeId
-                ? "This step finished without a primary result."
-                : "No result yet. Results appear here when the flow completes."}
-          </div>
-        ) : (
-          <div className={MARKDOWN_PROSE_CLASS}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MARKDOWN_COMPONENTS}>
-              {displayedResultContent}
-            </ReactMarkdown>
-          </div>
+      <div className="px-1 py-1">
+        {!isDocumentSurface && (
+          isDisplayedResultEmpty ? (
+            <div className="ui-meta-text text-muted-foreground">
+              {reviewingRunHistory
+                ? "No saved result for this run."
+                : selectedResultNodeId
+                  ? "This step finished without a primary result."
+                  : "No result yet. Results appear here when the flow completes."}
+            </div>
+          ) : (
+            <div className={MARKDOWN_PROSE_CLASS}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={MARKDOWN_COMPONENTS}>
+                {renderedResultContent}
+              </ReactMarkdown>
+            </div>
+          )
         )}
       </div>
     </div>

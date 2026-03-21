@@ -1,15 +1,15 @@
-import { useAtomValue } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { CursorMenu } from "@/components/ui/cursor-menu"
-import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
-import { desktopRuntimeAtom } from "@/lib/store"
+import { Button } from "@/components/ui/button"
+import { desktopRuntimeAtom, outputSurfaceCommandStateAtom } from "@/lib/store"
 import { useOutputPanel } from "@/hooks/useOutputPanel"
 import { HistoryTab } from "@/components/output/HistoryTab"
 import { ActivityTab } from "@/components/output/ActivityTab"
@@ -18,8 +18,7 @@ import { ResultTab } from "@/components/output/ResultTab"
 import { LogTab } from "@/components/output/OutputSections"
 import { SelectedStepSummaryPanel } from "@/components/output/SelectedStepSummaryPanel"
 import type { ArtifactRecord, LoadedRunResult, RunResult, WorkflowTemplate } from "@shared/types"
-import { toast } from "sonner"
-import { toastErrorFromCatch } from "@/lib/toast-error"
+import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import {
   consumeShortcut,
   isEditableKeyboardTarget,
@@ -29,6 +28,11 @@ import {
 import { ExecutionSurfaceNoticeBanner } from "@/components/ui/execution-surface-notice"
 import { useOutputPanelDerivedState } from "@/components/output/useOutputPanelDerivedState"
 import { cn } from "@/lib/cn"
+import { createDefaultOutputSurfaceCommandState } from "@/lib/output-surface-commands"
+import { subscribeOutputSurfaceCommands } from "@/lib/output-surface-command-bus"
+import { subscribeDesktopCommands } from "@/lib/desktop-command-bus"
+
+type OutputTabValue = "nodes" | "log" | "result" | "history"
 
 // ── Main OutputPanel ─────────────────────────────────────
 
@@ -45,11 +49,13 @@ export function OutputPanel({
   onStartNewRun,
   onOpenInbox,
   onOpenArtifacts,
+  onEditFlow,
   nextStageTemplate = null,
   nextStageArtifacts = [],
   onRunNextStage,
   nextStagePending = false,
   fillHeight = false,
+  onUseInNewFlow = null,
 }: {
   onOpenReport?: (path: string) => void | Promise<void>
   onRerunFrom?: (nodeId: string, options?: { workspace?: string | null }) => Promise<void> | void
@@ -63,13 +69,16 @@ export function OutputPanel({
   onStartNewRun?: () => void
   onOpenInbox?: () => void
   onOpenArtifacts?: () => void
+  onEditFlow?: () => void
   nextStageTemplate?: WorkflowTemplate | null
   nextStageArtifacts?: ArtifactRecord[]
   onRunNextStage?: (() => Promise<void> | void) | null
   nextStagePending?: boolean
   fillHeight?: boolean
+  onUseInNewFlow?: (() => Promise<void> | void) | null
 }) {
   const desktopRuntime = useAtomValue(desktopRuntimeAtom)
+  const setOutputSurfaceCommandState = useSetAtom(outputSurfaceCommandStateAtom)
   const {
     runStatus,
     runOutcome,
@@ -97,21 +106,40 @@ export function OutputPanel({
     runId,
     evalOverrideNodeIds,
   } = useOutputPanel()
-  const [activeTab, setActiveTab] = useState("nodes")
+  const [activeTab, setActiveTab] = useState<OutputTabValue>("nodes")
   const [resultReadyPulse, setResultReadyPulse] = useState(false)
   const [outputContextMenu, setOutputContextMenu] = useState<
     | { x: number, y: number, scope: "result" }
+    | { x: number, y: number, scope: "artifact", artifact: ArtifactRecord }
     | null
   >(null)
   const resultPulseTimerRef = useRef<number | null>(null)
   const resultSignalShownRef = useRef(false)
   const previousRunStatusRef = useRef(runStatus)
+  const surfaceIdentityRef = useRef<string | null>(null)
+  const cancelResultReadyPulse = useCallback(() => {
+    if (resultPulseTimerRef.current) {
+      window.clearTimeout(resultPulseTimerRef.current)
+      resultPulseTimerRef.current = null
+    }
+  }, [])
+  const clearResultReadyPulse = useCallback(() => {
+    cancelResultReadyPulse()
+    setResultReadyPulse(false)
+  }, [cancelResultReadyPulse])
+  const queueResultReadyPulse = useCallback(() => {
+    cancelResultReadyPulse()
+    setResultReadyPulse(true)
+    resultPulseTimerRef.current = window.setTimeout(() => {
+      setResultReadyPulse(false)
+      resultPulseTimerRef.current = null
+    }, 2800)
+  }, [cancelResultReadyPulse])
   const {
     selectedReviewRun,
     rerunWorkspace,
     reviewingRunHistory,
     reviewSnapshot,
-    openReviewTaskCount,
     displayNodeStates,
     displayEvalResults,
     allDisplayNodes,
@@ -131,25 +159,25 @@ export function OutputPanel({
     selectedResultNodeId,
     selectedResultPresentation,
     selectedResultBranchLabel,
-    selectedResultMetricsLabel,
     selectedStageId,
+    selectedStageIndex,
     selectedStagePresentation,
     selectedStageBranchLabel,
     selectedStageBranchDetail,
-    selectedStageStatus,
     selectedStageStatusLabel,
-    selectedStageHasOutput,
+    workflowStepCount,
+    completedStageCount,
+    failedStageCount,
     selectedStageContextLabel,
     selectedStageContextToneClass,
     selectedStageContextLabelClass,
     activitySummaryItems,
     selectedRunLabel,
     canInspectSavedRun,
-    showBlockedReviewStrip,
-    canContinueBlockedReview,
     canStartFreshRun,
     canRerunStages,
     canRerunSelectedStage,
+    showResultSurface,
     showArtifactContinuation,
     failedNodeErrors,
     artifactContinuationToneClass,
@@ -164,6 +192,7 @@ export function OutputPanel({
     executionLoopSummary,
     approvalLoopSummary,
     showLoopStateIndicator,
+    effectiveRunOutcome,
   } = useOutputPanelDerivedState({
     runStatus,
     runOutcome,
@@ -193,17 +222,6 @@ export function OutputPanel({
     nextStagePending,
   })
 
-  const executionProgress = useMemo(() => {
-    if (runStatus !== "running" && runStatus !== "starting") return null
-    const total = allDisplayNodes.length
-    if (total === 0) return null
-    const completed = allDisplayNodes.filter((node) => {
-      const status = displayNodeStates[node.id]?.status
-      return status === "completed" || status === "failed" || status === "skipped"
-    }).length
-    return { completed, total }
-  }, [runStatus, allDisplayNodes, displayNodeStates])
-
   const selectedWorkflowNode = useMemo(() => {
     if (!selectedStageId) return null
     return workflow.nodes.find((n) => n.id === selectedStageId) ?? null
@@ -215,7 +233,7 @@ export function OutputPanel({
   }, [onRerunFrom, rerunWorkspace])
 
   const savedRunLoadingNotice = reviewingRunHistory && reviewedRunLoading ? (
-    <div className="flex items-center gap-2 rounded-lg surface-soft p-4 ui-meta-text text-muted-foreground">
+    <div className="flex items-center gap-2 px-1 py-2 ui-meta-text text-muted-foreground">
       <Loader2 size={14} className="animate-spin shrink-0" />
       Loading saved run details…
     </div>
@@ -240,42 +258,6 @@ export function OutputPanel({
         actionLabel: "",
         actionTarget: "result",
       }}
-    />
-  ) : null
-  const blockedReviewBanner = showBlockedReviewStrip ? (
-    <ExecutionSurfaceNoticeBanner
-      notice={{
-        level: "warning",
-        title: openReviewTaskCount > 0 ? "Review tasks open" : "Ready to continue",
-        description: openReviewTaskCount > 0
-          ? `${openReviewTaskCount} ${openReviewTaskCount === 1 ? "task" : "tasks"} still need a decision.`
-          : "Checkpoint answered. Continue to finish this path.",
-        actionLabel: "",
-        actionTarget: "inbox",
-      }}
-      actions={(
-        <>
-          {openReviewTaskCount > 0 && !!reviewSnapshot && onOpenInbox && (
-            <Button type="button" variant="outline" size="sm" onClick={onOpenInbox}>
-              Open inbox
-            </Button>
-          )}
-          {canContinueBlockedReview && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title={`${desktopRuntime.primaryModifierLabel}↵`}
-              onClick={() => {
-                if (!selectedReviewRun || !onContinueRun) return
-                void Promise.resolve(onContinueRun(selectedReviewRun))
-              }}
-            >
-              Continue flow
-            </Button>
-          )}
-        </>
-      )}
     />
   ) : null
   const runAttentionBanner = !reviewingRunHistory && (runStatus === "error" || runOutcome === "failed" || runOutcome === "interrupted") ? (
@@ -314,12 +296,32 @@ export function OutputPanel({
       ) : null}
     />
   ) : null
+  const errorFigureOwnsSurface = !reviewingRunHistory
+    && showResultSurface
+    && (runStatus === "error" || effectiveRunOutcome === "failed" || effectiveRunOutcome === "interrupted")
   const openNodeDetails = useCallback((nodeId: string) => {
     setInspectedNodeId(nodeId)
-    const nodeOutput = displayNodeStates[nodeId]?.output?.content
-    const hasNodeOutput = typeof nodeOutput === "string" && nodeOutput.trim().length > 0
-    setActiveTab(hasNodeOutput ? "result" : "log")
-  }, [displayNodeStates, setInspectedNodeId])
+    setActiveTab("nodes")
+  }, [setInspectedNodeId])
+  const canInspectActivity = !showIdleState && (!reviewingRunHistory || canInspectSavedRun)
+  const canInspectLog = !showIdleState && Boolean(selectedStageId) && (!reviewingRunHistory || canInspectSavedRun)
+  const canInspectHistory = pastRuns.length > 0
+  const tabOptions = useMemo(() => {
+    const options: Array<{ value: OutputTabValue, label: string }> = []
+    if (showResultSurface) {
+      options.push({ value: "result", label: "Result" })
+    }
+    if (canInspectActivity) {
+      options.push({ value: "nodes", label: "Activity" })
+    }
+    if (canInspectLog) {
+      options.push({ value: "log", label: "Step log" })
+    }
+    if (canInspectHistory) {
+      options.push({ value: "history", label: "History" })
+    }
+    return options
+  }, [canInspectActivity, canInspectHistory, canInspectLog, showResultSurface])
 
   const handleCopyResult = useCallback(async () => {
     if (!canCopyResult) return
@@ -331,31 +333,6 @@ export function OutputPanel({
     }
   }, [canCopyResult, resultCopyTextWithHeader])
 
-  const handleCopyResultPlain = useCallback(async () => {
-    if (!canCopyResult) return
-    try {
-      await navigator.clipboard.writeText(displayedResultContent)
-    } catch (error) {
-      console.error("[OutputPanel] copy result (plain) failed:", error)
-      toastErrorFromCatch("Could not copy result", error)
-    }
-  }, [canCopyResult, displayedResultContent])
-
-  const handleExportResult = useCallback(async () => {
-    if (!canCopyResult) return
-    const content = displayedResultContent
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-")
-    const workflowName = workflow.name || "flow"
-    const mdContent = `# ${workflowName}\n\nExported: ${new Date().toLocaleString()}\n\n---\n\n${content}`
-    const blob = new Blob([mdContent], { type: "text/markdown;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${workflowName}-result-${stamp}.md`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [canCopyResult, displayedResultContent, workflow.name])
-
   const handleOpenReport = useCallback(async (path: string) => {
     try {
       await Promise.resolve(onOpenReport(path))
@@ -364,6 +341,44 @@ export function OutputPanel({
       toastErrorFromCatch("Could not open report file", error)
     }
   }, [onOpenReport])
+
+  const handleOpenArtifact = useCallback(async (artifact: ArtifactRecord) => {
+    const openError = await window.api.openPath(artifact.contentPath)
+    if (!openError) return
+    toastError("Could not open file", {
+      description: openError,
+    })
+  }, [])
+
+  const handleCopyArtifactPath = useCallback(async (artifact: ArtifactRecord) => {
+    try {
+      await navigator.clipboard.writeText(artifact.contentPath)
+    } catch (error) {
+      console.error("[OutputPanel] copy artifact path failed:", error)
+      toastErrorFromCatch("Could not copy file path", error)
+    }
+  }, [])
+
+  const focusStageSurface = useCallback((tab: "nodes" | "log") => {
+    const fallbackNodeId = selectedStageId
+      || selectedResultNodeId
+      || allDisplayNodes[allDisplayNodes.length - 1]?.id
+      || allDisplayNodes[0]?.id
+      || null
+
+    if (fallbackNodeId) {
+      setInspectedNodeId(fallbackNodeId)
+    }
+    setActiveTab(tab)
+  }, [allDisplayNodes, selectedResultNodeId, selectedStageId, setInspectedNodeId])
+
+  const activateResultSurface = useCallback(() => {
+    setResultReadyPulse(false)
+    if (selectedResultNodeId) {
+      setInspectedNodeId(selectedResultNodeId)
+    }
+    setActiveTab("result")
+  }, [selectedResultNodeId, setInspectedNodeId])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -382,12 +397,6 @@ export function OutputPanel({
       ) {
         consumeShortcut(event)
         void Promise.resolve(onRunNextStage())
-        return
-      }
-
-      if (canContinueBlockedReview && selectedReviewRun && onContinueRun) {
-        consumeShortcut(event)
-        void Promise.resolve(onContinueRun(selectedReviewRun))
       }
     }
 
@@ -398,13 +407,10 @@ export function OutputPanel({
   }, [
     activeTab,
     artifactPersistenceStatus,
-    canContinueBlockedReview,
     desktopRuntime.primaryModifierKey,
     nextStagePending,
     nextStageTemplate,
-    onContinueRun,
     onRunNextStage,
-    selectedReviewRun,
     showArtifactContinuation,
   ])
 
@@ -427,10 +433,10 @@ export function OutputPanel({
   }, [onOpenInbox, setSurfaceNotice, surfaceNotice])
 
   useEffect(() => {
-    if (!hasResult && activeTab === "result") {
+    if (!showResultSurface && activeTab === "result") {
       setActiveTab("nodes")
     }
-  }, [activeTab, hasResult])
+  }, [activeTab, showResultSurface])
 
   useEffect(() => {
     if (activeTab === "history" && pastRuns.length === 0) {
@@ -439,55 +445,179 @@ export function OutputPanel({
   }, [activeTab, pastRuns.length])
 
   useEffect(() => {
+    if (activeTab !== "log") return
+    if (canInspectLog) return
+    setActiveTab(canInspectActivity ? "nodes" : showResultSurface ? "result" : "nodes")
+  }, [activeTab, canInspectActivity, canInspectLog, showResultSurface])
+
+  const preferredTopLevelTab = (
+    showResultSurface
+    && (
+      reviewingRunHistory
+      || runStatus === "error"
+      || (runStatus === "done" && effectiveRunOutcome !== "blocked")
+    )
+  )
+    ? "result"
+    : "nodes"
+  const surfaceIdentityKey = reviewingRunHistory
+    ? `review:${selectedReviewRun?.runId || "latest"}`
+    : `live:${runId || "none"}:${runStatus}:${effectiveRunOutcome || "none"}`
+
+  useEffect(() => {
+    if (requestedTab) return
+    if (surfaceIdentityRef.current === surfaceIdentityKey) return
+    surfaceIdentityRef.current = surfaceIdentityKey
+
+    if (preferredTopLevelTab === "result" && showResultSurface) {
+      setActiveTab("result")
+      return
+    }
+
+    setActiveTab("nodes")
+  }, [preferredTopLevelTab, requestedTab, showResultSurface, surfaceIdentityKey])
+
+  const activityOwnsSurface = !showIdleState
+    && activeTab === "nodes"
+    && !reviewingRunHistory
+    && !errorFigureOwnsSurface
+
+  useEffect(() => {
     if (!requestedTab) return
-    if (requestedTab.tab === "result" && !hasResult) return
+    if (requestedTab.tab === "result" && !showResultSurface) return
     if (requestedTab.tab === "history" && pastRuns.length === 0) return
     if (requestedTab.nodeId) {
       setInspectedNodeId(requestedTab.nodeId)
     }
     setActiveTab(requestedTab.tab)
-  }, [hasResult, pastRuns.length, requestedTab, setInspectedNodeId])
+  }, [pastRuns.length, requestedTab, setInspectedNodeId, showResultSurface])
 
   useEffect(() => {
-    if (runStatus !== "done" || !hasResult) {
+    const previousStatus = previousRunStatusRef.current
+    const reachedTerminal = runStatus === "done" || runStatus === "error"
+    const wasTerminal = previousStatus === "done" || previousStatus === "error"
+    const justEnteredTerminal = reachedTerminal && !wasTerminal
+
+    if (
+      !showResultSurface
+      || !reachedTerminal
+      || effectiveRunOutcome === "blocked"
+    ) {
       resultSignalShownRef.current = false
-      setResultReadyPulse(false)
+      clearResultReadyPulse()
       previousRunStatusRef.current = runStatus
       return
     }
-    const runJustCompleted = previousRunStatusRef.current !== "done"
+
     previousRunStatusRef.current = runStatus
-    if (runJustCompleted) {
+
+    if (justEnteredTerminal) {
       resultSignalShownRef.current = true
+
+      clearResultReadyPulse()
+
       if (activeTab !== "result" && activeTab !== "history") {
         setActiveTab("result")
-        setResultReadyPulse(false)
         return
       }
+
+      if (activeTab === "history") {
+        queueResultReadyPulse()
+      }
+
+      return
     }
-    if (resultSignalShownRef.current) return
+
+    if (activeTab === "result" || resultSignalShownRef.current) return
+
     resultSignalShownRef.current = true
-    if (activeTab === "result") return
-    setResultReadyPulse(true)
-    if (resultPulseTimerRef.current) {
-      window.clearTimeout(resultPulseTimerRef.current)
-    }
-    resultPulseTimerRef.current = window.setTimeout(() => setResultReadyPulse(false), 2800)
-  }, [activeTab, hasResult, runStatus])
+    queueResultReadyPulse()
+  }, [activeTab, clearResultReadyPulse, effectiveRunOutcome, queueResultReadyPulse, runStatus, showResultSurface])
 
   useEffect(() => {
     return () => {
-      if (resultPulseTimerRef.current) {
-        window.clearTimeout(resultPulseTimerRef.current)
-      }
+      cancelResultReadyPulse()
     }
-  }, [])
+  }, [cancelResultReadyPulse])
+
+  useEffect(() => {
+    setOutputSurfaceCommandState({
+      result: showResultSurface,
+      activity: canInspectActivity,
+      log: canInspectLog,
+      history: canInspectHistory,
+      rerunFromStep: Boolean(selectedStageId && canRerunSelectedStage),
+      useInNewFlow: Boolean(onUseInNewFlow && showResultSurface && !reviewingRunHistory),
+    })
+
+    return () => {
+      setOutputSurfaceCommandState(createDefaultOutputSurfaceCommandState())
+    }
+  }, [
+    canInspectSavedRun,
+    canInspectActivity,
+    canInspectHistory,
+    canInspectLog,
+    canRerunSelectedStage,
+    onUseInNewFlow,
+    reviewingRunHistory,
+    selectedStageId,
+    setOutputSurfaceCommandState,
+    showResultSurface,
+  ])
+
+  useEffect(() => {
+    return subscribeOutputSurfaceCommands((commandId) => {
+      if (commandId === "output.view_result" && showResultSurface) {
+        activateResultSurface()
+        return
+      }
+      if (commandId === "output.view_activity" && canInspectActivity) {
+        focusStageSurface("nodes")
+        return
+      }
+      if (commandId === "output.view_log" && canInspectLog) {
+        focusStageSurface("log")
+        return
+      }
+      if (commandId === "output.view_history" && canInspectHistory) {
+        setActiveTab("history")
+        return
+      }
+      if (commandId === "output.rerun_from_step" && selectedStageId && canRerunSelectedStage) {
+        handleRerunFrom(selectedStageId)
+        return
+      }
+      if (commandId === "output.use_in_new_flow" && onUseInNewFlow) {
+        void Promise.resolve(onUseInNewFlow())
+      }
+    })
+  }, [
+    activateResultSurface,
+    canInspectActivity,
+    canInspectHistory,
+    canInspectLog,
+    canRerunSelectedStage,
+    focusStageSurface,
+    handleRerunFrom,
+    onUseInNewFlow,
+    selectedStageId,
+    showResultSurface,
+  ])
+
+  useEffect(() => {
+    return subscribeDesktopCommands((commandId) => {
+      if (commandId === "flow.rerun_from_step" && selectedStageId && canRerunSelectedStage) {
+        handleRerunFrom(selectedStageId)
+      }
+    })
+  }, [canRerunSelectedStage, handleRerunFrom, selectedStageId])
 
   return (
     <>
       <Tabs
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={(next) => setActiveTab(next as OutputTabValue)}
         className={cn(
           "ui-fade-slide-in",
           fillHeight
@@ -498,21 +628,13 @@ export function OutputPanel({
         <OutputPanelHeader
           activeTab={activeTab}
           hasResult={hasResult}
-          pastRuns={pastRuns}
-          runStatus={runStatus}
-          selectedReviewRunId={selectedReviewRun?.runId || null}
-          onSelectReviewRun={(nextRunId) => {
-            const nextRun = pastRuns.find((run) => run.runId === nextRunId) || null
-            setSelectedPastRun(nextRun)
-            if (nextRun) setActiveTab("result")
-          }}
-          canStartFreshRun={canStartFreshRun}
-          onStartNewRun={onStartNewRun}
           resultReadyPulse={resultReadyPulse}
-          resultLabel={selectedResultPresentation?.artifactLabel}
-          executionProgress={executionProgress}
+          reviewingRunHistory={reviewingRunHistory}
+          selectedRunLabel={selectedRunLabel}
+          selectedReviewStatus={selectedReviewRun?.status || null}
+          tabOptions={tabOptions}
         />
-        {!reviewingRunHistory && surfaceNotice && (
+        {!reviewingRunHistory && !errorFigureOwnsSurface && surfaceNotice && !(showResultSurface && activeTab === "result") && (
           <ExecutionSurfaceNoticeBanner
             notice={surfaceNotice}
             onAction={
@@ -523,58 +645,39 @@ export function OutputPanel({
             onDismiss={() => setSurfaceNotice(null)}
           />
         )}
-        {blockedReviewBanner}
 
         <TabsContent
           value="nodes"
           className={cn("mt-0 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
         >
-          {reviewingRunHistory && (
-            <div className="mb-2 rounded-lg border border-hairline bg-surface-2/60 px-3 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="ui-meta-label text-muted-foreground">Viewing saved run</div>
-                  <div className="mt-1 text-body-sm font-medium text-foreground">
-                    {selectedRunLabel || "Last run"}
-                  </div>
-                </div>
-                <Badge variant="outline" className="ui-meta-text px-2 py-0">
-                  {selectedReviewRun?.status || "completed"}
-                </Badge>
-              </div>
-            </div>
-          )}
           {savedRunLoadingNotice}
           {savedRunErrorNotice}
           {savedRunSnapshotNotice}
           {(!reviewingRunHistory || canInspectSavedRun) && (
-            <ActivityTab
-              showIdleState={showIdleState}
-              selectedStagePresentation={selectedStagePresentation}
-              selectedStageContextToneClass={selectedStageContextToneClass}
-              selectedStageContextLabelClass={selectedStageContextLabelClass}
-              selectedStageContextLabel={selectedStageContextLabel}
-              selectedStageBranchLabel={selectedStageBranchLabel}
-              selectedStageBranchDetail={selectedStageBranchDetail}
-              selectedStageStatusLabel={selectedStageStatusLabel}
-              selectedStageHasOutput={selectedStageHasOutput}
-              canRerunSelectedStage={canRerunSelectedStage}
-              selectedStageId={selectedStageId}
-              onRerunFrom={handleRerunFrom}
-              showLoopStateIndicator={showLoopStateIndicator}
-              executionLoopSummary={executionLoopSummary}
-              approvalLoopSummary={approvalLoopSummary}
-              activitySummaryItems={activitySummaryItems}
-              budgetWarning={budgetWarning}
-              budgetWarningClassName={budgetWarningClassName}
-              nodes={allDisplayNodes}
-              nodeStates={displayNodeStates}
-              activeNodeId={displayActiveNodeId}
-              evalResults={displayEvalResults}
-              canRerun={canRerunStages}
-              onSelectNode={openNodeDetails}
-              runAttentionNotice={runAttentionBanner}
-            />
+            <div className={cn(activityOwnsSurface && "rounded-lg border border-hairline bg-surface-1 px-4 py-4")}>
+              <ActivityTab
+                showIdleState={showIdleState}
+                selectedStagePresentation={selectedStagePresentation}
+                selectedStageContextToneClass={selectedStageContextToneClass}
+                selectedStageContextLabelClass={selectedStageContextLabelClass}
+                selectedStageContextLabel={selectedStageContextLabel}
+                selectedStageBranchLabel={selectedStageBranchLabel}
+                selectedStageBranchDetail={selectedStageBranchDetail}
+                selectedStageStatusLabel={selectedStageStatusLabel}
+                onRerunFrom={handleRerunFrom}
+                activitySummaryItems={activitySummaryItems}
+                budgetWarning={budgetWarning}
+                budgetWarningClassName={budgetWarningClassName}
+                nodes={allDisplayNodes}
+                nodeStates={displayNodeStates}
+                activeNodeId={displayActiveNodeId}
+                evalResults={displayEvalResults}
+                canRerun={canRerunStages}
+                onSelectNode={openNodeDetails}
+                onViewStepLog={canInspectLog ? () => focusStageSurface("log") : null}
+                runAttentionNotice={errorFigureOwnsSurface ? null : runAttentionBanner}
+              />
+            </div>
           )}
         </TabsContent>
 
@@ -583,11 +686,24 @@ export function OutputPanel({
           className={cn("mt-2 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
         >
           {showIdleState ? (
-            <div className="rounded-lg surface-soft p-6 text-center text-body-md text-muted-foreground">
+            <div className="px-1 py-2 text-body-sm text-muted-foreground">
               No log yet. Run this flow to see detailed execution logs here.
             </div>
           ) : (
             <div className="space-y-2">
+              {canInspectActivity ? (
+                <div className="border-b border-hairline px-1 pb-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+                    onClick={() => focusStageSurface("nodes")}
+                  >
+                    Back to activity
+                  </Button>
+                </div>
+              ) : null}
               {savedRunLoadingNotice}
               {savedRunErrorNotice}
               {savedRunSnapshotNotice}
@@ -595,19 +711,11 @@ export function OutputPanel({
                 <>
               <SelectedStepSummaryPanel
                 selectedStagePresentation={selectedStagePresentation}
-                selectedStageContextToneClass={selectedStageContextToneClass}
                 selectedStageContextLabelClass={selectedStageContextLabelClass}
                 selectedStageContextLabel={selectedStageContextLabel}
                 selectedStageBranchLabel={selectedStageBranchLabel}
                 selectedStageBranchDetail={selectedStageBranchDetail}
                 selectedStageStatusLabel={selectedStageStatusLabel}
-                selectedStageHasOutput={selectedStageHasOutput}
-                canRerunSelectedStage={canRerunSelectedStage}
-                selectedStageId={selectedStageId}
-                onRerunFrom={handleRerunFrom}
-                showLoopStateIndicator={showLoopStateIndicator}
-                executionLoopSummary={executionLoopSummary}
-                approvalLoopSummary={approvalLoopSummary}
               />
               <LogTab
                 selectedNodeId={selectedStageId}
@@ -627,16 +735,23 @@ export function OutputPanel({
           value="result"
           className={cn("mt-2 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
         >
-          {hasResult ? (
+          {showResultSurface ? (
             <ResultTab
+              nodeStates={displayNodeStates}
+              evalResults={displayEvalResults}
+              runStatus={runStatus}
+              runOutcome={effectiveRunOutcome}
               reviewingRunHistory={reviewingRunHistory}
               selectedReviewRun={selectedReviewRun}
               selectedResultPresentation={selectedResultPresentation}
               selectedResultBranchLabel={selectedResultBranchLabel}
-              selectedResultMetricsLabel={selectedResultMetricsLabel}
+              selectedStagePresentation={selectedStagePresentation}
+              selectedStageIndex={selectedStageIndex}
+              workflowStepCount={workflowStepCount}
+              completedStageCount={completedStageCount}
+              failedStageCount={failedStageCount}
               isDisplayedResultEmpty={isDisplayedResultEmpty}
               executionLoopSummary={executionLoopSummary}
-              approvalLoopSummary={approvalLoopSummary}
               savedRunLoadingNotice={savedRunLoadingNotice}
               savedRunErrorNotice={savedRunErrorNotice}
               hasMultipleResultOptions={hasMultipleResultOptions}
@@ -655,26 +770,30 @@ export function OutputPanel({
               nextStageOutput={nextStageTemplate?.output}
               nextStagePending={nextStagePending}
               onRunNextStage={onRunNextStage}
-              onOpenArtifacts={onOpenArtifacts}
               visibleArtifactContinuation={visibleArtifactContinuation}
               hiddenArtifactContinuationCount={hiddenArtifactContinuationCount}
               visibleNextStageArtifacts={visibleNextStageArtifacts}
               hiddenNextStageArtifactCount={hiddenNextStageArtifactCount}
               primaryModifierLabel={desktopRuntime.primaryModifierLabel}
-              reportPath={reviewingRunHistory ? selectedReviewRun?.reportPath || null : reportPath}
-              onOpenReport={handleOpenReport}
               displayedResultContent={displayedResultContent}
-              resultCopyTextWithHeader={resultCopyTextWithHeader}
-              canCopyResult={canCopyResult}
-              onCopyError={(error) => {
-                console.error("[OutputPanel] copy result failed:", error)
-                toastErrorFromCatch("Could not copy result", error)
-              }}
-              onExportResult={() => {
-                void handleExportResult()
-              }}
               canStartFreshRun={canStartFreshRun}
               onStartNewRun={onStartNewRun}
+              canRerunSelectedStage={canRerunSelectedStage}
+              onRerunSelectedStage={selectedStageId && canRerunSelectedStage ? () => handleRerunFrom(selectedStageId) : null}
+              onViewActivity={canInspectActivity ? () => focusStageSurface("nodes") : null}
+              onEditFlow={onEditFlow}
+              failedNodeErrors={failedNodeErrors}
+              canUseInNewFlow={Boolean(onUseInNewFlow) && !reviewingRunHistory}
+              onUseInNewFlow={onUseInNewFlow}
+              onOpenArtifact={handleOpenArtifact}
+              onArtifactContextMenu={(event, artifact) => {
+                setOutputContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  scope: "artifact",
+                  artifact,
+                })
+              }}
               onContextMenu={(event) => {
                 event.preventDefault()
                 setOutputContextMenu({
@@ -685,16 +804,42 @@ export function OutputPanel({
               }}
             />
           ) : (
-            <div className="rounded-lg surface-soft p-6 ui-empty-state text-body-md text-muted-foreground">
+            <div className="px-1 py-2 text-body-sm text-muted-foreground">
               Step results will appear here as nodes complete.
             </div>
-          )}
+      )}
         </TabsContent>
 
         <TabsContent
           value="history"
           className={cn("mt-2 ui-fade-slide-in", fillHeight && "min-h-0 flex-1 overflow-y-auto")}
         >
+          <div className="space-y-2">
+            {showResultSurface ? (
+              <div className="border-b border-hairline px-1 pb-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+                  onClick={activateResultSurface}
+                >
+                  Back to result
+                </Button>
+              </div>
+            ) : canInspectActivity ? (
+              <div className="border-b border-hairline px-1 pb-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-0 py-0 text-body-sm text-muted-foreground hover:text-foreground"
+                  onClick={() => focusStageSurface("nodes")}
+                >
+                  Back to activity
+                </Button>
+              </div>
+            ) : null}
           <HistoryTab
             pastRuns={pastRuns}
             runStatus={runStatus}
@@ -706,6 +851,7 @@ export function OutputPanel({
               setActiveTab("result")
             }}
           />
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -721,22 +867,23 @@ export function OutputPanel({
           <>
             <DropdownMenuLabel>Result</DropdownMenuLabel>
             <DropdownMenuItem
+              disabled={!onUseInNewFlow}
+              onSelect={() => {
+                if (!onUseInNewFlow) return
+                void Promise.resolve(onUseInNewFlow())
+                setOutputContextMenu(null)
+              }}
+            >
+              Continue with Agent
+            </DropdownMenuItem>
+            <DropdownMenuItem
               disabled={!canCopyResult}
               onSelect={() => {
                 void handleCopyResult()
                 setOutputContextMenu(null)
               }}
             >
-              Copy with context
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!canCopyResult}
-              onSelect={() => {
-                void handleCopyResultPlain()
-                setOutputContextMenu(null)
-              }}
-            >
-              Copy plain
+              Copy as report
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!reportPath}
@@ -747,6 +894,50 @@ export function OutputPanel({
               }}
             >
               Open report file
+            </DropdownMenuItem>
+            {onOpenArtifacts && artifactRecords.length > 0 ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onOpenArtifacts()
+                    setOutputContextMenu(null)
+                  }}
+                >
+                  Open in artifacts
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </>
+        )}
+        {outputContextMenu?.scope === "artifact" && (
+          <>
+            <DropdownMenuLabel>{outputContextMenu.artifact.title}</DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={() => {
+                void handleOpenArtifact(outputContextMenu.artifact)
+                setOutputContextMenu(null)
+              }}
+            >
+              Open file
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                void handleCopyArtifactPath(outputContextMenu.artifact)
+                setOutputContextMenu(null)
+              }}
+            >
+              Copy path
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!onOpenArtifacts}
+              onSelect={() => {
+                if (!onOpenArtifacts) return
+                onOpenArtifacts()
+                setOutputContextMenu(null)
+              }}
+            >
+              Open in artifacts
             </DropdownMenuItem>
           </>
         )}
