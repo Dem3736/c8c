@@ -1,4 +1,4 @@
-import type { RunResult } from "@shared/types"
+import type { RunResult, RunStatus, WorkflowFile } from "@shared/types"
 import { buildRunProgressSummary } from "@/lib/run-progress"
 import type { WorkflowExecutionState } from "@/lib/workflow-execution"
 
@@ -102,8 +102,195 @@ export function latestRunByWorkflowPath(pastRuns: RunResult[]): Map<string, RunR
   return result
 }
 
+export function resolveWorkflowLaunchTimestamp({
+  executionState,
+  latestRun,
+}: {
+  executionState?: Pick<WorkflowExecutionState, "runStartedAt"> | null
+  latestRun?: Pick<RunResult, "startedAt"> | null
+}): number {
+  const activeStartedAt = typeof executionState?.runStartedAt === "number"
+    ? executionState.runStartedAt
+    : 0
+  const latestStartedAt = typeof latestRun?.startedAt === "number"
+    ? latestRun.startedAt
+    : 0
+  return Math.max(activeStartedAt, latestStartedAt)
+}
+
+export function compareSidebarWorkflowsByLaunchTime({
+  leftWorkflow,
+  rightWorkflow,
+  leftExecutionState,
+  rightExecutionState,
+  leftLatestRun,
+  rightLatestRun,
+}: {
+  leftWorkflow: WorkflowFile
+  rightWorkflow: WorkflowFile
+  leftExecutionState?: Pick<WorkflowExecutionState, "runStartedAt"> | null
+  rightExecutionState?: Pick<WorkflowExecutionState, "runStartedAt"> | null
+  leftLatestRun?: Pick<RunResult, "startedAt"> | null
+  rightLatestRun?: Pick<RunResult, "startedAt"> | null
+}): number {
+  const leftLaunchAt = resolveWorkflowLaunchTimestamp({
+    executionState: leftExecutionState,
+    latestRun: leftLatestRun,
+  })
+  const rightLaunchAt = resolveWorkflowLaunchTimestamp({
+    executionState: rightExecutionState,
+    latestRun: rightLatestRun,
+  })
+
+  if (leftLaunchAt !== rightLaunchAt) return rightLaunchAt - leftLaunchAt
+  return (rightWorkflow.updatedAt || 0) - (leftWorkflow.updatedAt || 0)
+}
+
 export interface SidebarWorkflowSummary {
   detailLabel: string | null
+}
+
+export type SidebarWorkflowBaseState = "new" | "idle" | "running" | "paused" | "blocked"
+export type SidebarWorkflowNotificationTone = "none" | "success" | "warning" | "error"
+
+export interface SidebarWorkflowRowState {
+  baseState: SidebarWorkflowBaseState
+  unreadNotification: SidebarWorkflowNotificationTone
+  unreadNotificationTitle: string | null
+  statusLabel: string | null
+  statusBadgeClass: string | null
+  showStatusSpinner: boolean
+}
+
+function hasWaitingHumanDecision(executionState?: WorkflowExecutionState | null): boolean {
+  if (!executionState) return false
+  return Object.values(executionState.nodeStates).some((nodeState) =>
+    nodeState.status === "waiting_approval" || nodeState.status === "waiting_human",
+  )
+}
+
+export function deriveSidebarWorkflowBaseState({
+  executionState,
+  latestRun,
+  approvalCount = 0,
+}: {
+  executionState?: WorkflowExecutionState | null
+  latestRun?: Pick<RunResult, "status"> | null
+  approvalCount?: number
+}): SidebarWorkflowBaseState {
+  const runStatus = executionState?.runStatus ?? "idle"
+  const runOutcome = executionState?.runOutcome ?? null
+
+  if (approvalCount > 0 || runOutcome === "blocked" || hasWaitingHumanDecision(executionState)) {
+    return "blocked"
+  }
+  if (runStatus === "paused") return "paused"
+  if (runStatus === "starting" || runStatus === "running" || runStatus === "cancelling") {
+    return "running"
+  }
+  if (latestRun || runStatus === "done" || runStatus === "error") return "idle"
+  return "new"
+}
+
+export function sidebarNotificationToneForRunStatus(status?: RunStatus | null): SidebarWorkflowNotificationTone {
+  switch (status) {
+    case "completed":
+      return "success"
+    case "cancelled":
+    case "interrupted":
+      return "warning"
+    case "failed":
+      return "error"
+    default:
+      return "none"
+  }
+}
+
+function unreadNotificationTitle(
+  unreadNotification: SidebarWorkflowNotificationTone,
+  latestRun?: Pick<RunResult, "status"> | null,
+): string | null {
+  if (!latestRun) return null
+  if (unreadNotification === "success") return "New completed result"
+  if (unreadNotification === "warning") return latestRun.status === "cancelled" ? "New cancelled run" : "New run needs review"
+  if (unreadNotification === "error") return "New failed run"
+  return null
+}
+
+export function deriveSidebarWorkflowRowState({
+  executionState,
+  latestRun,
+  approvalCount = 0,
+  seenRunId,
+  isSelected = false,
+}: {
+  executionState?: WorkflowExecutionState | null
+  latestRun?: Pick<RunResult, "runId" | "status"> | null
+  approvalCount?: number
+  seenRunId?: string | null
+  isSelected?: boolean
+}): SidebarWorkflowRowState {
+  const baseState = deriveSidebarWorkflowBaseState({
+    executionState,
+    latestRun,
+    approvalCount,
+  })
+  const unreadNotification = !isSelected && baseState === "idle" && latestRun?.runId && latestRun.runId !== seenRunId
+    ? sidebarNotificationToneForRunStatus(latestRun.status)
+    : "none"
+
+  if (baseState === "running") {
+    return {
+      baseState,
+      unreadNotification: "none",
+      unreadNotificationTitle: null,
+      statusLabel: "Running",
+      statusBadgeClass: "ui-status-badge-info",
+      showStatusSpinner: true,
+    }
+  }
+
+  if (baseState === "paused") {
+    return {
+      baseState,
+      unreadNotification: "none",
+      unreadNotificationTitle: null,
+      statusLabel: "Paused",
+      statusBadgeClass: "ui-status-badge-warning",
+      showStatusSpinner: false,
+    }
+  }
+
+  if (baseState === "blocked") {
+    return {
+      baseState,
+      unreadNotification: "none",
+      unreadNotificationTitle: null,
+      statusLabel: "Needs approval",
+      statusBadgeClass: "ui-status-badge-warning",
+      showStatusSpinner: false,
+    }
+  }
+
+  if (baseState === "new") {
+    return {
+      baseState,
+      unreadNotification: "none",
+      unreadNotificationTitle: null,
+      statusLabel: "New",
+      statusBadgeClass: "border border-hairline bg-surface-2/80 text-muted-foreground",
+      showStatusSpinner: false,
+    }
+  }
+
+  return {
+    baseState,
+    unreadNotification,
+    unreadNotificationTitle: unreadNotificationTitle(unreadNotification, latestRun),
+    statusLabel: null,
+    statusBadgeClass: null,
+    showStatusSpinner: false,
+  }
 }
 
 export function buildSidebarWorkflowSummary({

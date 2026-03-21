@@ -1,10 +1,10 @@
 import { createStore } from "jotai"
 import { describe, expect, it, vi } from "vitest"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
-import { currentWorkflowAtom, selectedWorkflowPathAtom, workflowSavedSnapshotAtom } from "@/lib/store"
+import { currentWorkflowAtom, selectedInboxTaskKeyAtom, selectedWorkflowPathAtom, workflowSavedSnapshotAtom } from "@/lib/store"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import { createEmptyWorkflowExecutionState } from "@/lib/workflow-execution"
-import { workflowExecutionStatesAtom } from "@/features/execution"
+import { selectedPastRunAtom, workflowExecutionStatesAtom } from "@/features/execution"
 import {
   applyLoadedWorkflow,
   createEmptySelectionState,
@@ -29,6 +29,17 @@ describe("useWorkflowCrud helpers", () => {
     store.set(workflowExecutionStatesAtom, {
       [targetPath]: runningState,
     })
+    store.set(selectedInboxTaskKeyAtom, "/tmp/workspace::task-1")
+    store.set(selectedPastRunAtom, {
+      runId: "run-previous",
+      status: "blocked",
+      workflowName: "Previous flow",
+      workflowPath: "/tmp/previous.chain",
+      startedAt: 1,
+      completedAt: 2,
+      reportPath: "",
+      workspace: "/tmp/workspace",
+    })
 
     applyLoadedWorkflow(
       targetPath,
@@ -45,17 +56,38 @@ describe("useWorkflowCrud helpers", () => {
         const value = typeof next === "function" ? next(store.get(workflowSavedSnapshotAtom)) : next
         store.set(workflowSavedSnapshotAtom, value)
       },
+      () => {
+        store.set(selectedInboxTaskKeyAtom, null)
+        store.set(selectedPastRunAtom, null)
+      },
     )
 
     expect(store.get(selectedWorkflowPathAtom)).toBe(targetPath)
     expect(store.get(currentWorkflowAtom)).toEqual(loadedWorkflow)
     expect(store.get(workflowSavedSnapshotAtom)).toBe(workflowSnapshot(loadedWorkflow))
-    expect(store.get(workflowExecutionStatesAtom)[targetPath]).toEqual(runningState)
+    expect(store.get(selectedInboxTaskKeyAtom)).toBeNull()
+    expect(store.get(selectedPastRunAtom)).toBeNull()
+    expect(store.get(workflowExecutionStatesAtom)[targetPath]).toMatchObject({
+      runStatus: "running",
+      runId: "run-1",
+      workspace: "/tmp/run-1",
+    })
   })
 
   it("clears draft execution when switching to an empty selection", () => {
     const store = createStore()
     const clearDraftExecutionState = vi.fn()
+    store.set(selectedInboxTaskKeyAtom, "/tmp/workspace::task-1")
+    store.set(selectedPastRunAtom, {
+      runId: "run-previous",
+      status: "blocked",
+      workflowName: "Previous flow",
+      workflowPath: "/tmp/previous.chain",
+      startedAt: 1,
+      completedAt: 2,
+      reportPath: "",
+      workspace: "/tmp/workspace",
+    })
 
     createEmptySelectionState(
       (next) => {
@@ -71,12 +103,18 @@ describe("useWorkflowCrud helpers", () => {
         store.set(workflowSavedSnapshotAtom, value)
       },
       clearDraftExecutionState,
+      () => {
+        store.set(selectedInboxTaskKeyAtom, null)
+        store.set(selectedPastRunAtom, null)
+      },
     )
 
     const emptyWorkflow = createEmptyWorkflow()
     expect(store.get(selectedWorkflowPathAtom)).toBeNull()
     expect(store.get(currentWorkflowAtom)).toEqual(emptyWorkflow)
     expect(store.get(workflowSavedSnapshotAtom)).toBe(workflowSnapshot(emptyWorkflow))
+    expect(store.get(selectedInboxTaskKeyAtom)).toBeNull()
+    expect(store.get(selectedPastRunAtom)).toBeNull()
     expect(clearDraftExecutionState).toHaveBeenCalledTimes(1)
   })
 

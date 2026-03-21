@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAtom } from "jotai"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/cn"
 import {
-  chatPanelOpenAtom,
   firstLaunchAtom,
   globalExecutionDefaultsAtom,
   mainViewAtom,
@@ -23,20 +21,21 @@ import {
   FolderOpen,
   ArrowRight,
   ArrowLeft,
-  LayoutTemplate,
   Terminal,
   Bot,
 } from "lucide-react"
 import { toastErrorFromCatch } from "@/lib/toast-error"
+import { useWorkflowCreateNavigation } from "@/hooks/useWorkflowCreateNavigation"
 
 const TOTAL_STEPS = 3
 
 export function OnboardingWizard() {
   const [step, setStep] = useState(1)
+  const [projectPath, setProjectPath] = useState<string | null>(null)
   const [, setFirstLaunch] = useAtom(firstLaunchAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const [, setSelectedProject] = useAtom(selectedProjectAtom)
-  const [, setChatPanelOpen] = useAtom(chatPanelOpenAtom)
+  const { openWorkflowCreate } = useWorkflowCreateNavigation()
 
   const skip = useCallback(() => {
     setFirstLaunch(false)
@@ -44,23 +43,24 @@ export function OnboardingWizard() {
   }, [setFirstLaunch, setMainView])
 
   const next = useCallback(() => {
+    if (step === 2 && !projectPath) return
     if (step < TOTAL_STEPS) setStep((s) => s + 1)
-  }, [step])
+  }, [projectPath, step])
 
   const prev = useCallback(() => {
     if (step > 1) setStep((s) => s - 1)
   }, [step])
 
-  const openAgent = useCallback(() => {
+  const openCreateSurface = useCallback(() => {
     setFirstLaunch(false)
-    setMainView("thread")
-    setChatPanelOpen(true)
-  }, [setFirstLaunch, setMainView, setChatPanelOpen])
+    openWorkflowCreate()
+  }, [openWorkflowCreate, setFirstLaunch])
 
   const goTemplates = useCallback(() => {
     setFirstLaunch(false)
     setMainView("templates")
   }, [setFirstLaunch, setMainView])
+  const canContinue = step !== 2 || Boolean(projectPath)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto pt-[var(--titlebar-height)]">
@@ -88,12 +88,25 @@ export function OnboardingWizard() {
               <div
                 className={cn(
                   "mx-auto w-full min-h-[30rem]",
-                  step === TOTAL_STEPS ? "max-w-3xl" : "max-w-xl",
+                  "max-w-xl",
                 )}
               >
                 {step === 1 && <StepCheckCli />}
-                {step === 2 && <StepOpenProject onProjectAdded={setSelectedProject} />}
-                {step === 3 && <StepUnderstandWorkflow onOpenAgent={openAgent} onGoTemplates={goTemplates} />}
+                {step === 2 && (
+                  <StepOpenProject
+                    projectPath={projectPath}
+                    onProjectAdded={(path) => {
+                      setProjectPath(path)
+                      setSelectedProject(path)
+                    }}
+                  />
+                )}
+                {step === 3 && (
+                  <StepUnderstandWorkflow
+                    onStartFlow={openCreateSurface}
+                    onGoTemplates={goTemplates}
+                  />
+                )}
               </div>
             </div>
 
@@ -119,10 +132,17 @@ export function OnboardingWizard() {
                     {step === TOTAL_STEPS ? "Finish" : "Skip setup"}
                   </Button>
                   {step < TOTAL_STEPS && (
-                    <Button type="button" variant="default" size="sm" onClick={next}>
-                      Continue
-                      <ArrowRight size={14} />
-                    </Button>
+                    canContinue ? (
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        onClick={next}
+                      >
+                        Continue
+                        <ArrowRight size={14} />
+                      </Button>
+                    ) : null
                   )}
                 </div>
               </div>
@@ -218,9 +238,7 @@ function StepCheckCli() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
-          <Terminal size={20} className="text-foreground" />
-        </div>
+        <Terminal size={20} className="text-foreground" />
         <h2 className="text-title-md text-foreground">Check CLI</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
@@ -234,9 +252,7 @@ function StepCheckCli() {
           Checking CLI status...
         </div>
       ) : loadError ? (
-        <div className="rounded-lg surface-danger-soft p-3">
-          <p className="text-body-sm text-status-danger">{loadError}</p>
-        </div>
+        <p className="text-body-sm text-status-danger">{loadError}</p>
       ) : (
         <div className="space-y-3">
           {providers.map((provider) => {
@@ -251,7 +267,10 @@ function StepCheckCli() {
             const loginCommand = provider === "claude" ? "claude login" : "codex login"
 
             return (
-              <div key={provider} className="rounded-lg surface-inset-card p-3 space-y-2">
+              <div
+                key={provider}
+                className={cn("space-y-2 py-3", provider !== providers[0] && "border-t border-hairline/70")}
+              >
                 <div className="ui-body-text-medium text-foreground">{PROVIDER_LABELS[provider]}</div>
 
                 <div className="flex items-center gap-2 text-body-sm">
@@ -323,12 +342,14 @@ function StepCheckCli() {
                 : "A provider is ready to go."}
             </p>
           ) : (
-            <div className="rounded-lg surface-warning-soft p-3 space-y-2">
-              <p className="ui-meta-text text-muted-foreground">
-                You can still continue setup and install or authenticate a CLI later.
-              </p>
-            </div>
+            <p className="ui-meta-text text-muted-foreground">
+              You can still continue setup and install or authenticate a CLI later.
+            </p>
           )}
+
+          <p className="ui-meta-text text-muted-foreground">
+            No custom skills needed to start.
+          </p>
         </div>
       )}
     </div>
@@ -338,11 +359,12 @@ function StepCheckCli() {
 /* ── Step 2: Open a project ──────────────────────────────── */
 
 function StepOpenProject({
+  projectPath,
   onProjectAdded,
 }: {
+  projectPath: string | null
   onProjectAdded: (path: string | null) => void
 }) {
-  const [addedPath, setAddedPath] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
   const handleAddProject = useCallback(async () => {
@@ -350,7 +372,6 @@ function StepOpenProject({
     try {
       const result = await window.api.addProject()
       if (result) {
-        setAddedPath(result)
         onProjectAdded(result)
       }
     } catch (error) {
@@ -363,9 +384,7 @@ function StepOpenProject({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
-          <FolderOpen size={20} className="text-foreground" />
-        </div>
+        <FolderOpen size={20} className="text-foreground" />
         <h2 className="text-title-md text-foreground">Open a project</h2>
       </div>
       <p className="text-body-md text-muted-foreground">
@@ -373,26 +392,37 @@ function StepOpenProject({
         stored relative to this directory.
       </p>
 
-      {addedPath ? (
-        <div className="flex items-center gap-2 text-body-sm">
-          <CheckCircle2 size={16} className="text-status-success shrink-0" />
-          <span className="text-foreground truncate">{addedPath}</span>
+      {projectPath ? (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-body-sm">
+            <CheckCircle2 size={16} className="text-status-success shrink-0" />
+            <span className="font-medium text-foreground">Project ready</span>
+          </div>
+          <p className="truncate text-body-sm text-foreground">{projectPath}</p>
+          <p className="ui-meta-text text-muted-foreground">
+            Continue to start your first real flow.
+          </p>
         </div>
       ) : (
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          onClick={() => void handleAddProject()}
-          disabled={adding}
-        >
-          {adding ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <FolderOpen size={14} />
-          )}
-          Choose folder
-        </Button>
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => void handleAddProject()}
+            disabled={adding}
+          >
+            {adding ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <FolderOpen size={14} />
+            )}
+            Choose folder
+          </Button>
+          <p className="ui-meta-text text-muted-foreground">
+            A project is required before your first real flow run.
+          </p>
+        </div>
       )}
 
       <p className="ui-meta-text text-muted-foreground">
@@ -405,102 +435,57 @@ function StepOpenProject({
 /* ── Step 3: Flow mental model + first action ────────── */
 
 function StepUnderstandWorkflow({
-  onOpenAgent,
+  onStartFlow,
   onGoTemplates,
 }: {
-  onOpenAgent: () => void
+  onStartFlow: () => void
   onGoTemplates: () => void
 }) {
   const examplePrompt = "Build a flow that reviews this codebase for risky files, then summarizes what to fix first."
-  const flowCards = [
-    {
-      label: "1. Input",
-      detail: "Text, URL, or a project folder",
-      meta: "Start with source material",
-    },
-    {
-      label: "2. Steps",
-      detail: "Research, transform, branch, review",
-      meta: "Shape the flow as it runs",
-    },
-    {
-      label: "3. Result",
-      detail: "Inspect output, logs, and rerun points",
-      meta: "Tighten only the step that needs work",
-    },
+  const flowSteps = [
+    "Describe the result you want in plain language.",
+    "The system picks the best starting path and runs the early stages.",
+    "Review the first result, then refine if needed.",
   ]
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="surface-inset-card flex h-10 w-10 items-center justify-center p-0">
-            <Bot size={20} className="text-foreground" />
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Bot size={20} className="text-foreground" />
+        <div className="space-y-1">
+          <h2 className="text-title-md text-foreground">Start your first flow</h2>
+          <div className="ui-meta-text text-muted-foreground">
+            Describe the result you want in plain language, then let the system choose the best starting path.
           </div>
-          <div className="space-y-1">
-            <h2 className="text-title-md text-foreground">Start from a prompt or the library</h2>
-            <div className="ui-meta-text text-muted-foreground">
-              Use the agent for a draft, or browse the library and tune the flow later.
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" variant="default" size="sm" onClick={onOpenAgent}>
-            <Bot size={14} />
-            Open agent
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
-            <LayoutTemplate size={14} />
-            Browse library
-          </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="rounded-lg surface-soft p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="ui-meta-label text-muted-foreground">Agent draft</div>
-              <div className="ui-meta-text text-muted-foreground">Describe the job in plain language.</div>
-            </div>
-            <Badge variant="outline" size="compact">Cmd+Shift+K</Badge>
-          </div>
-          <div className="rounded-lg border border-hairline bg-surface-1/80 px-4 py-3">
-            <div className="text-body-sm font-mono leading-6 text-foreground">
-              {examplePrompt}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 rounded-lg control-cluster control-cluster-compact">
-            <Badge variant="outline" size="compact">Cmd+Enter Run</Badge>
-            <Badge variant="outline" size="compact">Cmd+S Save</Badge>
-            <Badge variant="outline" size="compact">Skills add steps</Badge>
-          </div>
+      <div className="space-y-3">
+        <p className="text-body-sm font-mono leading-6 text-foreground">
+          {examplePrompt}
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="default" size="sm" onClick={onStartFlow}>
+            Start a flow
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onGoTemplates}>
+            Browse library
+          </Button>
         </div>
+        <p className="ui-meta-text text-muted-foreground">
+          No custom skills needed to start.
+        </p>
+        <p className="ui-meta-text text-muted-foreground">
+          Tip: write the goal first. You can browse the library if you want a curated starting point.
+        </p>
+      </div>
 
-        <div className="rounded-lg surface-inset-card p-4 space-y-3">
-          <div className="ui-meta-label text-muted-foreground">Flow shape</div>
-          <div className="space-y-0">
-            {flowCards.map((card, index) => (
-              <div
-                key={card.label}
-                className={cn(
-                  "flex items-start gap-3 px-1 py-3",
-                  index > 0 && "border-t border-hairline/70",
-                )}
-              >
-                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-hairline bg-surface-1 text-label-xs font-medium text-muted-foreground">
-                  {index + 1}
-                </span>
-                <div className="min-w-0 space-y-1">
-                  <div className="text-body-sm font-medium text-foreground">{card.detail}</div>
-                  <div className="ui-meta-text text-muted-foreground">{card.meta}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="space-y-2 border-t border-hairline/70 pt-3">
+        {flowSteps.map((stepLabel) => (
+          <p key={stepLabel} className="text-body-sm text-muted-foreground">
+            {stepLabel}
+          </p>
+        ))}
       </div>
     </div>
   )

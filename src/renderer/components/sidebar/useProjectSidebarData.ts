@@ -11,11 +11,15 @@ import { errorToUserMessage } from "@/lib/error-message"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
 import {
+  clearWorkflowTemplateContextForKeyAtom,
   projectLatestRunsCacheAtom,
   projectWorkflowsCacheAtom,
   projectWorkflowsLoadingAtom,
+  selectedInboxTaskKeyAtom,
+  workflowEntryStateAtom,
   workflowOpenStateAtom,
 } from "@/lib/store"
+import { selectedPastRunAtom, toWorkflowExecutionKey } from "@/features/execution"
 import { latestRunByWorkflowPath } from "./projectSidebarUtils"
 import { restoreSelectedWorkflowIfNeeded, shouldRestoreSelectedWorkflow } from "./workflowRestore"
 
@@ -53,6 +57,10 @@ export function useProjectSidebarData({
   setWorkflowSavedSnapshot,
 }: UseProjectSidebarDataParams) {
   const setWorkflowOpenState = useSetAtom(workflowOpenStateAtom)
+  const clearWorkflowTemplateContextForKey = useSetAtom(clearWorkflowTemplateContextForKeyAtom)
+  const setSelectedInboxTaskKey = useSetAtom(selectedInboxTaskKeyAtom)
+  const setSelectedPastRun = useSetAtom(selectedPastRunAtom)
+  const setWorkflowEntryState = useSetAtom(workflowEntryStateAtom)
   const [projectWorkflowsCache, setProjectWorkflowsCache] = useAtom(projectWorkflowsCacheAtom)
   const [projectLatestRunsCache, setProjectLatestRunsCache] = useAtom(projectLatestRunsCacheAtom)
   const [projectWorkflowsLoading, setProjectWorkflowsLoading] = useAtom(projectWorkflowsLoadingAtom)
@@ -197,6 +205,10 @@ export function useProjectSidebarData({
         message: errorToUserMessage(error),
       })
       setSelectedWorkflowPath(null)
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
+      clearWorkflowTemplateContextForKey(toWorkflowExecutionKey(null))
+      setWorkflowEntryState(null)
       const emptyWorkflow = createEmptyWorkflow()
       setCurrentWorkflow(emptyWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
@@ -210,7 +222,11 @@ export function useProjectSidebarData({
     currentWorkflow,
     selectedWorkflowPath,
     setCurrentWorkflow,
+    clearWorkflowTemplateContextForKey,
+    setSelectedInboxTaskKey,
+    setSelectedPastRun,
     setSelectedWorkflowPath,
+    setWorkflowEntryState,
     setWorkflowSavedSnapshot,
     setWorkflowOpenState,
   ])
@@ -276,6 +292,7 @@ export function useProjectSidebarData({
     projectLatestRunsCache,
     projectWorkflowsLoading,
     setProjectWorkflowsCache,
+    setProjectLatestRunsCache,
     globalWorkflows,
     toggleProjectExpansion,
   }

@@ -2,6 +2,7 @@ import { useCallback } from "react"
 import type { RunResult, WorkflowFile } from "@shared/types"
 import type { WorkflowExecutionState } from "@/lib/workflow-execution"
 import {
+  compareSidebarWorkflowsByLaunchTime,
   historicalRunVisual,
   workflowHasActiveRunStatus,
 } from "./projectSidebarUtils"
@@ -9,7 +10,6 @@ import {
 interface UseProjectSidebarMetricsParams {
   projectLatestRunsCache: Record<string, Record<string, RunResult>>
   workflowExecutionStates: Record<string, WorkflowExecutionState>
-  selectedWorkflowPath: string | null
 }
 
 export interface WorkflowRunMetrics {
@@ -27,7 +27,6 @@ export interface WorkflowRunMetrics {
 export function useProjectSidebarMetrics({
   projectLatestRunsCache,
   workflowExecutionStates,
-  selectedWorkflowPath,
 }: UseProjectSidebarMetricsParams) {
   const getWorkflowRunMetrics = useCallback((workflowPath: string): WorkflowRunMetrics => {
     const executionState = workflowExecutionStates[workflowPath]
@@ -78,57 +77,44 @@ export function useProjectSidebarMetrics({
   const getProjectStatusRollup = useCallback((projectPath: string, projectWorkflows: WorkflowFile[]) => {
     let activeCount = 0
     let waitingCount = 0
-    let attentionCount = 0
+    let blockedCount = 0
 
     for (const workflow of projectWorkflows) {
       const metrics = getWorkflowRunMetrics(workflow.path)
       const latestRun = projectLatestRunsCache[projectPath]?.[workflow.path]
       const runIsActive = workflowHasActiveRunStatus(metrics.runStatus)
-      const runNeedsAttention = metrics.failedSteps > 0
-        || metrics.waitingSteps > 0
+      const runIsWaiting = metrics.waitingSteps > 0
+        || metrics.runStatus === "paused"
+        || metrics.runStatus === "cancelling"
+      const runIsBlocked = metrics.failedSteps > 0
         || (!runIsActive && (latestRun?.status === "failed" || latestRun?.status === "interrupted"))
 
       if (runIsActive) activeCount += 1
-      if (metrics.waitingSteps > 0 || metrics.runStatus === "paused" || metrics.runStatus === "cancelling") {
-        waitingCount += 1
-      }
-      if (runNeedsAttention) attentionCount += 1
+      if (runIsWaiting) waitingCount += 1
+      if (runIsBlocked) blockedCount += 1
     }
 
     return {
       activeCount,
       waitingCount,
-      attentionCount,
+      blockedCount,
     }
   }, [getWorkflowRunMetrics, projectLatestRunsCache])
 
   const sortProjectWorkflows = useCallback((projectPath: string, projectWorkflows: WorkflowFile[]) => {
     return [...projectWorkflows].sort((left, right) => {
-      const leftMetrics = getWorkflowRunMetrics(left.path)
-      const rightMetrics = getWorkflowRunMetrics(right.path)
       const leftLatestRun = projectLatestRunsCache[projectPath]?.[left.path]
       const rightLatestRun = projectLatestRunsCache[projectPath]?.[right.path]
-
-      const rank = (
-        metrics: WorkflowRunMetrics,
-        latestRunStatus?: string | null,
-        workflowPath?: string,
-      ) => {
-        if (selectedWorkflowPath === workflowPath) return 700
-        if (workflowHasActiveRunStatus(metrics.runStatus)) return 600
-        if (metrics.waitingSteps > 0 || metrics.runStatus === "paused" || metrics.runStatus === "cancelling") return 500
-        if (metrics.failedSteps > 0 || latestRunStatus === "failed" || latestRunStatus === "interrupted") return 400
-        if (latestRunStatus === "completed") return 300
-        return 100
-      }
-
-      const leftRank = rank(leftMetrics, leftLatestRun?.status || null, left.path)
-      const rightRank = rank(rightMetrics, rightLatestRun?.status || null, right.path)
-      if (leftRank !== rightRank) return rightRank - leftRank
-
-      return (right.updatedAt || 0) - (left.updatedAt || 0)
+      return compareSidebarWorkflowsByLaunchTime({
+        leftWorkflow: left,
+        rightWorkflow: right,
+        leftExecutionState: workflowExecutionStates[left.path],
+        rightExecutionState: workflowExecutionStates[right.path],
+        leftLatestRun,
+        rightLatestRun,
+      })
     })
-  }, [getWorkflowRunMetrics, projectLatestRunsCache, selectedWorkflowPath])
+  }, [projectLatestRunsCache, workflowExecutionStates])
 
   const getHistoricalRunVisual = useCallback((projectPath: string, workflowPath: string) => {
     const latestRun = projectLatestRunsCache[projectPath]?.[workflowPath]

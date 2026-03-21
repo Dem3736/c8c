@@ -11,8 +11,8 @@ import { errorToUserMessage } from "@/lib/error-message"
 import { toastError, toastErrorFromCatch } from "@/lib/toast-error"
 import { createEmptyWorkflow } from "@/lib/default-workflow"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
-import { workflowOpenStateAtom } from "@/lib/store"
-import { toWorkflowExecutionKey } from "@/features/execution"
+import { selectedInboxTaskKeyAtom, workflowOpenStateAtom } from "@/lib/store"
+import { selectedPastRunAtom, toWorkflowExecutionKey } from "@/features/execution"
 
 interface UseWorkflowCrudParams {
   selectedProject: string | null
@@ -44,12 +44,14 @@ export function createEmptySelectionState(
   setCurrentWorkflow: Dispatch<SetStateAction<Workflow>>,
   setWorkflowSavedSnapshot: Dispatch<SetStateAction<string>>,
   clearDraftExecutionState: () => void,
+  clearReviewState?: () => void,
 ): void {
   setSelectedWorkflowPath(null)
   const emptyWorkflow = createEmptyWorkflow()
   setCurrentWorkflow(emptyWorkflow)
   setWorkflowSavedSnapshot(workflowSnapshot(emptyWorkflow))
   clearDraftExecutionState()
+  clearReviewState?.()
 }
 
 export function applyLoadedWorkflow(
@@ -58,11 +60,13 @@ export function applyLoadedWorkflow(
   setSelectedWorkflowPath: Dispatch<SetStateAction<string | null>>,
   setCurrentWorkflow: Dispatch<SetStateAction<Workflow>>,
   setWorkflowSavedSnapshot: Dispatch<SetStateAction<string>>,
+  clearReviewState?: () => void,
 ): void {
   // Execution state is keyed by workflow path and must survive workflow switches.
   setSelectedWorkflowPath(workflowPath)
   setCurrentWorkflow(workflow)
   setWorkflowSavedSnapshot(workflowSnapshot(workflow))
+  clearReviewState?.()
 }
 
 export function removeWorkflowFromProjectCaches(
@@ -108,11 +112,17 @@ export function useWorkflowCrud({
   onWorkflowCreate,
 }: UseWorkflowCrudParams) {
   const setWorkflowOpenState = useSetAtom(workflowOpenStateAtom)
+  const setSelectedInboxTaskKey = useSetAtom(selectedInboxTaskKeyAtom)
+  const setSelectedPastRun = useSetAtom(selectedPastRunAtom)
   const [pendingRenameWorkflow, setPendingRenameWorkflow] = useState<WorkflowFile | null>(null)
   const [renameInput, setRenameInput] = useState("")
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<WorkflowFile | null>(null)
   const [pendingRemoveProject, setPendingRemoveProject] = useState<string | null>(null)
   const [creatingWorkflow, setCreatingWorkflow] = useState(false)
+  const clearReviewState = () => {
+    setSelectedInboxTaskKey(null)
+    setSelectedPastRun(null)
+  }
 
   const addProject = async () => {
     if (selectedProject && !(await confirmDiscard("switch projects", workflowDirty))) {
@@ -130,6 +140,7 @@ export function useWorkflowCrud({
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
         clearDraftExecutionState,
+        clearReviewState,
       )
       onProjectAdd?.(projectPath)
     } catch (error) {
@@ -169,11 +180,13 @@ export function useWorkflowCrud({
       setCurrentWorkflow,
       setWorkflowSavedSnapshot,
       clearDraftExecutionState,
+      clearReviewState,
     )
   }
 
   const selectWorkflow = async (workflow: WorkflowFile, projectPath?: string) => {
     if (selectedWorkflowPath === workflow.path) {
+      clearReviewState()
       setMainView("thread")
       return
     }
@@ -206,6 +219,7 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
+        clearReviewState,
       )
     } catch (error) {
       toast.dismiss(loadingToastId)
@@ -246,6 +260,7 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
+        clearReviewState,
       )
       onWorkflowCreate?.(filePath)
       setPendingRenameWorkflow({
@@ -280,6 +295,7 @@ export function useWorkflowCrud({
       return
     }
     if (selectedWorkflowPath === workflow.path) {
+      clearReviewState()
       setMainView("thread")
       return
     }
@@ -308,6 +324,7 @@ export function useWorkflowCrud({
         setSelectedWorkflowPath,
         setCurrentWorkflow,
         setWorkflowSavedSnapshot,
+        clearReviewState,
       )
     } catch (error) {
       toast.dismiss(loadingToastId)
@@ -419,6 +436,7 @@ export function useWorkflowCrud({
           setCurrentWorkflow,
           setWorkflowSavedSnapshot,
           clearDraftExecutionState,
+          clearReviewState,
         )
       }
 
@@ -452,6 +470,7 @@ export function useWorkflowCrud({
       setSelectedWorkflowPath(newPath)
       setCurrentWorkflow(loadedWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+      clearReviewState()
       setMainView("thread")
       toast.success("Flow duplicated")
     } catch (error) {

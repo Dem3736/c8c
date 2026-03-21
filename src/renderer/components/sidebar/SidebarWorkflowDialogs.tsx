@@ -16,13 +16,26 @@ import { CursorMenu } from "@/components/ui/cursor-menu"
 import { SidebarConfirmDialog } from "./SidebarConfirmDialog"
 import { projectFolderName } from "./projectSidebarUtils"
 
-export interface SidebarContextMenuState {
-  x: number
-  y: number
-  scope: "workflow" | "global_workflow"
-  workflow: WorkflowFile
-  projectPath?: string
-}
+export type SidebarContextMenuState =
+  | {
+      x: number
+      y: number
+      scope: "workflow"
+      workflow: WorkflowFile
+      projectPath: string
+    }
+  | {
+      x: number
+      y: number
+      scope: "global_workflow"
+      workflow: WorkflowFile
+    }
+  | {
+      x: number
+      y: number
+      scope: "project"
+      projectPath: string
+    }
 
 interface SidebarWorkflowDialogsProps {
   sidebarContextMenu: SidebarContextMenuState | null
@@ -46,6 +59,7 @@ interface SidebarWorkflowDialogsProps {
   setPendingRemoveProject: (projectPath: string | null) => void
   removingSelectedDirtyProject: boolean
   commitRemoveProject: () => Promise<void>
+  openProjectFlow: (projectPath: string) => void
 }
 
 export function SidebarWorkflowDialogs({
@@ -70,6 +84,7 @@ export function SidebarWorkflowDialogs({
   setPendingRemoveProject,
   removingSelectedDirtyProject,
   commitRemoveProject,
+  openProjectFlow,
 }: SidebarWorkflowDialogsProps) {
   return (
     <>
@@ -133,6 +148,29 @@ export function SidebarWorkflowDialogs({
           >
             Open global flow
           </DropdownMenuItem>
+        )}
+        {sidebarContextMenu?.scope === "project" && sidebarContextMenu.projectPath && (
+          <>
+            <DropdownMenuItem
+              onSelect={() => {
+                if (!sidebarContextMenu.projectPath) return
+                openProjectFlow(sidebarContextMenu.projectPath)
+                setSidebarContextMenu(null)
+              }}
+            >
+              New flow
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-status-danger focus:text-status-danger"
+              onSelect={() => {
+                if (!sidebarContextMenu.projectPath) return
+                setPendingRemoveProject(sidebarContextMenu.projectPath)
+                setSidebarContextMenu(null)
+              }}
+            >
+              Remove project
+            </DropdownMenuItem>
+          </>
         )}
       </CursorMenu>
 

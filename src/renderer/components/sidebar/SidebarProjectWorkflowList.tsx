@@ -1,6 +1,8 @@
+import { useAtomValue } from "jotai"
+import { approvalRequestsAtom } from "@/features/execution"
 import type { WorkflowExecutionState } from "@/lib/workflow-execution"
-import type { WorkflowFile } from "@shared/types"
-import { buildSidebarWorkflowSummary, formatRelativeTime, workflowHasActiveRunStatus } from "./projectSidebarUtils"
+import type { RunStatus, WorkflowFile } from "@shared/types"
+import { deriveSidebarWorkflowRowState, formatRelativeTime } from "./projectSidebarUtils"
 import { SidebarWorkflowRow } from "./SidebarWorkflowRow"
 import type { SidebarContextMenuState } from "./SidebarWorkflowDialogs"
 import type { WorkflowRunMetrics } from "./useProjectSidebarMetrics"
@@ -18,16 +20,15 @@ interface SidebarProjectWorkflowListProps {
   selectedWorkflowPath: string | null
   workflowDirty: boolean
   workflowExecutionStates: Record<string, WorkflowExecutionState>
+  seenRunIds: Record<string, string>
   getWorkflowRunMetrics: (workflowPath: string) => WorkflowRunMetrics
   getHistoricalRunVisual: (projectPath: string, workflowPath: string) => {
-    latestRun?: { status?: string } | null
-    latestRunMeta: { label: string; dotClass: string }
+    latestRun?: { runId?: string; status?: RunStatus; completedAt?: number } | null
   }
   sortProjectWorkflows: (projectPath: string, projectWorkflows: WorkflowFile[]) => WorkflowFile[]
   onToggleExpanded: () => void
   onOpenWorkflow: (workflow: WorkflowFile) => void
   onRenameWorkflow: (workflow: WorkflowFile) => void
-  onDeleteWorkflow: (workflow: WorkflowFile) => void
   onWorkflowContextMenu: (payload: SidebarContextMenuState) => void
 }
 
@@ -41,15 +42,16 @@ export function SidebarProjectWorkflowList({
   selectedWorkflowPath,
   workflowDirty,
   workflowExecutionStates,
+  seenRunIds,
   getWorkflowRunMetrics,
   getHistoricalRunVisual,
   sortProjectWorkflows,
   onToggleExpanded,
   onOpenWorkflow,
   onRenameWorkflow,
-  onDeleteWorkflow,
   onWorkflowContextMenu,
 }: SidebarProjectWorkflowListProps) {
+  const approvalRequests = useAtomValue(approvalRequestsAtom)
   const hasSearchQuery = workflowSearchQuery.trim().length > 0
   const filteredProjectWorkflows = sortProjectWorkflows(projectPath, projectWorkflows).filter((workflow) => {
     if (!hasSearchQuery) return true
@@ -62,6 +64,10 @@ export function SidebarProjectWorkflowList({
   const visibleProjectWorkflows = hasSearchQuery || isWorkflowListExpanded || autoExpandWorkflowList
     ? filteredProjectWorkflows
     : filteredProjectWorkflows.slice(0, PROJECT_WORKFLOW_PREVIEW_LIMIT)
+  const approvalCountByWorkflow = approvalRequests.reduce<Record<string, number>>((acc, request) => {
+    acc[request.workflowKey] = (acc[request.workflowKey] || 0) + 1
+    return acc
+  }, {})
   const shouldShowWorkflowToggle = !hasSearchQuery
     && filteredProjectWorkflows.length > PROJECT_WORKFLOW_PREVIEW_LIMIT
 
@@ -76,10 +82,8 @@ export function SidebarProjectWorkflowList({
               aria-hidden="true"
             >
               <div className="flex items-center gap-1.5 px-1 py-0.5">
-                <span className="inline-flex h-2 w-2 flex-shrink-0 rounded-full bg-muted-foreground/20" />
                 <span className="min-w-0 flex-1">
                   <span className="block h-3.5 w-[72%] rounded bg-muted-foreground/12" />
-                  <span className="mt-1 block h-3 w-[40%] rounded bg-muted-foreground/10" />
                 </span>
                 <span className="h-3 w-7 rounded bg-muted-foreground/10" />
               </div>
@@ -87,36 +91,25 @@ export function SidebarProjectWorkflowList({
           ))
           : visibleProjectWorkflows.map((workflow) => {
             const runMetrics = getWorkflowRunMetrics(workflow.path)
-            const workflowRunStatus = runMetrics.runStatus
             const isSelected = selectedWorkflowPath === workflow.path
-            const isRunOwner = workflowHasActiveRunStatus(workflowRunStatus)
             const isDirty = isSelected && workflowDirty
-            const { latestRun, latestRunMeta } = getHistoricalRunVisual(projectPath, workflow.path)
-            const workflowSummary = buildSidebarWorkflowSummary({
+            const { latestRun } = getHistoricalRunVisual(projectPath, workflow.path)
+            const approvalCount = approvalCountByWorkflow[workflow.path] || 0
+            const workflowRowState = deriveSidebarWorkflowRowState({
               executionState: workflowExecutionStates[workflow.path],
+              latestRun: latestRun
+                ? {
+                  runId: latestRun.runId,
+                  status: latestRun.status,
+                }
+                : null,
+              approvalCount,
+              seenRunId: seenRunIds[workflow.path] || null,
+              isSelected,
             })
-            const showSpinningIndicator = workflowRunStatus === "starting"
-              || workflowRunStatus === "running"
-              || workflowRunStatus === "cancelling"
-            const activeIndicatorClass = runMetrics.textClass === "text-status-warning"
-              ? "border-status-warning/30 bg-status-warning"
-              : runMetrics.textClass === "text-status-danger"
-                ? "border-status-danger/30 bg-status-danger"
-                : "border-status-info/30 bg-status-info"
-            const rowMeta = isRunOwner && runMetrics.totalSteps > 0
-              ? `${runMetrics.completedSteps}/${runMetrics.totalSteps}`
-              : (isRunOwner ? "now" : formatRelativeTime(workflow.updatedAt))
-            const rowMetaClass = isRunOwner && runMetrics.totalSteps > 0
-              ? runMetrics.textClass
-              : "text-muted-foreground"
-            const indicatorTitle = isRunOwner
-              ? (
-                runMetrics.totalSteps > 0
-                  ? `${workflowRunStatus}: ${runMetrics.completedSteps}/${runMetrics.totalSteps}`
-                  : workflowRunStatus
-              )
-              : (latestRun ? `Last run ${latestRunMeta.label}` : "No runs yet")
-            const indicatorDotClass = isRunOwner ? activeIndicatorClass : latestRunMeta.dotClass
+            const idleMetaLabel = workflowRowState.baseState === "idle"
+              ? formatRelativeTime(latestRun?.completedAt || workflow.updatedAt)
+              : null
 
             return (
               <SidebarWorkflowRow
@@ -124,22 +117,19 @@ export function SidebarProjectWorkflowList({
                 workflow={workflow}
                 isSelected={isSelected}
                 isDirty={isDirty}
-                detailLabel={workflowSummary.detailLabel}
-                showSpinningIndicator={showSpinningIndicator}
-                indicatorTitle={indicatorTitle}
-                indicatorDotClass={indicatorDotClass}
-                rowMeta={rowMeta}
-                rowMetaClass={rowMetaClass}
+                unreadNotification={workflowRowState.unreadNotification}
+                unreadNotificationTitle={workflowRowState.unreadNotificationTitle}
+                idleMetaLabel={idleMetaLabel}
+                statusLabel={workflowRowState.statusLabel}
+                statusBadgeClass={workflowRowState.statusBadgeClass}
+                showStatusSpinner={workflowRowState.showStatusSpinner}
                 progress={runMetrics.progress}
                 progressBarClass={runMetrics.barClass}
                 runStatus={runMetrics.runStatus}
                 showProgressTrack={runMetrics.showProgressTrack}
                 onOpen={() => onOpenWorkflow(workflow)}
                 onRename={() => onRenameWorkflow(workflow)}
-                onDelete={() => onDeleteWorkflow(workflow)}
                 onContextMenu={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
                   onWorkflowContextMenu({
                     x: event.clientX,
                     y: event.clientY,

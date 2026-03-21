@@ -1,51 +1,62 @@
 import type { WorkflowFile } from "@shared/types"
-import { Loader2, Pencil, Trash2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/cn"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import type { SidebarWorkflowNotificationTone } from "./projectSidebarUtils"
 
 interface SidebarWorkflowRowProps {
   workflow: WorkflowFile
   isSelected: boolean
   isDirty: boolean
-  detailLabel: string | null
-  showSpinningIndicator: boolean
-  indicatorTitle: string
-  indicatorDotClass: string
-  rowMeta: string
-  rowMetaClass: string
+  unreadNotification: SidebarWorkflowNotificationTone
+  unreadNotificationTitle: string | null
+  idleMetaLabel: string | null
+  statusLabel: string | null
+  statusBadgeClass: string | null
+  showStatusSpinner: boolean
   progress: number
   progressBarClass: string
   runStatus: string
   showProgressTrack: boolean
   onOpen: () => void
   onRename: () => void
-  onDelete: () => void
-  onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void
+  onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => void
 }
 
 export function SidebarWorkflowRow({
   workflow,
   isSelected,
   isDirty,
-  detailLabel,
-  showSpinningIndicator,
-  indicatorTitle,
-  indicatorDotClass,
-  rowMeta,
-  rowMetaClass,
+  unreadNotification,
+  unreadNotificationTitle,
+  idleMetaLabel,
+  statusLabel,
+  statusBadgeClass,
+  showStatusSpinner,
   progress,
   progressBarClass,
   runStatus,
   showProgressTrack,
   onOpen,
   onRename,
-  onDelete,
   onContextMenu,
 }: SidebarWorkflowRowProps) {
+  const unreadDotClass = unreadNotification === "success"
+    ? "bg-status-success"
+    : unreadNotification === "warning"
+      ? "bg-status-warning"
+      : unreadNotification === "error"
+        ? "bg-status-danger"
+        : "bg-transparent"
+
   return (
     <div
       role="option"
       aria-selected={isSelected}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onContextMenu(event)
+      }}
       className={cn(
         "sidebar-thread-row group",
         isSelected && "sidebar-thread-row--active",
@@ -62,105 +73,68 @@ export function SidebarWorkflowRow({
             event.stopPropagation()
             onRename()
           }}
-          onContextMenu={onContextMenu}
           className={cn(
-            "ui-pressable min-w-0 flex-1 flex items-start gap-1.5 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
+            "ui-pressable min-w-0 flex-1 rounded-md px-1 py-0.5 text-left ui-transition-colors ui-motion-fast focus-visible:outline-none",
             isSelected
               ? "hover:bg-transparent"
               : "hover:bg-sidebar-hover/80",
           )}
         >
-          {showSpinningIndicator ? (
-            <span title={indicatorTitle} className="mt-0.5 inline-flex flex-shrink-0" role="img" aria-label={indicatorTitle}>
-              <Loader2
-                size={12}
-                className={cn("animate-spin flex-shrink-0", rowMetaClass)}
-                aria-hidden="true"
-              />
-            </span>
-          ) : (
+          <span className="flex min-w-0 items-center gap-1.5">
             <span
               className={cn(
-                "mt-1 inline-flex h-2 w-2 rounded-full border flex-shrink-0",
-                indicatorDotClass,
-              )}
-              title={indicatorTitle}
-              role="img"
-              aria-label={indicatorTitle}
-            />
-          )}
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className={cn(
                 "truncate flex-1 text-sidebar-item",
                 isSelected ? "text-foreground" : "text-foreground-subtle",
               )}
-              >
-                {workflow.name}
-              </span>
-              {isDirty && (
-                <span className="ui-status-badge ui-status-badge-warning rounded-sm px-1 py-0 text-sidebar-meta">
-                  unsaved
-                </span>
-              )}
+            >
+              {workflow.name}
             </span>
-            {detailLabel && (
-              <span className="mt-0.5 block min-w-0">
-                <span className="block truncate text-sidebar-meta text-muted-foreground">
-                  {detailLabel}
-                </span>
+            {isDirty && (
+              <span
+                role="img"
+                aria-label="Unsaved changes"
+                title="Unsaved changes"
+                className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-status-warning"
+              >
+                <span className="sr-only">Unsaved changes</span>
               </span>
             )}
           </span>
         </button>
 
-        <span
-          className={cn(
-            "text-sidebar-meta flex-shrink-0 tabular-nums ui-transition-colors ui-motion-fast",
-            rowMetaClass,
-          )}
-        >
-          {rowMeta}
-        </span>
-
-        <div
-          data-visible={isSelected ? "true" : undefined}
-          className="ui-reveal-trailing flex items-center gap-0.5"
-        >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="ui-icon-button ui-transition-colors ui-motion-fast"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onRename()
-                }}
-                aria-label={`Rename ${workflow.name}`}
+        {(unreadNotification !== "none" || statusLabel || idleMetaLabel) && (
+          <span className="flex flex-shrink-0 items-center gap-1.25 pr-1">
+            {unreadNotification !== "none" && (
+              <span
+                title={unreadNotificationTitle || undefined}
+                aria-label={unreadNotificationTitle || undefined}
+                role="img"
+                className={cn("inline-flex h-2 w-2 shrink-0 rounded-full ui-transition-colors ui-motion-fast", unreadDotClass)}
+              />
+            )}
+            {statusLabel && statusBadgeClass && (
+              <span
+                className={cn(
+                  "ui-status-badge h-control-xs shrink-0 px-2 ui-meta-text font-medium tracking-normal ui-transition-colors ui-motion-fast",
+                  statusBadgeClass,
+                )}
               >
-                <Pencil size={12} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Rename</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="ui-icon-button hover:bg-status-danger/20 hover:text-status-danger ui-transition-colors ui-motion-fast"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onDelete()
-                }}
-                aria-label={`Delete ${workflow.name}`}
+                {showStatusSpinner ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : null}
+                <span>{statusLabel}</span>
+              </span>
+            )}
+            {!statusLabel && idleMetaLabel && (
+              <span
+                className={cn(
+                  "ui-meta-text tabular-nums ui-transition-colors ui-motion-fast",
+                  isSelected ? "text-foreground/62" : "text-muted-foreground",
+                )}
               >
-                <Trash2 size={12} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Delete</TooltipContent>
-          </Tooltip>
-        </div>
+                {idleMetaLabel}
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
       <div
