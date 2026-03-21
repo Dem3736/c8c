@@ -183,8 +183,16 @@ export async function listProjectCaseStates(projectPath: string): Promise<CaseSt
         }
       }))
 
-    return states
+    const latestByCaseId = new Map<string, CaseStateRecord>()
+    for (const state of states
       .filter((entry): entry is CaseStateRecord => entry !== null)
+      .sort((left, right) => right.updatedAt - left.updatedAt)) {
+      if (!latestByCaseId.has(state.caseId)) {
+        latestByCaseId.set(state.caseId, state)
+      }
+    }
+
+    return Array.from(latestByCaseId.values())
       .sort((left, right) => right.updatedAt - left.updatedAt)
   } catch (error) {
     if (errorCode(error) !== "ENOENT") {

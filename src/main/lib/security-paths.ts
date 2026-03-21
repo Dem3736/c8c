@@ -1,16 +1,29 @@
+import { existsSync, realpathSync } from "node:fs"
 import { ensureLibrariesDir } from "./libraries"
 import { ensurePluginMarketplacesDir } from "./plugins"
 import { loadProjectsConfig } from "./projects-config"
 import { ensureChainsDir } from "./yaml-io"
-import { join, relative, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 
 function dedupeResolved(paths: string[]): string[] {
   return [...new Set(paths.map((value) => resolve(value)))]
 }
 
+function canonicalizePath(inputPath: string): string {
+  const resolvedPath = resolve(inputPath)
+  if (existsSync(resolvedPath)) {
+    return realpathSync(resolvedPath)
+  }
+  const parentPath = dirname(resolvedPath)
+  if (parentPath === resolvedPath) {
+    return resolvedPath
+  }
+  return join(canonicalizePath(parentPath), basename(resolvedPath))
+}
+
 export function isWithinRoot(candidatePath: string, rootPath: string): boolean {
-  const candidate = resolve(candidatePath)
-  const root = resolve(rootPath)
+  const candidate = canonicalizePath(candidatePath)
+  const root = canonicalizePath(rootPath)
   const rel = relative(root, candidate)
   return rel === "" || (!rel.startsWith("..") && !rel.includes("..\\"))
 }

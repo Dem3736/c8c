@@ -12,9 +12,13 @@ describe("electron-smoke", () => {
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "launch-empty" })).toBe("launch-empty")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "command-palette-toggle" })).toBe("command-palette-toggle")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "settings-navigation" })).toBe("settings-navigation")
+    expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "quick-switch-shortcuts" })).toBe("quick-switch-shortcuts")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "approval-dialog" })).toBe("approval-dialog")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "create-ready-continuation" })).toBe("create-ready-continuation")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "blocked-relaunch" })).toBe("blocked-relaunch")
+    expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "factory-thin-bridge" })).toBe("factory-thin-bridge")
+    expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "blocked-approve-resolution" })).toBe("blocked-approve-resolution")
+    expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "blocked-reject-resolution" })).toBe("blocked-reject-resolution")
     expect(resolveElectronSmokeScenario({ C8C_SMOKE_SCENARIO: "unknown" })).toBeNull()
   })
 
@@ -47,12 +51,12 @@ describe("electron-smoke", () => {
     expect(shouldShowElectronSmokeWindow({ C8C_SMOKE_SHOW_WINDOW: "1" })).toBe(true)
   })
 
-  it("allowlists the known Electron CSP warning and keeps other warnings visible", () => {
+  it("does not allowlist Electron security warnings", () => {
     expect(isAllowlistedElectronSmokeConsoleEntry({
       level: "warning",
       sourceId: "node:electron/js2c/sandbox_bundle",
       message: "Electron Security Warning (Insecure Content-Security-Policy)",
-    })).toBe(true)
+    })).toBe(false)
 
     expect(isAllowlistedElectronSmokeConsoleEntry({
       level: "error",

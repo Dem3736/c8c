@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { C8cApi, C8cTestHarnessApi } from "@shared/c8c-api"
+import type { DesktopCommandId, DesktopMenuState } from "@shared/desktop-commands"
 import type {
   ClaudeCodeSubscriptionStatus,
   BatchEvent,
@@ -231,6 +232,10 @@ const api: C8cApi = {
   getDesktopRuntime: () => ipcRenderer.invoke("system:get-desktop-runtime"),
   onDesktopRuntimeChange: (callback: (runtime: DesktopRuntimeInfo) => void) =>
     subscribeIpcChannel<DesktopRuntimeInfo>("system:desktop-runtime-changed", callback),
+  updateDesktopMenuState: (state: DesktopMenuState) =>
+    ipcRenderer.invoke("system:update-desktop-menu-state", state),
+  onDesktopCommand: (callback: (commandId: DesktopCommandId) => void) =>
+    subscribeIpcChannel<DesktopCommandId>("system:desktop-command", callback),
   getProjectStatus: (projectPath: string | null) =>
     ipcRenderer.invoke("system:get-project-status", projectPath),
   getClaudeCodeSubscriptionStatus: () =>
@@ -355,7 +360,7 @@ const api: C8cApi = {
 
 contextBridge.exposeInMainWorld("api", api)
 
-if (__TEST_MODE__) {
+if (typeof __TEST_MODE__ !== "undefined" && __TEST_MODE__) {
   const testHarness: C8cTestHarnessApi = {
     getEnvironment: () => ipcRenderer.invoke("test-harness:get-environment"),
     seedProjects: (input) => ipcRenderer.invoke("test-harness:seed-projects", input),

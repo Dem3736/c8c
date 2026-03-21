@@ -26,6 +26,7 @@ import type {
   PluginMcpServerInfo,
   PersistArtifactsFromRunRequest,
   PersistArtifactsFromRunResult,
+  ProjectInspectionSummary,
   ProviderDiagnostics,
   ProviderId,
   ProviderSettings,
@@ -44,6 +45,7 @@ import type {
   WorkflowInput,
   WorkflowTemplate,
 } from "@shared/types"
+import type { DesktopCommandId, DesktopMenuState } from "@shared/desktop-commands"
 import type { WorkflowConfigIssue } from "./workflow-config-validation"
 
 export interface ExecutionStartError {
@@ -126,6 +128,8 @@ export interface C8cApi {
   getAppVersion: () => Promise<string>
   getDesktopRuntime: () => Promise<DesktopRuntimeInfo>
   onDesktopRuntimeChange: (callback: (runtime: DesktopRuntimeInfo) => void) => () => void
+  updateDesktopMenuState: (state: DesktopMenuState) => Promise<boolean>
+  onDesktopCommand: (callback: (commandId: DesktopCommandId) => void) => () => void
   getProjectStatus: (projectPath: string | null) => Promise<{ branch: string | null }>
   getClaudeCodeSubscriptionStatus: () => Promise<ClaudeCodeSubscriptionStatus>
   getProviderDiagnostics: () => Promise<ProviderDiagnostics>

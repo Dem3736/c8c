@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   screen,
+  session,
   shell,
   type BrowserWindowConstructorOptions,
 } from "electron"
@@ -39,6 +40,12 @@ import {
   normalizeWindowState,
   persistWindowState,
 } from "./window-state"
+import {
+  applyContentSecurityPolicyHeader,
+  buildRendererContentSecurityPolicy,
+  isSafeExternalUrl,
+  shouldApplyRendererCsp,
+} from "./security"
 
 app.name = "c8c"
 applyRuntimePathOverrides({ app })
@@ -56,14 +63,25 @@ const processStartedAt = Date.now()
 let isCreatingWindow = false
 let quitFlushStarted = false
 const suppressStartupSideEffects = shouldSuppressStartupSideEffects()
+let rendererSecurityHeadersInstalled = false
 
-function isSafeExternalUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl)
-    return url.protocol === "https:" || url.protocol === "http:" || url.protocol === "mailto:"
-  } catch {
-    return false
-  }
+function installRendererContentSecurityPolicy(): void {
+  if (rendererSecurityHeadersInstalled) return
+  rendererSecurityHeadersInstalled = true
+
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  const policy = buildRendererContentSecurityPolicy(rendererUrl)
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (details.resourceType !== "mainFrame" || !shouldApplyRendererCsp(details.url, rendererUrl)) {
+      callback({ responseHeaders: details.responseHeaders })
+      return
+    }
+
+    callback({
+      responseHeaders: applyContentSecurityPolicyHeader(details.responseHeaders, policy),
+    })
+  })
 }
 
 // macOS: open-url fires before whenReady on cold launch
@@ -237,6 +255,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  installRendererContentSecurityPolicy()
   const useHiddenSmokeWindow = Boolean(resolveElectronSmokeScenario() && !shouldShowElectronSmokeWindow())
   if (process.platform === "darwin" && app.dock) {
     try {

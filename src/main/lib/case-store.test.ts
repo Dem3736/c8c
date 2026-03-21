@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { listProjectCaseStates, upsertCaseState } from "./case-store"
@@ -79,5 +79,54 @@ describe("case-store", () => {
     expect(second.createdAt).toBe(first.createdAt)
     expect(second.artifactIds).toEqual(["artifact-2", "artifact-1"])
     expect(second.continuationStatus).toBe("ready")
+  })
+
+  it("keeps only the newest durable state when legacy duplicate files exist", async () => {
+    const latest = await upsertCaseState({
+      projectPath: projectDir,
+      caseId: "case:delivery-foundation:checkout-polish",
+      workLabel: "Checkout polish",
+      caseLabel: "Checkout polish",
+      continuationStatus: "blocked_by_check",
+      artifactIds: ["artifact-1"],
+      lastGate: {
+        family: "approval",
+        outcome: "rejected",
+        summaryText: "Verification was rejected and is blocked.",
+        reasonText: "A reviewer rejected the verification result.",
+        stepLabel: "Verify",
+        happenedAt: 40,
+      },
+      updatedAt: 40,
+    })
+
+    await mkdir(join(projectDir, ".c8c", "case-state"), { recursive: true })
+    await writeFile(
+      join(projectDir, ".c8c", "case-state", "legacy-duplicate.json"),
+      JSON.stringify({
+        ...latest,
+        continuationStatus: "awaiting_approval",
+        lastGate: {
+          family: "approval",
+          outcome: "awaiting_human",
+          summaryText: "Approval pending. Review block before verification continues.",
+          reasonText: "Waiting for an approval decision before the flow can continue.",
+          stepLabel: "Verify",
+          happenedAt: 20,
+        },
+        updatedAt: 20,
+      }, null, 2),
+    )
+
+    const listed = await listProjectCaseStates(projectDir)
+    expect(listed).toHaveLength(1)
+    expect(listed[0]).toMatchObject({
+      caseId: "case:delivery-foundation:checkout-polish",
+      continuationStatus: "blocked_by_check",
+      lastGate: {
+        outcome: "rejected",
+        summaryText: "Verification was rejected and is blocked.",
+      },
+    })
   })
 })

@@ -1,10 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import type { PluginMcpServerInfo } from "@shared/types"
+import type { McpMutationResult, McpTestResult, McpToolInfo, PluginMcpServerInfo } from "@shared/types"
 
 const ipcHandlers = new Map<string, (...args: unknown[]) => unknown>()
 const resolveMcpProviderMock = vi.fn()
 const listPluginMcpServersMock = vi.fn<() => Promise<PluginMcpServerInfo[]>>()
 const setPluginMcpServerApprovedMock = vi.fn<(...args: unknown[]) => Promise<boolean>>(() => Promise.resolve(true))
+const allowedProjectRootsMock = vi.fn<() => Promise<string[]>>()
+const assertWithinRootsMock = vi.fn<(candidatePath: string, roots: string[], label: string) => string>()
+
+const listServersMock = vi.fn()
+const listAllServersMock = vi.fn()
+const addServerMock = vi.fn()
+const updateServerMock = vi.fn()
+const removeServerMock = vi.fn()
+const toggleServerMock = vi.fn()
+const testServerMock = vi.fn()
+const discoverToolsMock = vi.fn()
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -16,6 +27,11 @@ vi.mock("electron", () => ({
 
 vi.mock("../lib/providers", () => ({
   resolveMcpProvider: (...args: unknown[]) => resolveMcpProviderMock(...args),
+}))
+
+vi.mock("../lib/security-paths", () => ({
+  allowedProjectRoots: (...args: unknown[]) => allowedProjectRootsMock(...args),
+  assertWithinRoots: (...args: unknown[]) => assertWithinRootsMock(...args),
 }))
 
 vi.mock("../lib/plugin-mcp", () => ({
@@ -31,15 +47,25 @@ describe("mcp IPC", () => {
     vi.clearAllMocks()
     vi.resetModules()
     ipcHandlers.clear()
+    allowedProjectRootsMock.mockResolvedValue(["/safe"])
+    assertWithinRootsMock.mockImplementation((candidatePath: string) => candidatePath)
+    listServersMock.mockResolvedValue([])
+    listAllServersMock.mockResolvedValue([])
+    addServerMock.mockResolvedValue({ success: true } satisfies McpMutationResult)
+    updateServerMock.mockResolvedValue({ success: true } satisfies McpMutationResult)
+    removeServerMock.mockResolvedValue({ success: true } satisfies McpMutationResult)
+    toggleServerMock.mockResolvedValue({ success: true } satisfies McpMutationResult)
+    testServerMock.mockResolvedValue({ healthy: true, tools: [], latencyMs: 12 } satisfies McpTestResult)
+    discoverToolsMock.mockResolvedValue([] satisfies McpToolInfo[])
     resolveMcpProviderMock.mockReturnValue({
-      listServers: vi.fn(),
-      listAllServers: vi.fn().mockResolvedValue([]),
-      addServer: vi.fn(),
-      updateServer: vi.fn(),
-      removeServer: vi.fn(),
-      toggleServer: vi.fn(),
-      testServer: vi.fn(),
-      discoverTools: vi.fn(),
+      listServers: listServersMock,
+      listAllServers: listAllServersMock,
+      addServer: addServerMock,
+      updateServer: updateServerMock,
+      removeServer: removeServerMock,
+      toggleServer: toggleServerMock,
+      testServer: testServerMock,
+      discoverTools: discoverToolsMock,
     })
     listPluginMcpServersMock.mockResolvedValue([])
     setPluginMcpServerApprovedMock.mockResolvedValue(true)
@@ -83,5 +109,138 @@ describe("mcp IPC", () => {
 
     await expect(handler!(undefined, "official/github/github", true)).resolves.toBe(true)
     expect(setPluginMcpServerApprovedMock).toHaveBeenCalledWith("official/github/github", true)
+  })
+
+  it("rejects malformed MCP server mutations before provider code", async () => {
+    const { registerMcpHandlers } = await import("./mcp")
+    registerMcpHandlers()
+
+    const handler = ipcHandlers.get("mcp:add-server") as
+      | ((event: unknown, provider: string, server: Record<string, unknown>, projectPath?: string) => Promise<McpMutationResult>)
+      | undefined
+    expect(handler).toBeDefined()
+
+    await expect(handler!(undefined, "claude", {
+      name: " mixed ",
+      scope: "user",
+      type: "stdio",
+      command: "npx",
+      url: "https://example.com/mcp",
+    })).resolves.toEqual({
+      success: false,
+      error: 'MCP server "mixed" uses mixed stdio and remote transport fields.',
+    })
+    expect(addServerMock).not.toHaveBeenCalled()
+  })
+
+  it("validates and forwards a safe project path for project-scoped add-server", async () => {
+    assertWithinRootsMock.mockReturnValue("/safe/project")
+
+    const { registerMcpHandlers } = await import("./mcp")
+    registerMcpHandlers()
+
+    const handler = ipcHandlers.get("mcp:add-server") as
+      | ((event: unknown, provider: string, server: Record<string, unknown>, projectPath?: string) => Promise<McpMutationResult>)
+      | undefined
+    expect(handler).toBeDefined()
+
+    await expect(handler!(undefined, "claude", {
+      name: " github ",
+      scope: "project",
+      type: "stdio",
+      command: " npx ",
+      args: [" -y ", "@modelcontextprotocol/server-github"],
+    }, "/safe/project")).resolves.toEqual({ success: true })
+
+    expect(addServerMock).toHaveBeenCalledWith({
+      name: "github",
+      scope: "project",
+      provider: undefined,
+      projectPath: undefined,
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      url: undefined,
+      env: undefined,
+      headers: undefined,
+      disabled: undefined,
+      autoApprove: undefined,
+    }, "/safe/project")
+  })
+
+  it("fails closed when project-scoped add-server gets an invalid project path", async () => {
+    assertWithinRootsMock.mockImplementation(() => {
+      throw new Error("Project path must stay within allowed roots.")
+    })
+
+    const { registerMcpHandlers } = await import("./mcp")
+    registerMcpHandlers()
+
+    const handler = ipcHandlers.get("mcp:add-server") as
+      | ((event: unknown, provider: string, server: Record<string, unknown>, projectPath?: string) => Promise<McpMutationResult>)
+      | undefined
+    expect(handler).toBeDefined()
+
+    await expect(handler!(undefined, "claude", {
+      name: "github",
+      scope: "local",
+      type: "stdio",
+      command: "npx",
+    }, "/unsafe/project")).resolves.toEqual({
+      success: false,
+      error: "Project path must stay within allowed roots.",
+    })
+    expect(addServerMock).not.toHaveBeenCalled()
+  })
+
+  it("requires a project path for project-scoped removals", async () => {
+    const { registerMcpHandlers } = await import("./mcp")
+    registerMcpHandlers()
+
+    const handler = ipcHandlers.get("mcp:remove-server") as
+      | ((event: unknown, provider: string, name: string, scope: string, projectPath?: string) => Promise<McpMutationResult>)
+      | undefined
+    expect(handler).toBeDefined()
+
+    await expect(handler!(undefined, "claude", "github", "project")).resolves.toEqual({
+      success: false,
+      error: "Project path required for project scope.",
+    })
+    expect(removeServerMock).not.toHaveBeenCalled()
+  })
+
+  it("returns an unhealthy result when project-scoped tests omit projectPath", async () => {
+    const { registerMcpHandlers } = await import("./mcp")
+    registerMcpHandlers()
+
+    const handler = ipcHandlers.get("mcp:test-server") as
+      | ((event: unknown, provider: string, name: string, scope: string, projectPath?: string) => Promise<McpTestResult>)
+      | undefined
+    expect(handler).toBeDefined()
+
+    await expect(handler!(undefined, "claude", "github", "local")).resolves.toEqual({
+      healthy: false,
+      tools: [],
+      error: "Project path required for local scope.",
+      latencyMs: 0,
+    })
+    expect(testServerMock).not.toHaveBeenCalled()
+  })
+
+  it("returns an empty result when list-servers gets an invalid project path", async () => {
+    assertWithinRootsMock.mockImplementation(() => {
+      throw new Error("Project path must stay within allowed roots.")
+    })
+
+    const { registerMcpHandlers } = await import("./mcp")
+    registerMcpHandlers()
+
+    const handler = ipcHandlers.get("mcp:list-servers") as
+      | ((event: unknown, provider: string, projectPath?: string) => Promise<unknown[]>)
+      | undefined
+    expect(handler).toBeDefined()
+
+    await expect(handler!(undefined, "claude", "/unsafe/project")).resolves.toEqual([])
+    expect(listServersMock).not.toHaveBeenCalled()
   })
 })

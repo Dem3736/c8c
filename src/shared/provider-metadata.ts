@@ -93,6 +93,15 @@ export function resolveWorkflowProvider(
   return workflow.defaults?.provider || defaultProvider
 }
 
+export function workflowRequiresProvider(workflow: Workflow): boolean {
+  return workflow.nodes.some((node) =>
+    node.type === "skill"
+    || node.type === "evaluator"
+    || node.type === "splitter"
+    || node.type === "merger",
+  )
+}
+
 export function resolveNodeProvider(
   node: WorkflowNode,
   workflow: Workflow,

@@ -4,17 +4,13 @@ import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import type { ProviderId } from "@shared/types"
 import { writeFileAtomic } from "./atomic-write"
+import { normalizeMcpConfigEntry, type NormalizedMcpServerEntry } from "./mcp-validation"
 import { listApprovedPluginMcpServers } from "./plugin-mcp"
+import { logWarn } from "./structured-log"
 
 export type WebSearchBackend = "builtin" | "exa"
 
-interface McpServerEntry {
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-  headers?: Record<string, string>
-  disabled?: boolean
-  autoApprove?: string[]
+interface McpServerEntry extends NormalizedMcpServerEntry {
   [key: string]: unknown
 }
 
@@ -60,7 +56,19 @@ function normalizeMcpConfig(raw: unknown): McpConfig | null {
 
   const nested = raw.mcpServers
   if (isObject(nested)) {
-    return { mcpServers: nested as Record<string, McpServerEntry> }
+    const mcpServers: Record<string, McpServerEntry> = {}
+    for (const [name, entry] of Object.entries(nested)) {
+      const normalizedEntry = normalizeMcpConfigEntry(name, entry)
+      if (!normalizedEntry.ok) {
+        logWarn("mcp-config", "invalid_mcp_server_entry", {
+          serverName: String(name),
+          error: normalizedEntry.error,
+        })
+        continue
+      }
+      mcpServers[normalizedEntry.value.name] = normalizedEntry.value.entry
+    }
+    return { mcpServers }
   }
 
   const flatEntries = Object.entries(raw).filter(([key, value]) => key !== "mcpServers" && isObject(value))
@@ -68,7 +76,15 @@ function normalizeMcpConfig(raw: unknown): McpConfig | null {
 
   const mcpServers: Record<string, McpServerEntry> = {}
   for (const [name, entry] of flatEntries) {
-    mcpServers[name] = entry as McpServerEntry
+    const normalizedEntry = normalizeMcpConfigEntry(name, entry)
+    if (!normalizedEntry.ok) {
+      logWarn("mcp-config", "invalid_mcp_server_entry", {
+        serverName: String(name),
+        error: normalizedEntry.error,
+      })
+      continue
+    }
+    mcpServers[normalizedEntry.value.name] = normalizedEntry.value.entry
   }
   return { mcpServers }
 }
@@ -153,7 +169,9 @@ function withExaServer(config: McpConfig, projectPath?: string): McpConfig {
   }
 
   config.mcpServers.exa = {
-    ...(isObject(existing) ? existing : {}),
+    type: "stdio",
+    disabled: existing?.disabled,
+    autoApprove: existing?.autoApprove,
     command: process.execPath,
     args: [exaProxyPath],
     env: runtimeEnv,
@@ -314,21 +332,25 @@ async function buildRuntimeMcpConfig(
     config = config ?? { mcpServers: {} }
     for (const server of pluginServers) {
       if (config.mcpServers[server.info.name]) continue
-      config.mcpServers[server.info.name] = {
-        type: server.entry.type,
-        command: server.entry.command,
-        args: server.entry.args,
-        url: server.entry.url,
-        env: server.entry.env,
-        headers: server.entry.headers,
-        disabled: server.entry.disabled,
-        autoApprove: server.entry.autoApprove,
+      const normalizedEntry = normalizeMcpConfigEntry(server.info.name, server.entry)
+      if (!normalizedEntry.ok) {
+        logWarn("mcp-config", "invalid_plugin_mcp_server_entry", {
+          serverName: server.info.name,
+          pluginId: server.info.pluginId,
+          error: normalizedEntry.error,
+        })
+        continue
       }
+      config.mcpServers[normalizedEntry.value.name] = normalizedEntry.value.entry
     }
   }
 
   if (backend === "exa") {
     config = withExaServer(config ?? { mcpServers: {} }, projectPath)
+  }
+
+  if (!config || Object.keys(config.mcpServers).length === 0) {
+    return null
   }
 
   return config

@@ -69,6 +69,39 @@ describe("buildProviderExtraArgs", () => {
       'mcp_servers."github".args=["./server.js"]',
     ])
   })
+
+  it("skips malformed MCP entries when building codex overrides", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mcp-config-invalid-codex-"))
+    const mcpPath = join(root, ".mcp.json")
+
+    await writeFile(
+      mcpPath,
+      JSON.stringify({
+        mcpServers: {
+          valid: {
+            command: "node",
+            args: ["./server.js"],
+          },
+          invalidMixed: {
+            command: "node",
+            url: "https://example.com/mcp",
+          },
+          invalidArgs: {
+            command: "node",
+            args: ["ok", 42],
+          },
+        },
+      }),
+      "utf-8",
+    )
+
+    expect(buildProviderExtraArgs("codex", mcpPath)).toEqual([
+      "-c",
+      'mcp_servers."valid".command="node"',
+      "-c",
+      'mcp_servers."valid".args=["./server.js"]',
+    ])
+  })
 })
 
 describe("prepareWorkspaceMcpConfig", () => {
@@ -118,6 +151,40 @@ describe("prepareWorkspaceMcpConfig", () => {
     expect(parsed.mcpServers.exa.command).toBe(process.execPath)
     expect(parsed.mcpServers.exa.args?.[0]).toContain("mcp-search-proxy")
     expect(parsed.mcpServers.exa.env?.ELECTRON_RUN_AS_NODE).toBe("1")
+  })
+
+  it("replaces any remote exa entry instead of producing a mixed transport shape", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mcp-config-test-"))
+    const project = join(root, "project")
+    const workspace = join(root, "workspace")
+    await mkdir(project, { recursive: true })
+    await mkdir(workspace, { recursive: true })
+
+    await writeFile(
+      join(project, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          exa: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: {
+              Authorization: "Bearer token",
+            },
+          },
+        },
+      }),
+      "utf-8",
+    )
+
+    const path = await prepareWorkspaceMcpConfig(workspace, project, "exa")
+    const parsed = JSON.parse(await readFile(path!, "utf-8")) as {
+      mcpServers: Record<string, { type?: string; command?: string; url?: string; headers?: Record<string, string> }>
+    }
+
+    expect(parsed.mcpServers.exa.type).toBe("stdio")
+    expect(parsed.mcpServers.exa.command).toBe(process.execPath)
+    expect(parsed.mcpServers.exa.url).toBeUndefined()
+    expect(parsed.mcpServers.exa.headers).toBeUndefined()
   })
 
   it("merges approved plugin MCP servers without overriding project config", async () => {
@@ -194,6 +261,36 @@ describe("prepareTemporaryMcpConfig", () => {
 
     await handle.cleanup()
   })
+
+  it("skips invalid approved plugin MCP entries", async () => {
+    listApprovedPluginMcpServersMock.mockResolvedValue([
+      {
+        info: { name: "github" },
+        entry: {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+        },
+      },
+      {
+        info: { name: "broken" },
+        entry: {
+          command: "npx",
+          url: "https://example.com/mcp",
+        },
+      },
+    ])
+
+    const handle = await prepareTemporaryMcpConfig(undefined, "builtin")
+    expect(handle.path).toBeTruthy()
+
+    const parsed = JSON.parse(await readFile(handle.path!, "utf-8")) as {
+      mcpServers: Record<string, { command?: string; url?: string }>
+    }
+    expect(parsed.mcpServers.github).toBeDefined()
+    expect(parsed.mcpServers.broken).toBeUndefined()
+
+    await handle.cleanup()
+  })
 })
 
 describe("buildClaudeSdkMcpServers", () => {
@@ -210,7 +307,7 @@ describe("buildClaudeSdkMcpServers", () => {
             args: ["./server.js"],
             env: {
               TOKEN: "secret",
-              INVALID: 42,
+              MODE: "test",
             },
           },
           httpServer: {
@@ -236,9 +333,52 @@ describe("buildClaudeSdkMcpServers", () => {
         args: ["./server.js"],
         env: {
           TOKEN: "secret",
+          MODE: "test",
         },
       },
       httpServer: {
+        type: "http",
+        url: "https://example.com/mcp",
+        headers: {
+          Authorization: "Bearer token",
+        },
+      },
+    })
+  })
+
+  it("rejects contradictory or malformed transport shapes from .mcp.json", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mcp-sdk-invalid-"))
+    const mcpPath = join(root, ".mcp.json")
+
+    await writeFile(
+      mcpPath,
+      JSON.stringify({
+        mcpServers: {
+          validRemote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: {
+              Authorization: "Bearer token",
+            },
+          },
+          mixed: {
+            command: "node",
+            url: "https://example.com/mcp",
+          },
+          invalidEnv: {
+            command: "node",
+            env: {
+              TOKEN: "secret",
+              RETRIES: 3,
+            },
+          },
+        },
+      }),
+      "utf-8",
+    )
+
+    expect(buildClaudeSdkMcpServers(mcpPath)).toEqual({
+      validRemote: {
         type: "http",
         url: "https://example.com/mcp",
         headers: {

@@ -71,6 +71,15 @@ function buildSystemPrompt(
   const categoryTree = buildCategoryTree(skills)
   const categorySummary = formatCategoryTreeSummary(categoryTree)
   const toolDefs = getToolDefinitions()
+  const detailBudget = workflow.defaults?.detailBudget
+  const detailBudgetSection = typeof detailBudget === "number" && Number.isFinite(detailBudget)
+    ? `# Detail Preference
+- Preferred fan-out/detail budget: ${detailBudget}
+- When the user asks for audits, reviews, coverage-heavy analysis, or broad repo inspection, prefer granular component, route, file, subsystem, or state-level branching up to this limit instead of collapsing to 4-6 broad buckets.
+- Reflect this preference in defaults.maxParallel, splitter maxBranches, and splitter strategy text when it materially improves coverage.
+
+`
+    : ""
 
   return `# Role
 You are a flow editor for c8c — a desktop app for building provider-backed flows.
@@ -86,7 +95,7 @@ ${JSON.stringify(workflow, null, 2)}
 
 # ${categorySummary}
 
-# Flow Rules
+${detailBudgetSection}# Flow Rules
 - Node types: input (entry point), skill (Claude execution), evaluator (quality check), splitter (fan-out), merger (fan-in), output (final result)
 - Edge types: default (normal flow), pass (evaluator success), fail (evaluator retry)
 - Every flow needs exactly one input node and one output node

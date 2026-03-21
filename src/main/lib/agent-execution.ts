@@ -13,7 +13,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-class AsyncEventQueue<T> implements AsyncIterable<T> {
+export class AsyncEventQueue<T> implements AsyncIterable<T> {
   private items: T[] = []
   private resolvers: Array<(result: IteratorResult<T>) => void> = []
   private closed = false

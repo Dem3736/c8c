@@ -58,11 +58,8 @@ function importantConsoleEntry(entry: Pick<ElectronSmokeConsoleEntry, "level">) 
 export function isAllowlistedElectronSmokeConsoleEntry(
   entry: Pick<ElectronSmokeConsoleEntry, "level" | "message" | "sourceId">,
 ) {
-  return (
-    entry.level === "warning"
-    && entry.sourceId === "node:electron/js2c/sandbox_bundle"
-    && entry.message.includes("Electron Security Warning")
-  )
+  void entry
+  return false
 }
 
 function parseSmokeProjects(rawValue: string | undefined): string[] {
@@ -1113,13 +1110,30 @@ async function assertBlockedApproveResolutionScenario(
     "post-approval runtime shell",
     "body",
     (text) =>
-      text.includes("Result is ready to review")
+      text.includes("Continue with Agent")
+      && text.includes("View activity")
       && !text.includes("Approve & Continue")
       && !text.includes("On approve"),
   )
+  const hasCompetingRunButton = await executeRendererScript<boolean>(
+    window,
+    `(() => {
+      const isVisible = (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      };
+      return Array.from(document.querySelectorAll('[aria-label="Run controls"] button'))
+        .some((candidate) => isVisible(candidate) && ((candidate.innerText || candidate.textContent || "").trim() === "Run"));
+    })()`,
+  )
+  assertSmoke(!hasCompetingRunButton, "Completed result should own the next action instead of leaving the toolbar Run visible.")
 
   recordAssertion(assertions, "Approved blocked work and finished the suspended run", blockedWorkflow.name)
   recordAssertion(assertions, "Persisted approval pass into durable case state", resolvedCaseState.lastGate?.summaryText || "Approval recorded")
+  recordAssertion(assertions, "Completed result exposes Continue with Agent", "Continue with Agent")
+  recordAssertion(assertions, "Completed result still exposes a drill-down path", "View activity")
 
   return {
     uiState,

@@ -48,6 +48,7 @@ import type {
   RunResult,
 } from "@shared/types"
 import type { ExecutionStartError } from "@shared/c8c-api"
+import { workflowRequiresProvider } from "@shared/provider-metadata"
 import { allowedProjectRoots, allowedReportRoots, assertWithinRoots } from "../lib/security-paths"
 import { logError, logInfo, logWarn } from "../lib/structured-log"
 import {
@@ -73,6 +74,10 @@ function trackWindowExecution(windowId: number, executionId: string): void {
   const executions = activeWindowExecutions.get(windowId) ?? new Set<string>()
   executions.add(executionId)
   activeWindowExecutions.set(windowId, executions)
+}
+
+function windowOwnsExecution(windowId: number, executionId: string): boolean {
+  return activeWindowExecutions.get(windowId)?.has(executionId) ?? false
 }
 
 function releaseWindowExecution(windowId: number, executionId: string): void {
@@ -177,6 +182,24 @@ function resolveWindowFromEvent(event: IpcMainInvokeEvent): BrowserWindow | null
   return window
 }
 
+function assertWindowCanMutateExecution(
+  event: IpcMainInvokeEvent,
+  executionId: string,
+  action: string,
+  extra: Record<string, unknown> = {},
+): boolean {
+  const window = resolveWindowFromEvent(event)
+  if (!window) return false
+  if (windowOwnsExecution(window.id, executionId)) return true
+  logWarn("executor-ipc", "execution_mutation_denied", {
+    action,
+    windowId: window.id,
+    executionId,
+    ...extra,
+  })
+  return false
+}
+
 function errorCode(error: unknown): string | undefined {
   if (typeof error === "object" && error !== null && "code" in error) {
     const code = (error as { code?: unknown }).code
@@ -209,6 +232,27 @@ function sanitizeHumanTasks(input: unknown): Record<string, HumanTaskPointer> {
 async function assertProjectPath(projectPath: string): Promise<string> {
   const projectRoots = await allowedProjectRoots()
   return assertWithinRoots(resolve(projectPath), projectRoots, "Project path")
+}
+
+async function resolveSafeStartProjectPath(
+  projectPath: string | undefined,
+  action: string,
+): Promise<{ safeProjectPath?: string; startError?: ExecutionStartError }> {
+  if (!projectPath) return {}
+  try {
+    return {
+      safeProjectPath: await assertProjectPath(projectPath),
+    }
+  } catch (error) {
+    logWarn("executor-ipc", "project_path_validation_failed", {
+      action,
+      projectPath,
+      error: errorMessage(error),
+    })
+    return {
+      startError: createExecutionStartError(errorMessage(error)),
+    }
+  }
 }
 
 async function assertRunWorkspacePath(workspace: string): Promise<string> {
@@ -638,6 +682,7 @@ async function createExecutionStartBlocker(
 ): Promise<ExecutionStartError | null> {
   const validationError = createValidationStartError(workflow)
   if (validationError) return validationError
+  if (!workflowRequiresProvider(workflow)) return null
 
   try {
     const providerId = await resolveWorkflowProviderId(workflow)
@@ -666,14 +711,16 @@ export function registerExecutorHandlers() {
     ) => {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
+      const { safeProjectPath, startError } = await resolveSafeStartProjectPath(projectPath, "executor:run")
+      if (startError) return startError
 
       const startBlocker = await createExecutionStartBlocker(workflow, "run_precheck_failed")
       if (startBlocker) return startBlocker
 
       // Auto-scaffold missing skills before run
-      if (projectPath) {
+      if (safeProjectPath) {
         try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_run")
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, safeProjectPath, "executor_run")
         } catch (err) {
           return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
@@ -689,7 +736,7 @@ export function registerExecutorHandlers() {
       logInfo("executor-ipc", "run_started", { runId, windowId: window.id })
 
       // Fire and forget — events stream back via IPC
-      runWorkflow(runId, workflow, input, window, projectPath, workflowPath, webSearchBackend).catch((err) => {
+      runWorkflow(runId, workflow, input, window, safeProjectPath, workflowPath, webSearchBackend).catch((err) => {
         try {
           if (!window.isDestroyed()) {
             sendWorkflowEvent(window, {
@@ -716,7 +763,8 @@ export function registerExecutorHandlers() {
     },
   )
 
-  ipcMain.handle("executor:cancel", async (_e, runId: string) => {
+  ipcMain.handle("executor:cancel", async (event, runId: string) => {
+    if (!assertWindowCanMutateExecution(event, runId, "executor:cancel")) return false
     return cancelWorkflowRun(runId)
   })
 
@@ -726,11 +774,13 @@ export function registerExecutorHandlers() {
     return getActiveExecutionsForWindow(window.id)
   })
 
-  ipcMain.handle("run:pause", async (_e, runId: string) => {
+  ipcMain.handle("run:pause", async (event, runId: string) => {
+    if (!assertWindowCanMutateExecution(event, runId, "run:pause")) return false
     return pauseWorkflowRun(runId)
   })
 
-  ipcMain.handle("run:resume", async (_e, runId: string) => {
+  ipcMain.handle("run:resume", async (event, runId: string) => {
+    if (!assertWindowCanMutateExecution(event, runId, "run:resume")) return false
     return resumeWorkflowRun(runId)
   })
 
@@ -747,6 +797,8 @@ export function registerExecutorHandlers() {
     ) => {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
+      const { safeProjectPath, startError } = await resolveSafeStartProjectPath(projectPath, "executor:rerun-from")
+      if (startError) return startError
 
       const startBlocker = await createExecutionStartBlocker(workflow, "rerun_precheck_failed")
       if (startBlocker) return startBlocker
@@ -755,9 +807,9 @@ export function registerExecutorHandlers() {
       const safeWorkspace = await assertRunWorkspacePath(workspace)
 
       // Auto-scaffold missing skills before rerun
-      if (projectPath) {
+      if (safeProjectPath) {
         try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, safeProjectPath, "executor_rerun")
         } catch (err) {
           return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
@@ -777,7 +829,7 @@ export function registerExecutorHandlers() {
         workflow,
         safeWorkspace,
         window,
-        projectPath,
+        safeProjectPath,
         workflowPath,
         webSearchBackend,
       ).catch((err) => {
@@ -819,6 +871,8 @@ export function registerExecutorHandlers() {
     ) => {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
+      const { safeProjectPath, startError } = await resolveSafeStartProjectPath(projectPath, "executor:continue")
+      if (startError) return startError
 
       const startBlocker = await createExecutionStartBlocker(workflow, "continue_precheck_failed")
       if (startBlocker) return startBlocker
@@ -827,9 +881,9 @@ export function registerExecutorHandlers() {
       const safeWorkspace = await assertRunWorkspacePath(workspace)
 
       // Auto-scaffold missing skills before continue.
-      if (projectPath) {
+      if (safeProjectPath) {
         try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_rerun")
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, safeProjectPath, "executor_rerun")
         } catch (err) {
           return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
@@ -848,7 +902,7 @@ export function registerExecutorHandlers() {
         workflow,
         safeWorkspace,
         window,
-        projectPath,
+        safeProjectPath,
         workflowPath,
         webSearchBackend,
       ).catch((err) => {
@@ -994,14 +1048,16 @@ export function registerExecutorHandlers() {
     ) => {
       const window = resolveWindowFromEvent(event)
       if (!window) return null
+      const { safeProjectPath, startError } = await resolveSafeStartProjectPath(projectPath, "executor:run-batch")
+      if (startError) return startError
 
       const startBlocker = await createExecutionStartBlocker(workflow, "batch_precheck_failed")
       if (startBlocker) return startBlocker
 
       // Auto-scaffold missing skills before batch run
-      if (projectPath) {
+      if (safeProjectPath) {
         try {
-          workflow = await scaffoldWorkflowWithTelemetry(workflow, projectPath, "executor_batch")
+          workflow = await scaffoldWorkflowWithTelemetry(workflow, safeProjectPath, "executor_batch")
         } catch (err) {
           return createExecutionStartError(`Skill scaffolding failed: ${String(err)}`, "scaffold")
         }
@@ -1017,7 +1073,7 @@ export function registerExecutorHandlers() {
       trackWindowExecution(window.id, executionId)
       logInfo("executor-ipc", "batch_started", { batchId, windowId: window.id, inputs: inputs.length, concurrency, stopOnFailure })
 
-      runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, projectPath, workflowPath)
+      runBatch(batchId, workflow, inputs, concurrency, stopOnFailure, window, safeProjectPath, workflowPath)
         .catch((err) => {
           const batchErrorMessage = String(err)
           logError("executor-ipc", "batch_unhandled_failure", { batchId, error: batchErrorMessage })
@@ -1042,13 +1098,15 @@ export function registerExecutorHandlers() {
     },
   )
 
-  ipcMain.handle("executor:cancel-batch", async (_e, batchId: string) => {
+  ipcMain.handle("executor:cancel-batch", async (event, batchId: string) => {
+    if (!assertWindowCanMutateExecution(event, `batch:${batchId}`, "executor:cancel-batch", { batchId })) return false
     return cancelBatch(batchId)
   })
 
   ipcMain.handle(
     "executor:approve",
-    async (_e, runId: string, nodeId: string, editedContent?: string) => {
+    async (event, runId: string, nodeId: string, editedContent?: string) => {
+      if (!assertWindowCanMutateExecution(event, runId, "executor:approve", { nodeId })) return false
       const ok = await resolveApproval(runId, nodeId, true, editedContent)
       if (ok) {
         await persistCaseStateForApprovalDecision(runId, nodeId, true).catch((error) => {
@@ -1065,7 +1123,8 @@ export function registerExecutorHandlers() {
 
   ipcMain.handle(
     "executor:reject",
-    async (_e, runId: string, nodeId: string) => {
+    async (event, runId: string, nodeId: string) => {
+      if (!assertWindowCanMutateExecution(event, runId, "executor:reject", { nodeId })) return false
       const ok = await resolveApproval(runId, nodeId, false)
       if (ok) {
         await persistCaseStateForApprovalDecision(runId, nodeId, false).catch((error) => {
@@ -1082,7 +1141,8 @@ export function registerExecutorHandlers() {
 
   ipcMain.handle(
     "executor:override-evaluator",
-    async (_e, runId: string, nodeId: string) => {
+    async (event, runId: string, nodeId: string) => {
+      if (!assertWindowCanMutateExecution(event, runId, "executor:override-evaluator", { nodeId })) return false
       return resolveEvalOverride(runId, nodeId)
     },
   )
