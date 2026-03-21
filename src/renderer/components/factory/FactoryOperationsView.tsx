@@ -5,6 +5,7 @@ import {
   cardToneClass,
   factoryActionLabel,
   factoryCaseStatusLabel,
+  factoryPrimaryActionButtonLabel,
   factoryCaseStatusTone,
   formatFactoryDate,
   latestLineageLabel,
@@ -375,7 +376,7 @@ export function FactoryOperationsView({
                           onClick={() => { if (action.task) onOpenInboxTask(action.task, action.caseId) }}
                         >
                           <Inbox size={14} />
-                          Approval
+                          {factoryPrimaryActionButtonLabel(action.kind)}
                         </Button>
                       ) : null}
                       {action.run ? (
@@ -389,7 +390,7 @@ export function FactoryOperationsView({
                           disabled={!action.run.workflowPath}
                         >
                           <ArrowUpRight size={14} />
-                          Open run
+                          {factoryPrimaryActionButtonLabel(action.kind)}
                         </Button>
                       ) : null}
                       {action.template ? (
@@ -402,7 +403,7 @@ export function FactoryOperationsView({
                           disabled={Boolean(launchingTemplateId)}
                         >
                           {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                          {isLaunching ? "Opening..." : "Open step"}
+                          {isLaunching ? "Opening..." : factoryPrimaryActionButtonLabel(action.kind)}
                         </Button>
                       ) : null}
                       <Button variant="ghost" size="sm" onClick={() => onFocusCase(action.caseId)}>
@@ -484,7 +485,7 @@ export function FactoryOperationsView({
                               {openWorkflowPath ? (
                                 <Button variant="ghost" size="sm" onClick={() => { void onOpenWorkflow(openWorkflowPath) }}>
                                   <ArrowUpRight size={14} />
-                                  Open
+                                  Open in runtime shell
                                 </Button>
                               ) : null}
                             </div>
@@ -547,7 +548,7 @@ export function FactoryOperationsView({
                                   }
                                 }}>
                                   <Inbox size={14} />
-                                  Approval
+                                  Review in runtime shell
                                 </Button>
                               ) : null}
                               {primaryTemplate ? (
@@ -557,7 +558,7 @@ export function FactoryOperationsView({
                                   disabled={Boolean(launchingTemplateId)}
                                 >
                                   {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                                  {isLaunching ? "Opening..." : "Open next step"}
+                                  {isLaunching ? "Opening..." : "Continue in runtime shell"}
                                 </Button>
                               ) : null}
                               <Button variant="ghost" size="sm" onClick={() => onOpenCaseArtifacts(entry.id)}>
@@ -644,12 +645,12 @@ export function FactoryOperationsView({
                             {task.workflowPath ? (
                               <Button variant="ghost" size="sm" onClick={() => { void onOpenWorkflow(task.workflowPath || null) }}>
                                 <ArrowUpRight size={14} />
-                                Open flow
+                                Open in runtime shell
                               </Button>
                             ) : null}
                             <Button variant="outline" size="sm" onClick={() => onOpenInboxTask(task)}>
                               <Inbox size={14} />
-                              Review block
+                              Review in runtime shell
                             </Button>
                           </div>
                         </>
@@ -712,7 +713,7 @@ export function FactoryOperationsView({
                       </div>
                       <Button size="sm" onClick={() => { void onLaunchTemplate(template, scopedArtifacts) }} disabled={Boolean(launchingTemplateId)}>
                         {isLaunching ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                        {isLaunching ? "Opening..." : "Open step"}
+                        {isLaunching ? "Opening..." : "Continue in runtime shell"}
                       </Button>
                     </div>
                   )
@@ -768,7 +769,7 @@ export function FactoryOperationsView({
                         ) : null}
                         <Button variant="outline" size="sm" onClick={() => { void onOpenWorkflow(entry.workflowPath) }} disabled={!entry.workflowPath}>
                           <ArrowUpRight size={14} />
-                          Open
+                          Open in runtime shell
                         </Button>
                       </div>
                     </div>
@@ -801,10 +802,10 @@ export function FactoryOperationsView({
                             Report
                           </Button>
                         ) : null}
-                        <Button variant="outline" size="sm" onClick={() => { void onOpenWorkflow(run.workflowPath || null) }} disabled={!run.workflowPath}>
-                          <ArrowUpRight size={14} />
-                          Open
-                        </Button>
+                      <Button variant="outline" size="sm" onClick={() => { void onOpenWorkflow(run.workflowPath || null) }} disabled={!run.workflowPath}>
+                        <ArrowUpRight size={14} />
+                        Open in runtime shell
+                      </Button>
                       </div>
                     </div>
                   </div>

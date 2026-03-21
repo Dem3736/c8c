@@ -164,6 +164,12 @@ export function factoryActionLabel(kind: FactoryActionItem["kind"]) {
   return "Open step"
 }
 
+export function factoryPrimaryActionButtonLabel(kind: FactoryActionItem["kind"]) {
+  if (kind === "review_gate") return "Review in runtime shell"
+  if (kind === "monitor_run") return "Open in runtime shell"
+  return "Continue in runtime shell"
+}
+
 export function latestLineageLabel(entry: FactoryCase) {
   return entry.lineageLabels[entry.lineageLabels.length - 1] || null
 }

@@ -22,6 +22,7 @@ import {
   currentWorkflowAtom,
   mainViewAtom,
   multiRunDashboardOpenAtom,
+  selectedInboxTaskKeyAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
   workflowDirtyAtom,
@@ -31,6 +32,7 @@ import {
   approvalRequestsAtom,
   clearWorkflowExecutionStateAtom,
   pastRunsAtom,
+  selectedPastRunAtom,
   updateWorkflowExecutionStateAtom,
   workflowExecutionStatesAtom,
   type WorkflowExecutionState,
@@ -217,6 +219,136 @@ function summarizeCost(entry: DashboardEntry): { totalCost: number; totalTokens:
   return { totalCost, totalTokens }
 }
 
+function isFailureEntry(entry: DashboardEntry): boolean {
+  return entry.runStatus === "error"
+    || entry.runOutcome === "failed"
+    || entry.runOutcome === "interrupted"
+    || Boolean(entry.lastError)
+}
+
+function triageGroup(entry: DashboardEntry): "needs_action" | "running" | "recent" {
+  if (entry.approvalCount > 0 || isFailureEntry(entry)) return "needs_action"
+  if (entry.runStatus === "paused" || isRunInFlight(entry.runStatus)) return "running"
+  return "recent"
+}
+
+function triagePriority(entry: DashboardEntry): number {
+  if (entry.approvalCount > 0) return 0
+  if (isFailureEntry(entry)) return 1
+  if (entry.runStatus === "paused") return 2
+  if (isRunInFlight(entry.runStatus)) return 3
+  if (entry.runOutcome === "completed" || entry.runStatus === "done") return 4
+  if (entry.runOutcome === "cancelled") return 5
+  return 6
+}
+
+function entryDurationMs(entry: DashboardEntry, now: number): number | null {
+  if (entry.pastRun?.durationMs != null) return entry.pastRun.durationMs
+  if (entry.runStartedAt && isRunInFlight(entry.runStatus)) {
+    return Math.max(0, now - entry.runStartedAt)
+  }
+  if (entry.completedAt && entry.runStartedAt) {
+    return Math.max(0, entry.completedAt - entry.runStartedAt)
+  }
+  return null
+}
+
+function entryDurationLabel(entry: DashboardEntry, now: number): string | null {
+  const durationMs = entryDurationMs(entry, now)
+  return durationMs == null ? null : formatDurationMs(durationMs)
+}
+
+function entryScanLine(entry: DashboardEntry, now: number): string {
+  const parts = [
+    entry.progress.totalSteps > 0
+      ? `Step ${Math.min(entry.progress.completedSteps, entry.progress.totalSteps)}/${entry.progress.totalSteps}`
+      : null,
+    entryDurationLabel(entry, now),
+    entry.activeNodeLabel && isRunInFlight(entry.runStatus)
+      ? entry.activeNodeLabel
+      : null,
+    entry.approvalCount > 0
+      ? `${entry.approvalCount} approval${entry.approvalCount === 1 ? "" : "s"} pending`
+      : null,
+    isFailureEntry(entry) && !entry.approvalCount
+      ? "Needs review"
+      : null,
+  ].filter((value): value is string => Boolean(value))
+
+  return parts.join(" · ")
+}
+
+function triageHeadline(entry: DashboardEntry): string {
+  if (entry.approvalCount > 0) {
+    return `${entry.approvalCount} approval${entry.approvalCount === 1 ? "" : "s"} waiting`
+  }
+  if (isFailureEntry(entry)) {
+    return entry.activeNodeLabel
+      ? `${entry.activeNodeLabel} failed`
+      : "Run failed"
+  }
+  if (entry.runStatus === "paused") return "Run paused"
+  if (entry.runStatus === "starting") return "Run starting"
+  if (entry.runStatus === "running") {
+    return entry.activeNodeLabel
+      ? `${entry.activeNodeLabel} is running`
+      : "Run in progress"
+  }
+  if (entry.runStatus === "cancelling") return "Run stopping"
+  if (entry.runOutcome === "completed" || entry.runStatus === "done") return "Run completed"
+  if (entry.runOutcome === "cancelled") return "Run cancelled"
+  return "Recent flow state"
+}
+
+function triageSummary(entry: DashboardEntry, now: number): string {
+  const parts = [
+    folderName(entry.projectPath),
+    entry.progress.totalSteps > 0
+      ? `Step ${Math.min(entry.progress.completedSteps, entry.progress.totalSteps)}/${entry.progress.totalSteps}`
+      : null,
+    entryDurationLabel(entry, now),
+    entry.approvalCount > 0
+      ? `${entry.approvalCount} pending approval${entry.approvalCount === 1 ? "" : "s"}`
+      : null,
+    entry.lastError && entry.approvalCount === 0
+      ? "Open the flow to inspect the failing step."
+      : null,
+  ].filter((value): value is string => Boolean(value))
+
+  return parts.join(" · ")
+}
+
+function primaryActionLabel(entry: DashboardEntry): string {
+  if (entry.runStatus === "paused" && entry.runId) return "Resume run"
+  if (entry.approvalCount > 0) return "Review decision"
+  if (isFailureEntry(entry)) return "Inspect failure"
+  if (isRunInFlight(entry.runStatus)) return "Open live run"
+  if (entry.runOutcome === "completed" || entry.runStatus === "done") return "Review result"
+  return "Open flow"
+}
+
+function groupMetaLabel(group: "needs_action" | "running" | "recent"): string {
+  if (group === "needs_action") return "Needs action"
+  if (group === "running") return "Running now"
+  return "Recent"
+}
+
+function toExecutionStateSnapshot(entry: DashboardEntry): WorkflowExecutionState {
+  const {
+    workflowKey: _workflowKey,
+    workflowPath: _workflowPath,
+    approvalCount: _approvalCount,
+    approvalMessages: _approvalMessages,
+    isSelectedWorkflow: _isSelectedWorkflow,
+    activeNodeLabel: _activeNodeLabel,
+    progress: _progress,
+    pastRun: _pastRun,
+    ...state
+  } = entry
+
+  return structuredClone(state)
+}
+
 interface DashboardEntry extends WorkflowExecutionState {
   workflowKey: string
   workflowPath: string | null
@@ -232,20 +364,22 @@ const DashboardSidebarEntry = memo(function DashboardSidebarEntry({
   entry,
   isSelected,
   onSelect,
+  now,
 }: {
   entry: DashboardEntry
   isSelected: boolean
   onSelect: (key: string) => void
+  now: number
 }) {
   return (
     <button
       type="button"
       onClick={() => onSelect(entry.workflowKey)}
       className={cn(
-        "ui-pressable ui-surface-lift w-full rounded-lg border p-3 text-left ui-transition-colors ui-motion-fast",
+        "ui-pressable w-full rounded-lg px-3 py-3 text-left ui-transition-colors ui-motion-fast",
         isSelected
-          ? "border-primary/40 bg-primary/8 shadow-[inset_0_1px_0_hsl(var(--primary)/0.08),0_10px_22px_hsl(var(--foreground)/0.08)]"
-          : "border-hairline bg-surface-1/80 ui-elevation-base hover:bg-surface-2/70",
+          ? "bg-surface-2/80 text-foreground"
+          : "bg-transparent text-foreground hover:bg-surface-2/50",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -263,15 +397,7 @@ const DashboardSidebarEntry = memo(function DashboardSidebarEntry({
         </span>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 ui-meta-text text-muted-foreground">
-        <span className="tabular-nums">
-          Step {Math.min(entry.progress.completedSteps, entry.progress.totalSteps)}/{entry.progress.totalSteps || 0}
-        </span>
-        {entry.activeNodeLabel && (
-          <span className="truncate">Active: {entry.activeNodeLabel}</span>
-        )}
-        {entry.approvalCount > 0 && (
-          <span className="text-status-warning">{entry.approvalCount} approval pending</span>
-        )}
+        <span>{entryScanLine(entry, now)}</span>
       </div>
     </button>
   )
@@ -286,11 +412,14 @@ export function MultiRunDashboard() {
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [, setCurrentWorkflow] = useAtom(currentWorkflowAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
+  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
   const workflowDirty = useAtomValue(workflowDirtyAtom)
   const [, setMainView] = useAtom(mainViewAtom)
   const updateWorkflowExecutionState = useSetAtom(updateWorkflowExecutionStateAtom)
   const clearWorkflowExecutionState = useSetAtom(clearWorkflowExecutionStateAtom)
   const [selectedEntryKey, setSelectedEntryKey] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const { confirmDiscard, unsavedChangesDialog } = useUnsavedChangesDialog()
 
   const entriesWithHistory = useMemo(() => {
@@ -327,15 +456,39 @@ export function MultiRunDashboard() {
         }
       })
       .sort((left, right) => {
-        const leftActive = isRunInFlight(left.runStatus) ? 1 : 0
-        const rightActive = isRunInFlight(right.runStatus) ? 1 : 0
-        if (leftActive !== rightActive) return rightActive - leftActive
+        const priorityDiff = triagePriority(left) - triagePriority(right)
+        if (priorityDiff !== 0) return priorityDiff
         return buildEntrySortTimestamp(right) - buildEntrySortTimestamp(left)
       })
   }, [approvalRequests, pastRuns, selectedWorkflowPath, workflowExecutionStates])
 
   const selectedEntry = entriesWithHistory.find((entry) => entry.workflowKey === selectedEntryKey) || entriesWithHistory[0] || null
   const activeCount = entriesWithHistory.filter((entry) => isRunInFlight(entry.runStatus)).length
+  const aggregateCounts = useMemo(() => ({
+    needsAction: entriesWithHistory.filter((entry) => triageGroup(entry) === "needs_action").length,
+    running: entriesWithHistory.filter((entry) => triageGroup(entry) === "running").length,
+    recent: entriesWithHistory.filter((entry) => triageGroup(entry) === "recent").length,
+  }), [entriesWithHistory])
+  const groupedEntries = useMemo(
+    () => [
+      {
+        id: "needs_action" as const,
+        label: "Needs action",
+        entries: entriesWithHistory.filter((entry) => triageGroup(entry) === "needs_action"),
+      },
+      {
+        id: "running" as const,
+        label: "Running now",
+        entries: entriesWithHistory.filter((entry) => triageGroup(entry) === "running"),
+      },
+      {
+        id: "recent" as const,
+        label: "Recent",
+        entries: entriesWithHistory.filter((entry) => triageGroup(entry) === "recent"),
+      },
+    ].filter((group) => group.entries.length > 0),
+    [entriesWithHistory],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -348,8 +501,20 @@ export function MultiRunDashboard() {
     }
   }, [entriesWithHistory, open, selectedEntryKey])
 
+  useEffect(() => {
+    if (!open || activeCount === 0) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [activeCount, open])
+
   const focusWorkflow = async (entry: DashboardEntry) => {
+    const clearReviewState = () => {
+      setSelectedInboxTaskKey(null)
+      setSelectedPastRun(null)
+    }
+
     if (entry.isSelectedWorkflow) {
+      clearReviewState()
       setMainView("thread")
       setOpen(false)
       return
@@ -370,6 +535,7 @@ export function MultiRunDashboard() {
       setSelectedWorkflowPath(null)
       setCurrentWorkflow(restoredWorkflow)
       setWorkflowSavedSnapshot(workflowSnapshot(createEmptyWorkflow()))
+      clearReviewState()
       return true
     }
 
@@ -379,6 +545,7 @@ export function MultiRunDashboard() {
         setSelectedWorkflowPath(entry.workflowPath)
         setCurrentWorkflow(loadedWorkflow)
         setWorkflowSavedSnapshot(workflowSnapshot(loadedWorkflow))
+        clearReviewState()
         setOpen(false)
         return
       } catch (error) {
@@ -457,14 +624,24 @@ export function MultiRunDashboard() {
 
   const clearEntry = (entry: DashboardEntry) => {
     if (isRunInFlight(entry.runStatus)) return
+    const snapshot = toExecutionStateSnapshot(entry)
     clearWorkflowExecutionState(entry.workflowKey)
+    toast.success("Removed from triage view", {
+      action: {
+        label: "Undo",
+        onClick: () => {
+          updateWorkflowExecutionState({
+            key: entry.workflowKey,
+            update: snapshot,
+          })
+          setSelectedEntryKey(entry.workflowKey)
+        },
+      },
+    })
   }
 
   const selectedEntryCost = selectedEntry ? summarizeCost(selectedEntry) : { totalCost: 0, totalTokens: 0 }
-  const selectedEntryDuration = selectedEntry?.pastRun?.durationMs
-    ?? ((selectedEntry?.completedAt && selectedEntry.runStartedAt)
-      ? (selectedEntry.completedAt - selectedEntry.runStartedAt)
-      : null)
+  const selectedEntryDurationLabel = selectedEntry ? entryDurationLabel(selectedEntry, now) : null
 
   return (
     <>
@@ -487,23 +664,35 @@ export function MultiRunDashboard() {
               <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
                 <div>
                   <p className="text-body-sm font-medium text-foreground">Session runs</p>
-                  <p className="ui-meta-text text-muted-foreground">{entriesWithHistory.length} tracked</p>
+                  <p className="ui-meta-text text-muted-foreground">
+                    {aggregateCounts.needsAction} need action · {aggregateCounts.running} live · {aggregateCounts.recent} recent
+                  </p>
                 </div>
               </div>
               <div className="ui-scroll-region min-h-0 max-h-[320px] overflow-y-auto p-2 lg:max-h-none lg:flex-1">
                 {entriesWithHistory.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-hairline bg-surface-1/70 p-4 text-body-sm text-muted-foreground">
+                  <div className="p-4 text-body-sm text-muted-foreground">
                     No active or recent runs in this session yet.
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {entriesWithHistory.map((entry) => (
-                      <DashboardSidebarEntry
-                        key={entry.workflowKey}
-                        entry={entry}
-                        isSelected={selectedEntryKey === entry.workflowKey}
-                        onSelect={setSelectedEntryKey}
-                      />
+                  <div className="space-y-4">
+                    {groupedEntries.map((group) => (
+                      <section key={group.id} className="space-y-1.5">
+                        <div className="px-3">
+                          <p className="ui-meta-label text-muted-foreground">{group.label}</p>
+                        </div>
+                        <div className="space-y-1">
+                          {group.entries.map((entry) => (
+                            <DashboardSidebarEntry
+                              key={entry.workflowKey}
+                              entry={entry}
+                              isSelected={selectedEntryKey === entry.workflowKey}
+                              onSelect={setSelectedEntryKey}
+                              now={now}
+                            />
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 )}
@@ -514,235 +703,206 @@ export function MultiRunDashboard() {
               {selectedEntry ? (
                 <div key={selectedEntry.workflowKey} className="flex h-full flex-col ui-fade-slide-in">
                   <div className="border-b border-hairline px-5 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate text-title-md text-foreground">
-                            {selectedEntry.workflowName || (selectedEntry.workflowPath ? "Untitled flow" : "Unsaved draft")}
-                          </h3>
-                          {selectedEntry.isSelectedWorkflow && (
-                            <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-                              Current flow
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="mt-1 text-body-sm text-muted-foreground">
-                          {selectedEntry.workflowPath || "Unsaved draft flow"}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-title-md text-foreground">
+                          {selectedEntry.workflowName || (selectedEntry.workflowPath ? "Untitled flow" : "Unsaved draft")}
+                        </h3>
+                        {selectedEntry.isSelectedWorkflow && (
+                          <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
+                            Current flow
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 text-body-sm text-muted-foreground">
+                        {selectedEntry.workflowPath || "Unsaved draft flow"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="ui-scroll-region flex-1 overflow-y-auto px-5 py-4">
+                    <section className="rounded-xl surface-panel p-5 space-y-5 ui-fade-slide-in">
+                      <div className="space-y-2">
+                        <p className="section-kicker">{groupMetaLabel(triageGroup(selectedEntry))}</p>
+                        <h4 className="text-title-md text-foreground">{triageHeadline(selectedEntry)}</h4>
+                        <p className="text-body-sm text-muted-foreground">
+                          {triageSummary(selectedEntry, now)}
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => void focusWorkflow(selectedEntry)}>
-                          <Eye size={14} />
-                          Open
-                        </Button>
-                        {selectedEntry.runStatus === "paused" ? (
-                          <Button variant="outline" size="sm" className="ui-fade-slide-in-trailing" onClick={() => void resumeExecution(selectedEntry)}>
+                      <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
+                        {selectedEntry.runStatus === "paused" && selectedEntry.runId ? (
+                          <Button size="sm" onClick={() => void resumeExecution(selectedEntry)}>
                             <Play size={14} />
-                            Resume
+                            {primaryActionLabel(selectedEntry)}
                           </Button>
-                        ) : isRunInFlight(selectedEntry.runStatus) && selectedEntry.runStatus !== "cancelling" ? (
-                          <Button variant="outline" size="sm" className="ui-fade-slide-in-trailing" onClick={() => void pauseExecution(selectedEntry)} disabled={!selectedEntry.runId || selectedEntry.runStatus === "starting"}>
+                        ) : (
+                          <Button size="sm" onClick={() => void focusWorkflow(selectedEntry)}>
+                            <Eye size={14} />
+                            {primaryActionLabel(selectedEntry)}
+                          </Button>
+                        )}
+
+                        {selectedEntry.runStatus === "paused" && (
+                          <Button variant="outline" size="sm" onClick={() => void focusWorkflow(selectedEntry)}>
+                            <ExternalLink size={14} />
+                            Open flow
+                          </Button>
+                        )}
+
+                        {isRunInFlight(selectedEntry.runStatus) && selectedEntry.runStatus !== "paused" && selectedEntry.runStatus !== "cancelling" && selectedEntry.runStatus !== "starting" && selectedEntry.runId ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void pauseExecution(selectedEntry)}
+                          >
                             <Pause size={14} />
                             Pause
                           </Button>
                         ) : null}
-                        {isRunInFlight(selectedEntry.runStatus) && (
-                          <Button variant="destructive" size="sm" className="ui-fade-slide-in-trailing" onClick={() => void cancelExecution(selectedEntry)} disabled={!selectedEntry.runId || selectedEntry.runStatus === "cancelling"}>
+
+                        {selectedEntry.runStatus === "cancelling" ? (
+                          <span className="ui-meta-text text-muted-foreground">Stopping…</span>
+                        ) : isRunInFlight(selectedEntry.runStatus) && selectedEntry.runId ? (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => void cancelExecution(selectedEntry)}
+                          >
                             <Square size={14} />
                             Stop
                           </Button>
-                        )}
-                        {!isRunInFlight(selectedEntry.runStatus) && (
-                          <Button variant="ghost" size="sm" className="ui-fade-slide-in-trailing" onClick={() => clearEntry(selectedEntry)}>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => clearEntry(selectedEntry)}>
                             <TimerReset size={14} />
                             Clear
                           </Button>
                         )}
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="ui-scroll-region flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
-                      <div className="rounded-lg surface-soft p-3">
-                        <p className="ui-meta-text text-muted-foreground">Status</p>
-                        <div className="mt-2 flex items-center gap-2 text-body-sm font-medium text-foreground">
-                          {outcomeIcon(selectedEntry)}
-                          {outcomeLabel(selectedEntry)}
+                      <div className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-hairline pt-4 text-body-sm md:grid-cols-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Project</span>
+                          <span className="text-right text-foreground">{folderName(selectedEntry.projectPath)}</span>
                         </div>
-                        <p className="mt-2 ui-meta-text text-muted-foreground">
-                          Updated {formatDateTime(selectedEntry.lastUpdatedAt)}
-                        </p>
-                      </div>
-                      <div className="rounded-lg surface-soft p-3">
-                        <p className="ui-meta-text text-muted-foreground">Progress</p>
-                        <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
-                          Step {Math.min(selectedEntry.progress.completedSteps, selectedEntry.progress.totalSteps)}/{selectedEntry.progress.totalSteps || 0}
-                        </p>
-                        {selectedEntry.progress.totalSteps > 0 && (
-                          <div className="sidebar-progress-track mt-2">
-                            <div
-                              className={cn(
-                                "sidebar-progress-bar",
-                                selectedEntry.progress.failedSteps > 0
-                                  ? "bg-status-danger"
-                                  : "bg-primary/70",
-                                selectedEntry.runStatus === "running" && "ui-running-pulse",
-                              )}
-                              style={{
-                                transform: `scaleX(${Math.min(1, selectedEntry.progress.completedSteps / selectedEntry.progress.totalSteps)})`,
-                              }}
-                            />
-                          </div>
-                        )}
-                        <p className="mt-2 ui-meta-text text-muted-foreground">
-                          {selectedEntry.progress.runningSteps} running, {selectedEntry.progress.failedSteps} failed, {selectedEntry.progress.waitingApprovalSteps} waiting approval
-                        </p>
-                      </div>
-                      <div className="rounded-lg surface-soft p-3">
-                        <p className="ui-meta-text text-muted-foreground">Runtime</p>
-                        <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
-                          {formatDurationMs(selectedEntryDuration)}
-                        </p>
-                        <p className="mt-2 ui-meta-text text-muted-foreground">
-                          Started {formatDateTime(selectedEntry.runStartedAt)}
-                        </p>
-                      </div>
-                      <div className="rounded-lg surface-soft p-3">
-                        <p className="ui-meta-text text-muted-foreground">Usage</p>
-                        <p className="mt-2 text-body-sm font-medium text-foreground tabular-nums">
-                          {selectedEntryCost.totalCost > 0 ? `$${selectedEntryCost.totalCost.toFixed(2)}` : "No cost yet"}
-                        </p>
-                        <p className="mt-2 ui-meta-text text-muted-foreground tabular-nums">
-                          {selectedEntryCost.totalTokens > 0 ? `${formatTokenCount(selectedEntryCost.totalTokens)} tokens` : "No tokens yet"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr,0.8fr]">
-                      <div className="rounded-lg surface-soft p-4">
-                        <div className="flex items-center gap-2">
-                          <WorkflowIcon size={15} className="text-muted-foreground" />
-                          <h4 className="text-body-sm font-medium text-foreground">Execution details</h4>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Status</span>
+                          <span className="inline-flex items-center gap-2 text-right text-foreground">
+                            {outcomeIcon(selectedEntry)}
+                            {outcomeLabel(selectedEntry)}
+                          </span>
                         </div>
-                        <dl className="mt-3 space-y-3 text-body-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <dt className="text-muted-foreground">Project</dt>
-                            <dd className="text-right text-foreground">{folderName(selectedEntry.projectPath)}</dd>
-                          </div>
-                          <div className="flex items-start justify-between gap-3">
-                            <dt className="text-muted-foreground">Run ID</dt>
-                            <dd className="max-w-[60%] truncate text-right text-foreground">{selectedEntry.runId || selectedEntry.pastRun?.runId || "Not active"}</dd>
-                          </div>
-                          <div className="flex items-start justify-between gap-3">
-                            <dt className="text-muted-foreground">Active step</dt>
-                            <dd className="max-w-[60%] text-right text-foreground">
-                              <span className="inline-flex max-w-full items-center justify-end gap-1.5">
-                                {isRunInFlight(selectedEntry.runStatus) && selectedEntry.activeNodeLabel && (
-                                  <span className="ui-status-beacon" aria-hidden="true">
-                                    <span className="ui-status-beacon-ring bg-status-info/50" />
-                                    <span className="ui-status-beacon-core bg-status-info" />
-                                  </span>
-                                )}
-                                <span className="truncate">{selectedEntry.activeNodeLabel || "None"}</span>
-                              </span>
-                            </dd>
-                          </div>
-                          <div className="flex items-start justify-between gap-3">
-                            <dt className="text-muted-foreground">Approvals</dt>
-                            <dd className="max-w-[60%] text-right text-foreground">{selectedEntry.approvalCount > 0 ? `${selectedEntry.approvalCount} pending` : "None"}</dd>
-                          </div>
-                          <div className="flex items-start justify-between gap-3">
-                            <dt className="text-muted-foreground">Finished</dt>
-                            <dd className="max-w-[60%] text-right text-foreground">{formatDateTime(selectedEntry.completedAt)}</dd>
-                          </div>
-                        </dl>
-
-                        <div
-                          data-open={selectedEntry.approvalMessages.length > 0 ? "true" : "false"}
-                          className="ui-collapsible"
-                          role="status"
-                          aria-live="polite"
-                        >
-                          <div className="ui-collapsible-inner">
-                            <div className="mt-4 rounded-md surface-warning-soft p-3">
-                              <p className="text-body-sm font-medium text-status-warning">Pending approvals</p>
-                              <div className="mt-2 space-y-1.5">
-                                {selectedEntry.approvalMessages.map((message, index) => (
-                                  <p key={`${message}-${index}`} className="ui-meta-text text-status-warning/90">
-                                    {message}
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="text-right text-foreground tabular-nums">
+                            Step {Math.min(selectedEntry.progress.completedSteps, selectedEntry.progress.totalSteps)}/{selectedEntry.progress.totalSteps || 0}
+                          </span>
                         </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Runtime</span>
+                          <span className="text-right text-foreground tabular-nums">
+                            {selectedEntryDurationLabel || "Not available"}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Active step</span>
+                          <span className="max-w-[60%] text-right text-foreground">
+                            {selectedEntry.activeNodeLabel || "None"}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Approvals</span>
+                          <span className="text-right text-foreground">
+                            {selectedEntry.approvalCount > 0 ? `${selectedEntry.approvalCount} pending` : "None"}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Started</span>
+                          <span className="text-right text-foreground">{formatDateTime(selectedEntry.runStartedAt)}</span>
+                        </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Usage</span>
+                          <span className="text-right text-foreground tabular-nums">
+                            {selectedEntryCost.totalCost > 0 ? `$${selectedEntryCost.totalCost.toFixed(2)}` : "No cost yet"}
+                            {selectedEntryCost.totalTokens > 0 ? ` · ${formatTokenCount(selectedEntryCost.totalTokens)} tokens` : ""}
+                          </span>
+                        </div>
+                      </div>
 
-                        <div
-                          data-open={selectedEntry.lastError ? "true" : "false"}
-                          className="ui-collapsible"
-                          role="alert"
-                          aria-live="assertive"
-                        >
-                          <div className="ui-collapsible-inner">
-                            <div className="mt-4 rounded-md surface-danger-soft p-3">
-                              <div className="flex items-center gap-2 text-status-danger">
-                                <AlertTriangle size={14} />
-                                <p className="text-body-sm font-medium">Last error</p>
-                              </div>
-                              <p className="mt-2 text-body-sm text-status-danger/90 whitespace-pre-wrap break-words">
-                                {selectedEntry.lastError || ""}
+                      {selectedEntry.approvalMessages.length > 0 && (
+                        <div className="space-y-2 border-t border-hairline pt-4" role="status" aria-live="polite">
+                          <div className="flex items-center gap-2 text-status-warning">
+                            <AlertTriangle size={14} />
+                            <p className="text-body-sm font-medium">Pending approvals</p>
+                          </div>
+                          <div className="space-y-1.5">
+                            {selectedEntry.approvalMessages.map((message, index) => (
+                              <p key={`${message}-${index}`} className="text-body-sm text-status-warning/90">
+                                {message}
                               </p>
-                            </div>
+                            ))}
                           </div>
                         </div>
-                      </div>
+                      )}
 
-                      <div className="space-y-4">
-                        <div className="rounded-lg surface-soft p-4">
-                          <h4 className="text-body-sm font-medium text-foreground">Results</h4>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={!selectedEntry.reportPath}
-                              onClick={() => selectedEntry.reportPath && void window.api.openReport(selectedEntry.reportPath)}
-                            >
-                              <ExternalLink size={14} />
-                              Open report
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={!selectedEntry.workspace}
-                              onClick={() => selectedEntry.workspace && void window.api.showInFinder(selectedEntry.workspace)}
-                            >
-                              <FolderSearch2 size={14} />
-                              Reveal workspace
-                            </Button>
+                      {selectedEntry.lastError && (
+                        <div className="space-y-2 border-t border-hairline pt-4" role="alert" aria-live="assertive">
+                          <div className="flex items-center gap-2 text-status-danger">
+                            <AlertTriangle size={14} />
+                            <p className="text-body-sm font-medium">Last error</p>
+                          </div>
+                          <p className="text-body-sm text-status-danger/90 whitespace-pre-wrap break-words">
+                            {selectedEntry.lastError}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-3 border-t border-hairline pt-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <WorkflowIcon size={15} className="text-muted-foreground" />
+                            <h4 className="text-body-sm font-medium text-foreground">Result snapshot</h4>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedEntry.reportPath ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void window.api.openReport(selectedEntry.reportPath!)}
+                              >
+                                <ExternalLink size={14} />
+                                Open report
+                              </Button>
+                            ) : null}
+                            {selectedEntry.workspace ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void window.api.showInFinder(selectedEntry.workspace!)}
+                              >
+                                <FolderSearch2 size={14} />
+                                Reveal workspace
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
 
-                        <div className="rounded-lg surface-soft p-4">
-                          <h4 className="text-body-sm font-medium text-foreground">Result preview</h4>
-                          {selectedEntry.finalContent.trim() ? (
-                            <pre className="surface-inset-card mt-3 max-h-[320px] overflow-auto whitespace-pre-wrap break-words p-3 text-body-sm text-foreground">
-                              {selectedEntry.finalContent}
-                            </pre>
-                          ) : (
-                            <p className="mt-3 text-body-sm text-muted-foreground">
-                              No final output captured for this run yet.
-                            </p>
-                          )}
-                        </div>
+                        {selectedEntry.finalContent.trim() ? (
+                          <pre className="ui-scroll-region max-h-[320px] overflow-auto whitespace-pre-wrap break-words text-body-sm text-foreground">
+                            {selectedEntry.finalContent}
+                          </pre>
+                        ) : (
+                          <p className="text-body-sm text-muted-foreground">
+                            No final output captured for this run yet.
+                          </p>
+                        )}
                       </div>
-                    </div>
+                    </section>
                   </div>
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center px-6 py-12 text-center">
-                  <div className="max-w-sm rounded-lg border border-dashed border-hairline bg-surface-1/70 p-6">
+                  <div className="max-w-sm">
                     <p className="text-title-sm text-foreground">No runs to show</p>
                     <p className="mt-2 text-body-sm text-muted-foreground">
                       Start a flow and it will appear here with live status, approvals, and results.

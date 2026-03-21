@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAtom } from "jotai"
-import { mcpServersAtom, mcpServersLoadingAtom } from "@/lib/store"
+import { mcpServersAtom, mcpServersLoadingAtom, selectedProjectAtom } from "@/lib/store"
 import { cn } from "@/lib/cn"
 import { SectionHeading } from "@/components/ui/page-shell"
 import { Button, type ButtonProps } from "@/components/ui/button"
@@ -697,6 +697,7 @@ function PluginMcpServerRow({
 export function McpServersSection({ provider = "claude" }: { provider?: ProviderId }) {
   const [servers, setServers] = useAtom(mcpServersAtom)
   const [loading, setLoading] = useAtom(mcpServersLoadingAtom)
+  const [selectedProject] = useAtom(selectedProjectAtom)
   const [pluginServers, setPluginServers] = useState<PluginMcpServerInfo[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingServer, setEditingServer] = useState<McpServerInfo | null>(null)
@@ -785,11 +786,12 @@ export function McpServersSection({ provider = "claude" }: { provider?: Provider
   }
 
   const handleSave = async (server: McpServerInfo, originalName?: string) => {
+    const projectPath = server.projectPath ?? selectedProject ?? undefined
     let result: { success: boolean; error?: string }
     if (originalName) {
-      result = await window.api.mcpUpdateServer(provider, originalName, server, server.projectPath)
+      result = await window.api.mcpUpdateServer(provider, originalName, server, projectPath)
     } else {
-      result = await window.api.mcpAddServer(provider, server, server.projectPath)
+      result = await window.api.mcpAddServer(provider, server, projectPath)
     }
     if (!result.success) {
       throw new Error(result.error || "Operation failed")

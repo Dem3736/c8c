@@ -37,6 +37,7 @@ import { selectedPastRunAtom } from "@/features/execution"
 import type { ArtifactRecord, CaseStateRecord, HumanTaskField, HumanTaskSnapshot, HumanTaskSummary, RunResult, Workflow } from "@shared/types"
 import {
   buildInitialHumanTaskAnswers,
+  buildSubmitHumanTaskAnswers,
   hasMissingRequiredTaskAnswers,
   sortHumanTasksByActivity,
   type TaskStageMeta,
@@ -383,7 +384,7 @@ export function NotificationsPage() {
     if (!selectedTask) return false
     if (hasMissingRequiredTaskAnswers(selectedTask, taskAnswers)) return false
     const ok = await window.api.submitHumanTask(selectedTask.taskId, selectedTask.workspace, {
-      answers: taskAnswers,
+      answers: buildSubmitHumanTaskAnswers(selectedTask, taskAnswers),
     })
     return ok
   }

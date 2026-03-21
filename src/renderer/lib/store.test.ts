@@ -1,9 +1,15 @@
+import { createStore } from "jotai"
 import { describe, expect, it } from "vitest"
 import {
   appendInboxNotification,
+  currentWorkflowAtom,
   pruneInboxNotificationsByPersistentKeys,
+  selectedWorkflowPathAtom,
   type InboxNotification,
+  workflowDirtyAtom,
+  workflowSavedSnapshotAtom,
 } from "./store"
+import { workflowSnapshot } from "./workflow-snapshot"
 
 describe("inbox notification helpers", () => {
   it("upserts persistent notifications in place without duplicating them", () => {
@@ -122,5 +128,68 @@ describe("inbox notification helpers", () => {
         read: true,
       },
     ])
+  })
+})
+
+describe("workflowDirtyAtom", () => {
+  it("stays clean for a fresh empty draft", () => {
+    const store = createStore()
+    expect(store.get(workflowDirtyAtom)).toBe(false)
+  })
+
+  it("becomes dirty after a meaningful mutation", () => {
+    const store = createStore()
+    store.set(currentWorkflowAtom, {
+      version: 1,
+      name: "Dirty draft",
+      description: "",
+      defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
+      nodes: [],
+      edges: [],
+    })
+
+    expect(store.get(workflowDirtyAtom)).toBe(true)
+  })
+
+  it("returns to clean after saving the current snapshot", () => {
+    const store = createStore()
+    const workflow = {
+      version: 1,
+      name: "Saved draft",
+      description: "",
+      defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
+      nodes: [],
+      edges: [],
+    }
+    store.set(currentWorkflowAtom, workflow)
+
+    expect(store.get(workflowDirtyAtom)).toBe(true)
+
+    store.set(workflowSavedSnapshotAtom, workflowSnapshot(workflow))
+    expect(store.get(workflowDirtyAtom)).toBe(false)
+  })
+
+  it("returns to clean when undo restores the saved workflow snapshot", () => {
+    const store = createStore()
+    const savedWorkflow = {
+      version: 1,
+      name: "Saved workflow",
+      description: "",
+      defaults: { model: "sonnet", maxTurns: 120, timeout_minutes: 30, maxParallel: 8 },
+      nodes: [],
+      edges: [],
+    }
+    store.set(selectedWorkflowPathAtom, "/tmp/saved.chain")
+    store.set(currentWorkflowAtom, savedWorkflow)
+    store.set(workflowSavedSnapshotAtom, workflowSnapshot(savedWorkflow))
+
+    store.set(currentWorkflowAtom, {
+      ...savedWorkflow,
+      description: "Edited",
+    })
+    expect(store.get(workflowDirtyAtom)).toBe(true)
+
+    store.set(currentWorkflowAtom, savedWorkflow)
+    expect(store.get(workflowDirtyAtom)).toBe(false)
   })
 })

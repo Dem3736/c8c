@@ -3,6 +3,7 @@ import type { WebSearchBackend } from "@/lib/web-search-backend"
 import { resolveTemplateWorkflow } from "@/lib/web-search-backend"
 import {
   buildArtifactAttachmentSeedInput,
+  buildArtifactInputAttachments,
   buildTemplateRunContext,
   buildTemplateWorkflowEntryState,
   type WorkflowTemplateCaseOverride,
@@ -43,11 +44,7 @@ export async function prepareTemplateStageLaunch({
     window.api.listProjectWorkflows(projectPath),
   ])
 
-  const artifactAttachments: InputAttachment[] = artifacts.map((artifact) => ({
-    kind: "file",
-    path: artifact.relativePath,
-    name: artifact.title,
-  }))
+  const artifactAttachments: InputAttachment[] = buildArtifactInputAttachments(artifacts)
   const hydratedTemplate = {
     ...template,
     workflow: loadedWorkflow,

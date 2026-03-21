@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import {
   generateDialogOpenAtom,
+  globalDetailBudgetAtom,
   currentWorkflowAtom,
   selectedInboxTaskKeyAtom,
+  selectedWorkflowTemplateContextAtom,
   skillsAtom,
   selectedProjectAtom,
   selectedWorkflowPathAtom,
+  setWorkflowTemplateContextForKeyAtom,
   workflowEntryStateAtom,
   workflowSavedSnapshotAtom,
   workflowsAtom,
@@ -39,12 +42,15 @@ const STEP_LABELS: Record<string, string> = {
 export function GenerateWorkflow() {
   const [open, setOpen] = useAtom(generateDialogOpenAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [detailBudget] = useAtom(globalDetailBudgetAtom)
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
+  const [selectedWorkflowTemplateContext] = useAtom(selectedWorkflowTemplateContextAtom)
   const [, setWorkflowSavedSnapshot] = useAtom(workflowSavedSnapshotAtom)
   const [, setWorkflows] = useAtom(workflowsAtom)
-  const [, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
-  const [, setSelectedPastRun] = useAtom(selectedPastRunAtom)
-  const [, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const [selectedInboxTaskKey, setSelectedInboxTaskKey] = useAtom(selectedInboxTaskKeyAtom)
+  const [selectedPastRun, setSelectedPastRun] = useAtom(selectedPastRunAtom)
+  const [workflowEntryState, setWorkflowEntryState] = useAtom(workflowEntryStateAtom)
+  const setWorkflowTemplateContextForKey = useSetAtom(setWorkflowTemplateContextForKeyAtom)
   const [skills, setSkills] = useAtom(skillsAtom)
   const [selectedProject] = useAtom(selectedProjectAtom)
   const [runStatus] = useAtom(runStatusAtom)
@@ -64,13 +70,19 @@ export function GenerateWorkflow() {
     setSelectedWorkflowPath,
     setWorkflowSavedSnapshot,
     setWorkflows,
+    selectedInboxTaskKey,
     setSelectedInboxTaskKey,
+    selectedPastRun,
     setSelectedPastRun,
+    workflowEntryState,
+    setWorkflowEntryState,
+    selectedWorkflowTemplateContext,
+    setWorkflowTemplateContextForKey,
     skills,
     setSkills,
     selectedProject,
+    detailBudget,
     onOpenChange: setOpen,
-    onRestorePrevious: () => setWorkflowEntryState(null),
     onGenerated: ({ workflow: nextWorkflow, workflowPath, request }) => {
       setWorkflowEntryState(buildGeneratedWorkflowEntryState({
         workflow: nextWorkflow,

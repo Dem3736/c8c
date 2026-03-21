@@ -6,6 +6,8 @@ import { formatResultModeLabel } from "@/lib/result-mode-factory"
 import { buildRunProgressSummary } from "@/lib/run-progress"
 import {
   areTemplateContractsSatisfied,
+  deriveTemplateContinuationLabel,
+  deriveTemplateDisplayLabel,
   deriveTemplateExecutionDisciplineLabels,
   deriveTemplateJourneyStageLabel,
   deriveTemplatePackStagePath,
@@ -64,6 +66,74 @@ interface UseFactoryDataParams {
   templates: WorkflowTemplate[]
   workflowExecutionStates: Record<string, WorkflowExecutionState>
   workflowTemplateContexts: Record<string, WorkflowTemplateRunContext>
+}
+
+function normalizeTemplateMatchLabel(value: string | null | undefined) {
+  return value?.trim().toLowerCase() || ""
+}
+
+function matchesTemplateNextStepLabel(template: WorkflowTemplate, nextStepLabel: string | null) {
+  const normalizedTarget = normalizeTemplateMatchLabel(nextStepLabel)
+  if (!normalizedTarget) return false
+  return [
+    deriveTemplateContinuationLabel(template),
+    deriveTemplateDisplayLabel(template),
+    deriveTemplateJourneyStageLabel(template),
+    template.name,
+  ].some((value) => normalizeTemplateMatchLabel(value) === normalizedTarget)
+}
+
+function dedupeTemplates(templates: WorkflowTemplate[]) {
+  const seen = new Set<string>()
+  const next: WorkflowTemplate[] = []
+  for (const template of templates) {
+    if (seen.has(template.id)) continue
+    seen.add(template.id)
+    next.push(template)
+  }
+  return next
+}
+
+function isFactoryCaseBlocked(continuationStatus: CaseStateRecord["continuationStatus"]) {
+  return continuationStatus === "awaiting_approval" || continuationStatus === "blocked_by_check"
+}
+
+export function selectFactoryCaseNextTemplates({
+  caseArtifacts,
+  latestArtifact,
+  nextStepLabel,
+  templateById,
+  templates,
+}: {
+  caseArtifacts: ArtifactRecord[]
+  latestArtifact: ArtifactRecord | null
+  nextStepLabel: string | null
+  templateById: Map<string, WorkflowTemplate>
+  templates: WorkflowTemplate[]
+}) {
+  const compatibleTemplates = templates
+    .filter((template) => (template.contractIn?.length || 0) > 0)
+    .filter((template) => areTemplateContractsSatisfied(template.contractIn, caseArtifacts))
+
+  if (compatibleTemplates.length === 0) return []
+
+  const compatibleTemplateIds = new Set(compatibleTemplates.map((template) => template.id))
+  const recommendedNextTemplates = latestArtifact?.templateId
+    ? (templateById.get(latestArtifact.templateId)?.pack?.recommendedNext || [])
+      .map((templateId) => templateById.get(templateId) || null)
+      .filter((template): template is WorkflowTemplate =>
+        template !== null && compatibleTemplateIds.has(template.id),
+      )
+    : []
+  const matchingLabelTemplates = compatibleTemplates.filter((template) =>
+    matchesTemplateNextStepLabel(template, nextStepLabel),
+  )
+
+  return dedupeTemplates([
+    ...recommendedNextTemplates,
+    ...matchingLabelTemplates,
+    ...compatibleTemplates,
+  ]).slice(0, 3)
 }
 
 export function useFactoryData({
@@ -219,17 +289,21 @@ export function useFactoryData({
           || (run.workflowPath ? entry.workflowPaths.has(run.workflowPath) : false),
         )
         .sort((left, right) => right.completedAt - left.completedAt)
-      const nextTemplatesForCase = templates
-        .filter((template) => (template.contractIn?.length || 0) > 0)
-        .filter((template) => areTemplateContractsSatisfied(template.contractIn, caseArtifacts))
-        .slice(0, 3)
+      const nextTemplatesForCase = isFactoryCaseBlocked(entry.continuationStatus)
+        ? []
+        : selectFactoryCaseNextTemplates({
+          caseArtifacts,
+          latestArtifact: entry.latestArtifact,
+          nextStepLabel: entry.nextStepLabel,
+          templateById,
+          templates,
+        })
       let status: FactoryCase["status"] = "completed"
       if (entry.activeRun) {
         status = "active"
       } else if (
         entry.tasks.length > 0
-        || entry.continuationStatus === "awaiting_approval"
-        || entry.continuationStatus === "blocked_by_check"
+        || isFactoryCaseBlocked(entry.continuationStatus)
       ) {
         status = "blocked"
       } else if (entry.continuationStatus === "ready" || nextTemplatesForCase.length > 0) {

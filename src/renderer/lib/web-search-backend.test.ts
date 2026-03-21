@@ -94,4 +94,43 @@ describe("resolveTemplateWorkflow", () => {
     expect(next.name).toBe("Deep Research")
     expect(workflow.name).toBe("new-flow")
   })
+
+  it("applies detail budget overrides to splitter-based audit templates", () => {
+    const workflow: Workflow = {
+      version: 1,
+      name: "UX/UI Polish Audit",
+      defaults: { model: "sonnet", maxParallel: 5 },
+      nodes: [
+        { id: "input-1", type: "input", position: { x: 0, y: 0 }, config: {} },
+        {
+          id: "splitter-1",
+          type: "splitter",
+          position: { x: 300, y: 0 },
+          config: {
+            strategy: "From the project map, create exactly 5 parallel repo-wide audit tasks.",
+            maxBranches: 5,
+          },
+        },
+        { id: "output-1", type: "output", position: { x: 600, y: 0 }, config: {} },
+      ],
+      edges: [
+        { id: "e1", source: "input-1", target: "splitter-1", type: "default" },
+        { id: "e2", source: "splitter-1", target: "output-1", type: "default" },
+      ],
+    }
+
+    const next = resolveTemplateWorkflow({
+      name: "UX/UI Polish Audit",
+      stage: "code",
+      workflow,
+    }, "builtin", { detailBudget: 20, templateId: "ux-ui-polish-audit" })
+
+    expect(next.defaults?.detailBudget).toBe(20)
+    expect(next.defaults?.maxParallel).toBe(20)
+    expect(next.nodes[1]?.type).toBe("splitter")
+    expect(next.nodes[1]?.config).toMatchObject({
+      maxBranches: 20,
+    })
+    expect((next.nodes[1]?.config as { strategy: string }).strategy).toContain("create up to 20 parallel audit tasks")
+  })
 })

@@ -87,6 +87,32 @@ function toDisplayMessages(messages: ChatSessionMessage[]): ChatMessageDisplay[]
   })
 }
 
+export function resolveRecoveredWorkflow({
+  activeSessionWorkflow,
+  conversationLatestWorkflow,
+  fileWorkflow,
+  workflowDirty,
+}: {
+  activeSessionWorkflow: Workflow | null
+  conversationLatestWorkflow: Workflow | null
+  fileWorkflow: Workflow | null
+  workflowDirty: boolean
+}): Workflow | null {
+  if (activeSessionWorkflow && isWorkflowPayload(activeSessionWorkflow)) {
+    return activeSessionWorkflow
+  }
+  if (workflowDirty) {
+    return null
+  }
+  if (fileWorkflow) {
+    return fileWorkflow
+  }
+  if (conversationLatestWorkflow && isWorkflowPayload(conversationLatestWorkflow)) {
+    return conversationLatestWorkflow
+  }
+  return null
+}
+
 function restoreActiveSessionState(
   snapshot: ChatSessionSnapshot,
   setMessages: (next: ChatMessageDisplay[] | ((prev: ChatMessageDisplay[]) => ChatMessageDisplay[])) => void,
@@ -190,6 +216,11 @@ export function useChatSession() {
     setWorkflow(nextWorkflow)
     setWorkflowSavedSnapshot(workflowSnapshot(nextWorkflow))
   }, [setWorkflow, setWorkflowSavedSnapshot])
+
+  const restoreWorkflowFromUndo = useCallback((nextWorkflow: Workflow) => {
+    workflowRef.current = nextWorkflow
+    setWorkflow(nextWorkflow)
+  }, [setWorkflow])
 
   const removeStreamingPlaceholder = useCallback(() => {
     setMessages((prev) =>
@@ -331,8 +362,7 @@ export function useChatSession() {
                   if (prev.length === 0) return prev
                   const last = prev[prev.length - 1]
                   if (last !== snapshot) return prev
-                  workflowRef.current = last
-                  setWorkflow(last)
+                  restoreWorkflowFromUndo(last)
                   return prev.slice(0, -1)
                 })
               },
@@ -425,7 +455,7 @@ export function useChatSession() {
     })
 
     return cleanup
-  }, [addNotification, applyPersistedWorkflow, nextLocalMessageId, pendingCreateEntry, removeStreamingPlaceholder, resetLocalSessionState, setMessages, setPendingCreateEntry, setSessionId, setStatus, setUndoStack, setWorkflow, setWorkflowEntryState])
+  }, [addNotification, applyPersistedWorkflow, nextLocalMessageId, pendingCreateEntry, removeStreamingPlaceholder, resetLocalSessionState, restoreWorkflowFromUndo, setMessages, setPendingCreateEntry, setSessionId, setStatus, setUndoStack, setWorkflowEntryState])
 
   // Load history when workflow changes
   useEffect(() => {
@@ -452,12 +482,18 @@ export function useChatSession() {
     ]).then(([{ conversation, activeSession }, fileWorkflow]) => {
       if (historyRequestRef.current !== requestId) return
 
-      if (activeSession?.workflow && isWorkflowPayload(activeSession.workflow)) {
-        applyPersistedWorkflow(activeSession.workflow)
-      } else if (!workflowDirtyRef.current && conversation?.latestWorkflow && isWorkflowPayload(conversation.latestWorkflow)) {
-        applyPersistedWorkflow(conversation.latestWorkflow)
-      } else if (!workflowDirtyRef.current && fileWorkflow) {
-        applyPersistedWorkflow(fileWorkflow)
+      const recoveredWorkflow = resolveRecoveredWorkflow({
+        activeSessionWorkflow: activeSession?.workflow && isWorkflowPayload(activeSession.workflow)
+          ? activeSession.workflow
+          : null,
+        conversationLatestWorkflow: conversation?.latestWorkflow && isWorkflowPayload(conversation.latestWorkflow)
+          ? conversation.latestWorkflow
+          : null,
+        fileWorkflow,
+        workflowDirty: workflowDirtyRef.current,
+      })
+      if (recoveredWorkflow) {
+        applyPersistedWorkflow(recoveredWorkflow)
       }
 
       if (activeSession) {
@@ -660,10 +696,10 @@ export function useChatSession() {
     setUndoStack((prev) => {
       if (prev.length === 0) return prev
       const last = prev[prev.length - 1]
-      setWorkflow(last)
+      restoreWorkflowFromUndo(last)
       return prev.slice(0, -1)
     })
-  }, [setUndoStack, setWorkflow])
+  }, [restoreWorkflowFromUndo, setUndoStack])
 
   return {
     messages,

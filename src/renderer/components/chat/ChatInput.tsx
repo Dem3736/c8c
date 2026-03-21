@@ -3,17 +3,20 @@ import { useAtom, useAtomValue } from "jotai"
 import { Send, Square } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { PromptComposer } from "@/components/ui/prompt-composer"
 import {
   chatDraftByWorkflowAtom,
   currentWorkflowAtom,
   defaultProviderAtom,
   desktopRuntimeAtom,
+  globalDetailBudgetAtom,
   providerSettingsAtom,
   selectedWorkflowPathAtom,
 } from "@/lib/store"
 import { matchesPrimaryShortcut } from "@/lib/keyboard-shortcuts"
 import { ProviderSelect } from "@/components/provider-controls"
+import { applyWorkflowDetailBudget, clampDetailBudget } from "@/lib/workflow-detail-budget"
 
 interface ChatInputProps {
   onSend: (message: string) => void
@@ -27,6 +30,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
   const [isCompact, setIsCompact] = useState(false)
   const [selectedWorkflowPath] = useAtom(selectedWorkflowPathAtom)
   const [workflow, setWorkflow] = useAtom(currentWorkflowAtom)
+  const [globalDetailBudget, setGlobalDetailBudget] = useAtom(globalDetailBudgetAtom)
   const [defaultProvider] = useAtom(defaultProviderAtom)
   const [providerSettings] = useAtom(providerSettingsAtom)
   const [chatDraftByWorkflow, setChatDraftByWorkflow] = useAtom(chatDraftByWorkflowAtom)
@@ -37,6 +41,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
   const sendShortcutLabel = `${desktopRuntime.primaryModifierLabel}↵`
   const sendShortcutAriaLabel = desktopRuntime.primaryModifierKey === "meta" ? "Command Enter" : "Control Enter"
   const activeProvider = workflow.defaults?.provider || defaultProvider
+  const detailBudget = workflow.defaults?.detailBudget ?? globalDetailBudget
   const shortcutHint = isCompact
     ? isStreaming
       ? `${sendShortcutLabel} send · Esc cancel`
@@ -93,6 +98,12 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
     if (selectedWorkflowPath) {
       setChatDraftByWorkflow((prev) => ({ ...prev, [selectedWorkflowPath]: nextValue }))
     }
+  }
+
+  const handleDetailBudgetChange = (value: number) => {
+    const nextBudget = clampDetailBudget(value)
+    setGlobalDetailBudget(nextBudget)
+    setWorkflow((prev) => applyWorkflowDetailBudget(prev, nextBudget))
   }
 
   return (
@@ -164,6 +175,26 @@ export function ChatInput({ onSend, onCancel, isStreaming, autoFocus = false }: 
                   : "h-control-lg w-48 rounded-md",
               )}
             />
+            <div className={cn("flex items-center gap-1.5", isCompact ? "self-stretch" : "")}>
+              <span className="ui-meta-text text-muted-foreground">Depth</span>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={detailBudget}
+                onChange={(event) => {
+                  const nextValue = parseInt(event.target.value, 10)
+                  if (!Number.isNaN(nextValue) && nextValue >= 1) {
+                    handleDetailBudgetChange(nextValue)
+                  }
+                }}
+                className={cn(
+                  "border-0 bg-surface-2/90 px-2 text-center shadow-none",
+                  isCompact ? "h-control-md w-20" : "h-control-lg w-20",
+                )}
+                aria-label="Detail budget"
+              />
+            </div>
             <p
               className={cn(
                 "ui-meta-text text-muted-foreground",

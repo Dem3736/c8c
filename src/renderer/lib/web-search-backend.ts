@@ -1,5 +1,6 @@
 import type { Workflow, WorkflowTemplate, WorkflowTemplateStage } from "@shared/types"
 import { cloneWorkflow } from "./workflow-graph-utils"
+import { applyWorkflowDetailBudget } from "./workflow-detail-budget"
 
 export type WebSearchBackend = "builtin" | "exa"
 
@@ -64,8 +65,14 @@ export function applyWebSearchBackendPreset(
 export function resolveTemplateWorkflow(
   template: Pick<WorkflowTemplate, "workflow" | "stage" | "name">,
   backend: WebSearchBackend,
+  options?: { detailBudget?: number | null; templateId?: string | null },
 ): Workflow {
-  const nextWorkflow = applyWebSearchBackendPreset(template.workflow, template.stage, backend)
+  let nextWorkflow = applyWebSearchBackendPreset(template.workflow, template.stage, backend)
+  if (options?.detailBudget != null) {
+    nextWorkflow = applyWorkflowDetailBudget(nextWorkflow, options.detailBudget, {
+      templateId: options.templateId,
+    })
+  }
   const templateName = template.name.trim()
   if (templateName) {
     nextWorkflow.name = templateName

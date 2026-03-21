@@ -20,6 +20,7 @@ import type { ArtifactRecord, HumanTaskSummary, WorkflowTemplate } from "@shared
 import {
   cardToneClass,
   factoryCaseStatusLabel,
+  factoryPrimaryActionButtonLabel,
   factoryCaseStatusTone,
   type FactoryCase,
   type FactoryCaseSummary,
@@ -51,7 +52,7 @@ export function CaseDetail({
   const primaryAction = selectedCaseSummary?.primaryAction || null
 
   return (
-    <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[1.25fr,0.75fr]">
+    <section data-factory-case-shell="true" className="grid grid-cols-1 gap-4 2xl:grid-cols-[1.25fr,0.75fr]">
       <article className="rounded-xl surface-panel p-5 space-y-4">
         <SectionHeading
           title={selectedCase.label}
@@ -135,7 +136,7 @@ export function CaseDetail({
                 {selectedCase.activeRun.workflowPath ? (
                   <Button variant="outline" size="sm" onClick={() => { void onOpenWorkflow(selectedCase.activeRun?.workflowPath || null) }}>
                     <ArrowUpRight size={14} />
-                    Open live run
+                    Open in runtime shell
                   </Button>
                 ) : null}
               </div>
@@ -172,7 +173,7 @@ export function CaseDetail({
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => { void onOpenWorkflow(run.workflowPath || null) }} disabled={!run.workflowPath}>
                         <ArrowUpRight size={14} />
-                        Open
+                        Open in runtime shell
                       </Button>
                     </div>
                   </div>
@@ -183,7 +184,7 @@ export function CaseDetail({
         </div>
       </article>
 
-      <aside className="rounded-xl surface-panel p-5 space-y-4">
+      <aside data-factory-case-detail="true" className="rounded-xl surface-panel p-5 space-y-4">
         <SectionHeading title="Track detail" />
 
         {selectedCaseSummary ? (
@@ -211,7 +212,7 @@ export function CaseDetail({
                   onClick={() => { if (primaryAction.task) onOpenInboxTask(primaryAction.task, selectedCase.id) }}
                 >
                   <Inbox size={14} />
-                  Review block
+                  {factoryPrimaryActionButtonLabel(primaryAction.kind)}
                 </Button>
               ) : null}
               {primaryAction?.run ? (
@@ -222,7 +223,7 @@ export function CaseDetail({
                   disabled={!primaryAction.run.workflowPath}
                 >
                   <ArrowUpRight size={14} />
-                  Open run
+                  {factoryPrimaryActionButtonLabel(primaryAction.kind)}
                 </Button>
               ) : null}
               {primaryAction?.template ? (
@@ -232,7 +233,7 @@ export function CaseDetail({
                   disabled={Boolean(launchingTemplateId)}
                 >
                   {launchingTemplateId === primaryAction.template.id ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                  {launchingTemplateId === primaryAction.template.id ? "Opening..." : "Open next step"}
+                  {launchingTemplateId === primaryAction.template.id ? "Opening..." : factoryPrimaryActionButtonLabel(primaryAction.kind)}
                 </Button>
               ) : null}
               <Button variant="ghost" size="sm" onClick={() => onOpenCaseArtifacts(selectedCase.id)}>

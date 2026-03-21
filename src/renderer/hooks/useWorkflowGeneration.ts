@@ -3,6 +3,9 @@ import type { DiscoveredSkill, GenerationProgress, RunResult, Workflow, Workflow
 import { toast } from "sonner"
 import { cloneWorkflow } from "@/lib/workflow-graph-utils"
 import { workflowSnapshot } from "@/lib/workflow-snapshot"
+import type { WorkflowEntryState, WorkflowTemplateRunContext } from "@/lib/workflow-entry"
+import { toWorkflowExecutionKey } from "@/lib/workflow-execution"
+import { applyWorkflowDetailBudget } from "@/lib/workflow-detail-budget"
 
 type GenerationTarget = "replace" | "new"
 
@@ -13,13 +16,19 @@ interface UseWorkflowGenerationArgs {
   setSelectedWorkflowPath: (next: string | null) => void
   setWorkflowSavedSnapshot: (next: string) => void
   setWorkflows: (next: WorkflowFile[]) => void
+  selectedInboxTaskKey: string | null
   setSelectedInboxTaskKey: (next: string | null) => void
+  selectedPastRun: RunResult | null
   setSelectedPastRun: (next: RunResult | null) => void
+  workflowEntryState: WorkflowEntryState | null
+  setWorkflowEntryState: (next: WorkflowEntryState | null) => void
+  selectedWorkflowTemplateContext: WorkflowTemplateRunContext | null
+  setWorkflowTemplateContextForKey: (params: { key: string; context: WorkflowTemplateRunContext | null }) => void
   skills: DiscoveredSkill[]
   setSkills: (next: DiscoveredSkill[]) => void
   selectedProject: string | null
+  detailBudget: number
   onOpenChange: (open: boolean) => void
-  onRestorePrevious?: () => void
   onGenerated?: (payload: {
     workflow: Workflow
     workflowPath: string | null
@@ -35,13 +44,19 @@ export function useWorkflowGeneration({
   setSelectedWorkflowPath,
   setWorkflowSavedSnapshot,
   setWorkflows,
+  selectedInboxTaskKey,
   setSelectedInboxTaskKey,
+  selectedPastRun,
   setSelectedPastRun,
+  workflowEntryState,
+  setWorkflowEntryState,
+  selectedWorkflowTemplateContext,
+  setWorkflowTemplateContextForKey,
   skills,
   setSkills,
   selectedProject,
+  detailBudget,
   onOpenChange,
-  onRestorePrevious,
   onGenerated,
 }: UseWorkflowGenerationArgs) {
   const [description, setDescription] = useState("")
@@ -107,15 +122,16 @@ export function useWorkflowGeneration({
         description: skill.description,
       }))
 
-      const generatedWorkflow = await window.api.generateWorkflow(
+      const generatedWorkflow = applyWorkflowDetailBudget(await window.api.generateWorkflow(
         description,
         skillInfos,
         selectedProject || undefined,
-      )
+      ), detailBudget)
       if (generationTokenRef.current !== token) return
 
       const previousWorkflow = cloneWorkflow(workflow)
       const previousWorkflowPath = selectedWorkflowPath
+      const previousWorkflowKey = toWorkflowExecutionKey(previousWorkflowPath)
 
       if (target === "new") {
         const baseName = generatedWorkflow.name.trim() || "generated-flow"
@@ -141,7 +157,21 @@ export function useWorkflowGeneration({
           description: "The agent prepared a new flow in your project.",
         })
       } else {
+        const previousReviewState = {
+          selectedInboxTaskKey,
+          selectedPastRun,
+        }
+        const previousEntryState = workflowEntryState
+        const previousTemplateContext = selectedWorkflowTemplateContext
+
         setWorkflow(generatedWorkflow)
+        setSelectedInboxTaskKey(null)
+        setSelectedPastRun(null)
+        setWorkflowEntryState(null)
+        setWorkflowTemplateContextForKey({
+          key: previousWorkflowKey,
+          context: null,
+        })
         onGenerated?.({
           workflow: generatedWorkflow,
           workflowPath: previousWorkflowPath,
@@ -157,7 +187,13 @@ export function useWorkflowGeneration({
               onClick: () => {
                 setWorkflow(previousWorkflow)
                 setSelectedWorkflowPath(previousWorkflowPath)
-                onRestorePrevious?.()
+                setSelectedInboxTaskKey(previousReviewState.selectedInboxTaskKey)
+                setSelectedPastRun(previousReviewState.selectedPastRun)
+                setWorkflowEntryState(previousEntryState)
+                setWorkflowTemplateContextForKey({
+                  key: previousWorkflowKey,
+                  context: previousTemplateContext,
+                })
               },
             }
             : undefined,
