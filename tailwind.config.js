@@ -99,6 +99,7 @@ module.exports = {
       fontSize: {
         "title-lg": ["1.75rem", { lineHeight: "2.125rem", fontWeight: "600" }],
         "label-xs": ["0.75rem", { lineHeight: "1rem", fontWeight: "600" }],
+        "body-xs": ["0.75rem", { lineHeight: "1rem" }],
         "body-sm": ["0.8125rem", { lineHeight: "1.125rem" }],
         "body-md": ["0.875rem", { lineHeight: "1.25rem" }],
         "title-sm": ["1rem", { lineHeight: "1.375rem", fontWeight: "600" }],
